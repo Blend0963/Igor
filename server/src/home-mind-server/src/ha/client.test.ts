@@ -407,3 +407,50 @@ describe("HomeAssistantClient.callService and ?return_response", () => {
     expect(posts()).toHaveLength(3);
   });
 });
+
+describe("HomeAssistantClient.searchEntities accent folding", () => {
+  const states = [
+    { entity_id: "switch.garaza_vrata", state: "off", attributes: { friendly_name: "Garaza vrata" } },
+    { entity_id: "light.kuhinja_luc", state: "on", attributes: { friendly_name: "Kuhinja luč" } },
+    { entity_id: "light.dnevna_soba", state: "on", attributes: { friendly_name: "Dnevna soba" } },
+    { entity_id: "light.spalnica", state: "on", attributes: { friendly_name: "Spálnica" } },
+    { entity_id: "sensor.cas_ura", state: "1", attributes: { friendly_name: "Čas" } },
+  ];
+
+  beforeEach(() => {
+    global.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify(states), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+    ) as unknown as typeof fetch;
+  });
+
+  const ids = async (query: string) =>
+    (await new HomeAssistantClient(baseConfig).searchEntities(query)).map((s) => s.entity_id);
+
+  it("finds an ASCII-slugged entity from an accented query", async () => {
+    expect(await ids("garaža")).toEqual(["switch.garaza_vrata"]);
+  });
+
+  it("matches an accented name from an unaccented query", async () => {
+    expect(await ids("kuhinja luc")).toEqual(["light.kuhinja_luc"]);
+    expect(await ids("spalnica")).toEqual(["light.spalnica"]);
+  });
+
+  it("matches an accented query against an accented name", async () => {
+    expect(await ids("Spálnica")).toEqual(["light.spalnica"]);
+    expect(await ids("kuhinja")).toEqual(["light.kuhinja_luc"]);
+  });
+
+  it("folds case and accents together (č, š, ž)", async () => {
+    expect(await ids("ČAS")).toEqual(["sensor.cas_ura"]);
+    expect(await ids("DNEVNA")).toEqual(["light.dnevna_soba"]);
+    expect(await ids("sobá")).toEqual(["light.dnevna_soba"]);
+  });
+
+  it("does not turn folding into a match-everything", async () => {
+    expect(await ids("terasa")).toEqual([]);
+  });
+});
