@@ -10,6 +10,7 @@ import { TOOL_DEFINITIONS, toOpenAITools } from "./tool-definitions.js";
 import { randomUUID } from "node:crypto";
 import { handleToolCall, extractAndStoreFacts, type ToolContext } from "./tool-handler.js";
 import { withTokenCap } from "./token-cap.js";
+import { withReasoningEffort } from "./reasoning-effort.js";
 import { describeLongBatch } from "./long-task.js";
 import {
   readUsage,
@@ -352,25 +353,32 @@ export class OpenAIChatEngine implements IChatEngine {
     const cap = this.maxOutputTokens(isVoice);
     const startedAt = Date.now();
     const stream = await withTokenCap(this.config.llmModel, cap, (capParam) =>
-      this.client.chat.completions.create({
-        model: this.config.llmModel,
-        ...capParam,
-        messages,
-        tools: OPENAI_TOOLS,
-        // Keep the tool list in the request (history already references it) but
-        // stop the model from issuing more calls.
-        ...(disableTools ? { tool_choice: "none" as const } : {}),
-        stream: true,
-        // Ask for the token breakdown. Without this a streamed call reports no
-        // usage at all, which is why a cap being spent entirely on reasoning
-        // looked identical to a prompt being too large.
-        stream_options: { include_usage: true },
-        // OpenRouter only: a stable session id pins the follow-up turns of one
-        // conversation to the provider endpoint that already holds the warm
-        // prompt cache, instead of re-balancing every turn. Other endpoints
-        // reject unknown fields, so it is not sent to them.
-        ...(this.isOpenRouter() && sessionId ? { session_id: sessionId } : {}),
-      })
+      withReasoningEffort(
+        this.config.llmModel,
+        this.config.reasoningEffort,
+        (reasoning) =>
+          this.client.chat.completions.create({
+            model: this.config.llmModel,
+            ...capParam,
+            ...reasoning,
+            messages,
+            tools: OPENAI_TOOLS,
+            // Keep the tool list in the request (history already references it) but
+            // stop the model from issuing more calls.
+            ...(disableTools ? { tool_choice: "none" as const } : {}),
+            stream: true,
+            // Ask for the token breakdown. Without this a streamed call reports no
+            // usage at all, which is why a cap being spent entirely on reasoning
+            // looked identical to a prompt being too large.
+            stream_options: { include_usage: true },
+            // OpenRouter only: a stable session id pins the follow-up turns of one
+            // conversation to the provider endpoint that already holds the warm
+            // prompt cache, instead of re-balancing every turn. Other endpoints
+            // reject unknown fields, so it is not sent to them.
+            ...(this.isOpenRouter() && sessionId ? { session_id: sessionId } : {}),
+          }),
+        this.client.baseURL
+      )
     );
 
     let text = "";

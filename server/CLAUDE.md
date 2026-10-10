@@ -143,6 +143,7 @@ LLM config:
 - `OPENAI_API_KEY` — required when `LLM_PROVIDER=openai`
 - `OPENAI_BASE_URL` — optional, for OpenAI-compatible APIs (Azure, local proxies)
 - `OLLAMA_BASE_URL` — optional, Ollama API endpoint (default: `http://localhost:11434/v1`)
+- `REASONING_EFFORT` — optional `none|minimal|low|medium|high`, sent as `reasoning_effort` on OpenAI-compatible calls (chat and fact extraction); unset sends nothing. A model that rejects the parameter with a 400 naming it is remembered per endpoint and model (`llm/reasoning-effort.ts`) and gets it no more, so one setting is safe across models. Add-on option `reasoning_effort`
 
 Optional: `PORT` (default 3100), `API_TOKEN` (bearer token for auth — when set, all endpoints except health require it), `HA_SKIP_TLS_VERIFY`, `MEMORY_TOKEN_LIMIT` (default 3000), `LOG_LEVEL`, `CONVERSATION_STORAGE` (`memory` | `sqlite`, default `memory`), `CONVERSATION_DB_PATH` (default `/data/conversations.db`, only used when `CONVERSATION_STORAGE=sqlite`), `CUSTOM_PROMPT` (server-level default custom system prompt), `TZ` (timezone for the Docker container, default `Europe/Prague` in docker-compose; Node.js uses this for `toLocaleString()` so the LLM sees correct local time)
 

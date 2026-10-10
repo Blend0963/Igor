@@ -44,6 +44,7 @@ vi.mock("./tool-handler.js", () => ({
 
 import { OpenAIChatEngine } from "./openai-client.js";
 import { resetTokenCapCache } from "./token-cap.js";
+import { resetReasoningEffortCache } from "./reasoning-effort.js";
 import { handleToolCall, extractAndStoreFacts } from "./tool-handler.js";
 
 describe("OpenAIChatEngine", () => {
@@ -56,6 +57,7 @@ describe("OpenAIChatEngine", () => {
 
   beforeEach(() => {
     resetTokenCapCache();
+    resetReasoningEffortCache();
     mockCreate.mockReset();
     vi.mocked(handleToolCall).mockReset();
     vi.mocked(extractAndStoreFacts).mockReset();
@@ -493,6 +495,82 @@ describe("OpenAIChatEngine", () => {
       expect(mockCreate).toHaveBeenCalledTimes(9);
       expect(mockCreate.mock.calls[8][0].tool_choice).toBe("none");
       expect(mockCreate.mock.calls[7][0]).not.toHaveProperty("tool_choice");
+    });
+  });
+
+  describe("reasoning_effort", () => {
+    const reply = () =>
+      makeStream([{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] }]);
+
+    it("is not sent when unconfigured", async () => {
+      mockCreate.mockResolvedValue(reply());
+
+      await engine.chat({ message: "x", userId: "user-1" });
+
+      expect(mockCreate.mock.calls[0][0]).not.toHaveProperty("reasoning_effort");
+    });
+
+    it("is sent when configured", async () => {
+      config.reasoningEffort = "low";
+      mockCreate.mockResolvedValue(reply());
+
+      await engine.chat({ message: "x", userId: "user-1" });
+
+      expect(mockCreate.mock.calls[0][0].reasoning_effort).toBe("low");
+    });
+
+    it("is dropped, and stays dropped, for a model that rejects it", async () => {
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      config.reasoningEffort = "low";
+      const rejection = Object.assign(
+        new Error("400 Unrecognized request argument supplied: reasoning_effort"),
+        { status: 400 }
+      );
+      mockCreate.mockRejectedValueOnce(rejection).mockImplementation(async () => reply());
+
+      const first = await engine.chat({ message: "x", userId: "user-1" });
+      await engine.chat({ message: "y", userId: "user-1" });
+
+      expect(first.response).toBe("hi");
+      expect(mockCreate).toHaveBeenCalledTimes(3);
+      expect(mockCreate.mock.calls[0][0].reasoning_effort).toBe("low");
+      expect(mockCreate.mock.calls[1][0]).not.toHaveProperty("reasoning_effort");
+      expect(mockCreate.mock.calls[2][0]).not.toHaveProperty("reasoning_effort");
+    });
+
+    it("surfaces an unrelated 400 instead of retrying", async () => {
+      config.reasoningEffort = "low";
+      const unrelated = Object.assign(new Error("400 model not found"), { status: 400 });
+      mockCreate.mockRejectedValueOnce(unrelated);
+
+      await expect(engine.chat({ message: "x", userId: "user-1" })).rejects.toBe(unrelated);
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it("works alongside the max_tokens negotiation", async () => {
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      config.reasoningEffort = "medium";
+      const capRejection = Object.assign(
+        new Error("400 Unsupported parameter: 'max_tokens'. Use 'max_completion_tokens' instead."),
+        { status: 400, param: "max_tokens", code: "unsupported_parameter" }
+      );
+      const effortRejection = Object.assign(new Error("400 Unknown parameter: reasoning_effort"), {
+        status: 400,
+        param: "reasoning_effort",
+      });
+      mockCreate
+        .mockRejectedValueOnce(capRejection)
+        .mockRejectedValueOnce(effortRejection)
+        .mockImplementation(async () => reply());
+
+      const result = await engine.chat({ message: "x", userId: "user-1" });
+
+      expect(result.response).toBe("hi");
+      expect(mockCreate).toHaveBeenCalledTimes(3);
+      const last = mockCreate.mock.calls[2][0];
+      expect(last.max_completion_tokens).toBe(8192);
+      expect(last).not.toHaveProperty("max_tokens");
+      expect(last).not.toHaveProperty("reasoning_effort");
     });
   });
 
