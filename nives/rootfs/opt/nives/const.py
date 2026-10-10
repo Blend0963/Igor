@@ -4,6 +4,12 @@ DOMAIN = "nives"
 CONF_API_URL = "api_url"
 CONF_API_TOKEN = "api_token"
 CONF_USER_ID = "user_id"
+# One memory for the whole household (nives#65). On, every request uses the
+# configured user_id. Off, a request made by a Home Assistant user gets that
+# user's own memory, and requests with no user behind them (voice satellites,
+# automations) use user_id: the only behaviour before 2.7.0, which quietly
+# split one install into memories that could not see each other.
+CONF_SHARED_MEMORY = "shared_memory"
 # The persona ("Custom Prompt") is configured in ONE place: the add-on's
 # Configuration tab. The integration had its own "Custom system prompt"
 # options field until 2.4.23; it was sent per request and silently overrode
@@ -12,12 +18,16 @@ CONF_USER_ID = "user_id"
 
 DEFAULT_API_URL = "http://localhost:3100"
 DEFAULT_USER_ID = "default"
+DEFAULT_SHARED_MEMORY = True
 DEFAULT_TIMEOUT = 120  # Claude with tool use can take 60+ seconds
 
 API_CHAT_ENDPOINT = "/api/chat"
 # Same request, answered as Server-Sent Events while the reply is produced.
 API_CHAT_STREAM_ENDPOINT = "/api/chat/stream"
 API_HEALTH_ENDPOINT = "/api/health"
+# POST {API_MEMORY_ENDPOINT}/<user_id>/merge copies facts older versions wrote
+# into per-user memories into the shared one, once (see __init__.py).
+API_MEMORY_ENDPOINT = "/api/memory"
 API_STT_ENDPOINT = "/api/stt"
 API_TTS_ENDPOINT = "/api/tts"
 

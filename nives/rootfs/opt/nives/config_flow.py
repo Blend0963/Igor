@@ -10,7 +10,7 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
@@ -19,8 +19,10 @@ from .const import (
     DOMAIN,
     CONF_API_URL,
     CONF_API_TOKEN,
+    CONF_SHARED_MEMORY,
     CONF_USER_ID,
     DEFAULT_API_URL,
+    DEFAULT_SHARED_MEMORY,
     DEFAULT_USER_ID,
     API_HEALTH_ENDPOINT,
     CLOUD_SIGNUP_URL,
@@ -89,6 +91,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._hassio_discovery: dict[str, Any] | None = None
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> OptionsFlow:
+        """Get the options flow for this handler."""
+        return OptionsFlow()
 
     async def async_step_hassio(
         self, discovery_info: HassioServiceInfo
@@ -161,6 +170,43 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=STEP_USER_DATA_SCHEMA,
             description_placeholders={"cloud_url": CLOUD_SIGNUP_URL},
             errors=errors,
+        )
+
+
+class OptionsFlow(config_entries.OptionsFlow):
+    """Memory settings, changeable after setup.
+
+    Add-on installs are created by discovery and never see the manual form, so
+    until this existed their user_id could only be changed by deleting and
+    re-adding the integration (nives#65). Saving reloads the entry through the
+    update listener in __init__.py.
+    """
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            user_input[CONF_USER_ID] = (
+                user_input.get(CONF_USER_ID, "").strip() or DEFAULT_USER_ID
+            )
+            return self.async_create_entry(title="", data=user_input)
+
+        current = {**self.config_entry.data, **self.config_entry.options}
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_SHARED_MEMORY,
+                        default=current.get(CONF_SHARED_MEMORY, DEFAULT_SHARED_MEMORY),
+                    ): bool,
+                    vol.Required(
+                        CONF_USER_ID,
+                        default=current.get(CONF_USER_ID) or DEFAULT_USER_ID,
+                    ): str,
+                }
+            ),
         )
 
 

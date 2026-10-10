@@ -7,11 +7,11 @@
         "data": {
           "api_url": "API URL",
           "api_token": "API Token (optional)",
-          "user_id": "Default User ID (optional)"
+          "user_id": "Memory name (optional)"
         },
         "data_description": {
           "api_token": "Required for cloud-hosted Nives. Leave empty for self-hosted setups without authentication.",
-          "user_id": "Used to namespace memories per user. Leave as 'default' unless you have multiple users."
+          "user_id": "The name of the memory Nives keeps for your household. Leave it as 'default'. You can change it later, and choose whether everyone shares one memory, under Configure."
         }
       },
       "hassio_confirm": {
@@ -27,6 +27,22 @@
     "abort": {
       "already_configured": "Nives is already configured.",
       "cannot_connect": "Could not connect to the Nives add-on. Make sure it's running."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Memory",
+        "description": "Choose whether everyone in your home shares one memory with Nives.",
+        "data": {
+          "shared_memory": "Shared memory",
+          "user_id": "Memory name"
+        },
+        "data_description": {
+          "shared_memory": "On (recommended): everyone shares one memory, so something you tell a voice satellite is also known in the app and on the dashboard, and the other way round. Off: each Home Assistant user gets a memory of their own, and voice satellites and automations use the memory named below.",
+          "user_id": "The memory Nives uses for the whole household, or, with shared memory off, for voice satellites and automations. Leave it as 'default' unless you have a reason to change it."
+        }
+      }
     }
   },
   "entity": {

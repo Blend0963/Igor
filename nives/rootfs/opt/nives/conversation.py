@@ -94,6 +94,21 @@ class NivesConversationAgent(ConversationEntity):
         """Return supported languages."""
         return MATCH_ALL
 
+    def _memory_user_id(self, user_input: ConversationInput) -> str:
+        """Whose memory this request reads and writes.
+
+        With shared memory on (the default) it is always the configured one.
+        Otherwise a request made by a Home Assistant user gets that user's own
+        memory, and one with no user behind it (a voice satellite, an
+        automation) falls back to the configured one. That fallback is what
+        silently split a household in two before 2.7.0 (nives#65): the puck
+        and the dashboard each kept a memory the other could not see.
+        """
+        data = self.entry.runtime_data
+        if not data.shared_memory and user_input.context and user_input.context.user_id:
+            return str(user_input.context.user_id)
+        return data.user_id
+
     async def async_process(self, user_input: ConversationInput) -> ConversationResult:
         """Answer, streaming into the chat log where the Core supports it."""
         if not STREAMING_SUPPORTED:
@@ -121,9 +136,7 @@ class NivesConversationAgent(ConversationEntity):
         _LOGGER.debug("Processing conversation input: %s", user_input.text)
 
         data = self.entry.runtime_data
-        user_id = data.user_id
-        if user_input.context and user_input.context.user_id:
-            user_id = str(user_input.context.user_id)
+        user_id = self._memory_user_id(user_input)
         conversation_id = chat_log.conversation_id
         is_voice = getattr(user_input, "satellite_id", None) is not None
 
@@ -319,9 +332,7 @@ class NivesConversationAgent(ConversationEntity):
         _LOGGER.debug("Processing conversation input: %s", user_input.text)
 
         data = self.entry.runtime_data
-        user_id = data.user_id
-        if user_input.context and user_input.context.user_id:
-            user_id = str(user_input.context.user_id)
+        user_id = self._memory_user_id(user_input)
 
         # Mint an id when the caller has none. Home Assistant's own Assist
         # pipeline always supplies one, so this only ever bit the callers that
