@@ -6,6 +6,7 @@ import type { IMemoryStore } from "../memory/interface.js";
 import type { IConversationStore } from "../memory/types.js";
 import type { ISttService } from "../stt/stt-service.js";
 import type { ITtsService } from "../tts/tts-service.js";
+import { createEmptyBucketCheck, mergeMemoryInto } from "../memory/shared-memory.js";
 
 /**
  * Limits for the one multipart endpoint this server has (`POST /api/stt`).
@@ -152,9 +153,13 @@ export function createRouter(
   conversations?: IConversationStore,
   stt?: ISttService,
   tts?: ITtsService,
-  ttsLanguage?: string
+  ttsLanguage?: string,
+  mergeMarkerPath?: string
 ): Router {
   const router = Router();
+  const checkEmptyBucket = conversations
+    ? createEmptyBucketCheck(memory, conversations)
+    : undefined;
 
   /**
    * POST /api/chat
@@ -172,6 +177,7 @@ export function createRouter(
       }
 
       logPersonaSource(parsed.data.customPrompt, defaultCustomPrompt);
+      void checkEmptyBucket?.(parsed.data.userId);
 
       // Use streaming internally (no callback = just faster processing)
       const response = await llm.chat({
@@ -205,6 +211,7 @@ export function createRouter(
       }
 
       logPersonaSource(parsed.data.customPrompt, defaultCustomPrompt);
+      void checkEmptyBucket?.(parsed.data.userId);
 
       // Set up SSE headers
       res.setHeader("Content-Type", "text/event-stream");
@@ -294,6 +301,27 @@ export function createRouter(
       }
     } catch (error) {
       console.error("Add fact error:", error);
+      const message = error instanceof Error ? error.message : "Unknown error";
+      res.status(500).json({ error: message });
+    }
+  });
+
+  /**
+   * POST /api/memory/:userId/merge
+   * One-time copy of every other known user's facts into this user's memory,
+   * skipping duplicates and leaving the sources untouched (nives#65). The
+   * integration calls it on setup when shared memory is on.
+   */
+  router.post("/memory/:userId/merge", async (req: Request, res: Response) => {
+    if (!conversations) {
+      return res.status(501).json({ error: "Conversation store not available" });
+    }
+
+    try {
+      const userId = req.params.userId as string;
+      res.json(await mergeMemoryInto(userId, memory, conversations, mergeMarkerPath));
+    } catch (error) {
+      console.error("Memory merge error:", error);
       const message = error instanceof Error ? error.message : "Unknown error";
       res.status(500).json({ error: message });
     }
