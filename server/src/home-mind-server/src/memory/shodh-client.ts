@@ -383,8 +383,8 @@ export class ShodhMemoryStore {
   /**
    * Get all facts for a user using semantic recall
    */
-  async getFacts(userId: string): Promise<Fact[]> {
-    return this.shodh.recallByTags(userId, 100);
+  async getFacts(userId: string, limit = 100): Promise<Fact[]> {
+    return this.shodh.recallByTags(userId, limit);
   }
 
   /**

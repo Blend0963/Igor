@@ -9,7 +9,8 @@ import type { Fact, FactCategory } from "./types.js";
 
 export interface IMemoryStore {
   // Fact operations
-  getFacts(userId: string): Promise<Fact[]>;
+  /** Up to `limit` facts (default 100, what a prompt ever uses); pass more to read a whole bucket. */
+  getFacts(userId: string, limit?: number): Promise<Fact[]>;
   getFactsWithinTokenLimit(
     userId: string,
     maxTokens: number,

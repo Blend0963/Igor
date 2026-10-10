@@ -8,7 +8,7 @@ import type { IMemoryStore } from "./interface.js";
 import type { Fact, FactCategory } from "./types.js";
 import type { IChatEngine } from "../llm/interface.js";
 import { InMemoryConversationStore } from "./conversation-memory.js";
-import { createEmptyBucketCheck, mergeMemoryInto } from "./shared-memory.js";
+import { MERGE_READ_LIMIT, createEmptyBucketCheck, mergeMemoryInto } from "./shared-memory.js";
 import { createRouter } from "../api/routes.js";
 
 /** A memory store that keeps facts in a map, enough for getFacts/addFacts. */
@@ -280,6 +280,16 @@ describe("createEmptyBucketCheck (nives#65)", () => {
 
     expect(log).toHaveBeenCalledTimes(1);
     expect(memory.getFacts).toHaveBeenCalledTimes(2); // own bucket + the one other
+  });
+
+  it("reads whole buckets, not the 100 facts a prompt sees", async () => {
+    // A heavy bucket must be copied in full; the prompt's cap is not a copy cap.
+    const { memory } = fakeMemory({ "ha-user-1": ["a"] });
+    await mergeMemoryInto("default", memory, knownUsers("default", "ha-user-1"));
+    const calls = (memory.getFacts as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) expect(call[1]).toBe(MERGE_READ_LIMIT);
+    expect(MERGE_READ_LIMIT).toBeGreaterThanOrEqual(1000);
   });
 
   it("swallows errors and logs them at debug", async () => {
