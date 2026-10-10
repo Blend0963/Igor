@@ -74,6 +74,13 @@ const ConfigSchema = z
       .transform((v) => v !== "false")
       .prefault("true"),
 
+    // Bound the tools to the entities exposed to Assist, the way Home
+    // Assistant's own agent does. "false" lets them reach the whole house.
+    toolsFromExposed: z
+      .string()
+      .transform((v) => v !== "false")
+      .prefault("true"),
+
     // App / API access
     corsOrigins: z.string().optional(), // Comma-separated origins, e.g. "http://localhost:5173,https://app.example.com"
     apiToken: z.string().optional(), // Bearer token for API auth (when unset, no auth enforced)
@@ -155,6 +162,7 @@ export function loadConfig(): Config {
     deviceOverrides: emptyToUndefined(process.env.DEVICE_OVERRIDES),
     layoutDomains: emptyToUndefined(process.env.LAYOUT_DOMAINS),
     layoutFromExposed: emptyToUndefined(process.env.LAYOUT_FROM_EXPOSED),
+    toolsFromExposed: emptyToUndefined(process.env.TOOLS_FROM_EXPOSED),
     corsOrigins: emptyToUndefined(process.env.CORS_ORIGINS),
     apiToken: emptyToUndefined(process.env.API_TOKEN),
     sttProvider: emptyToUndefined(process.env.STT_PROVIDER),

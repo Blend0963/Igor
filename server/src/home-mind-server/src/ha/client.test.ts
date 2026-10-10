@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { HomeAssistantClient } from "./client.js";
+import { AssistExposure } from "./exposure.js";
 import type { Config } from "../config.js";
 
 const baseConfig: Config = {
@@ -452,5 +453,265 @@ describe("HomeAssistantClient.searchEntities accent folding", () => {
 
   it("does not turn folding into a match-everything", async () => {
     expect(await ids("terasa")).toEqual([]);
+  });
+});
+
+describe("HomeAssistantClient and the Assist exposure list", () => {
+  // Home Assistant's own agent filters every state through async_should_expose
+  // before anything sees it, so an unexposed entity does not exist for the
+  // assistant: not in the prompt, and not through a tool. Before this the room
+  // map honoured the user's choices while the tools went straight to
+  // /api/states and could read and drive the whole house.
+  const house = [
+    { entity_id: "light.kitchen_table", state: "on", attributes: { friendly_name: "Kitchen table" } },
+    { entity_id: "light.kitchen_table_1", state: "off", attributes: { friendly_name: "Kitchen table 1" } },
+    { entity_id: "light.kitchen_table_2", state: "off", attributes: { friendly_name: "Kitchen table 2" } },
+    { entity_id: "sensor.kitchen_presence", state: "on", attributes: { friendly_name: "Kitchen presence" } },
+    {
+      entity_id: "automation.nives_porch_light_at_sunset",
+      state: "on",
+      attributes: { id: "1700000000000", friendly_name: "Nives: Porch light at sunset" },
+    },
+  ];
+
+  let calls: string[];
+
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  beforeEach(() => {
+    calls = [];
+    global.fetch = vi.fn(async (input: unknown) => {
+      const url = typeof input === "string" ? input : String(input);
+      calls.push(url);
+      if (url.includes("/api/services")) return json([]);
+      if (url.includes("/api/history/period")) return json([[]]);
+      if (url.endsWith("/api/states")) return json(house);
+      const id = url.split("/api/states/")[1];
+      const state = house.find((s) => s.entity_id === id);
+      return json(state ?? { message: "Entity not found." }, state ? 200 : 404);
+    }) as unknown as typeof fetch;
+  });
+
+  const exposing = (...ids: string[]) => new AssistExposure(async () => new Set(ids));
+  const posted = (service: string) => calls.some((u) => u.includes(`/api/services/${service}`));
+
+  describe("reads", () => {
+    it("search_entities returns only what the user exposed", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      const found = await client.searchEntities("kitchen");
+      expect(found.map((s) => s.entity_id)).toEqual(["light.kitchen_table"]);
+    });
+
+    it("get_entities returns only what the user exposed", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      expect((await client.getEntities()).map((s) => s.entity_id)).toEqual(["light.kitchen_table"]);
+      expect((await client.getEntities("light")).map((s) => s.entity_id)).toEqual([
+        "light.kitchen_table",
+      ]);
+      expect(await client.getEntities("sensor")).toEqual([]);
+    });
+
+    it("get_state refuses an entity that exists but is not exposed, without asking HA", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      await expect(client.getState("light.kitchen_table_1")).rejects.toThrow(/not available to you/);
+      expect(calls).toEqual([]);
+    });
+
+    it("get_state refuses even when the entity is already in the state cache", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      await client.getEntities(); // fills the cache with every state, exposed or not
+      await expect(client.getState("sensor.kitchen_presence")).rejects.toThrow(
+        /not available to you/
+      );
+    });
+
+    it("get_history refuses an unexposed entity, without asking HA", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      await expect(client.getHistory("sensor.kitchen_presence")).rejects.toThrow(
+        /not available to you/
+      );
+      expect(calls.some((u) => u.includes("/api/history"))).toBe(false);
+    });
+
+    it("get_history refuses a comma-joined id that would smuggle an unexposed entity", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      await expect(
+        client.getHistory("light.kitchen_table,sensor.kitchen_presence")
+      ).rejects.toThrow(/not available to you/);
+      expect(calls.some((u) => u.includes("/api/history"))).toBe(false);
+    });
+
+    it("lets an exposed entity through untouched", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      expect((await client.getState("light.kitchen_table")).state).toBe("on");
+      await client.getHistory("light.kitchen_table");
+      expect(calls.some((u) => u.includes("/api/history"))).toBe(true);
+    });
+  });
+
+  describe("call_service", () => {
+    it("refuses to drive an unexposed entity, before the request leaves", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      await expect(
+        client.callService("light", "turn_on", "light.kitchen_table_1")
+      ).rejects.toThrow(/light\.kitchen_table_1 is not available to you/);
+      expect(posted("light/turn_on")).toBe(false);
+    });
+
+    it("drives an exposed entity", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      await client.callService("light", "turn_on", "light.kitchen_table");
+      expect(posted("light/turn_on")).toBe(true);
+    });
+
+    it("checks entity_id handed in through data, and every id in a list", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      await expect(
+        client.callService("light", "turn_on", undefined, { entity_id: "light.kitchen_table_2" })
+      ).rejects.toThrow(/not available to you/);
+      await expect(
+        client.callService("light", "turn_on", undefined, {
+          entity_id: ["light.kitchen_table", "light.kitchen_table_2"],
+        })
+      ).rejects.toThrow(/kitchen_table_2/);
+      expect(posted("light/turn_on")).toBe(false);
+    });
+
+    it("splits a comma-separated entity_id", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      await expect(
+        client.callService("light", "turn_on", "light.kitchen_table, light.kitchen_table_2")
+      ).rejects.toThrow(/kitchen_table_2/);
+      await expect(
+        client.callService("light", "turn_on", undefined, {
+          entity_id: "light.kitchen_table,light.kitchen_table_1",
+        })
+      ).rejects.toThrow(/kitchen_table_1/);
+      expect(posted("light/turn_on")).toBe(false);
+    });
+
+    it("checks the entity_id of a nested target", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      await expect(
+        client.callService("light", "turn_off", undefined, {
+          target: { entity_id: ["light.kitchen_table", "light.kitchen_table_2"] },
+        })
+      ).rejects.toThrow(/kitchen_table_2/);
+      expect(posted("light/turn_off")).toBe(false);
+    });
+
+    it("refuses entity_id all, named or in data, with its own message", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      await expect(client.callService("light", "turn_off", "all")).rejects.toThrow(
+        /entity_id "all" is not available/
+      );
+      await expect(
+        client.callService("light", "turn_off", undefined, { target: { entity_id: "all" } })
+      ).rejects.toThrow(/entity_id "all" is not available/);
+      expect(posted("light/turn_off")).toBe(false);
+    });
+
+    it.each(["area_id", "device_id", "floor_id", "label_id"])(
+      "refuses a %s target, top-level or nested, and asks for entity ids",
+      async (key) => {
+        const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+        await expect(
+          client.callService("light", "turn_off", undefined, { [key]: "kitchen" })
+        ).rejects.toThrow(new RegExp(`${key} is not available.*exposed entity_ids`));
+        await expect(
+          client.callService("light", "turn_off", undefined, { target: { [key]: ["kitchen"] } })
+        ).rejects.toThrow(new RegExp(`${key} is not available`));
+        expect(posted("light/turn_off")).toBe(false);
+      }
+    );
+
+    it("passes indirect targets when the list has no opinion", async () => {
+      const client = new HomeAssistantClient(baseConfig, new AssistExposure(async () => null));
+      await client.callService("light", "turn_off", undefined, { area_id: "kitchen" });
+      await client.callService("light", "turn_on", undefined, { target: { label_id: "evening" } });
+      expect(posted("light/turn_off")).toBe(true);
+      expect(posted("light/turn_on")).toBe(true);
+    });
+
+    it("passes indirect targets when the user exposed nothing", async () => {
+      const client = new HomeAssistantClient(baseConfig, new AssistExposure(async () => new Set()));
+      await client.callService("light", "turn_off", undefined, { area_id: "kitchen" });
+      expect(posted("light/turn_off")).toBe(true);
+    });
+
+    it("needs script.<name> exposed to run it; lifecycle services check their target", async () => {
+      const client = new HomeAssistantClient(
+        baseConfig,
+        exposing("light.kitchen_table", "script.good_night")
+      );
+      await expect(client.callService("script", "garage_door")).rejects.toThrow(
+        /script\.garage_door is not available/
+      );
+      await client.callService("script", "good_night");
+      await expect(
+        client.callService("script", "turn_on", "script.garage_door")
+      ).rejects.toThrow(/script\.garage_door is not available/);
+      await client.callService("script", "turn_on", "script.good_night");
+      expect(posted("script/garage_door")).toBe(false);
+      expect(posted("script/good_night")).toBe(true);
+      expect(posted("script/turn_on")).toBe(true);
+    });
+
+    it("passes a call with no target at all", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      await client.callService("notify", "notify", undefined, { message: "hi" });
+      // The balance heads-up raises and clears its own notification this way.
+      await client.callService("persistent_notification", "create", undefined, {
+        notification_id: "nives_balance_low",
+        title: "Nives",
+        message: "Balance is low",
+      });
+      expect(posted("notify/notify")).toBe(true);
+      expect(posted("persistent_notification/create")).toBe(true);
+    });
+  });
+
+  describe("automations (not bounded by the exposure list yet)", () => {
+    it("list_automations still sees automations the user never exposed", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      expect((await client.listAutomations()).map((s) => s.entity_id)).toEqual([
+        "automation.nives_porch_light_at_sunset",
+      ]);
+      // while get_entities, which the model reads directly, does not
+      expect(await client.getEntities("automation")).toEqual([]);
+    });
+
+    it("the reload after a write is not refused", async () => {
+      const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
+      await client.callService("automation", "reload");
+      expect(posted("automation/reload")).toBe(true);
+    });
+  });
+
+  describe("without an opinionated list", () => {
+    it("without an exposure list the client behaves exactly as before", async () => {
+      const client = new HomeAssistantClient(baseConfig);
+      expect((await client.searchEntities("kitchen")).map((s) => s.entity_id)).toEqual(
+        house.filter((s) => s.entity_id.includes("kitchen")).map((s) => s.entity_id)
+      );
+      expect(await client.getEntities()).toHaveLength(house.length);
+      await client.callService("light", "turn_on", "light.kitchen_table_1");
+      await client.callService("light", "turn_off", undefined, { area_id: "kitchen" });
+      expect(posted("light/turn_on")).toBe(true);
+      expect(posted("light/turn_off")).toBe(true);
+    });
+
+    it("a list that cannot be read means no opinion, not a house with no devices", async () => {
+      const client = new HomeAssistantClient(baseConfig, new AssistExposure(async () => null));
+      expect(await client.getEntities()).toHaveLength(house.length);
+      expect((await client.getState("sensor.kitchen_presence")).state).toBe("on");
+      await client.getHistory("sensor.kitchen_presence");
+      await client.callService("light", "turn_on", "light.kitchen_table_1");
+      expect(posted("light/turn_on")).toBe(true);
+    });
   });
 });
