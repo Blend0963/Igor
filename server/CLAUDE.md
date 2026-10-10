@@ -18,11 +18,23 @@ Builds a compact `floor → room → [entity_id (friendly name)]` text section (
 
 If the template API fails (older HA, network error), the scanner logs a warning and injects nothing — the rest of the system works normally.
 
+### The Assist exposure list bounds the room map and the tools
+
+Settings → Voice assistants → Expose is the user's own list of what an assistant may see, and Home Assistant's own agent builds both its prompt and its live-context tool from it, so an unexposed entity does not exist for that agent. The list is websocket-only (`ha/exposed-entities.ts`). `AssistExposure` (`ha/exposure.ts`) is one cached reading of it, TTL 30 minutes (the topology scan interval), retried after 60 s when a read fails, with concurrent reads collapsed into one websocket call. `index.ts` creates one instance and hands it to the `TopologyScanner` as its exposure provider (`LAYOUT_FROM_EXPOSED`, default on) and to `HomeAssistantClient` (`TOOLS_FROM_EXPOSED`, default on).
+
+With the client bounded, `get_state` and `get_history` refuse an unexposed entity before any request, `get_entities` and `search_entities` return exposed entities only, and `call_service` refuses before the request leaves: a named `entity_id` (string, list or comma-separated), ids in `data.entity_id` or a nested `target.entity_id`, `entity_id: "all"`, and, while the list has an opinion, any `area_id` / `device_id` / `floor_id` / `label_id` target, which cannot be vetted without resolving it. Running `script.<name>` needs that script exposed. The refusal text (`notExposedMessage`) tells the model the entity is out of scope and not to retry other spellings. An exposed group still acts on all of its members; Home Assistant's own agent behaves the same.
+
+**A list that cannot be read, or an empty one, means "no opinion" and filters nothing.** An old HA, a token without websocket access, a network error or a user who exposed nothing must never leave the assistant blind to the whole house. A refresh that fails mid-session keeps the last good list instead of widening. The eval rig's mock HA has no websocket, so there the list is always "no opinion".
+
+**Automations are not bounded yet.** The create/update payloads the assistant writes can still name any entity, and `listAutomations()` deliberately reads past the list: automations are rarely exposed, and filtering them would stop `update_automation` / `delete_automation` from finding the automation the assistant just made. Gating automation targets is a follow-up.
+
 ### Device Capability Index
 
 `DeviceScanner` (`ha/device-scanner.ts`) runs at startup and every 30 minutes. It fetches all `light.*` entities, reads `supported_color_modes` attributes, and builds `DeviceCapabilityProfile` objects with pre-computed `whiteMethod` and `colorMethod`. These are formatted as a markdown cheat sheet and injected into every system prompt via `buildSystemPrompt()` / `buildSystemPromptText()`.
 
 **White method precedence**: `rgbw`/`rgbww` → `rgbw_color: [0,0,0,255]`; `color_temp` → `color_temp_kelvin`; `rgb`/`xy`/`hs` → `rgb_color: [255,255,255]`; else → none.
+
+`DeviceScanner` reads lights through the same `HomeAssistantClient`, so with `TOOLS_FROM_EXPOSED` on the cheat sheet covers exposed lights only.
 
 **`DEVICE_OVERRIDES`** env var (JSON) allows per-entity overrides for devices with incorrect HA-reported modes (e.g. Gledopto GL-C-008P always reports `color_temp+xy` regardless of wiring). Overrides are applied after auto-detection. Fields: `whiteMethod` and/or `colorMethod`.
 
@@ -146,7 +158,7 @@ LLM config:
 - `OLLAMA_BASE_URL` — optional, Ollama API endpoint (default: `http://localhost:11434/v1`)
 - `REASONING_EFFORT` — optional `none|minimal|low|medium|high`, sent as `reasoning_effort` on OpenAI-compatible calls (chat and fact extraction); unset sends nothing. A model that rejects the parameter with a 400 naming it is remembered per endpoint and model (`llm/reasoning-effort.ts`) and gets it no more, so one setting is safe across models. Add-on option `reasoning_effort`
 
-Optional: `PORT` (default 3100), `API_TOKEN` (bearer token for auth — when set, all endpoints except health require it), `HA_SKIP_TLS_VERIFY`, `MEMORY_TOKEN_LIMIT` (default 3000), `LOG_LEVEL`, `CONVERSATION_STORAGE` (`memory` | `sqlite`, default `memory`), `CONVERSATION_DB_PATH` (default `/data/conversations.db`, only used when `CONVERSATION_STORAGE=sqlite`), `CUSTOM_PROMPT` (server-level default custom system prompt), `TZ` (timezone for the Docker container, default `Europe/Prague` in docker-compose; Node.js uses this for `toLocaleString()` so the LLM sees correct local time)
+Optional: `PORT` (default 3100), `API_TOKEN` (bearer token for auth — when set, all endpoints except health require it), `HA_SKIP_TLS_VERIFY`, `MEMORY_TOKEN_LIMIT` (default 3000), `LOG_LEVEL`, `CONVERSATION_STORAGE` (`memory` | `sqlite`, default `memory`), `CONVERSATION_DB_PATH` (default `/data/conversations.db`, only used when `CONVERSATION_STORAGE=sqlite`), `CUSTOM_PROMPT` (server-level default custom system prompt), `LAYOUT_FROM_EXPOSED` (default `true`; build the room map from the entities exposed to Assist), `TOOLS_FROM_EXPOSED` (default `true`; bound `get_state` / `get_entities` / `search_entities` / `get_history` / `call_service` to the entities exposed to Assist; `false` lets them reach the whole house), `TZ` (timezone for the Docker container, default `Europe/Prague` in docker-compose; Node.js uses this for `toLocaleString()` so the LLM sees correct local time)
 
 ### Nives Cloud Mode
 

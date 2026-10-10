@@ -1,4 +1,5 @@
 import type { Config } from "../config.js";
+import { AssistExposure, notExposedMessage } from "./exposure.js";
 
 export interface EntityState {
   entity_id: string;
@@ -56,6 +57,22 @@ export interface ServiceCallWithResponse {
   service_response: unknown;
 }
 
+/** The entity IDs a service call targets; HA accepts one, a list, or "a, b". */
+function targetedEntities(target: unknown): string[] {
+  const ids = typeof target === "string" ? [target] : Array.isArray(target) ? target : [];
+  return ids
+    .filter((t): t is string => typeof t === "string")
+    .flatMap((t) => t.split(","))
+    .map((t) => t.trim())
+    .filter((t) => t !== "");
+}
+
+/** Targets that select entities indirectly, which the exposure list cannot vet. */
+const INDIRECT_TARGETS = ["area_id", "device_id", "floor_id", "label_id"] as const;
+
+/** Lifecycle services of the script domain; any other `script.X` runs script X. */
+const SCRIPT_LIFECYCLE = new Set(["turn_on", "turn_off", "toggle", "reload"]);
+
 let lastAutomationId = 0;
 
 /**
@@ -98,10 +115,72 @@ export class HomeAssistantClient {
   private serviceResponseTTL: number = 5 * 60 * 1000;
   private serviceResponseCache: CacheEntry<Map<string, ServiceResponseSupport>> | null = null;
 
-  constructor(config: Config) {
+  /**
+   * @param exposure The entities the user exposed to Assist. When given, it
+   *   bounds what the tools can read and drive, the same bound Home Assistant's
+   *   own agent puts on its tools. Omitted, or reporting "no opinion", it leaves
+   *   the client unfiltered.
+   */
+  constructor(
+    config: Config,
+    private readonly exposure?: AssistExposure
+  ) {
     this.baseUrl = config.haUrl.replace(/\/$/, "");
     this.token = config.haToken;
     this.skipTlsVerify = config.haSkipTlsVerify;
+  }
+
+  /**
+   * Refuses an entity the user has not exposed, before any request is made.
+   *
+   * Throwing beats returning an empty result: the tool handler hands the
+   * message to the model, so "not exposed" is said out loud instead of looking
+   * like a device that is missing or broken.
+   */
+  private async requireExposed(...entityIds: string[]): Promise<void> {
+    if (!this.exposure) return;
+    for (const id of entityIds) {
+      if (!(await this.exposure.allows(id))) throw new Error(notExposedMessage(id));
+    }
+  }
+
+  /**
+   * Refuses a service call that would reach past the exposure list.
+   *
+   * Named entities are checked one by one, including those in a nested
+   * `target`. Area, device, floor and label targets would have to be resolved
+   * to know what they hit, so while the list has an opinion they are refused
+   * and the model is told to name entities. A call with no target touches no
+   * entity, except `script.<name>`, which runs that script.
+   */
+  private async requireExposedTargets(
+    domain: string,
+    service: string,
+    payload: Record<string, unknown>
+  ): Promise<void> {
+    if (!this.exposure || (await this.exposure.list()) === null) return;
+    const nested =
+      payload.target && typeof payload.target === "object"
+        ? (payload.target as Record<string, unknown>)
+        : {};
+    const indirect = INDIRECT_TARGETS.find(
+      (k) => payload[k] !== undefined || nested[k] !== undefined
+    );
+    if (indirect) {
+      throw new Error(
+        `Targeting by ${indirect} is not available to you: only entities the user exposed to the ` +
+          `assistant may be controlled. Call the service with the exposed entity_ids instead.`
+      );
+    }
+    const ids = [...targetedEntities(payload.entity_id), ...targetedEntities(nested.entity_id)];
+    if (ids.includes("all")) {
+      throw new Error(
+        `entity_id "all" is not available to you: it reaches entities the user has not exposed. ` +
+          `Call the service with the exposed entity_ids instead.`
+      );
+    }
+    if (domain === "script" && !SCRIPT_LIFECYCLE.has(service)) ids.push(`script.${service}`);
+    await this.requireExposed(...ids);
   }
 
   /**
@@ -208,6 +287,8 @@ export class HomeAssistantClient {
    * Get state of a single entity (cached)
    */
   async getState(entityId: string): Promise<EntityState> {
+    await this.requireExposed(entityId);
+
     // Check individual cache first
     const cached = this.entityCache.get(entityId);
     if (this.isCacheValid(cached)) {
@@ -230,13 +311,19 @@ export class HomeAssistantClient {
    * Get all entities, optionally filtered by domain (cached)
    */
   async getEntities(domain?: string): Promise<EntityState[]> {
-    const states = await this.getAllStatesCached();
+    const states = await this.visibleStates();
 
     if (domain) {
       return states.filter((s) => s.entity_id.startsWith(`${domain}.`));
     }
 
     return states;
+  }
+
+  /** Every state the assistant may see: all of them when the list has no opinion. */
+  private async visibleStates(): Promise<EntityState[]> {
+    const states = await this.getAllStatesCached();
+    return this.exposure ? this.exposure.filter(states) : states;
   }
 
   /**
@@ -248,7 +335,7 @@ export class HomeAssistantClient {
    * whatever the installer typed, sometimes accented and sometimes not.
    */
   async searchEntities(query: string): Promise<EntityState[]> {
-    const states = await this.getAllStatesCached();
+    const states = await this.visibleStates();
     const needle = foldAccents(query);
 
     return states.filter((s) => {
@@ -287,6 +374,11 @@ export class HomeAssistantClient {
     if (entityId) {
       payload.entity_id = entityId;
     }
+
+    // Every entity this call would touch, whether named in `entityId` or handed
+    // in through `data`: a model that has been told an entity is out of scope
+    // will otherwise try the other door.
+    await this.requireExposedTargets(domain, service, payload);
 
     const support = await this.getServiceResponseSupport(domain, service);
     const wantResponse =
@@ -358,6 +450,8 @@ export class HomeAssistantClient {
     startTime?: string,
     endTime?: string
   ): Promise<HistoryEntry[]> {
+    await this.requireExposed(entityId);
+
     const start = startTime || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     // URL-encode every interpolated value. The `+` in `+HH:MM` tz offsets is
     // otherwise decoded as a space in query strings by aiohttp (HA's HTTP
@@ -434,6 +528,13 @@ export class HomeAssistantClient {
       .replace(/^_+|_+$/g, "");
   }
 
+  // Automations are NOT bounded by the Assist exposure list yet. The
+  // create/update payloads the assistant writes can name any entity, and
+  // listAutomations() reads every automation, exposed or not: automations are
+  // rarely exposed, and filtering them would leave the assistant unable to
+  // find, change or delete the ones it just made. Bounding what an automation
+  // may target is a separate change.
+
   /**
    * Create (or overwrite) a Home Assistant automation via the config API, then
    * reload automations so it registers immediately. Returns the authoritative
@@ -481,9 +582,13 @@ export class HomeAssistantClient {
     };
   }
 
-  /** List all automation entities (config-id lives in attributes.id). */
+  /**
+   * List all automation entities (config-id lives in attributes.id). Reads past
+   * the exposure list on purpose; see the note above createAutomation().
+   */
   async listAutomations(): Promise<EntityState[]> {
-    return this.getEntities("automation");
+    const states = await this.getAllStatesCached();
+    return states.filter((s) => s.entity_id.startsWith("automation."));
   }
 
   /** Delete an automation by its config id, then reload. */

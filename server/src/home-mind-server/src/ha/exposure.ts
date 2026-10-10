@@ -1,0 +1,111 @@
+import type { EntityState } from "./client.js";
+
+/**
+ * The entities exposed to Assist, read once per TTL and shared.
+ *
+ * Home Assistant's own conversation agent decides what an assistant may see and
+ * touch from exactly one list: `async_should_expose` filters every state before
+ * the prompt or the live-context tool is built, so an entity the user has not
+ * exposed does not exist for that assistant at all.
+ *
+ * Nives already built its room map from that list, but the tools went straight
+ * to `/api/states`, so the model could still read and drive entities the user
+ * had deliberately kept out of Assist. This object is the one reading both
+ * sides now share: the topology scanner uses it for the layout, and
+ * `HomeAssistantClient` uses it to bound the tools.
+ *
+ * `null` means "no opinion", which is not the same as "expose nothing". An old
+ * Home Assistant, a token without websocket access, a network error, and a user
+ * who has exposed nothing all end up as `null`, and `null` filters nothing. A
+ * failed websocket call that left the assistant unable to see a single device
+ * would be far worse than the gap it is meant to close.
+ */
+export class AssistExposure {
+  private entities: Set<string> | null = null;
+  /** When the cached answer (a list, or "no opinion") stops being good. */
+  private expiresAt = 0;
+  private inFlight: Promise<Set<string> | null> | null = null;
+
+  /**
+   * @param fetcher Reads the exposure list; resolves to `null` when it cannot.
+   * @param ttlMs How long a good read is kept. Matches the topology scan
+   *   interval: the user can expose an entity at any time, and a stale list
+   *   would keep hiding it.
+   * @param retryMs How soon a failed read is tried again. Short, but not on
+   *   every tool call.
+   */
+  constructor(
+    private readonly fetcher: () => Promise<Set<string> | null>,
+    private readonly ttlMs = 30 * 60 * 1000,
+    private readonly retryMs = 60 * 1000
+  ) {}
+
+  /** The exposed entity IDs, or `null` for "no opinion". */
+  async list(): Promise<Set<string> | null> {
+    // "No opinion" is cached as well, or every tool call in a home that exposes
+    // nothing would open a websocket of its own.
+    if (Date.now() < this.expiresAt) {
+      return this.entities;
+    }
+    // One turn runs several tool calls in parallel; without this each of them
+    // would open its own websocket on the first call after a restart.
+    this.inFlight ??= this.refresh();
+    try {
+      return await this.inFlight;
+    } finally {
+      this.inFlight = null;
+    }
+  }
+
+  private async refresh(): Promise<Set<string> | null> {
+    let fetched: Set<string> | null = null;
+    try {
+      fetched = await this.fetcher();
+    } catch (err) {
+      console.warn(
+        `[exposure] Could not refresh the exposure list: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
+    // A failed read (thrown, or `null`, which is how fetchExposedEntities
+    // reports one) must not widen what the model can reach: the last good
+    // answer stands, and the read is retried soon.
+    if (fetched === null) {
+      this.expiresAt = Date.now() + this.retryMs;
+      return this.entities;
+    }
+    // An empty list cannot be told apart from a home that never opened the
+    // Expose page, so it is "no opinion" rather than a house with no devices.
+    this.entities = fetched.size > 0 ? fetched : null;
+    this.expiresAt = Date.now() + this.ttlMs;
+    return this.entities;
+  }
+
+  /** Whether the assistant may see and act on this entity. */
+  async allows(entityId: string): Promise<boolean> {
+    const exposed = await this.list();
+    return exposed === null || exposed.has(entityId);
+  }
+
+  /** The subset of `states` the assistant may see, in the order given. */
+  async filter(states: EntityState[]): Promise<EntityState[]> {
+    const exposed = await this.list();
+    if (exposed === null) return states;
+    return states.filter((s) => exposed.has(s.entity_id));
+  }
+}
+
+/**
+ * What the model is told when it reaches for an entity it may not use.
+ *
+ * Worded so it stops instead of retrying: a model that reads "not found" tries
+ * spelling variants, and a house it has only seen half of offers plenty.
+ */
+export function notExposedMessage(entityId: string): string {
+  return (
+    `${entityId} is not available to you. It may exist in Home Assistant, but the user has not ` +
+    `exposed it to the assistant (Settings → Voice assistants → Expose), so it is out of scope. ` +
+    `Do not retry with a different spelling; tell the user it is not exposed.`
+  );
+}

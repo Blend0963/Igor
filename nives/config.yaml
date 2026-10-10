@@ -63,8 +63,10 @@ schema:
   # How much the model thinks before answering. Absent from `options:` for the
   # same reason: unset sends nothing and leaves the model on its own default.
   reasoning_effort: "list(none|minimal|low|medium|high)?"
-  # Both absent from `options:` for the same reason as max_output_tokens: unset
-  # means "Nives decides", which today is the list of entities exposed to Assist.
+  # All three absent from `options:` for the same reason as max_output_tokens:
+  # unset means "Nives decides", which today is the list of entities exposed to
+  # Assist, for the room map and for what the assistant can reach.
   layout_from_exposed: "bool?"
+  tools_from_exposed: "bool?"
   layout_domains: "str?"
   log_level: "list(debug|info|warn|error)"

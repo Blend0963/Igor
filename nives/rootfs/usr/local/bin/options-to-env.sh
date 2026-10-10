@@ -53,6 +53,7 @@ MAX_OUTPUT_TOKENS=$(jq -r '.max_output_tokens // ""' "$OPTIONS")
 REASONING_EFFORT=$(jq -r '.reasoning_effort // ""' "$OPTIONS")
 # `// ""` would turn an explicit false into "", so test for null instead.
 LAYOUT_FROM_EXPOSED=$(jq -r 'if .layout_from_exposed == null then "" else (.layout_from_exposed|tostring) end' "$OPTIONS")
+TOOLS_FROM_EXPOSED=$(jq -r 'if .tools_from_exposed == null then "" else (.tools_from_exposed|tostring) end' "$OPTIONS")
 LAYOUT_DOMAINS=$(jq -r '.layout_domains // ""' "$OPTIONS")
 LOG_LEVEL=$(jq -r '.log_level // "info"' "$OPTIONS")
 
@@ -272,6 +273,7 @@ write_env "LOG_LEVEL" "$LOG_LEVEL"
 [ -n "$MAX_OUTPUT_TOKENS" ] && write_env "MAX_OUTPUT_TOKENS" "$MAX_OUTPUT_TOKENS"
 [ -n "$REASONING_EFFORT" ] && write_env "REASONING_EFFORT" "$REASONING_EFFORT"
 [ -n "$LAYOUT_FROM_EXPOSED" ] && write_env "LAYOUT_FROM_EXPOSED" "$LAYOUT_FROM_EXPOSED"
+[ -n "$TOOLS_FROM_EXPOSED" ] && write_env "TOOLS_FROM_EXPOSED" "$TOOLS_FROM_EXPOSED"
 [ -n "$LAYOUT_DOMAINS" ] && write_env "LAYOUT_DOMAINS" "$LAYOUT_DOMAINS"
 
 echo "[init] Environment configured (mode=${LLM_MODE}, provider=${LLM_PROVIDER:-cloud}, max_output_tokens=${MAX_OUTPUT_TOKENS:-default}, reasoning_effort=${REASONING_EFFORT:-default})"

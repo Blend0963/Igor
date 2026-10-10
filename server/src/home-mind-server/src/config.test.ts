@@ -117,6 +117,26 @@ describe("loadConfig", () => {
     expect(config.logLevel).toBe("info");
   });
 
+  it("bounds the tools to exposed entities unless TOOLS_FROM_EXPOSED is false", async () => {
+    Object.assign(process.env, BASE_ENV);
+    delete process.env.TOOLS_FROM_EXPOSED;
+    expect((await loadConfigFresh()).toolsFromExposed).toBe(true);
+
+    // The add-on writes nothing when the option is unset, but an empty value
+    // must still mean the default rather than "off".
+    vi.resetModules();
+    process.env.TOOLS_FROM_EXPOSED = "";
+    expect((await loadConfigFresh()).toolsFromExposed).toBe(true);
+
+    vi.resetModules();
+    process.env.TOOLS_FROM_EXPOSED = "true";
+    expect((await loadConfigFresh()).toolsFromExposed).toBe(true);
+
+    vi.resetModules();
+    process.env.TOOLS_FROM_EXPOSED = "false";
+    expect((await loadConfigFresh()).toolsFromExposed).toBe(false);
+  });
+
   it("exits when HA_URL is missing", async () => {
     Object.assign(process.env, BASE_ENV);
     delete process.env.HA_URL;
