@@ -199,6 +199,27 @@ curl -H "Authorization: Bearer <token>" http://<addon-host>:3100/api/chat ...
 
 `/api/health` stays public so monitoring doesn't need the token.
 
+### One memory for the whole household
+
+Nives keeps one memory for everyone in your home. Whatever you tell a voice
+satellite is also known when you type in the app or on the dashboard, and the
+other way round.
+
+If you would rather each person had a memory of their own, go to **Settings >
+Devices & services > Nives > Configure** and turn **Shared memory** off. Each
+Home Assistant user then gets a separate memory when they talk to Nives in the
+app or on the dashboard. Voice satellites and automations are not signed in as
+anyone, so they use the memory in **Memory name** (`default` unless you change
+it), which you can also change there.
+
+**Upgrading from 2.6 or earlier.** Older versions gave each Home Assistant user
+a memory of their own, apart from the one voice satellites used, so one home
+could end up with two memories that could not see each other. The first time
+the new version loads, Nives copies the facts from those older memories into the
+shared one, skipping anything it already knew. This happens once. The originals
+stay where they were, so if you turn shared memory off later, everyone's own
+memory is still there as it was when you upgraded.
+
 ---
 
 ## Common Options
@@ -237,6 +258,7 @@ This is true in **both** Cloud and BYOK mode — the difference is only *which* 
 
 - **Add-on won't start**: Check the Log tab. Most common issue: missing or invalid API key.
 - **Nives doesn't appear in Voice assistants**: Restart Home Assistant Core once after the add-on starts — there should be a notification (or, after updates, a repair under Settings > Repairs) reminding you.
+- **Nives forgot something you told it**: look in the add-on log for a line starting with `[memory] Memory bucket`. It appears when a request used an empty memory while another one holds facts, which means **Shared memory** is off (see [One memory for the whole household](#one-memory-for-the-whole-household)) or a script is choosing its own memory name.
 - **Slow responses**: LLM responses can take 10–60 seconds depending on the model and tool usage. This is normal.
 - **High memory usage**: Shodh Memory has a known memory leak. The add-on includes a watchdog that restarts it automatically when it exceeds 512 MB.
 

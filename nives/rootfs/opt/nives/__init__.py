@@ -1,12 +1,14 @@
 """Nives integration for Home Assistant."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 import aiohttp
 
@@ -21,9 +23,12 @@ from homeassistant.loader import async_get_integration
 
 from .const import (
     API_HEALTH_ENDPOINT,
+    API_MEMORY_ENDPOINT,
     CONF_API_TOKEN,
     CONF_API_URL,
+    CONF_SHARED_MEMORY,
     CONF_USER_ID,
+    DEFAULT_SHARED_MEMORY,
     DEFAULT_USER_ID,
     DOMAIN,
     RESTART_ISSUE_ID,
@@ -46,6 +51,12 @@ UPDATE_CHECK_INTERVAL = timedelta(minutes=5)
 # Home Assistant loaded this entry — from stranding the user for long, at the
 # cost of one small request against a service running on the same machine.
 CAPABILITY_CHECK_INTERVAL = timedelta(minutes=2)
+
+# The add-on starts after Home Assistant Core, so at boot this entry is set up
+# before the server answers. The one-time memory merge keeps trying for about
+# ten minutes rather than giving up on a server that is simply still starting.
+MERGE_RETRY_DELAY = 30  # seconds
+MERGE_ATTEMPTS = 20
 
 def _no_capabilities() -> dict:
     """What a server that cannot be read is assumed to offer: nothing beyond
@@ -244,6 +255,56 @@ async def _async_server_capabilities(hass: HomeAssistant, api_url: str) -> dict:
     }
 
 
+async def _async_merge_memory(hass: HomeAssistant, entry: NivesConfigEntry) -> None:
+    """Copy facts older versions wrote into per-user memories into the shared one.
+
+    Before 2.7.0 every Home Assistant user who spoke to Nives from the
+    dashboard or the app got a memory of their own, separate from the one
+    voice satellites used (nives#65). Switching everyone to one memory without
+    this would make those facts look forgotten, which is the very failure
+    being fixed. The server copies them across once, skips what the shared
+    memory already holds, records that it ran, and never touches the
+    originals, so turning shared memory off later brings them back as they
+    were. Never fails setup: this runs in the background and only logs.
+    """
+    data = entry.runtime_data
+    url = f"{data.api_url}{API_MEMORY_ENDPOINT}/{quote(data.user_id, safe='')}/merge"
+    headers = {"Authorization": f"Bearer {data.api_token}"} if data.api_token else {}
+    session = async_get_clientsession(hass)
+    for attempt in range(1, MERGE_ATTEMPTS + 1):
+        try:
+            async with session.post(
+                url, headers=headers, timeout=aiohttp.ClientTimeout(total=120)
+            ) as response:
+                if response.status != 200:
+                    _LOGGER.warning(
+                        "Could not merge older memories into the shared memory: "
+                        "the Nives server answered HTTP %s: %s",
+                        response.status,
+                        (await response.text())[:300],
+                    )
+                    return
+                result = await response.json()
+        except (aiohttp.ClientError, TimeoutError) as err:
+            _LOGGER.debug(
+                "Memory merge attempt %s/%s could not reach the Nives server: %s",
+                attempt, MERGE_ATTEMPTS, err,
+            )
+            if attempt < MERGE_ATTEMPTS:
+                await asyncio.sleep(MERGE_RETRY_DELAY)
+            continue
+        if result.get("merged"):
+            _LOGGER.info(
+                "Copied %s facts from older per-user memories into the shared memory '%s'",
+                result["merged"], data.user_id,
+            )
+        return
+    _LOGGER.warning(
+        "Could not reach the Nives server to merge older memories into the shared "
+        "memory. Nives will try again the next time it is loaded."
+    )
+
+
 def _base_language(language: str) -> str | None:
     """Reduce a language tag like "sl-SI" to the bare code Assist matches."""
     code = str(language).replace("_", "-").split("-", 1)[0].strip().lower()
@@ -257,6 +318,9 @@ class NivesData:
     api_url: str
     api_token: str | None
     user_id: str
+    # One memory for everyone (the default), or one per Home Assistant user.
+    # See CONF_SHARED_MEMORY.
+    shared_memory: bool = DEFAULT_SHARED_MEMORY
     # Language of the voice the server is configured to speak with, when it
     # names one. Decides which languages the text-to-speech entity offers.
     tts_language: str | None = None
@@ -274,10 +338,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: NivesConfigEntry) -> boo
     api_url = entry.data.get(CONF_API_URL, "").rstrip("/")
     caps = await _async_server_capabilities(hass, api_url)
     platforms = _get_platforms(caps["stt"], caps["tts"])
+    # The options flow writes entry.options; entry.data holds what the entry
+    # was created with. An option, once set, wins.
+    settings = {**entry.data, **entry.options}
     entry.runtime_data = NivesData(
         api_url=api_url,
         api_token=await _async_resolve_token(hass, entry),
-        user_id=entry.data.get(CONF_USER_ID, DEFAULT_USER_ID),
+        user_id=str(settings.get(CONF_USER_ID) or "").strip() or DEFAULT_USER_ID,
+        shared_memory=bool(settings.get(CONF_SHARED_MEMORY, DEFAULT_SHARED_MEMORY)),
         platforms=platforms,
         tts_language=caps["tts_language"],
     )
@@ -285,11 +353,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: NivesConfigEntry) -> boo
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await _async_setup_update_watch(hass, entry)
     await _async_setup_capability_watch(hass, entry)
+    if entry.runtime_data.shared_memory:
+        entry.async_create_background_task(
+            hass, _async_merge_memory(hass, entry), "nives_memory_merge"
+        )
     return True
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: NivesConfigEntry) -> None:
-    """Reload the config entry when options change."""
+    """Reload the config entry when options change, so a changed memory
+    setting applies at once (and runs the merge when shared memory is on)."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 

@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { createRequire } from "module";
+import path from "node:path";
 import { loadConfig } from "./config.js";
 import { createAuthMiddleware } from "./api/auth.js";
 
@@ -10,6 +11,7 @@ const require = createRequire(import.meta.url);
 const { version } = require("../package.json");
 import { ShodhMemoryStore } from "./memory/shodh-client.js";
 import { createConversationStore } from "./memory/conversation-factory.js";
+import { MERGE_MARKER_FILENAME } from "./memory/shared-memory.js";
 import { HomeAssistantClient } from "./ha/client.js";
 import { DeviceScanner } from "./ha/device-scanner.js";
 import { DEFAULT_LAYOUT_DOMAINS, TopologyScanner } from "./ha/topology-scanner.js";
@@ -132,8 +134,16 @@ app.use((req, res, next) => {
   next();
 });
 
+// The one-time memory merge records itself next to the conversation database.
+// With in-memory conversations there is nowhere durable to put it, and the
+// merge's own duplicate check keeps a repeat from copying anything.
+const mergeMarkerPath =
+  config.conversationStorage === "sqlite"
+    ? path.join(path.dirname(config.conversationDbPath), MERGE_MARKER_FILENAME)
+    : undefined;
+
 // Mount API routes
-app.use("/api", createRouter(llm, memory, "shodh", version, config.customPrompt, conversations, stt ?? undefined, tts ?? undefined, config.ttsLanguage));
+app.use("/api", createRouter(llm, memory, "shodh", version, config.customPrompt, conversations, stt ?? undefined, tts ?? undefined, config.ttsLanguage, mergeMarkerPath));
 
 // Root endpoint
 app.get("/", (_req, res) => {
