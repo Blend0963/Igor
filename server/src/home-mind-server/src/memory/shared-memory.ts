@@ -27,6 +27,12 @@ import { normalizeFactContent } from "./fact-resolution.js";
 /** Lives next to the conversation database; see createRouter's caller. */
 export const MERGE_MARKER_FILENAME = "memory-merges.json";
 
+/**
+ * How many facts the merge reads from each bucket. A prompt only ever sees 100,
+ * but a copy must not silently drop the rest of a heavy bucket.
+ */
+export const MERGE_READ_LIMIT = 1000;
+
 export interface MergeSource {
   userId: string;
   copied: number;
@@ -137,14 +143,14 @@ async function runMerge(
   }
 
   const present = new Set(
-    (await memory.getFacts(target)).map((fact) => normalizeFactContent(fact.content))
+    (await memory.getFacts(target, MERGE_READ_LIMIT)).map((fact) => normalizeFactContent(fact.content))
   );
   const plan: { userId: string; facts: Fact[]; duplicates: number }[] = [];
   for (const userId of conversations.getKnownUsers()) {
     if (userId === target) continue;
     const facts: Fact[] = [];
     let duplicates = 0;
-    for (const fact of await memory.getFacts(userId)) {
+    for (const fact of await memory.getFacts(userId, MERGE_READ_LIMIT)) {
       const key = normalizeFactContent(fact.content);
       if (!key) continue; // nothing to copy
       if (present.has(key)) {
