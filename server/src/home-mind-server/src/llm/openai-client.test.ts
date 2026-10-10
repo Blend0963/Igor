@@ -299,6 +299,203 @@ describe("OpenAIChatEngine", () => {
     expect(result.toolsUsed).toEqual(["get_state", "get_state"]);
   });
 
+  describe("OpenAI-compatible endpoints that stream differently", () => {
+    const toolDelta = (toolCall: object, finish_reason: string | null = null) => ({
+      choices: [{ delta: { tool_calls: [toolCall] }, finish_reason }],
+    });
+    const answer = (text: string) =>
+      makeStream([{ choices: [{ delta: { content: text }, finish_reason: "stop" }] }]);
+    const assistantToolCalls = (call: number) =>
+      mockCreate.mock.calls[call][0].messages.find(
+        (m: { role: string }) => m.role === "assistant"
+      ).tool_calls;
+
+    it("runs the tool calls of a turn that reports finish_reason stop", async () => {
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta(
+            { index: 0, id: "call-1", function: { name: "get_state", arguments: '{"entity_id":"sensor.t"}' } },
+            "stop"
+          ),
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(answer("20 °C"));
+
+      const result = await engine.chat({ message: "temperature?", userId: "user-1" });
+
+      expect(handleToolCall).toHaveBeenCalledWith(
+        ha,
+        "get_state",
+        { entity_id: "sensor.t" },
+        expect.anything()
+      );
+      expect(result.toolsUsed).toEqual(["get_state"]);
+      expect(result.response).toBe("20 °C");
+      expect(result.error).toBeUndefined();
+    });
+
+    it("keeps parallel calls apart when each arrives whole with its own id and no index", async () => {
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta({
+            id: "call_a",
+            type: "function",
+            function: { name: "get_state", arguments: '{"entity_id":"climate.living_room"}' },
+          }),
+          toolDelta({
+            id: "call_b",
+            type: "function",
+            function: { name: "search_entities", arguments: '{"query":"living room"}' },
+          }),
+          { choices: [{ delta: {}, finish_reason: "stop" }] },
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(answer("ok"));
+
+      await engine.chat({ message: "living room?", userId: "user-1" });
+
+      const sent = assistantToolCalls(1);
+      expect(sent.map((c: { id: string }) => c.id)).toEqual(["call_a", "call_b"]);
+      expect(sent[0].function).toEqual({
+        name: "get_state",
+        arguments: '{"entity_id":"climate.living_room"}',
+      });
+      expect(sent[1].function).toEqual({
+        name: "search_entities",
+        arguments: '{"query":"living room"}',
+      });
+      expect(handleToolCall).toHaveBeenCalledTimes(2);
+    });
+
+    it("opens a new call when a delta brings a new id under an index already in use", async () => {
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta({ index: 0, id: "call_a", function: { name: "get_state", arguments: '{"entity_id":"a.b"}' } }),
+          toolDelta({ index: 0, id: "call_b", function: { name: "get_state", arguments: '{"entity_id":"c.d"}' } }),
+          { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(answer("ok"));
+
+      await engine.chat({ message: "both?", userId: "user-1" });
+
+      const sent = assistantToolCalls(1);
+      expect(sent.map((c: { id: string }) => c.id)).toEqual(["call_a", "call_b"]);
+      expect(sent[1].function.arguments).toBe('{"entity_id":"c.d"}');
+    });
+
+    it("still joins calls streamed in pieces under their index, even interleaved", async () => {
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta({ index: 0, id: "call-1", function: { name: "get_state", arguments: '{"entity_id":' } }),
+          toolDelta({ index: 1, id: "call-2", function: { name: "get_state", arguments: '{"entity_id":' } }),
+          toolDelta({ index: 0, function: { arguments: '"sensor.temp"}' } }),
+          toolDelta({ index: 1, function: { arguments: '"sensor.humidity"}' } }),
+          { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(answer("22 °C, 45 %"));
+
+      const result = await engine.chat({ message: "temp and humidity?", userId: "user-1" });
+
+      const sent = assistantToolCalls(1);
+      expect(sent.map((c: { id: string }) => c.id)).toEqual(["call-1", "call-2"]);
+      expect(sent[0].function.arguments).toBe('{"entity_id":"sensor.temp"}');
+      expect(sent[1].function.arguments).toBe('{"entity_id":"sensor.humidity"}');
+      expect(result.response).toBe("22 °C, 45 %");
+    });
+
+    it("hands a tool call's extra_content back untouched on the next turn", async () => {
+      const extra = { vendor: { signature: "sig-abc" } };
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta({
+            index: 0,
+            id: "call-1",
+            function: { name: "get_state", arguments: '{"entity_id":"light.a"}' },
+            extra_content: extra,
+          }),
+          { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(answer("On"));
+
+      await engine.chat({ message: "light?", userId: "user-1" });
+
+      expect(assistantToolCalls(1)[0].extra_content).toEqual(extra);
+    });
+
+    it("keeps extra_content with its own call when parallel calls arrive whole", async () => {
+      const extra = { vendor: { signature: "sig" } };
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta({
+            id: "call_a",
+            function: { name: "get_state", arguments: "{}" },
+            extra_content: extra,
+          }),
+          toolDelta({ id: "call_b", function: { name: "get_state", arguments: "{}" } }),
+          { choices: [{ delta: {}, finish_reason: "stop" }] },
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(answer("ok"));
+
+      await engine.chat({ message: "x", userId: "user-1" });
+
+      const sent = assistantToolCalls(1);
+      expect(sent[0].extra_content).toEqual(extra);
+      expect(sent[1]).not.toHaveProperty("extra_content");
+    });
+
+    it("omits extra_content when the endpoint sends none", async () => {
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta({ index: 0, id: "call-1", function: { name: "get_state", arguments: "{}" } }, "tool_calls"),
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(answer("ok"));
+
+      await engine.chat({ message: "x", userId: "user-1" });
+
+      expect(assistantToolCalls(1)[0]).not.toHaveProperty("extra_content");
+    });
+
+    it("keeps the empty-response diagnosis when a tool turn ends without a word", async () => {
+      // No canned reply is substituted: the voice path and the integration
+      // decide what to say, in the user's language.
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta({ index: 0, id: "call-1", function: { name: "call_service", arguments: "{}" } }, "stop"),
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(
+        makeStream([{ choices: [{ delta: {}, finish_reason: "stop" }] }])
+      );
+
+      const result = await engine.chat({ message: "lights on", userId: "user-1" });
+
+      expect(result.response).toBe("");
+      expect(result.error?.code).toBe("EMPTY_CONTENT");
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+    });
+
+    it("still bounds the loop and forces an answer when every turn reports stop", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockCreate.mockImplementation(async () =>
+        makeStream([
+          toolDelta({ index: 0, id: "call-1", function: { name: "get_state", arguments: "{}" } }, "stop"),
+        ])
+      );
+
+      await engine.chat({ message: "x", userId: "user-1" });
+
+      // One opening request plus eight tool rounds; the last one may not call tools.
+      expect(mockCreate).toHaveBeenCalledTimes(9);
+      expect(mockCreate.mock.calls[8][0].tool_choice).toBe("none");
+      expect(mockCreate.mock.calls[7][0]).not.toHaveProperty("tool_choice");
+    });
+  });
+
   it("loads conversation history when conversationId provided", async () => {
     (conversations.getConversationHistory as ReturnType<typeof vi.fn>).mockReturnValue([
       { role: "user", content: "previous question" },
