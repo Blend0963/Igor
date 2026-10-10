@@ -15,6 +15,7 @@ vi.mock("openai", () => {
 });
 
 import { OpenAIFactExtractor } from "./openai-extractor.js";
+import { resetReasoningEffortCache } from "../llm/reasoning-effort.js";
 import type { Fact } from "./types.js";
 
 describe("OpenAIFactExtractor", () => {
@@ -365,6 +366,52 @@ describe("OpenAIFactExtractor", () => {
       await ext.extract("u", "a", []);
 
       expect(mockCreate.mock.calls[0][0].max_tokens).toBe(4096);
+    });
+  });
+
+  describe("reasoning_effort wiring", () => {
+    beforeEach(() => resetReasoningEffortCache());
+
+    it("sends no reasoning_effort when not configured", async () => {
+      mockCreate.mockResolvedValue({ choices: [{ message: { content: "[]" } }] });
+      const ext = new OpenAIFactExtractor("key", "model");
+
+      await ext.extract("u", "a", []);
+
+      expect(mockCreate.mock.calls[0][0]).not.toHaveProperty("reasoning_effort");
+    });
+
+    it("sends the configured reasoning_effort", async () => {
+      mockCreate.mockResolvedValue({ choices: [{ message: { content: "[]" } }] });
+      const ext = new OpenAIFactExtractor("key", "model", undefined, undefined, undefined, "low");
+
+      await ext.extract("u", "a", []);
+
+      expect(mockCreate.mock.calls[0][0].reasoning_effort).toBe("low");
+    });
+
+    it("still extracts when the model rejects reasoning_effort, and stops sending it", async () => {
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      const rejection = Object.assign(
+        new Error("400 Unrecognized request argument supplied: reasoning_effort"),
+        { status: 400 }
+      );
+      const facts = JSON.stringify([{ content: "User prefers 22°C", category: "preference" }]);
+      mockCreate
+        .mockRejectedValueOnce(rejection)
+        .mockResolvedValue({ choices: [{ message: { content: facts } }] });
+      const ext = new OpenAIFactExtractor("key", "plain-model", undefined, undefined, undefined, "low");
+
+      const result = await ext.extract("I like 22", "Noted", []);
+      await ext.extract("again", "ok", []);
+
+      expect(result).toEqual([
+        { content: "User prefers 22°C", category: "preference", replaces: [] },
+      ]);
+      expect(mockCreate).toHaveBeenCalledTimes(3);
+      expect(mockCreate.mock.calls[0][0].reasoning_effort).toBe("low");
+      expect(mockCreate.mock.calls[1][0]).not.toHaveProperty("reasoning_effort");
+      expect(mockCreate.mock.calls[2][0]).not.toHaveProperty("reasoning_effort");
     });
   });
 });

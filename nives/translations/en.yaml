@@ -76,6 +76,13 @@ configuration:
       finish, which is most likely when you ask about several sensors at once or
       over a long period. Longer answers cost a little more. Spoken answers are
       not affected and stay short, because they are read out loud.
+  reasoning_effort:
+    name: Thinking Effort
+    description: >-
+      How much the model thinks before it answers. Lower is faster and cheaper,
+      which you notice most with voice; higher can help with harder questions.
+      Leave empty to use the model's own default. A model that does not support
+      this setting simply ignores it.
   layout_from_exposed:
     name: Room map from exposed entities
     description: >-

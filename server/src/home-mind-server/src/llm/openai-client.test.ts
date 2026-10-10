@@ -44,6 +44,7 @@ vi.mock("./tool-handler.js", () => ({
 
 import { OpenAIChatEngine } from "./openai-client.js";
 import { resetTokenCapCache } from "./token-cap.js";
+import { resetReasoningEffortCache } from "./reasoning-effort.js";
 import { handleToolCall, extractAndStoreFacts } from "./tool-handler.js";
 
 describe("OpenAIChatEngine", () => {
@@ -56,6 +57,7 @@ describe("OpenAIChatEngine", () => {
 
   beforeEach(() => {
     resetTokenCapCache();
+    resetReasoningEffortCache();
     mockCreate.mockReset();
     vi.mocked(handleToolCall).mockReset();
     vi.mocked(extractAndStoreFacts).mockReset();
@@ -297,6 +299,279 @@ describe("OpenAIChatEngine", () => {
 
     expect(handleToolCall).toHaveBeenCalledTimes(2);
     expect(result.toolsUsed).toEqual(["get_state", "get_state"]);
+  });
+
+  describe("OpenAI-compatible endpoints that stream differently", () => {
+    const toolDelta = (toolCall: object, finish_reason: string | null = null) => ({
+      choices: [{ delta: { tool_calls: [toolCall] }, finish_reason }],
+    });
+    const answer = (text: string) =>
+      makeStream([{ choices: [{ delta: { content: text }, finish_reason: "stop" }] }]);
+    const assistantToolCalls = (call: number) =>
+      mockCreate.mock.calls[call][0].messages.find(
+        (m: { role: string }) => m.role === "assistant"
+      ).tool_calls;
+
+    it("runs the tool calls of a turn that reports finish_reason stop", async () => {
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta(
+            { index: 0, id: "call-1", function: { name: "get_state", arguments: '{"entity_id":"sensor.t"}' } },
+            "stop"
+          ),
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(answer("20 °C"));
+
+      const result = await engine.chat({ message: "temperature?", userId: "user-1" });
+
+      expect(handleToolCall).toHaveBeenCalledWith(
+        ha,
+        "get_state",
+        { entity_id: "sensor.t" },
+        expect.anything()
+      );
+      expect(result.toolsUsed).toEqual(["get_state"]);
+      expect(result.response).toBe("20 °C");
+      expect(result.error).toBeUndefined();
+    });
+
+    it("keeps parallel calls apart when each arrives whole with its own id and no index", async () => {
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta({
+            id: "call_a",
+            type: "function",
+            function: { name: "get_state", arguments: '{"entity_id":"climate.living_room"}' },
+          }),
+          toolDelta({
+            id: "call_b",
+            type: "function",
+            function: { name: "search_entities", arguments: '{"query":"living room"}' },
+          }),
+          { choices: [{ delta: {}, finish_reason: "stop" }] },
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(answer("ok"));
+
+      await engine.chat({ message: "living room?", userId: "user-1" });
+
+      const sent = assistantToolCalls(1);
+      expect(sent.map((c: { id: string }) => c.id)).toEqual(["call_a", "call_b"]);
+      expect(sent[0].function).toEqual({
+        name: "get_state",
+        arguments: '{"entity_id":"climate.living_room"}',
+      });
+      expect(sent[1].function).toEqual({
+        name: "search_entities",
+        arguments: '{"query":"living room"}',
+      });
+      expect(handleToolCall).toHaveBeenCalledTimes(2);
+    });
+
+    it("opens a new call when a delta brings a new id under an index already in use", async () => {
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta({ index: 0, id: "call_a", function: { name: "get_state", arguments: '{"entity_id":"a.b"}' } }),
+          toolDelta({ index: 0, id: "call_b", function: { name: "get_state", arguments: '{"entity_id":"c.d"}' } }),
+          { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(answer("ok"));
+
+      await engine.chat({ message: "both?", userId: "user-1" });
+
+      const sent = assistantToolCalls(1);
+      expect(sent.map((c: { id: string }) => c.id)).toEqual(["call_a", "call_b"]);
+      expect(sent[1].function.arguments).toBe('{"entity_id":"c.d"}');
+    });
+
+    it("still joins calls streamed in pieces under their index, even interleaved", async () => {
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta({ index: 0, id: "call-1", function: { name: "get_state", arguments: '{"entity_id":' } }),
+          toolDelta({ index: 1, id: "call-2", function: { name: "get_state", arguments: '{"entity_id":' } }),
+          toolDelta({ index: 0, function: { arguments: '"sensor.temp"}' } }),
+          toolDelta({ index: 1, function: { arguments: '"sensor.humidity"}' } }),
+          { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(answer("22 °C, 45 %"));
+
+      const result = await engine.chat({ message: "temp and humidity?", userId: "user-1" });
+
+      const sent = assistantToolCalls(1);
+      expect(sent.map((c: { id: string }) => c.id)).toEqual(["call-1", "call-2"]);
+      expect(sent[0].function.arguments).toBe('{"entity_id":"sensor.temp"}');
+      expect(sent[1].function.arguments).toBe('{"entity_id":"sensor.humidity"}');
+      expect(result.response).toBe("22 °C, 45 %");
+    });
+
+    it("hands a tool call's extra_content back untouched on the next turn", async () => {
+      const extra = { vendor: { signature: "sig-abc" } };
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta({
+            index: 0,
+            id: "call-1",
+            function: { name: "get_state", arguments: '{"entity_id":"light.a"}' },
+            extra_content: extra,
+          }),
+          { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(answer("On"));
+
+      await engine.chat({ message: "light?", userId: "user-1" });
+
+      expect(assistantToolCalls(1)[0].extra_content).toEqual(extra);
+    });
+
+    it("keeps extra_content with its own call when parallel calls arrive whole", async () => {
+      const extra = { vendor: { signature: "sig" } };
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta({
+            id: "call_a",
+            function: { name: "get_state", arguments: "{}" },
+            extra_content: extra,
+          }),
+          toolDelta({ id: "call_b", function: { name: "get_state", arguments: "{}" } }),
+          { choices: [{ delta: {}, finish_reason: "stop" }] },
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(answer("ok"));
+
+      await engine.chat({ message: "x", userId: "user-1" });
+
+      const sent = assistantToolCalls(1);
+      expect(sent[0].extra_content).toEqual(extra);
+      expect(sent[1]).not.toHaveProperty("extra_content");
+    });
+
+    it("omits extra_content when the endpoint sends none", async () => {
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta({ index: 0, id: "call-1", function: { name: "get_state", arguments: "{}" } }, "tool_calls"),
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(answer("ok"));
+
+      await engine.chat({ message: "x", userId: "user-1" });
+
+      expect(assistantToolCalls(1)[0]).not.toHaveProperty("extra_content");
+    });
+
+    it("keeps the empty-response diagnosis when a tool turn ends without a word", async () => {
+      // No canned reply is substituted: the voice path and the integration
+      // decide what to say, in the user's language.
+      mockCreate.mockResolvedValueOnce(
+        makeStream([
+          toolDelta({ index: 0, id: "call-1", function: { name: "call_service", arguments: "{}" } }, "stop"),
+        ])
+      );
+      mockCreate.mockResolvedValueOnce(
+        makeStream([{ choices: [{ delta: {}, finish_reason: "stop" }] }])
+      );
+
+      const result = await engine.chat({ message: "lights on", userId: "user-1" });
+
+      expect(result.response).toBe("");
+      expect(result.error?.code).toBe("EMPTY_CONTENT");
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+    });
+
+    it("still bounds the loop and forces an answer when every turn reports stop", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockCreate.mockImplementation(async () =>
+        makeStream([
+          toolDelta({ index: 0, id: "call-1", function: { name: "get_state", arguments: "{}" } }, "stop"),
+        ])
+      );
+
+      await engine.chat({ message: "x", userId: "user-1" });
+
+      // One opening request plus eight tool rounds; the last one may not call tools.
+      expect(mockCreate).toHaveBeenCalledTimes(9);
+      expect(mockCreate.mock.calls[8][0].tool_choice).toBe("none");
+      expect(mockCreate.mock.calls[7][0]).not.toHaveProperty("tool_choice");
+    });
+  });
+
+  describe("reasoning_effort", () => {
+    const reply = () =>
+      makeStream([{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] }]);
+
+    it("is not sent when unconfigured", async () => {
+      mockCreate.mockResolvedValue(reply());
+
+      await engine.chat({ message: "x", userId: "user-1" });
+
+      expect(mockCreate.mock.calls[0][0]).not.toHaveProperty("reasoning_effort");
+    });
+
+    it("is sent when configured", async () => {
+      config.reasoningEffort = "low";
+      mockCreate.mockResolvedValue(reply());
+
+      await engine.chat({ message: "x", userId: "user-1" });
+
+      expect(mockCreate.mock.calls[0][0].reasoning_effort).toBe("low");
+    });
+
+    it("is dropped, and stays dropped, for a model that rejects it", async () => {
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      config.reasoningEffort = "low";
+      const rejection = Object.assign(
+        new Error("400 Unrecognized request argument supplied: reasoning_effort"),
+        { status: 400 }
+      );
+      mockCreate.mockRejectedValueOnce(rejection).mockImplementation(async () => reply());
+
+      const first = await engine.chat({ message: "x", userId: "user-1" });
+      await engine.chat({ message: "y", userId: "user-1" });
+
+      expect(first.response).toBe("hi");
+      expect(mockCreate).toHaveBeenCalledTimes(3);
+      expect(mockCreate.mock.calls[0][0].reasoning_effort).toBe("low");
+      expect(mockCreate.mock.calls[1][0]).not.toHaveProperty("reasoning_effort");
+      expect(mockCreate.mock.calls[2][0]).not.toHaveProperty("reasoning_effort");
+    });
+
+    it("surfaces an unrelated 400 instead of retrying", async () => {
+      config.reasoningEffort = "low";
+      const unrelated = Object.assign(new Error("400 model not found"), { status: 400 });
+      mockCreate.mockRejectedValueOnce(unrelated);
+
+      await expect(engine.chat({ message: "x", userId: "user-1" })).rejects.toBe(unrelated);
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it("works alongside the max_tokens negotiation", async () => {
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      config.reasoningEffort = "medium";
+      const capRejection = Object.assign(
+        new Error("400 Unsupported parameter: 'max_tokens'. Use 'max_completion_tokens' instead."),
+        { status: 400, param: "max_tokens", code: "unsupported_parameter" }
+      );
+      const effortRejection = Object.assign(new Error("400 Unknown parameter: reasoning_effort"), {
+        status: 400,
+        param: "reasoning_effort",
+      });
+      mockCreate
+        .mockRejectedValueOnce(capRejection)
+        .mockRejectedValueOnce(effortRejection)
+        .mockImplementation(async () => reply());
+
+      const result = await engine.chat({ message: "x", userId: "user-1" });
+
+      expect(result.response).toBe("hi");
+      expect(mockCreate).toHaveBeenCalledTimes(3);
+      const last = mockCreate.mock.calls[2][0];
+      expect(last.max_completion_tokens).toBe(8192);
+      expect(last).not.toHaveProperty("max_tokens");
+      expect(last).not.toHaveProperty("reasoning_effort");
+    });
   });
 
   it("loads conversation history when conversationId provided", async () => {

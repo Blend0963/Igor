@@ -26,6 +26,11 @@ const ConfigSchema = z
     // budget thinking before they answer, so a tight cap can truncate a reply
     // that had barely started.
     maxOutputTokens: z.coerce.number().int().positive().optional(),
+    // How much a reasoning model thinks before it answers, sent as
+    // `reasoning_effort` on OpenAI-compatible calls (chat and fact extraction).
+    // That thinking is spent from the output cap above, so voice turns want it
+    // low. Unset sends nothing and leaves the model on its own default.
+    reasoningEffort: z.enum(["none", "minimal", "low", "medium", "high"]).optional(),
 
     // Ollama
     ollamaBaseUrl: z.string().url().optional(),
@@ -135,6 +140,7 @@ export function loadConfig(): Config {
     // reached the fact extractor, so it is honoured here too rather than
     // quietly ignored.
     maxOutputTokens: emptyToUndefined(process.env.MAX_OUTPUT_TOKENS ?? process.env.OPENAI_MAX_TOKENS),
+    reasoningEffort: emptyToUndefined(process.env.REASONING_EFFORT),
     ollamaBaseUrl: emptyToUndefined(process.env.OLLAMA_BASE_URL),
     haUrl: process.env.HA_URL,
     haToken: process.env.HA_TOKEN,

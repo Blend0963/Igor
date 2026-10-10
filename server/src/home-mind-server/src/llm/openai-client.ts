@@ -10,6 +10,7 @@ import { TOOL_DEFINITIONS, toOpenAITools } from "./tool-definitions.js";
 import { randomUUID } from "node:crypto";
 import { handleToolCall, extractAndStoreFacts, type ToolContext } from "./tool-handler.js";
 import { withTokenCap } from "./token-cap.js";
+import { withReasoningEffort } from "./reasoning-effort.js";
 import { describeLongBatch } from "./long-task.js";
 import {
   readUsage,
@@ -44,6 +45,15 @@ const OPENAI_TOOLS = toOpenAITools(TOOL_DEFINITIONS);
  * disabled so the user still gets a written answer instead of silence.
  */
 const MAX_TOOL_ITERATIONS = 8;
+
+/**
+ * A provider-specific field some OpenAI-compatible endpoints attach to a tool
+ * call and require back, unchanged, on the next turn. It is not in the OpenAI
+ * schema, so the SDK types do not know it.
+ */
+function extraContentOf(tc: object): unknown {
+  return (tc as { extra_content?: unknown }).extra_content;
+}
 
 export class OpenAIChatEngine implements IChatEngine {
   private client: OpenAI;
@@ -157,7 +167,9 @@ export class OpenAIChatEngine implements IChatEngine {
     let result = await this.streamCompletion(messages, isVoice, onChunk, false, conversationId);
 
     let iterations = 0;
-    while (result.finishReason === "tool_calls" && result.toolCalls.length > 0) {
+    // Run whatever tool calls arrived, whatever the finish_reason says: some
+    // OpenAI-compatible endpoints report "stop" on a turn that calls tools.
+    while (result.toolCalls.length > 0) {
       iterations++;
 
       // Add assistant message with tool calls
@@ -341,25 +353,32 @@ export class OpenAIChatEngine implements IChatEngine {
     const cap = this.maxOutputTokens(isVoice);
     const startedAt = Date.now();
     const stream = await withTokenCap(this.config.llmModel, cap, (capParam) =>
-      this.client.chat.completions.create({
-        model: this.config.llmModel,
-        ...capParam,
-        messages,
-        tools: OPENAI_TOOLS,
-        // Keep the tool list in the request (history already references it) but
-        // stop the model from issuing more calls.
-        ...(disableTools ? { tool_choice: "none" as const } : {}),
-        stream: true,
-        // Ask for the token breakdown. Without this a streamed call reports no
-        // usage at all, which is why a cap being spent entirely on reasoning
-        // looked identical to a prompt being too large.
-        stream_options: { include_usage: true },
-        // OpenRouter only: a stable session id pins the follow-up turns of one
-        // conversation to the provider endpoint that already holds the warm
-        // prompt cache, instead of re-balancing every turn. Other endpoints
-        // reject unknown fields, so it is not sent to them.
-        ...(this.isOpenRouter() && sessionId ? { session_id: sessionId } : {}),
-      })
+      withReasoningEffort(
+        this.config.llmModel,
+        this.config.reasoningEffort,
+        (reasoning) =>
+          this.client.chat.completions.create({
+            model: this.config.llmModel,
+            ...capParam,
+            ...reasoning,
+            messages,
+            tools: OPENAI_TOOLS,
+            // Keep the tool list in the request (history already references it) but
+            // stop the model from issuing more calls.
+            ...(disableTools ? { tool_choice: "none" as const } : {}),
+            stream: true,
+            // Ask for the token breakdown. Without this a streamed call reports no
+            // usage at all, which is why a cap being spent entirely on reasoning
+            // looked identical to a prompt being too large.
+            stream_options: { include_usage: true },
+            // OpenRouter only: a stable session id pins the follow-up turns of one
+            // conversation to the provider endpoint that already holds the warm
+            // prompt cache, instead of re-balancing every turn. Other endpoints
+            // reject unknown fields, so it is not sent to them.
+            ...(this.isOpenRouter() && sessionId ? { session_id: sessionId } : {}),
+          }),
+        this.client.baseURL
+      )
     );
 
     let text = "";
@@ -369,11 +388,13 @@ export class OpenAIChatEngine implements IChatEngine {
     // Which one it was is the difference between a 1 s and a 3 s first token.
     let provider: string | undefined;
 
-    // Accumulate tool calls from streamed deltas, indexed by position
-    const toolCallAccumulator = new Map<
-      number,
-      { id: string; name: string; arguments: string }
-    >();
+    // Tool calls in arrival order. OpenAI streams one call over several deltas
+    // that share an `index`; other OpenAI-compatible endpoints send each call
+    // whole, with its own `id` and no `index`. A delta continues the call its
+    // index points at (or, without an index, the latest one) unless it carries
+    // a different id, which always opens a new call.
+    const calls: { id: string; name: string; arguments: string; extraContent?: unknown }[] = [];
+    const callAtIndex = new Map<number, number>();
 
     for await (const chunk of stream) {
       // The usage chunk arrives last and carries no choices, so read it before
@@ -396,19 +417,23 @@ export class OpenAIChatEngine implements IChatEngine {
       // Accumulate tool call deltas
       if (choice.delta?.tool_calls) {
         for (const tc of choice.delta.tool_calls) {
-          const existing = toolCallAccumulator.get(tc.index);
-          if (existing) {
+          const at = tc.index === undefined ? calls.length - 1 : callAtIndex.get(tc.index);
+          const existing = at === undefined ? undefined : calls[at];
+          const isOtherCall = Boolean(existing && tc.id && existing.id && tc.id !== existing.id);
+          if (existing && !isOtherCall) {
             // Append to existing tool call's arguments
             if (tc.function?.arguments) {
               existing.arguments += tc.function.arguments;
             }
+            existing.extraContent ??= extraContentOf(tc);
           } else {
-            // New tool call at this index
-            toolCallAccumulator.set(tc.index, {
+            calls.push({
               id: tc.id ?? "",
               name: tc.function?.name ?? "",
               arguments: tc.function?.arguments ?? "",
+              extraContent: extraContentOf(tc),
             });
+            if (tc.index !== undefined) callAtIndex.set(tc.index, calls.length - 1);
           }
         }
       }
@@ -420,9 +445,7 @@ export class OpenAIChatEngine implements IChatEngine {
 
     // Convert accumulated tool calls to the expected format
     const toolCalls: FunctionToolCall[] = [];
-    for (const [, tc] of [...toolCallAccumulator.entries()].sort(
-      (a, b) => a[0] - b[0]
-    )) {
+    for (const tc of calls) {
       toolCalls.push({
         id: tc.id,
         type: "function" as const,
@@ -430,6 +453,8 @@ export class OpenAIChatEngine implements IChatEngine {
           name: tc.name,
           arguments: tc.arguments,
         },
+        // Handed back untouched in the assistant message; absent when not sent.
+        ...(tc.extraContent !== undefined ? { extra_content: tc.extraContent } : {}),
       });
     }
 

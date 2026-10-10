@@ -3,19 +3,22 @@ import type { ExtractedFact, Fact } from "./types.js";
 import type { IFactExtractor } from "../llm/interface.js";
 import { EXTRACTION_PROMPT, VALID_CATEGORIES } from "./extraction-prompt.js";
 import { withTokenCap } from "../llm/token-cap.js";
+import { withReasoningEffort, type ReasoningEffort } from "../llm/reasoning-effort.js";
 
 export class OpenAIFactExtractor implements IFactExtractor {
   private client: OpenAI;
   private model: string;
   private responseFormat: "json_object" | undefined;
   private maxTokens: number;
+  private reasoningEffort: ReasoningEffort | undefined;
 
   constructor(
     apiKey: string,
     model: string,
     baseUrl?: string,
     responseFormat?: "json_object",
-    maxTokens?: number
+    maxTokens?: number,
+    reasoningEffort?: ReasoningEffort
   ) {
     this.client = new OpenAI({
       apiKey,
@@ -29,6 +32,7 @@ export class OpenAIFactExtractor implements IFactExtractor {
     this.model = model;
     this.responseFormat = responseFormat;
     this.maxTokens = maxTokens ?? 1000;
+    this.reasoningEffort = reasoningEffort;
   }
 
   async extract(
@@ -58,14 +62,21 @@ ${JSON.stringify(factsJson, null, 2)}`;
         .replace("{assistant_response}", assistantResponse);
 
       const response = await withTokenCap(this.model, this.maxTokens, (cap) =>
-        this.client.chat.completions.create({
-          model: this.model,
-          ...cap,
-          messages: [{ role: "user", content: prompt }],
-          ...(this.responseFormat
-            ? { response_format: { type: this.responseFormat } }
-            : {}),
-        })
+        withReasoningEffort(
+          this.model,
+          this.reasoningEffort,
+          (reasoning) =>
+            this.client.chat.completions.create({
+              model: this.model,
+              ...cap,
+              ...reasoning,
+              messages: [{ role: "user", content: prompt }],
+              ...(this.responseFormat
+                ? { response_format: { type: this.responseFormat } }
+                : {}),
+            }),
+          this.client.baseURL
+        )
       );
 
       const text = response.choices[0]?.message?.content ?? "";
