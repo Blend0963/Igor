@@ -72,10 +72,14 @@ describe("spokenVoicePointer writing rules", () => {
     expect(p).toContain("kilovatnih ur");
   });
 
-  it("writes initialisms as spaced letter names", () => {
-    // "CO2" was spoken "kod ve"; "VOC" ran together into a non-word.
-    expect(p).toContain("Ve o ce");
-    expect(p).toContain("Ce o dva");
+  it("keeps initialisms as written, because the reply is also displayed", () => {
+    // Until 2.7.0 the rule asked for "Ve o ce" and "Pe em dve celi pet" in the reply, and
+    // Home Assistant showed exactly that in the chat log. The voice gets the letter names
+    // from tts/initialisms.ts now; the written reply keeps "PM2,5".
+    expect(p).toContain('"PM2,5"');
+    expect(p).toMatch(/NEVER spell it out as letter names/);
+    expect(p).not.toContain("Ve o ce");
+    expect(p).not.toContain("Ce o dva");
   });
 
   it("forbids ending a sentence with a digit", () => {

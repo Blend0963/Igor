@@ -3,9 +3,10 @@
  *
  * The rule used to be a list of the units Jure's sensors happen to emit, which could only
  * ever cover what we had tested. It is now a principle ("the voice cannot inflect, so write
- * units and initialisms as words"), and the point of a principle is the long tail. This
- * drives the real prompt over a wide set of sensor payloads and fails on any symbol or bare
- * initialism that survives into the reply.
+ * units as words"), and the point of a principle is the long tail. Initialisms go the other
+ * way since 2.7.1: they stay as written and `tts/initialisms.ts` spells them for the voice.
+ * This drives the real prompt over a wide set of sensor payloads and fails on any unit
+ * symbol or letter-name spelling that survives into the reply.
  *
  * Text-level only, so it needs no ears and no audio: a voice reading ordinary words is
  * predictable, which is exactly why the rule turns everything into words.
@@ -35,16 +36,19 @@ const CASES: { q: string; data: Record<string, unknown> }[] = [
   { q: "Kakšen je tlak v ogrevanju?", data: { pressure_bar: 1.4, flow_lmin: 12, temp_c: 55 } },
 ];
 
-// A symbol or bare initialism that reached the reply is a failure: the voice cannot inflect it.
+// A unit symbol that reached the reply is a failure: the voice cannot inflect it.
 // °C and % are the two exceptions — this voice inflects them correctly by itself, verified by
 // ear across 1, 2, 3 and 5, where Slovene needs four different endings. They must still carry
 // a space, because "60%" closed up is spoken "šest nič".
+// Initialisms are the other way round since 2.7.1: the reply must keep "PM2,5" as written
+// (the chat log shows the same text), and `tts/initialisms.ts` spells it for the voice. A
+// letter-name form in the reply is therefore the violation now.
 const VIOLATIONS: [RegExp, string][] = [
   [/\d(°|%)/, "symbol closed up against the number"],
   [/\d\s*°(?!C)/, "degree symbol without C"],
   [/µg|μg|\bmg\/|\bg\/m/, "µg/m³ or similar"],
   [/\b\d[\d,.]*\s*(kWh|MWh|kW|W|Wh|V|mA|A|Hz|dB|dBm|hPa|mbar|bar|lx|ppm|ppb|mm|cm|km\/h|m\/s|m³|m2|W\/m²|l\/min|L|ml|µS)\b/, "unit abbreviation"],
-  [/\b(VOC|CO2|CO₂|PM2[.,]5|PM10|RSSI|LQI|UV|pH|LED|Mbps|ms)\b/, "bare initialism"],
+  [/\b(pe em|ve o ce|ce o dva|en o dva|er es es i|u ve)\b/i, "initialism spelled as letter names"],
 ];
 
 async function reply(system: string, q: string, data: unknown) {
