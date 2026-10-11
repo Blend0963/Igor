@@ -25,6 +25,8 @@ describe("spellInitialismsForSpeech", () => {
 
   it("leaves words in capitals alone when they are read as words", () => {
     expect(spellInitialismsForSpeech("LED trak je OK", "sl")).toBe("LED trak je OK");
+    // Brand names in capitals are device names, spoken as words.
+    expect(spellInitialismsForSpeech("TUYA vtičnica in SONY TV", "sl")).toBe("TUYA vtičnica in SONY te ve");
     // Five letters or more is a name the voice reads as a word anyway.
     expect(spellInitialismsForSpeech("GLEDOPTO in ZIGBEE", "sl")).toBe("GLEDOPTO in ZIGBEE");
   });

@@ -25,8 +25,16 @@ const LETTER_NAMES: Record<string, string> = {
   Q: "ku", W: "dvojni ve", X: "iks", Y: "ipsilon",
 };
 
-/** Short all-caps tokens that are spoken as words, not letter by letter. */
-const SPOKEN_AS_WORDS = new Set(["OK", "LED", "LAN", "WLAN", "WIFI", "NAS", "RAM", "HEPA", "IKEA", "HUE"]);
+/**
+ * Short all-caps tokens that are spoken as words, not letter by letter: common words, and
+ * the smart-home brands most likely to appear in a device name in capitals. Anything heard
+ * spelled out oddly in a real home belongs here; a device name is data, not an initialism.
+ */
+const SPOKEN_AS_WORDS = new Set([
+  "OK", "LED", "LAN", "WLAN", "WIFI", "NAS", "RAM", "HEPA", "IKEA", "HUE",
+  "TUYA", "SONY", "NOUS", "TAPO", "RING", "NEST", "ECHO", "BOSE", "ASUS", "ROKU", "XBOX",
+  "WIZ", "YALE", "NUKI", "TADO", "EVE", "LIDL",
+]);
 
 function letterNames(letters: string): string {
   return letters.split("").map((ch) => LETTER_NAMES[ch] ?? ch.toLowerCase()).join(" ");
