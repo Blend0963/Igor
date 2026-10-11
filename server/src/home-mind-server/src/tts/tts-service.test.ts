@@ -33,8 +33,8 @@ describe("OpenAITtsService", () => {
     );
   });
 
-  it("spells whole numbers out on the way to the voice", async () => {
-    // The reply the user sees keeps its digits; only what the voice receives changes.
+  it("spells whole numbers and initialisms out on the way to the voice", async () => {
+    // The reply the user sees keeps its digits and its "PM2,5"; only what the voice receives changes.
     const create = vi.fn(async () => ({ arrayBuffer: async () => new ArrayBuffer(8) }));
     const svc = new OpenAITtsService("k", "m", "v", "https://example.invalid/v1", "sl");
     (svc as unknown as { client: { audio: { speech: { create: typeof create } } } }).client = {
@@ -42,7 +42,7 @@ describe("OpenAITtsService", () => {
     };
     await svc.synthesize("VOC je 156 enot, PM2,5 pa 8,6 mikrograma.");
     expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ input: "VOC je sto šestinpetdeset enot, PM2,5 pa 8,6 mikrograma." })
+      expect.objectContaining({ input: "ve o ce je sto šestinpetdeset enot, pe em 2,5 pa 8,6 mikrograma." })
     );
   });
 

@@ -8,6 +8,16 @@
 import OpenAI from "openai";
 import type { Config } from "../config.js";
 import { spellNumbersForSpeech } from "./number-words.js";
+import { spellInitialismsForSpeech } from "./initialisms.js";
+
+/**
+ * Everything that changes between the reply the user reads and the text the voice is given.
+ * Initialisms first, so the digits they carry ("PM10") are already free-standing when the
+ * number speller looks at them. Nothing here touches what Home Assistant displays.
+ */
+export function prepareTextForSpeech(text: string, language?: string): string {
+  return spellNumbersForSpeech(spellInitialismsForSpeech(text, language), language);
+}
 
 export interface ITtsService {
   synthesize(text: string, language?: string): Promise<Buffer>;
@@ -32,10 +42,11 @@ export class OpenAITtsService implements ITtsService {
 
   async synthesize(text: string, language?: string): Promise<Buffer> {
     // OpenAI TTS detects language automatically from input text — no explicit language param needed.
-    // Numbers are the exception: the voice inflects a bare numeral for a case the sentence
-    // never asked for ("156 enot" spoken "sto šestinpetdesetih enot"), so whole numbers are
-    // spelled out here, on the way to the voice only. What the caller displays keeps its digits.
-    const spoken = spellNumbersForSpeech(text, language ?? this.language);
+    // Numbers and initialisms are the exception: the voice inflects a bare numeral for a case
+    // the sentence never asked for ("156 enot" spoken "sto šestinpetdesetih enot") and runs
+    // the letters of "CO2" into a non-word, so both are spelled out here, on the way to the
+    // voice only. What the caller displays keeps its digits and its "PM2,5".
+    const spoken = prepareTextForSpeech(text, language ?? this.language);
     const response = await this.client.audio.speech.create({
       model: this.model,
       // Cast because the SDK's type lists only OpenAI's own voices, while the

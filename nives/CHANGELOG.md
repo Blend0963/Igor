@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.7.1
+
+- **Spoken replies read as normal text again.** With a Slovene voice, measurements such as PM2,5, CO2 or VOC were written into the reply the way they are pronounced ("Pe em dve celi pet"), so they sounded right but were hard to read in the Assist chat log and the app, where the same reply is displayed. The reply now keeps the usual spelling, and the voice is given the letter names separately, so what you read says "PM2,5" and what you hear is unchanged. Server 0.16.1.
+
 ## 2.7.0
 
 - **Nives now reaches only what you have exposed to Assist.** Until now the room map followed your choices under Settings, Voice assistants, Expose, but Nives could still look up and control any entity in the house by name. From this version it reads and controls only the entities you have exposed, the same way Home Assistant's own assistant does. Two things to know: an exposed group still controls all of its members, and anything you expose while Nives is running is picked up within 30 minutes, or straight away after restarting the add-on. If an automation you ask for needs something you have not exposed, for example your person entity for "when I come home", Nives will say so; expose it once and ask again. The automations Nives writes for you are not limited by this yet. If you prefer the old behaviour, turn off the new **Limit Nives to exposed entities** option.

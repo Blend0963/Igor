@@ -337,6 +337,11 @@ export function formatDateTimeWithOffset(): {
  * space before the symbol is what separates the two. Only units with no readable symbol
  * form have to be written out.
  *
+ * Initialisms (VOC, CO2, PM2,5) and whole numbers are NOT the model's job: the reply is
+ * also what Home Assistant shows in the chat log, and "Pe em dve celi pet" is unreadable
+ * there (Jure, 2026-10-10). Both are spelled out in code on the way to the voice, in
+ * `tts/initialisms.ts` and `tts/number-words.ts`, so the model writes them as they are.
+ *
  * Only ever added when a voice is configured, because the voice is what makes a
  * mismatch audible and because it is the half the listener cannot ignore. Many
  * languages inflect the first person for the speaker's gender — Slovene,
@@ -370,10 +375,10 @@ export function spokenVoicePointer(gender?: "female" | "male"): string {
     `("60%" is spoken "šest nič") and NEVER half-spell them ("19 stopinj C" is spoken ` +
     `"devetnajstih stopinj ce"). Writing them out as words is also correct if the sentence ` +
     `reads better that way.\n` +
-    `- ALWAYS write an initialism as its letter names, spaced, in the language you are ` +
-    `replying in. NEVER write the bare initialism: the voice runs the letters together into ` +
-    `a non-word ("CO2" is spoken "kod ve"). In Slovene write "Ve o ce" for VOC, "Ce o dva" ` +
-    `for CO2, "Pe em deset" for PM10, "Pe em dve celi pet" for PM2,5.\n` +
+    `- ALWAYS write an initialism exactly as it is written: "VOC", "CO2", "PM10", "PM2,5". ` +
+    `NEVER spell it out as letter names ("Pe em dve celi pet"): your reply is also shown as ` +
+    `text, where letter names are unreadable, and the voice is given the letter names ` +
+    `separately.\n` +
     `- NEVER end a sentence with a digit. In Slovene, Czech and German a numeral before a ` +
     `full stop is an ordinal, so "VOC 156." is spoken "sto šestinpetdeseti". Put a word ` +
     `after it: "156 enot."\n` +
