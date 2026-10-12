@@ -109,6 +109,25 @@ export class SqliteConversationStore implements IConversationStore {
     }));
   }
 
+  getRecentMessages(userId: string, hoursOld: number = 24, limit: number = 12, excludeConversationId?: string): ConversationMessage[] {
+    const cutoff = new Date(Date.now() - hoursOld * 60 * 60 * 1000).toISOString();
+    const rows = this.db.prepare(`
+      SELECT id, conversation_id, user_id, role, content, created_at
+      FROM messages
+      WHERE user_id = ? AND created_at >= ?
+        AND (? IS NULL OR conversation_id != ?)
+      ORDER BY rowid DESC
+      LIMIT ?
+    `).all(userId, cutoff, excludeConversationId ?? null, excludeConversationId ?? null, limit) as Array<{
+      id: string; conversation_id: string; user_id: string;
+      role: "user" | "assistant"; content: string; created_at: string;
+    }>;
+    return rows.reverse().map((row) => ({
+      id: row.id, conversationId: row.conversation_id, userId: row.user_id,
+      role: row.role, content: row.content, createdAt: new Date(row.created_at),
+    }));
+  }
+
   listConversations(userId: string): ConversationSummary[] {
     const rows = this.db.prepare(
       `SELECT
