@@ -103,6 +103,18 @@ describe("SqliteConversationStore", () => {
     expect(store.getConversationHistory("conv-new")).toHaveLength(1);
   });
 
+  it("retrieves recent messages across conversations for one user", () => {
+    store.storeMessage("conv-1", "user-1", "user", "Earlier question");
+    store.storeMessage("conv-1", "user-1", "assistant", "Earlier answer");
+    store.storeMessage("conv-2", "user-1", "user", "Current topic");
+    store.storeMessage("conv-3", "user-2", "user", "Other user's private message");
+
+    const recent = store.getRecentMessages("user-1", 24, 12, "conv-2");
+    expect(recent.map((m) => m.content)).toEqual(["Earlier question", "Earlier answer"]);
+    expect(recent.every((m) => m.conversationId !== "conv-2")).toBe(true);
+    expect(recent.some((m) => m.content.includes("private"))).toBe(false);
+  });
+
   it("returns messages with createdAt as Date objects", () => {
     store.storeMessage("conv-1", "user-1", "user", "Hello");
 
@@ -123,5 +135,18 @@ describe("SqliteConversationStore", () => {
     expect(store.getConversationHistory("conv-1")).toHaveLength(1);
     expect(store.getConversationHistory("conv-2")).toHaveLength(1);
     expect(store.getConversationHistory("conv-1")[0].content).toBe("Message A");
+  });
+
+  it("retrieves semantically similar messages only for the same user", () => {
+    const relevantId = store.storeMessage("mado-user:user-1", "user-1", "user", "We discussed insulating the attic");
+    store.storeMessageEmbedding(relevantId, [1, 0, 0]);
+    const unrelatedId = store.storeMessage("mado-user:user-2", "user-2", "user", "Private solar panel plans");
+    store.storeMessageEmbedding(unrelatedId, [1, 0, 0]);
+    const weakId = store.storeMessage("mado-user:user-1", "user-1", "user", "Favorite music");
+    store.storeMessageEmbedding(weakId, [0, 1, 0]);
+
+    const results = store.searchSimilarMessages("user-1", [0.99, 0.01, 0], 5);
+    expect(results.map((message) => message.id)).toEqual([relevantId]);
+    expect(results.some((message) => message.userId === "user-2")).toBe(false);
   });
 });

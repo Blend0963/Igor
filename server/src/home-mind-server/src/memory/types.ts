@@ -51,11 +51,15 @@ export interface IConversationStore {
     conversationId: string,
     limit?: number
   ): ConversationMessage[] | Promise<ConversationMessage[]>;
+  getRecentMessages(userId: string, hoursOld?: number, limit?: number, excludeConversationId?: string): ConversationMessage[] | Promise<ConversationMessage[]>;
   listConversations(
     userId: string
   ): ConversationSummary[] | Promise<ConversationSummary[]>;
   deleteConversation(conversationId: string): number | Promise<number>;
   getKnownUsers(): string[];
   cleanupOldConversations(hoursOld?: number): number | Promise<number>;
+  storeMessageEmbedding?(messageId: string, embedding: number[]): void | Promise<void>;
+  searchSimilarMessages?(userId: string, embedding: number[], limit?: number): ConversationMessage[] | Promise<ConversationMessage[]>;
+  getMessagesWithoutEmbeddings?(userId: string, limit?: number): ConversationMessage[] | Promise<ConversationMessage[]>;
   close(): void;
 }

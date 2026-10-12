@@ -30,6 +30,10 @@ export class SqliteConversationStore implements IConversationStore {
       CREATE INDEX IF NOT EXISTS idx_messages_conv_id ON messages(conversation_id);
       CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
       CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
+      CREATE TABLE IF NOT EXISTS message_embeddings (
+        message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+        embedding TEXT NOT NULL
+      );
 
       -- Users we have ever seen. Deliberately separate from messages: message
       -- rows are pruned after 24h by cleanupOldConversations(), so deriving the
@@ -66,8 +70,9 @@ export class SqliteConversationStore implements IConversationStore {
        VALUES (?, ?, ?, ?, ?, ?)`
     ).run(id, conversationId, userId, role, content, now);
 
-    // Keep only last 20 messages per conversation
-    this.db.prepare(
+    // Keep a longer durable history for MaDo's shared cross-device conversation.
+    // Other transient conversations retain the existing 20-message cap.
+    if (!conversationId.startsWith("mado-user:")) this.db.prepare(
       `DELETE FROM messages WHERE id IN (
         SELECT id FROM messages
         WHERE conversation_id = ?
@@ -106,6 +111,25 @@ export class SqliteConversationStore implements IConversationStore {
       role: row.role,
       content: row.content,
       createdAt: new Date(row.created_at),
+    }));
+  }
+
+  getRecentMessages(userId: string, hoursOld: number = 24, limit: number = 12, excludeConversationId?: string): ConversationMessage[] {
+    const cutoff = new Date(Date.now() - hoursOld * 60 * 60 * 1000).toISOString();
+    const rows = this.db.prepare(`
+      SELECT id, conversation_id, user_id, role, content, created_at
+      FROM messages
+      WHERE user_id = ? AND created_at >= ?
+        AND (? IS NULL OR conversation_id != ?)
+      ORDER BY rowid DESC
+      LIMIT ?
+    `).all(userId, cutoff, excludeConversationId ?? null, excludeConversationId ?? null, limit) as Array<{
+      id: string; conversation_id: string; user_id: string;
+      role: "user" | "assistant"; content: string; created_at: string;
+    }>;
+    return rows.reverse().map((row) => ({
+      id: row.id, conversationId: row.conversation_id, userId: row.user_id,
+      role: row.role, content: row.content, createdAt: new Date(row.created_at),
     }));
   }
 
@@ -160,12 +184,51 @@ export class SqliteConversationStore implements IConversationStore {
     const result = this.db.prepare(
       `DELETE FROM messages WHERE conversation_id IN (
         SELECT conversation_id FROM messages
+        WHERE conversation_id NOT LIKE 'mado-user:%'
         GROUP BY conversation_id
         HAVING MAX(created_at) < ?
       )`
     ).run(cutoff);
 
     return result.changes;
+  }
+
+
+
+  getMessagesWithoutEmbeddings(userId: string, limit: number = 30): ConversationMessage[] {
+    const rows = this.db.prepare(`
+      SELECT m.id, m.conversation_id, m.user_id, m.role, m.content, m.created_at
+      FROM messages m LEFT JOIN message_embeddings e ON e.message_id = m.id
+      WHERE m.user_id = ? AND m.role = 'user' AND e.message_id IS NULL
+      ORDER BY m.rowid DESC LIMIT ?
+    `).all(userId, limit) as Array<{id:string;conversation_id:string;user_id:string;role:"user"|"assistant";content:string;created_at:string}>;
+    return rows.map(row => ({id:row.id,conversationId:row.conversation_id,userId:row.user_id,role:row.role,content:row.content,createdAt:new Date(row.created_at)}));
+  }
+
+  storeMessageEmbedding(messageId: string, embedding: number[]): void {
+    this.db.prepare(`INSERT OR REPLACE INTO message_embeddings (message_id, embedding) VALUES (?, ?)`)
+      .run(messageId, JSON.stringify(embedding));
+  }
+
+  searchSimilarMessages(userId: string, embedding: number[], limit: number = 6): ConversationMessage[] {
+    const rows = this.db.prepare(`
+      SELECT m.id, m.conversation_id, m.user_id, m.role, m.content, m.created_at, e.embedding
+      FROM messages m JOIN message_embeddings e ON e.message_id = m.id
+      WHERE m.user_id = ? AND m.role = 'user'
+      ORDER BY m.rowid DESC
+    `).all(userId) as Array<{id:string;conversation_id:string;user_id:string;role:"user"|"assistant";content:string;created_at:string;embedding:string}>;
+    const norm = (v:number[]) => Math.sqrt(v.reduce((sum,n)=>sum+n*n,0));
+    const qnorm = norm(embedding);
+    if (!qnorm) return [];
+    return rows.map(row => {
+      const vector = JSON.parse(row.embedding) as number[];
+      if (vector.length !== embedding.length) return { row, score: -1 };
+      const denom = qnorm * norm(vector);
+      const score = denom ? vector.reduce((sum,n,i)=>sum+n*embedding[i],0)/denom : -1;
+      return { row, score };
+    }).filter(item => item.score > 0.35)
+      .sort((a,b)=>b.score-a.score).slice(0, Math.max(0,limit))
+      .map(({row})=>({id:row.id,conversationId:row.conversation_id,userId:row.user_id,role:row.role,content:row.content,createdAt:new Date(row.created_at)}));
   }
 
   close(): void {

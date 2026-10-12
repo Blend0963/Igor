@@ -593,7 +593,7 @@ describe("OpenAIChatEngine", () => {
       conversationId: "conv-1",
     });
 
-    expect(conversations.getConversationHistory).toHaveBeenCalledWith("conv-1", 10);
+    expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-user:user-1", 20);
 
     // Check messages passed to OpenAI include history
     const createCall = mockCreate.mock.calls[0][0];
@@ -623,20 +623,20 @@ describe("OpenAIChatEngine", () => {
     });
 
     expect(conversations.storeMessage).toHaveBeenCalledWith(
-      "conv-1",
+      "mado-user:user-1",
       "user-1",
       "user",
       "Hello"
     );
     expect(conversations.storeMessage).toHaveBeenCalledWith(
-      "conv-1",
+      "mado-user:user-1",
       "user-1",
       "assistant",
       "Hi!"
     );
   });
 
-  it("does not store messages when conversationId absent", async () => {
+  it("stores messages in shared history when conversationId is absent", async () => {
     mockCreate.mockResolvedValue(
       makeStream([
         { choices: [{ delta: { content: "Hi!" }, finish_reason: null }] },
@@ -646,7 +646,8 @@ describe("OpenAIChatEngine", () => {
 
     await engine.chat({ message: "Hello", userId: "user-1" });
 
-    expect(conversations.storeMessage).not.toHaveBeenCalled();
+    expect(conversations.storeMessage).toHaveBeenCalledWith("mado-user:user-1", "user-1", "user", "Hello");
+    expect(conversations.storeMessage).toHaveBeenCalledWith("mado-user:user-1", "user-1", "assistant", "Hi!");
   });
 
   it("uses max_tokens 500 for voice mode", async () => {
@@ -1066,7 +1067,7 @@ describe("OpenAIChatEngine", () => {
       const calls = vi.mocked(handleToolCall).mock.calls;
       expect(calls).toHaveLength(2);
       expect(calls[0][3]).toBe(calls[1][3]);
-      expect(calls[0][3]).toMatchObject({ userId: "user-1", conversationId: "conv-1", memory });
+      expect(calls[0][3]).toMatchObject({ userId: "user-1", conversationId: "mado-user:user-1", memory });
     });
   });
 });
