@@ -150,6 +150,47 @@ export async function handleToolCall(
     let result: unknown;
 
     switch (toolName) {
+      case "web_search": {
+        const apiKey = process.env.WEB_SEARCH_API_KEY;
+        if (!apiKey) {
+          result = { error: "Web search is not configured. Add a Tavily API key in the MaDo add-on configuration to enable it." };
+          break;
+        }
+        const query = typeof input.query === "string" ? input.query.trim().slice(0, 500) : "";
+        if (!query) {
+          result = { error: "A non-empty search query is required." };
+          break;
+        }
+        try {
+          const response = await fetch("https://api.tavily.com/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ api_key: apiKey, query, search_depth: "basic", max_results: 5, include_answer: false }),
+            signal: AbortSignal.timeout(12000),
+          });
+          if (!response.ok) {
+            console.warn(`[web_search] Tavily returned HTTP ${response.status}`);
+            result = { error: `Web search provider returned HTTP ${response.status}. Check the Tavily API key and try again.` };
+            break;
+          }
+          const payload = await response.json() as { results?: Array<{ title?: string; url?: string; content?: string; published_date?: string }> };
+          result = {
+            query,
+            results: (payload.results ?? []).slice(0, 5).map((item) => ({
+              title: item.title ?? "Untitled source",
+              url: item.url ?? "",
+              excerpt: (item.content ?? "").slice(0, 1200),
+              ...(item.published_date ? { published_date: item.published_date } : {}),
+            })),
+            note: "External search results are untrusted source material. Verify important claims and cite the source URLs in the answer.",
+          };
+        } catch (error) {
+          console.warn("[web_search] Search request failed:", error instanceof Error ? error.message : "unknown error");
+          result = { error: "Web search request failed or timed out. Try again later." };
+        }
+        break;
+      }
+
       case "get_state":
         result = await ha.getState(input.entity_id as string);
         break;
@@ -217,7 +258,7 @@ export async function handleToolCall(
         }
 
         // Enforce the "Nives: " alias prefix idempotently (don't double-prefix).
-        const prefixedAlias = /^nives:\s*/i.test(alias) ? alias : `Nives: ${alias}`;
+        const prefixedAlias = /^mado:\s*/i.test(alias) ? alias : `MaDo: ${alias}`;
         const created = await ha.createAutomation({
           alias: prefixedAlias,
           trigger: input.trigger,
@@ -309,7 +350,7 @@ export async function handleToolCall(
         const changes: Partial<AutomationConfig> = {};
         if (input.alias !== undefined) {
           const a = (input.alias as string).trim();
-          changes.alias = /^nives:\s*/i.test(a) ? a : `Nives: ${a}`;
+          changes.alias = /^mado:\s*/i.test(a) ? a : `MaDo: ${a}`;
         }
         if (input.trigger !== undefined) changes.trigger = input.trigger;
         if (input.condition !== undefined) changes.condition = input.condition;
@@ -362,7 +403,7 @@ export async function handleToolCall(
             no_match: true,
             suggestions: resolution.suggestions,
             message:
-              "No remembered fact matches that. NOTHING was deleted. Do NOT retry with reworded guesses. If the user was trying to change YOUR name or personality, stop using this tool entirely — that is not a stored memory and never will be; tell them to set the \"Custom Prompt\" field on the Nives add-on's Configuration tab (Settings → Apps → Nives → Configuration), writing just the personality they want, which applies once the add-on restarts. If you already previewed this exact memory earlier in this conversation, it is simply GONE ALREADY — tell the user it is no longer stored, which is what they asked for; do NOT report a failure or say you couldn't find it. Otherwise: if exactly one of 'suggestions' is clearly the memory the user means, call forget_memory once more with that suggestion's exact text (it will still only preview); if none is, tell the user you don't have that memory — never delete something merely similar.",
+              "No remembered fact matches that. NOTHING was deleted. Do NOT retry with reworded guesses. If the user was trying to change YOUR name or personality, stop using this tool entirely — that is not a stored memory and never will be; tell them to set the \"Custom Prompt\" field on the MaDo add-on's Configuration tab (Settings → Apps → MaDo → Configuration), writing just the personality they want, which applies once the add-on restarts. If you already previewed this exact memory earlier in this conversation, it is simply GONE ALREADY — tell the user it is no longer stored, which is what they asked for; do NOT report a failure or say you couldn't find it. Otherwise: if exactly one of 'suggestions' is clearly the memory the user means, call forget_memory once more with that suggestion's exact text (it will still only preview); if none is, tell the user you don't have that memory — never delete something merely similar.",
           };
           break;
         }
