@@ -72,7 +72,7 @@ describe("handleToolCall", () => {
       "https://api.tavily.com/search",
       expect.objectContaining({
         method: "POST",
-        body: expect.stringContaining('"api_key":"test-tavily-key"'),
+        headers: expect.objectContaining({ Authorization: "Bearer test-tavily-key" }),
       }),
     );
     expect(result).toMatchObject({
