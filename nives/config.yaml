@@ -1,5 +1,5 @@
 name: "MaDo"
-version: "0.1.0"
+version: "0.1.1"
 slug: "mado"
 description: "MaDo — assistant IA pour Home Assistant avec mémoire persistante"
 url: "https://github.com/Blend0963/MaDo"
