@@ -33,7 +33,7 @@ SHODH_KEY=$(cat /data/.shodh_key)
 # there is nothing for the user to copy or configure.
 if [ ! -f /data/.api_token ]; then
     openssl rand -hex 32 > /data/.api_token
-    echo "[init] Generated a new API token for the Nives server"
+    echo "[init] Generated a new API token for the MaDo server"
 fi
 chmod 600 /data/.api_token /data/.shodh_key 2>/dev/null || true
 
@@ -49,6 +49,7 @@ LLM_API_KEY=$(jq -r '.byok.api_key // ""' "$OPTIONS")
 LLM_MODEL=$(jq -r '.byok.model // ""' "$OPTIONS")
 LLM_BASE_URL=$(jq -r '.byok.base_url // ""' "$OPTIONS")
 CUSTOM_PROMPT=$(jq -r '.custom_prompt // ""' "$OPTIONS")
+WEB_SEARCH_API_KEY=$(jq -r '.web_search_api_key // ""' "$OPTIONS")
 MAX_OUTPUT_TOKENS=$(jq -r '.max_output_tokens // ""' "$OPTIONS")
 REASONING_EFFORT=$(jq -r '.reasoning_effort // ""' "$OPTIONS")
 # `// ""` would turn an explicit false into "", so test for null instead.
@@ -270,6 +271,7 @@ write_env "LOG_LEVEL" "$LOG_LEVEL"
 
 # --- Optional ---
 [ -n "$CUSTOM_PROMPT" ] && write_env "CUSTOM_PROMPT" "$CUSTOM_PROMPT"
+write_env "WEB_SEARCH_API_KEY" "$WEB_SEARCH_API_KEY"
 [ -n "$MAX_OUTPUT_TOKENS" ] && write_env "MAX_OUTPUT_TOKENS" "$MAX_OUTPUT_TOKENS"
 [ -n "$REASONING_EFFORT" ] && write_env "REASONING_EFFORT" "$REASONING_EFFORT"
 [ -n "$LAYOUT_FROM_EXPOSED" ] && write_env "LAYOUT_FROM_EXPOSED" "$LAYOUT_FROM_EXPOSED"
