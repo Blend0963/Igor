@@ -194,6 +194,17 @@ export class SqliteConversationStore implements IConversationStore {
   }
 
 
+
+  getMessagesWithoutEmbeddings(userId: string, limit: number = 30): ConversationMessage[] {
+    const rows = this.db.prepare(`
+      SELECT m.id, m.conversation_id, m.user_id, m.role, m.content, m.created_at
+      FROM messages m LEFT JOIN message_embeddings e ON e.message_id = m.id
+      WHERE m.user_id = ? AND m.role = 'user' AND e.message_id IS NULL
+      ORDER BY m.rowid DESC LIMIT ?
+    `).all(userId, limit) as Array<{id:string;conversation_id:string;user_id:string;role:"user"|"assistant";content:string;created_at:string}>;
+    return rows.map(row => ({id:row.id,conversationId:row.conversation_id,userId:row.user_id,role:row.role,content:row.content,createdAt:new Date(row.created_at)}));
+  }
+
   storeMessageEmbedding(messageId: string, embedding: number[]): void {
     this.db.prepare(`INSERT OR REPLACE INTO message_embeddings (message_id, embedding) VALUES (?, ?)`)
       .run(messageId, JSON.stringify(embedding));
