@@ -29,7 +29,11 @@ export class SqliteConversationStore implements IConversationStore {
       );
       CREATE INDEX IF NOT EXISTS idx_messages_conv_id ON messages(conversation_id);
       CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
-      CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);\n      CREATE TABLE IF NOT EXISTS message_embeddings (\n        message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,\n        embedding TEXT NOT NULL\n      );
+      CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
+      CREATE TABLE IF NOT EXISTS message_embeddings (
+        message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+        embedding TEXT NOT NULL
+      );
 
       -- Users we have ever seen. Deliberately separate from messages: message
       -- rows are pruned after 24h by cleanupOldConversations(), so deriving the
@@ -187,6 +191,33 @@ export class SqliteConversationStore implements IConversationStore {
     ).run(cutoff);
 
     return result.changes;
+  }
+
+
+  storeMessageEmbedding(messageId: string, embedding: number[]): void {
+    this.db.prepare(`INSERT OR REPLACE INTO message_embeddings (message_id, embedding) VALUES (?, ?)`)
+      .run(messageId, JSON.stringify(embedding));
+  }
+
+  searchSimilarMessages(userId: string, embedding: number[], limit: number = 6): ConversationMessage[] {
+    const rows = this.db.prepare(`
+      SELECT m.id, m.conversation_id, m.user_id, m.role, m.content, m.created_at, e.embedding
+      FROM messages m JOIN message_embeddings e ON e.message_id = m.id
+      WHERE m.user_id = ? AND m.role = 'user'
+      ORDER BY m.rowid DESC
+    `).all(userId) as Array<{id:string;conversation_id:string;user_id:string;role:"user"|"assistant";content:string;created_at:string;embedding:string}>;
+    const norm = (v:number[]) => Math.sqrt(v.reduce((sum,n)=>sum+n*n,0));
+    const qnorm = norm(embedding);
+    if (!qnorm) return [];
+    return rows.map(row => {
+      const vector = JSON.parse(row.embedding) as number[];
+      if (vector.length !== embedding.length) return { row, score: -1 };
+      const denom = qnorm * norm(vector);
+      const score = denom ? vector.reduce((sum,n,i)=>sum+n*embedding[i],0)/denom : -1;
+      return { row, score };
+    }).filter(item => item.score > 0.35)
+      .sort((a,b)=>b.score-a.score).slice(0, Math.max(0,limit))
+      .map(({row})=>({id:row.id,conversationId:row.conversation_id,userId:row.user_id,role:row.role,content:row.content,createdAt:new Date(row.created_at)}));
   }
 
   close(): void {
