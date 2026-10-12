@@ -8,7 +8,8 @@ import type { ConversationMessage, ConversationSummary, IConversationStore } fro
 
 export class InMemoryConversationStore implements IConversationStore {
   private conversations = new Map<string, ConversationMessage[]>();
-  private knownUsers = new Set<string>();\n  private embeddings = new Map<string, number[]>();\n  private embeddings = new Map<string, number[]>();
+  private knownUsers = new Set<string>();
+  private embeddings = new Map<string, number[]>();
 
   storeMessage(
     conversationId: string,
@@ -90,6 +91,27 @@ export class InMemoryConversationStore implements IConversationStore {
     return [...this.knownUsers];
   }
 
+
+  storeMessageEmbedding(messageId: string, embedding: number[]): void {
+    this.embeddings.set(messageId, embedding);
+  }
+
+  searchSimilarMessages(userId: string, embedding: number[], limit: number = 6): ConversationMessage[] {
+    const norm = (v:number[]) => Math.sqrt(v.reduce((sum,n)=>sum+n*n,0));
+    const qnorm = norm(embedding);
+    if (!qnorm) return [];
+    const ranked: Array<{message: ConversationMessage; score:number}> = [];
+    for (const messages of this.conversations.values()) for (const message of messages) {
+      if (message.userId !== userId || message.role !== "user") continue;
+      const vector = this.embeddings.get(message.id);
+      if (!vector || vector.length !== embedding.length) continue;
+      const denom = qnorm * norm(vector);
+      const score = denom ? vector.reduce((sum,n,i)=>sum+n*embedding[i],0)/denom : -1;
+      if (score > 0.35) ranked.push({message,score});
+    }
+    return ranked.sort((a,b)=>b.score-a.score).slice(0,Math.max(0,limit)).map(x=>x.message);
+  }
+
   cleanupOldConversations(hoursOld: number = 24): number {
     const cutoff = Date.now() - hoursOld * 60 * 60 * 1000;
     let deleted = 0;
@@ -107,5 +129,6 @@ export class InMemoryConversationStore implements IConversationStore {
 
   close(): void {
     this.conversations.clear();
+    this.embeddings.clear();
   }
 }
