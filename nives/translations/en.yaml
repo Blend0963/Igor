@@ -1,8 +1,4 @@
 configuration:
-  llm_mode:
-    name: LLM Mode
-    description: >-
-      Configure your language-model provider. MaDo works with your own provider key.
   byok:
     name: "Bring Your Own Key (BYOK)"
     description: >-
