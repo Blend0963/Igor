@@ -56,6 +56,20 @@ function extraContentOf(tc: object): unknown {
   return (tc as { extra_content?: unknown }).extra_content;
 }
 
+/** Convert provider text blocks to plain text without stringifying objects. */
+function contentToText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((part: unknown) => {
+    if (typeof part === "string") return part;
+    if (typeof part === "object" && part !== null && "text" in part &&
+        typeof part.text === "string") {
+      return part.text;
+    }
+    return "";
+  }).join("");
+}
+
 export class OpenAIChatEngine implements IChatEngine {
   private client: OpenAI;
   private memory: IMemoryStore;
@@ -418,11 +432,13 @@ export class OpenAIChatEngine implements IChatEngine {
       const choice = chunk.choices[0];
       if (!choice) continue;
 
-      // Accumulate text
-      if (choice.delta?.content) {
-        text += choice.delta.content;
+      // Provider APIs may return text as content blocks rather than a string.
+      // Normalize each delta before storing or forwarding it to Home Assistant/TTS.
+      const chunkText = contentToText(choice.delta?.content);
+      if (chunkText) {
+        text += chunkText;
         if (onChunk) {
-          onChunk(choice.delta.content);
+          onChunk(chunkText);
         }
       }
 
