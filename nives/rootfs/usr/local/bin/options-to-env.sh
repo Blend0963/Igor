@@ -39,8 +39,7 @@ chmod 600 /data/.api_token /data/.shodh_key 2>/dev/null || true
 
 API_TOKEN=$(cat /data/.api_token)
 
-# Read options (nested cloud/byok structure)
-LLM_MODE=$(jq -r '.llm_mode // "byok"' "$OPTIONS")
+# Read options (BYOK provider settings)
 LLM_PROVIDER=$(jq -r '.byok.provider // "anthropic"' "$OPTIONS")
 LLM_API_KEY=$(jq -r '.byok.api_key // ""' "$OPTIONS")
 LLM_MODEL=$(jq -r '.byok.model // ""' "$OPTIONS")
