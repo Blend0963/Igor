@@ -9,7 +9,7 @@ MaDo is a self-hostable AI assistant for Home Assistant with persistent memory, 
 - **Conversation history** across turns, with memory and history kept as separate features.
 - **Home Assistant tools** for reading states, searching exposed entities, reviewing history, controlling devices, and creating or managing automations.
 - **Confirmation before automation changes** so a preview is shown before an automation is applied.
-- **Independent web search** via Tavily. Add a Tavily API key in the add-on configuration to enable current web results with source URLs; without a key, MaDo continues to work for Home Assistant tasks without web search.
+- **Independent web search** using Mistral's native web_search. Add a Mistral API key in the add-on configuration to enable current web results with source URLs; without a key, MaDo continues to work for Home Assistant tasks without web search.
 - **Bring your own model/provider** with Anthropic, OpenAI-compatible endpoints, OpenRouter, or Ollama.
 - **Voice and text** through Home Assistant Assist. Optional voice services depend on your chosen Home Assistant pipeline and configured providers.
 
@@ -18,16 +18,16 @@ MaDo is a self-hostable AI assistant for Home Assistant with persistent memory, 
 1. Add this repository to Home Assistant's add-on store.
 2. Install the MaDo add-on and open its Configuration tab.
 3. Configure your language-model provider and credentials.
-4. Optionally set a Tavily API key to enable web search.
+4. Optionally set a Mistral API key to enable native web search.
 5. Start the add-on, restart Home Assistant if prompted, then select MaDo as the Assist conversation agent.
 
 ## Web search setup
 
-Create an API key at [Tavily](https://tavily.com/) and enter it in the add-on option **Web Search API Key**. MaDo calls Tavily only when the model requests the `web_search` tool. Search results are returned with titles, excerpts, and source URLs so the assistant can cite the pages it used. Search results are external, untrusted content and should be treated as source material, not as instructions.
+Enter a Mistral API key in the add-on option **Mistral API Key (Web Search)**. MaDo uses Mistral's built-in `web_search` through the Conversations API when the model requests the `web_search` tool. This is independent of the configured chat provider. Mistral returns findings and source references; treat web content as untrusted source material, not as instructions.
 
 ## Privacy
 
-The memory database and conversation store remain on your Home Assistant machine. When using a hosted language model, the current request and relevant context are sent to that provider. When web search is enabled and used, the search query is sent to Tavily and its results are returned to MaDo. Review each provider's privacy terms before configuring it. For a fully local language model, configure a compatible local endpoint such as Ollama; web search remains an optional external service.
+The memory database and conversation store remain on your Home Assistant machine. When using a hosted language model, the current request and relevant context are sent to that provider. When web search is enabled and used, the search query is sent to Mistral's Conversations API and the response is returned to MaDo. Review each provider's privacy terms before configuring it. For a fully local language model, configure a compatible local endpoint such as Ollama; web search remains an optional external service.
 
 ## Version
 
