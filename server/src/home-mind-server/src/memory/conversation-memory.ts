@@ -56,6 +56,24 @@ export class InMemoryConversationStore implements IConversationStore {
       .slice(-limit);
   }
 
+  searchMessages(userId: string, query: string, limit: number = 6): ConversationMessage[] {
+    const terms = [...new Set(query.toLocaleLowerCase().normalize("NFD")
+      .replace(/[\\u0300-\\u036f]/g, "").match(/[a-z0-9]{3,}/g) ?? [])]
+      .filter((term) => !new Set(["rappelle", "rappeler", "souviens", "retrouve", "conversation", "parlais", "parlait", "remember", "recall", "about", "what", "when", "where", "with", "that", "this", "from", "were", "have", "avait", "avais", "dans", "pour", "avec", "quoi", "comment", "quel", "quelle"]).has(term));
+    if (terms.length === 0) return [];
+    return [...this.conversations.values()].flat()
+      .filter((msg) => msg.userId === userId)
+      .map((msg) => {
+        const text = msg.content.toLocaleLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g, "");
+        return { msg, score: terms.reduce((n, term) => n + (text.includes(term) ? 1 : 0), 0) };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score || b.msg.createdAt.getTime() - a.msg.createdAt.getTime())
+      .slice(0, limit)
+      .sort((a, b) => a.msg.createdAt.getTime() - b.msg.createdAt.getTime())
+      .map((item) => item.msg);
+  }
+
   listConversations(userId: string): ConversationSummary[] {
     const results: ConversationSummary[] = [];
 
