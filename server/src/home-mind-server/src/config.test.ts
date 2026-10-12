@@ -21,7 +21,7 @@ describe("loadConfig", () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_BASE_URL;
-    delete process.env.WEB_SEARCH_API_KEY;
+    delete process.env.MISTRAL_API_KEY;
     delete process.env.OLLAMA_BASE_URL;
     delete process.env.REASONING_EFFORT;
     delete process.env.HA_URL;
@@ -186,10 +186,10 @@ describe("loadConfig", () => {
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
-  it("loads the optional web search API key", async () => {
+  it("loads the optional Mistral API key", async () => {
     Object.assign(process.env, BASE_ENV);
-    process.env.WEB_SEARCH_API_KEY = "test-tavily-key";
-    expect((await loadConfigFresh()).webSearchApiKey).toBe("test-tavily-key");
+    process.env.MISTRAL_API_KEY = "test-mistral-key";
+    expect((await loadConfigFresh()).mistralApiKey).toBe("test-mistral-key");
   });
 
   it("accepts custom port", async () => {
