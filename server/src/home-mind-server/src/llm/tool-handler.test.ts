@@ -46,6 +46,39 @@ describe("handleToolCall", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("reports that web search is optional when no Tavily key is configured", async () => {
+    delete process.env.WEB_SEARCH_API_KEY;
+    const result = await handleToolCall(ha, "web_search", { query: "latest Home Assistant release" });
+    expect(result).toMatchObject({ error: expect.stringContaining("not configured") });
+  });
+
+  it("returns Tavily search results with source URLs", async () => {
+    vi.stubEnv("WEB_SEARCH_API_KEY", "test-tavily-key");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        results: [{ title: "Example source", url: "https://example.com/article", content: "A useful excerpt" }],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await handleToolCall(ha, "web_search", { query: "current information" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.tavily.com/search",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"api_key":"test-tavily-key"'),
+      }),
+    );
+    expect(result).toMatchObject({
+      query: "current information",
+      results: [{ title: "Example source", url: "https://example.com/article", excerpt: "A useful excerpt" }],
+    });
   });
 
   it("dispatches get_state to ha.getState", async () => {
