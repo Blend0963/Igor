@@ -1,9 +1,9 @@
 name: "MaDo"
 version: "0.1.0"
-slug: "nives"
+slug: "mado"
 description: "MaDo — assistant IA pour Home Assistant avec mémoire persistante"
 url: "https://github.com/Blend0963/MaDo"
-image: ghcr.io/hoornet/nives-{arch}
+image: ghcr.io/blend0963/mado-{arch}
 arch:
   - amd64
   - aarch64
@@ -15,7 +15,7 @@ homeassistant_api: true
 hassio_api: true
 auth_api: true
 discovery:
-  - nives
+  - mado
 map:
   - addon_config:rw
   - config:rw
@@ -25,10 +25,6 @@ memory: 768
 panel_icon: "mdi:brain"
 options:
   llm_mode: "byok"
-  cloud:
-    api_key: ""
-    transcription: false
-    voice: "off"
   byok:
     provider: "anthropic"
     api_key: ""
@@ -39,17 +35,6 @@ options:
   log_level: "info"
 schema:
   llm_mode: "list(byok)"
-  cloud:
-    # password: masked in the Configuration tab (eye icon to reveal), so a
-    # screenshot of the settings doesn't show the key. Still a plain string.
-    api_key: "password?"
-    transcription: "bool?"
-    # The voice MaDo speaks replies in, or "off" to leave speaking to whatever
-    # voice the user's Assist pipeline already has (Piper, HA Cloud...). Each
-    # choice is a voice native to that language, so the list is short and grows
-    # only as languages are tested. HA shows list values raw and cannot relabel
-    # them, so the explanation lives in the translation's description.
-    voice: "list(off|slovene_female|slovene_male)?"
   byok:
     provider: "list(anthropic|openai|openrouter|ollama)?"
     api_key: "password?"
