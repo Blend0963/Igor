@@ -92,6 +92,14 @@ export class InMemoryConversationStore implements IConversationStore {
   }
 
 
+
+  getMessagesWithoutEmbeddings(userId: string, limit: number = 30): ConversationMessage[] {
+    return [...this.conversations.values()].flat()
+      .filter(message => message.userId === userId && message.role === "user" && !this.embeddings.has(message.id))
+      .sort((a,b)=>b.createdAt.getTime()-a.createdAt.getTime())
+      .slice(0,Math.max(0,limit));
+  }
+
   storeMessageEmbedding(messageId: string, embedding: number[]): void {
     this.embeddings.set(messageId, embedding);
   }
