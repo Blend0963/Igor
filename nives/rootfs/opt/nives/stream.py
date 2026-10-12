@@ -1,4 +1,4 @@
-"""Turning the Nives server's streamed reply into Assist chat-log deltas.
+"""Turning the MaDo server's streamed reply into Assist chat-log deltas.
 
 Pure Python on purpose: nothing here imports Home Assistant, so it can be
 tested on a plain interpreter. conversation.py owns the network and the
