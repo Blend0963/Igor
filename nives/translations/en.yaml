@@ -24,11 +24,11 @@ configuration:
         description: >-
           Custom API endpoint. Required for Ollama (e.g. http://homeassistant:11434/v1).
           Leave empty for cloud providers.
-  web_search_api_key:
-    name: Web Search API Key
+  mistral_api_key:
+    name: Mistral API Key (Web Search)
     description: >-
-      Optional Tavily API key. When configured, MaDo can search the public web
-      and return source links. Leave empty to disable web search.
+      Optional Mistral API key used for Mistral's native web_search tool through
+      the Conversations API. This is separate from your selected chat provider.
   custom_prompt:
     name: Custom Prompt
     description: >-
