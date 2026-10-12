@@ -15,7 +15,7 @@ homeassistant_api: true
 hassio_api: true
 auth_api: true
 discovery:
-  - mado
+  - nives
 map:
   - addon_config:rw
   - config:rw
