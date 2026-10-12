@@ -25,7 +25,6 @@ from .const import (
     DEFAULT_SHARED_MEMORY,
     DEFAULT_USER_ID,
     API_HEALTH_ENDPOINT,
-    CLOUD_SIGNUP_URL,
 )
 
 _LOGGER = logging.getLogger(__name__)
