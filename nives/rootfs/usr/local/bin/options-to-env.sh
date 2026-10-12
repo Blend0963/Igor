@@ -40,7 +40,7 @@ chmod 600 /data/.api_token /data/.shodh_key 2>/dev/null || true
 API_TOKEN=$(cat /data/.api_token)
 
 # Read options (nested cloud/byok structure)
-LLM_MODE=$(jq -r '.llm_mode // "cloud"' "$OPTIONS")
+LLM_MODE=$(jq -r '.llm_mode // "byok"' "$OPTIONS")
 PROXY_KEY=$(jq -r '.cloud.api_key // ""' "$OPTIONS")
 CLOUD_TRANSCRIPTION=$(jq -r '.cloud.transcription // false' "$OPTIONS")
 CLOUD_VOICE=$(jq -r '.cloud.voice // "off"' "$OPTIONS")
