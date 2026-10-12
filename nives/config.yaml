@@ -24,7 +24,7 @@ ports:
 memory: 768
 panel_icon: "mdi:brain"
 options:
-  llm_mode: "cloud"
+  llm_mode: "byok"
   cloud:
     api_key: ""
     transcription: false
@@ -34,10 +34,11 @@ options:
     api_key: ""
     model: ""
     base_url: ""
+  web_search_api_key: ""
   custom_prompt: ""
   log_level: "info"
 schema:
-  llm_mode: "list(cloud|byok)"
+  llm_mode: "list(byok)"
   cloud:
     # password: masked in the Configuration tab (eye icon to reveal), so a
     # screenshot of the settings doesn't show the key. Still a plain string.
@@ -54,6 +55,7 @@ schema:
     api_key: "password?"
     model: "str?"
     base_url: "str?"
+  web_search_api_key: "password?"
   custom_prompt: "str?"
   # Ceiling on one written reply. Left unset, MaDo picks its own. Deliberately
   # absent from `options:` above so that "unset" stays a real state rather than
