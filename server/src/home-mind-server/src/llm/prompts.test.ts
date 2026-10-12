@@ -268,7 +268,7 @@ describe("misheard-name tolerance (voice)", () => {
   it("is present in the voice prompt", () => {
     const text = buildSystemPromptText([], true);
     expect(text).toContain("YOUR NAME, MISHEARD");
-    expect(text).toContain('"News"');
+    expect(text).toMatch(/likely misrecognition/i);
     expect(text).toContain("NEVER correct the user");
   });
 
