@@ -52,7 +52,6 @@ export interface IConversationStore {
     limit?: number
   ): ConversationMessage[] | Promise<ConversationMessage[]>;
   getRecentMessages(userId: string, hoursOld?: number, limit?: number, excludeConversationId?: string): ConversationMessage[] | Promise<ConversationMessage[]>;
-  searchMessages(userId: string, query: string, limit?: number): ConversationMessage[] | Promise<ConversationMessage[]>;
   listConversations(
     userId: string
   ): ConversationSummary[] | Promise<ConversationSummary[]>;
