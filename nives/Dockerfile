@@ -119,7 +119,7 @@ COPY --from=shodh /usr/local/bin/shodh /usr/local/bin/shodh
 COPY --from=shodh /root/.cache/shodh-memory /root/.cache/shodh-memory
 
 # Copy built server from stage 2
-WORKDIR /opt/mado
+WORKDIR /opt/nives
 COPY --from=builder /build/dist ./dist
 COPY --from=builder /build/node_modules ./node_modules
 COPY --from=builder /build/package.json ./
