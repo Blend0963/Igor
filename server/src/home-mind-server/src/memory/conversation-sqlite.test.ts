@@ -136,4 +136,17 @@ describe("SqliteConversationStore", () => {
     expect(store.getConversationHistory("conv-2")).toHaveLength(1);
     expect(store.getConversationHistory("conv-1")[0].content).toBe("Message A");
   });
+
+  it("retrieves semantically similar messages only for the same user", () => {
+    const relevantId = store.storeMessage("mado-user:user-1", "user-1", "user", "We discussed insulating the attic");
+    store.storeMessageEmbedding(relevantId, [1, 0, 0]);
+    const unrelatedId = store.storeMessage("mado-user:user-2", "user-2", "user", "Private solar panel plans");
+    store.storeMessageEmbedding(unrelatedId, [1, 0, 0]);
+    const weakId = store.storeMessage("mado-user:user-1", "user-1", "user", "Favorite music");
+    store.storeMessageEmbedding(weakId, [0, 1, 0]);
+
+    const results = store.searchSimilarMessages("user-1", [0.99, 0.01, 0], 5);
+    expect(results.map((message) => message.id)).toEqual([relevantId]);
+    expect(results.some((message) => message.userId === "user-2")).toBe(false);
+  });
 });
