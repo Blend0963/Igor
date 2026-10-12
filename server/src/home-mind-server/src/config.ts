@@ -15,6 +15,8 @@ const ConfigSchema = z
     anthropicApiKey: z.string().optional(),
     openaiApiKey: z.string().optional(),
     openaiBaseUrl: z.string().url().optional(),
+    // Optional independent web search provider (Tavily).
+    webSearchApiKey: z.string().optional(),
 
     // OpenAI fact-extractor tuning (applies only to OpenAIFactExtractor — chat
     // returns free-form text and ignores these). Some OpenAI-compatible
@@ -141,6 +143,7 @@ export function loadConfig(): Config {
     anthropicApiKey: emptyToUndefined(process.env.ANTHROPIC_API_KEY),
     openaiApiKey: emptyToUndefined(process.env.OPENAI_API_KEY),
     openaiBaseUrl: emptyToUndefined(process.env.OPENAI_BASE_URL),
+    webSearchApiKey: emptyToUndefined(process.env.WEB_SEARCH_API_KEY),
     openaiResponseFormat: emptyToUndefined(process.env.OPENAI_RESPONSE_FORMAT),
     openaiMaxTokens: emptyToUndefined(process.env.OPENAI_MAX_TOKENS),
     // OPENAI_MAX_TOKENS was documented as the way to raise this and only ever
