@@ -45,6 +45,17 @@ export class InMemoryConversationStore implements IConversationStore {
     return messages.slice(-limit);
   }
 
+  getRecentMessages(userId: string, hoursOld: number = 24, limit: number = 12, excludeConversationId?: string): ConversationMessage[] {
+    const cutoff = Date.now() - hoursOld * 60 * 60 * 1000;
+    return [...this.conversations.values()]
+      .flat()
+      .filter((msg) => msg.userId === userId
+        && msg.createdAt.getTime() >= cutoff
+        && (!excludeConversationId || msg.conversationId !== excludeConversationId))
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .slice(-limit);
+  }
+
   listConversations(userId: string): ConversationSummary[] {
     const results: ConversationSummary[] = [];
 
