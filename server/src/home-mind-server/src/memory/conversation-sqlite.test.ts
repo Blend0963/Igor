@@ -103,6 +103,18 @@ describe("SqliteConversationStore", () => {
     expect(store.getConversationHistory("conv-new")).toHaveLength(1);
   });
 
+  it("retrieves recent messages across conversations for one user", () => {
+    store.storeMessage("conv-1", "user-1", "user", "Earlier question");
+    store.storeMessage("conv-1", "user-1", "assistant", "Earlier answer");
+    store.storeMessage("conv-2", "user-1", "user", "Current topic");
+    store.storeMessage("conv-3", "user-2", "user", "Other user's private message");
+
+    const recent = store.getRecentMessages("user-1", 24, 12, "conv-2");
+    expect(recent.map((m) => m.content)).toEqual(["Earlier question", "Earlier answer"]);
+    expect(recent.every((m) => m.conversationId !== "conv-2")).toBe(true);
+    expect(recent.some((m) => m.content.includes("private"))).toBe(false);
+  });
+
   it("returns messages with createdAt as Date objects", () => {
     store.storeMessage("conv-1", "user-1", "user", "Hello");
 
