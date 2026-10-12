@@ -255,7 +255,7 @@ export class OpenAIChatEngine implements IChatEngine {
     const responseText = result.text;
 
     // 6. Store assistant response
-    if (conversationId && responseText) {
+    if (effectiveConversationId && responseText) {
       this.conversations.storeMessage(effectiveConversationId, userId, "assistant", responseText);
     }
 
