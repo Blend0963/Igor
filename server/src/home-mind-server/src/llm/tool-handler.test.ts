@@ -50,34 +50,37 @@ describe("handleToolCall", () => {
     vi.unstubAllEnvs();
   });
 
-  it("reports that web search is optional when no Tavily key is configured", async () => {
-    delete process.env.WEB_SEARCH_API_KEY;
+  it("reports that web search is not configured when no Mistral key is present", async () => {
+    delete process.env.MISTRAL_API_KEY;
     const result = await handleToolCall(ha, "web_search", { query: "latest Home Assistant release" });
-    expect(result).toMatchObject({ error: expect.stringContaining("not configured") });
+    expect(result).toMatchObject({ error: expect.stringContaining("Mistral web search is not configured") });
   });
 
-  it("returns Tavily search results with source URLs", async () => {
-    vi.stubEnv("WEB_SEARCH_API_KEY", "test-tavily-key");
+  it("uses Mistral Conversations API native web_search and preserves its outputs", async () => {
+    vi.stubEnv("MISTRAL_API_KEY", "test-mistral-key");
+    const outputs = [
+      { type: "message.output", content: [{ type: "text", text: "Latest release: 2026.10.1 (https://example.com/release)" }] },
+    ];
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
-        results: [{ title: "Example source", url: "https://example.com/article", content: "A useful excerpt" }],
-      }),
+      json: async () => ({ outputs }),
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await handleToolCall(ha, "web_search", { query: "current information" });
+    const result = await handleToolCall(ha, "web_search", { query: "latest Home Assistant release" });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.tavily.com/search",
+      "https://api.mistral.ai/v1/conversations",
       expect.objectContaining({
         method: "POST",
-        headers: expect.objectContaining({ Authorization: "Bearer test-tavily-key" }),
+        headers: expect.objectContaining({ Authorization: "Bearer test-mistral-key" }),
+        body: expect.stringContaining('"type":"web_search"'),
       }),
     );
     expect(result).toMatchObject({
-      query: "current information",
-      results: [{ title: "Example source", url: "https://example.com/article", excerpt: "A useful excerpt" }],
+      query: "latest Home Assistant release",
+      provider: "Mistral web_search",
+      outputs,
     });
   });
 
