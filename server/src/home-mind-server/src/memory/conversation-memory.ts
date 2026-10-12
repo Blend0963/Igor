@@ -8,7 +8,7 @@ import type { ConversationMessage, ConversationSummary, IConversationStore } fro
 
 export class InMemoryConversationStore implements IConversationStore {
   private conversations = new Map<string, ConversationMessage[]>();
-  private knownUsers = new Set<string>();
+  private knownUsers = new Set<string>();\n  private embeddings = new Map<string, number[]>();
 
   storeMessage(
     conversationId: string,
