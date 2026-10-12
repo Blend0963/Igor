@@ -5,6 +5,20 @@ import { EXTRACTION_PROMPT, VALID_CATEGORIES } from "./extraction-prompt.js";
 import { withTokenCap } from "../llm/token-cap.js";
 import { withReasoningEffort, type ReasoningEffort } from "../llm/reasoning-effort.js";
 
+/** Normalize string or structured provider content to plain text. */
+function contentToText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((part: unknown) => {
+    if (typeof part === "string") return part;
+    if (typeof part === "object" && part !== null && "text" in part &&
+        typeof part.text === "string") {
+      return part.text;
+    }
+    return "";
+  }).join("");
+}
+
 export class OpenAIFactExtractor implements IFactExtractor {
   private client: OpenAI;
   private model: string;
@@ -79,7 +93,7 @@ ${JSON.stringify(factsJson, null, 2)}`;
         )
       );
 
-      const text = response.choices[0]?.message?.content ?? "";
+      const text = contentToText(response.choices[0]?.message?.content);
 
       // Strip reasoning-model <think>...</think> blocks (Qwen3, DeepSeek-R1, etc.)
       // then markdown code fences (LLMs sometimes wrap JSON in ```json ... ```)
