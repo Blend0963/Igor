@@ -1,7 +1,7 @@
-# Home Mind
+# MaDo
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/Version-0.14.0-brightgreen.svg)]()
+[![Version](https://img.shields.io/badge/Version-0.1.0-brightgreen.svg)]()
 [![Status](https://img.shields.io/badge/Status-Voice%20Working-success.svg)]()
 
 AI assistant for Home Assistant with cognitive memory. Adds learning capabilities, persistent memory, and voice control to your smart home.
@@ -16,7 +16,7 @@ Current Home Assistant AI integrations suffer from:
 
 ## The Solution
 
-Home Mind provides:
+MaDo provides:
 
 - **Cognitive memory** with semantic search and natural decay (via Shodh Memory)
 - **Learning** from corrections and user preferences
@@ -28,7 +28,7 @@ Home Mind provides:
 
 ## Memory in Action
 
-Unlike stateless AI assistants, Home Mind **learns and remembers** across conversations:
+Unlike stateless AI assistants, MaDo **learns and remembers** across conversations:
 
 **First Conversation:**
 ```
@@ -48,7 +48,7 @@ User: How's the air quality?
 AI: The NOx sensor shows 98 ppm, which is within normal parameters for your home.
 ```
 
-**Result:** Home Mind remembers the baseline without being reminded!
+**Result:** MaDo remembers the baseline without being reminded!
 
 ### What Gets Remembered
 
@@ -67,7 +67,7 @@ See [docs/MEMORY_EXAMPLES.md](docs/MEMORY_EXAMPLES.md) for more examples.
 │              ↓                          │
 │  HA Custom Component                    │
 │              ↓                          │
-│  Home Mind API (home-mind-server)              │
+│  MaDo API (home-mind-server)              │
 │              ↓                          │
 │  Shodh Memory (Cognitive Memory)        │
 │              ↓                          │
@@ -118,7 +118,7 @@ cd ../..
 
 **HACS (Recommended):**
 1. Add `https://github.com/hoornet/home-mind-hacs` as custom repository in HACS (select **Integration** as the type)
-2. Install "Home Mind"
+2. Install "MaDo"
 3. Restart Home Assistant
 
 **Manual:**
@@ -128,8 +128,8 @@ cp -r src/ha-integration/custom_components/home_mind /config/custom_components/
 
 ### 4. Configure in Home Assistant
 
-1. Settings → Devices & Services → Add Integration → Home Mind
-2. Enter your Home Mind API URL (e.g., `http://192.168.1.100:3100`)
+1. Settings → Devices & Services → Add Integration → MaDo
+2. Enter your MaDo API URL (e.g., `http://192.168.1.100:3100`)
 3. Set as conversation agent in Voice Assistants
 
 ## Custom Prompt
@@ -148,7 +148,7 @@ curl -X POST http://localhost:3100/api/chat \
 ```
 
 **2. HA Integration** (recommended for most users):
-Settings → Devices & Services → Home Mind → Configure → enter your custom prompt.
+Settings → Devices & Services → MaDo → Configure → enter your custom prompt.
 
 **3. Server-level default** (env var):
 ```bash
@@ -169,7 +169,7 @@ In those tools, the system prompt **is** the entire system prompt — you contro
 
 ## Home Layout Index
 
-On startup, Home Mind queries the HA template API with Jinja2 functions (`floors()`, `floor_areas()`, `area_entities()`, etc.) and builds a compact map injected into every system prompt:
+On startup, MaDo queries the HA template API with Jinja2 functions (`floors()`, `floor_areas()`, `area_entities()`, etc.) and builds a compact map injected into every system prompt:
 
 ```
 Ground Floor
@@ -182,7 +182,7 @@ This gives the AI spatial awareness without tool calls. It will never assume a d
 
 ## Device Capability Index
 
-On startup, Home Mind scans all `light.*` entities in Home Assistant, reads their `supported_color_modes` attributes, and builds a per-entity cheat sheet that is injected into every system prompt. This means the AI always knows the correct way to control each light without needing to call `search_entities` or `get_entities` on every request.
+On startup, MaDo scans all `light.*` entities in Home Assistant, reads their `supported_color_modes` attributes, and builds a per-entity cheat sheet that is injected into every system prompt. This means the AI always knows the correct way to control each light without needing to call `search_entities` or `get_entities` on every request.
 
 The cheat sheet tells the AI exactly what to use per device:
 - `rgbw_color: [0,0,0,255]` for RGBW strips (WLED, etc.) — uses the dedicated white LED channel
@@ -219,19 +219,19 @@ Only specify what needs changing — unspecified fields use auto-detected values
 | `call_service` | Control devices (turn_on, turn_off, etc.) |
 | `get_history` | Get historical state data |
 
-## Easy Install: Nives Add-on
+## Easy Install: MaDo Add-on
 
-If you're running Home Assistant and want a **one-click setup**, check out the **[Nives add-on](https://github.com/hoornet/nives)** (formerly HomeMind PRO).
+If you're running Home Assistant and want a **one-click setup**, check out the **[MaDo add-on](https://github.com/hoornet/mado)** (formerly HomeMind PRO).
 
 It bundles everything (server + Shodh Memory) into a single HA add-on — no Docker, no manual config, no terminal. Add the repository in HA Supervisor, install, and you're done. Supports both cloud mode (managed API key) and BYOK (bring your own key).
 
-The self-hosted Docker Compose setup below is for advanced users who want full control or are running Home Mind outside of Home Assistant.
+The self-hosted Docker Compose setup below is for advanced users who want full control or are running MaDo outside of Home Assistant.
 
 ---
 
 ## Project Status
 
-**Current Version:** v0.14.0
+**Current Version:** v0.1.0
 
 - [x] Voice control via HA Assist
 - [x] Cognitive memory with Shodh
@@ -248,7 +248,7 @@ The self-hosted Docker Compose setup below is for advanced users who want full c
 - [x] Home Layout Index (floor/room awareness via HA template API)
 - [x] Server-side STT (`POST /api/stt`, OpenAI Whisper)
 - [x] Server-side TTS (`POST /api/tts`, OpenAI TTS API)
-- [x] Nives HA Add-on (one-click install, cloud + BYOK; formerly HomeMind PRO)
+- [x] MaDo HA Add-on (one-click install, cloud + BYOK; formerly HomeMind PRO)
 - [ ] Multi-user support (OIDC)
 
 ## Documentation
@@ -262,7 +262,7 @@ The self-hosted Docker Compose setup below is for advanced users who want full c
 
 ### "Unable to connect" in Home Assistant
 
-1. Verify Home Mind server is running:
+1. Verify MaDo server is running:
    ```bash
    curl http://your-server-ip:3100/api/health
    ```
@@ -271,7 +271,7 @@ The self-hosted Docker Compose setup below is for advanced users who want full c
 
 ### "Shodh Memory is not available"
 
-Shodh must be running before the Home Mind server starts:
+Shodh must be running before the MaDo server starts:
 ```bash
 docker compose logs shodh          # Check Shodh logs
 curl http://localhost:3030/health  # Test Shodh directly
@@ -310,20 +310,20 @@ docker compose restart             # Restart both services
 
 ### Voice commands not working
 
-1. Ensure Home Mind is set as the conversation agent in HA Voice Assistants
+1. Ensure MaDo is set as the conversation agent in HA Voice Assistants
 2. Disable "Prefer handling commands locally" in the voice assistant settings
 3. Check HA logs: Settings → System → Logs → filter for "home_mind"
 
 ### View logs
 
 ```bash
-docker compose logs -f server   # Home Mind server
+docker compose logs -f server   # MaDo server
 docker compose logs -f shodh    # Shodh Memory
 ```
 
 ## Support the Project
 
-If Home Mind is useful to you, consider supporting its development:
+If MaDo is useful to you, consider supporting its development:
 
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-ff5e5b?logo=ko-fi)](https://ko-fi.com/jure)
 
