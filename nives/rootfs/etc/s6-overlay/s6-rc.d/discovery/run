@@ -14,7 +14,7 @@ if [ -z "$SUPERVISOR_TOKEN" ]; then
 fi
 
 # Wait for the server to be healthy
-echo "[discovery] Waiting for Nives server..."
+echo "[discovery] Waiting for MaDo server..."
 for i in $(seq 1 30); do
     if curl -sf http://127.0.0.1:3100/api/health > /dev/null 2>&1; then
         break
