@@ -176,7 +176,7 @@ export class OpenAIChatEngine implements IChatEngine {
 
     // 5. Stream and handle tool call loop
     events.onTurn?.();
-    let result = await this.streamCompletion(messages, isVoice, onChunk, false, effectiveConversationId);
+    let result = await this.streamCompletion(messages, isVoice, onChunk, false, conversationId || effectiveConversationId);
 
     let iterations = 0;
     // Run whatever tool calls arrived, whatever the finish_reason says: some
@@ -250,7 +250,7 @@ export class OpenAIChatEngine implements IChatEngine {
         );
       }
       events.onTurn?.();
-      result = await this.streamCompletion(messages, isVoice, onChunk, forceAnswer, effectiveConversationId);
+      result = await this.streamCompletion(messages, isVoice, onChunk, forceAnswer, conversationId || effectiveConversationId);
       if (forceAnswer) break;
     }
 
