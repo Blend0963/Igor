@@ -257,7 +257,7 @@ export async function handleToolCall(
           break;
         }
 
-        // Enforce the "Nives: " alias prefix idempotently (don't double-prefix).
+        // Enforce the "MaDo: " alias prefix idempotently (don't double-prefix).
         const prefixedAlias = /^mado:\s*/i.test(alias) ? alias : `MaDo: ${alias}`;
         const created = await ha.createAutomation({
           alias: prefixedAlias,
@@ -432,7 +432,7 @@ export async function handleToolCall(
         // originally copied them. That is tolerable there because a wrongly
         // created or edited automation is recoverable; a deleted memory is not.
         // And the path is reachable: the AI Task entity posts to /api/chat with
-        // no conversationId by design (rootfs/opt/nives/ai_task.py — "Stateless"),
+        // no conversationId by design (rootfs/opt/mado/ai_task.py — "Stateless"),
         // while still being handed the full tool set. Without this branch, one
         // ai_task.generate_data run — including the camera-image path, where the
         // prompt is not necessarily the user's own words — could permanently
