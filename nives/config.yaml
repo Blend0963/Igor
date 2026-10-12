@@ -24,7 +24,6 @@ ports:
 memory: 768
 panel_icon: "mdi:brain"
 options:
-  llm_mode: "byok"
   byok:
     provider: "anthropic"
     api_key: ""
@@ -34,7 +33,6 @@ options:
   custom_prompt: ""
   log_level: "info"
 schema:
-  llm_mode: "list(byok)"
   byok:
     provider: "list(anthropic|openai|openrouter|ollama)?"
     api_key: "password?"
