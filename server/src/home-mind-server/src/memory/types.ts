@@ -60,5 +60,6 @@ export interface IConversationStore {
   cleanupOldConversations(hoursOld?: number): number | Promise<number>;
   storeMessageEmbedding?(messageId: string, embedding: number[]): void | Promise<void>;
   searchSimilarMessages?(userId: string, embedding: number[], limit?: number): ConversationMessage[] | Promise<ConversationMessage[]>;
+  getMessagesWithoutEmbeddings?(userId: string, limit?: number): ConversationMessage[] | Promise<ConversationMessage[]>;
   close(): void;
 }
