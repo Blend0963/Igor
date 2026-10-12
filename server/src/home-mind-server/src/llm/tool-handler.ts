@@ -164,8 +164,8 @@ export async function handleToolCall(
         try {
           const response = await fetch("https://api.tavily.com/search", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ api_key: apiKey, query, search_depth: "basic", max_results: 5, include_answer: false }),
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+            body: JSON.stringify({ query, search_depth: "basic", max_results: 5, include_answer: false }),
             signal: AbortSignal.timeout(12000),
           });
           if (!response.ok) {
