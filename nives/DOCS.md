@@ -7,7 +7,7 @@ MaDo is an AI assistant for Home Assistant with persistent memory, conversation 
 1. Install the MaDo add-on from this repository in Home Assistant.
 2. In the add-on Configuration tab, set **LLM Mode** to **BYOK** and choose a supported provider.
 3. Enter your provider API key, model, and optional base URL.
-4. Optionally set **Web Search API Key** with a Mistral API key.
+4. Optionally set **Mistral API Key (Web Search)**.
 5. Start the add-on. Restart Home Assistant if prompted, then select **MaDo** as your Assist conversation agent.
 
 ## Language model providers
