@@ -78,8 +78,8 @@ export class LLMClient implements IChatEngine {
     const events = toStreamEvents(streamArg);
     const onChunk = events.onChunk;
     const { message, userId, conversationId, isVoice = false, customPrompt, language } = request;
-    // Home Assistant can omit conversationId for one-shot Assist requests. Keep those turns together per user.
-    const effectiveConversationId = conversationId ?? `mado-user:${userId}`;
+    // Use one durable conversation ID per MaDo user across Assist sessions, devices, and dates.
+    const effectiveConversationId = `mado-user:${userId}`;
     const toolsUsed: string[] = [];
     let announced = false;
     const turnId = randomUUID(); // nonce for this turn — powers the automation confirmation gate
@@ -125,7 +125,7 @@ export class LLMClient implements IChatEngine {
     const messages: Anthropic.MessageParam[] = [];
 
     if (effectiveConversationId) {
-      const history = await this.conversations.getConversationHistory(effectiveConversationId, 10);
+      const history = await this.conversations.getConversationHistory(effectiveConversationId, 20);
       for (const msg of history) {
         messages.push({ role: msg.role, content: msg.content });
       }
