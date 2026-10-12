@@ -79,8 +79,8 @@ export class OpenAIChatEngine implements IChatEngine {
       apiKey: config.openaiApiKey,
       baseURL: config.openaiBaseUrl,
       defaultHeaders: {
-        "HTTP-Referer": "https://nives.house",
-        "X-OpenRouter-Title": "Nives",
+        "HTTP-Referer": "https://github.com/Blend0963/MaDo",
+        "X-OpenRouter-Title": "MaDo",
         "X-OpenRouter-Categories": "personal-agent",
       },
     });
@@ -299,11 +299,11 @@ export class OpenAIChatEngine implements IChatEngine {
       // decided by which spelling of the cap parameter the model accepted, which
       // told us nothing on providers that accept both.
       const hint = spentBudgetOnReasoning(usage)
-        ? "Nives ran out of room before it could write the answer. The model " +
+        ? "MaDo ran out of room before it could write the answer. The model " +
           "spent this turn's budget working the problem out and had none left " +
           "for the reply. A shorter time range, or fewer sensors in one " +
           "question, will usually get it through."
-        : "Nives ran out of room before it could finish the answer. A shorter " +
+        : "MaDo ran out of room before it could finish the answer. A shorter " +
           "time range, or fewer sensors in one question, will usually get it " +
           "through.";
       return { code: "MAX_TOKENS_TRUNCATED", hint };

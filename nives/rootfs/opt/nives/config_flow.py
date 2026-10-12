@@ -1,4 +1,4 @@
-"""Config flow for Nives integration."""
+"""Config flow for MaDo integration."""
 
 from __future__ import annotations
 
@@ -25,7 +25,6 @@ from .const import (
     DEFAULT_SHARED_MEMORY,
     DEFAULT_USER_ID,
     API_HEALTH_ENDPOINT,
-    CLOUD_SIGNUP_URL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -76,14 +75,14 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
                         f"Token verification returned status {response.status}"
                     )
     except aiohttp.ClientError as err:
-        _LOGGER.error("Error connecting to Nives API: %s", err)
+        _LOGGER.error("Error connecting to MaDo API: %s", err)
         raise CannotConnect from err
 
-    return {"title": "Nives"}
+    return {"title": "MaDo"}
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Nives."""
+    """Handle a config flow for MaDo."""
 
     VERSION = 1
 
@@ -102,7 +101,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_hassio(
         self, discovery_info: HassioServiceInfo
     ) -> ConfigFlowResult:
-        """Handle discovery from the Nives add-on."""
+        """Handle discovery from the MaDo add-on."""
         config = discovery_info.config
         host = config.get("host", "")
         port = config.get("port", 3100)
@@ -130,7 +129,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_hassio_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Confirm Nives add-on discovery."""
+        """Confirm MaDo add-on discovery."""
         if user_input is not None:
             assert self._hassio_discovery is not None
             host = self._hassio_discovery["host"]
@@ -142,7 +141,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
             if api_token:
                 data[CONF_API_TOKEN] = api_token
-            return self.async_create_entry(title="Nives", data=data)
+            return self.async_create_entry(title="MaDo", data=data)
 
         return self.async_show_form(step_id="hassio_confirm")
 
@@ -168,7 +167,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=STEP_USER_DATA_SCHEMA,
-            description_placeholders={"cloud_url": CLOUD_SIGNUP_URL},
             errors=errors,
         )
 

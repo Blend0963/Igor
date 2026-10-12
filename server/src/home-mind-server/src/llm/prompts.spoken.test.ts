@@ -3,7 +3,7 @@ import { spokenVoicePointer, buildSystemPromptText } from "./prompts.js";
 
 // Measured before this existed (2026-09-08, the served model, 4 samples per arm):
 // the default persona already writes feminine Slovene unprompted, because
-// "Nives" is a feminine name. The defect is disagreement — a male voice under
+// the configured identity is neutral. The defect is disagreement — a male voice under
 // that persona still produced "Ugasnila sem", a woman's grammar in a man's
 // voice. With the pointer, all four samples flipped, and a HAL 9000 persona
 // under a female voice flipped the other way just as reliably.

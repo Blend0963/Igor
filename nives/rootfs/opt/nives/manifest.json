@@ -1,13 +1,24 @@
 {
   "domain": "nives",
-  "name": "Nives",
-  "codeowners": ["@hoornet"],
+  "name": "MaDo",
+  "codeowners": [
+    "@Blend0963"
+  ],
   "config_flow": true,
-  "after_dependencies": ["hassio"],
-  "dependencies": ["conversation", "ai_task", "stt", "tts"],
-  "documentation": "https://github.com/hoornet/nives",
+  "after_dependencies": [
+    "hassio"
+  ],
+  "dependencies": [
+    "conversation",
+    "ai_task",
+    "stt",
+    "tts"
+  ],
+  "documentation": "https://github.com/Blend0963/MaDo",
   "integration_type": "service",
   "iot_class": "local_polling",
-  "requirements": ["aiohttp>=3.8.0"],
-  "version": "2.7.1"
+  "requirements": [
+    "aiohttp>=3.8.0"
+  ],
+  "version": "0.1.0"
 }

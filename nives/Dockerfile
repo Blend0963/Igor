@@ -1,4 +1,4 @@
-# Nives — HA Add-on
+# MaDo — Home Assistant add-on
 # Bundles the Node.js conversation server + Shodh Memory (Rust) in one container
 # Ubuntu 24.04 base required: Shodh needs glibc 2.38+
 

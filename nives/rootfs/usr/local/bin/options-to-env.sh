@@ -33,22 +33,19 @@ SHODH_KEY=$(cat /data/.shodh_key)
 # there is nothing for the user to copy or configure.
 if [ ! -f /data/.api_token ]; then
     openssl rand -hex 32 > /data/.api_token
-    echo "[init] Generated a new API token for the Nives server"
+    echo "[init] Generated a new API token for the MaDo server"
 fi
 chmod 600 /data/.api_token /data/.shodh_key 2>/dev/null || true
 
 API_TOKEN=$(cat /data/.api_token)
 
-# Read options (nested cloud/byok structure)
-LLM_MODE=$(jq -r '.llm_mode // "cloud"' "$OPTIONS")
-PROXY_KEY=$(jq -r '.cloud.api_key // ""' "$OPTIONS")
-CLOUD_TRANSCRIPTION=$(jq -r '.cloud.transcription // false' "$OPTIONS")
-CLOUD_VOICE=$(jq -r '.cloud.voice // "off"' "$OPTIONS")
+# Read options (BYOK provider settings)
 LLM_PROVIDER=$(jq -r '.byok.provider // "anthropic"' "$OPTIONS")
 LLM_API_KEY=$(jq -r '.byok.api_key // ""' "$OPTIONS")
 LLM_MODEL=$(jq -r '.byok.model // ""' "$OPTIONS")
 LLM_BASE_URL=$(jq -r '.byok.base_url // ""' "$OPTIONS")
 CUSTOM_PROMPT=$(jq -r '.custom_prompt // ""' "$OPTIONS")
+MISTRAL_API_KEY=$(jq -r '.mistral_api_key // ""' "$OPTIONS")
 MAX_OUTPUT_TOKENS=$(jq -r '.max_output_tokens // ""' "$OPTIONS")
 REASONING_EFFORT=$(jq -r '.reasoning_effort // ""' "$OPTIONS")
 # `// ""` would turn an explicit false into "", so test for null instead.
@@ -57,138 +54,59 @@ TOOLS_FROM_EXPOSED=$(jq -r 'if .tools_from_exposed == null then "" else (.tools_
 LAYOUT_DOMAINS=$(jq -r '.layout_domains // ""' "$OPTIONS")
 LOG_LEVEL=$(jq -r '.log_level // "info"' "$OPTIONS")
 
-# --- LLM configuration ---
-# The server needs to know the mode itself (not just its consequences): the
-# balance watch runs only in cloud mode, where "top up at nives.house" is true.
-write_env "LLM_MODE" "$LLM_MODE"
-if [ "$LLM_MODE" = "cloud" ]; then
-    # Cloud mode: user's managed OpenRouter key (created via Nives Cloud)
-    write_env "LLM_PROVIDER" "openai"
-    write_env "OPENAI_API_KEY" "$PROXY_KEY"
-    write_env "OPENAI_BASE_URL" "https://openrouter.ai/api/v1"
+# --- LLM configuration: bring your own provider key ---
+write_env "LLM_MODE" "byok"
+# BYOK mode: user provides their own API key
+write_env "LLM_PROVIDER" "$LLM_PROVIDER"
 
-    # Ask Nives Cloud which model preset this key's plan maps to. The cloud
-    # returns @preset/nives-<tier>, so the model lineup is managed server-side
-    # with no add-on update. Bounded + failure-safe: falls back to a working
-    # default if the cloud is briefly unreachable (chat still goes direct to OR).
-    CLOUD_MODEL="@preset/nives-standard"
-    CLOUD_STT_MODEL=""
-    if [ -n "$PROXY_KEY" ]; then
-        CLOUD_CFG=$(curl -fsS --max-time 8 -H "Authorization: Bearer $PROXY_KEY" \
-            "https://nives.house/api/addon/config" 2>/dev/null || true)
-        RESOLVED=$(printf '%s' "$CLOUD_CFG" | jq -r '.model // ""' 2>/dev/null || true)
-        case "$RESOLVED" in
-            @preset/nives-*) CLOUD_MODEL="$RESOLVED" ;;
-        esac
-        # Optional and forward-looking: lets the transcription model be swapped
-        # server-side later without an add-on release, the same way the chat
-        # lineup already is. Absent today, which is why there is a default.
-        CLOUD_STT_MODEL=$(printf '%s' "$CLOUD_CFG" | jq -r '.stt_model // ""' 2>/dev/null || true)
-        CLOUD_TTS_MODEL=$(printf '%s' "$CLOUD_CFG" | jq -r '.tts_model // ""' 2>/dev/null || true)
-        echo "[init] cloud model: ${CLOUD_MODEL}"
-    fi
-    write_env "LLM_MODEL" "$CLOUD_MODEL"
+case "$LLM_PROVIDER" in
+    anthropic)
+        write_env "ANTHROPIC_API_KEY" "$LLM_API_KEY"
+        ;;
+    openai)
+        write_env "OPENAI_API_KEY" "$LLM_API_KEY"
+        [ -n "$LLM_BASE_URL" ] && write_env "OPENAI_BASE_URL" "$LLM_BASE_URL"
+        ;;
+    openrouter)
+        # OpenRouter is OpenAI-compatible — rewrite provider to openai
+        write_env "LLM_PROVIDER" "openai"
+        write_env "OPENAI_API_KEY" "$LLM_API_KEY"
+        write_env "OPENAI_BASE_URL" "https://openrouter.ai/api/v1"
+        ;;
+    ollama)
+        write_env "OLLAMA_BASE_URL" "${LLM_BASE_URL:-http://homeassistant:11434/v1}"
+        ;;
+esac
 
-    # --- Optional cloud transcription (opt-in, default off) ---
-    # Listening is billed to the same balance as chat, so it stays off until
-    # the user asks for it. When off we write nothing: the server's default
-    # STT_PROVIDER is "none" and /api/stt answers 501, which is what tells the
-    # integration not to offer a speech-to-text entity at all.
-    if [ "$CLOUD_TRANSCRIPTION" = "true" ] && [ -n "$PROXY_KEY" ]; then
-        write_env "STT_PROVIDER" "openai"
-        write_env "STT_API_KEY" "$PROXY_KEY"
-        write_env "STT_BASE_URL" "https://openrouter.ai/api/v1"
-        write_env "STT_MODEL" "${CLOUD_STT_MODEL:-openai/whisper-large-v3}"
-        echo "[init] cloud transcription: on (${CLOUD_STT_MODEL:-openai/whisper-large-v3})"
-    fi
-
-    # --- Optional cloud voice (opt-in, default off) ---
-    # Speaking is billed to the same balance as chat, so it stays off until the
-    # user picks a voice. When off we write nothing: the server's default
-    # TTS_PROVIDER is "none" and /api/tts answers 501, which is what tells the
-    # integration not to offer a text-to-speech entity at all.
-    #
-    # A voice is language-specific, so each choice carries its language with it.
-    # The integration advertises exactly that language rather than offering
-    # itself for every pipeline, and the language also has to reach the model:
-    # Slovene inflects the first person for the speaker's gender, so a female
-    # voice saying "Ugasnil sem" is wrong in a way no listener will forgive.
-    if [ "$CLOUD_VOICE" != "off" ] && [ -n "$PROXY_KEY" ]; then
-        # Gender travels with the voice on purpose. Slovene — like most Slavic
-        # languages, Hebrew and Arabic — inflects the first person for the
-        # speaker's own gender, so a man's voice saying "Ugasnila sem" is wrong
-        # in a way every native listener catches instantly. The voice decides,
-        # not the persona: the user hears the voice.
-        case "$CLOUD_VOICE" in
-            slovene_female) TTS_VOICE_ID="sl-SI-PetraNeural"; TTS_LANG="sl"; TTS_GENDER="female" ;;
-            slovene_male)   TTS_VOICE_ID="sl-SI-RokNeural";   TTS_LANG="sl"; TTS_GENDER="male" ;;
-            *)              TTS_VOICE_ID=""; TTS_LANG=""; TTS_GENDER="" ;;
-        esac
-        if [ -n "$TTS_VOICE_ID" ]; then
-            write_env "TTS_PROVIDER" "openai"
-            write_env "TTS_API_KEY" "$PROXY_KEY"
-            write_env "TTS_BASE_URL" "https://openrouter.ai/api/v1"
-            write_env "TTS_MODEL" "${CLOUD_TTS_MODEL:-microsoft/mai-voice-2}"
-            write_env "TTS_VOICE" "$TTS_VOICE_ID"
-            write_env "TTS_LANGUAGE" "$TTS_LANG"
-            write_env "TTS_VOICE_GENDER" "$TTS_GENDER"
-            echo "[init] cloud voice: on (${CLOUD_VOICE}, ${TTS_GENDER})"
-        else
-            echo "[init] cloud voice: unknown choice '${CLOUD_VOICE}', staying silent"
-        fi
-    fi
+# Model, with a per-provider default when the user leaves it blank.
+# Only OpenRouter used to get a default; every other provider fell through to
+# the server's own built-in default, which is an Anthropic model id. Pointing
+# that at OpenAI or Ollama gets a "model not found" error that reads like the
+# add-on is broken rather than like a missing setting.
+if [ -n "$LLM_MODEL" ]; then
+    write_env "LLM_MODEL" "$LLM_MODEL"
 else
-    # BYOK mode: user provides their own API key
-    write_env "LLM_PROVIDER" "$LLM_PROVIDER"
-
     case "$LLM_PROVIDER" in
-        anthropic)
-            write_env "ANTHROPIC_API_KEY" "$LLM_API_KEY"
+        openrouter)
+            write_env "LLM_MODEL" "anthropic/claude-haiku-4.5"
+            echo "[init] No model set — defaulting to anthropic/claude-haiku-4.5"
             ;;
         openai)
-            write_env "OPENAI_API_KEY" "$LLM_API_KEY"
-            [ -n "$LLM_BASE_URL" ] && write_env "OPENAI_BASE_URL" "$LLM_BASE_URL"
-            ;;
-        openrouter)
-            # OpenRouter is OpenAI-compatible — rewrite provider to openai
-            write_env "LLM_PROVIDER" "openai"
-            write_env "OPENAI_API_KEY" "$LLM_API_KEY"
-            write_env "OPENAI_BASE_URL" "https://openrouter.ai/api/v1"
+            write_env "LLM_MODEL" "gpt-5-mini"
+            echo "[init] No model set — defaulting to gpt-5-mini"
             ;;
         ollama)
-            write_env "OLLAMA_BASE_URL" "${LLM_BASE_URL:-http://homeassistant:11434/v1}"
+            echo "[init] WARNING: Ollama has no default model. Set 'Model' in the add-on"
+            echo "[init]          configuration to the name you pulled (e.g. qwen3:8b),"
+            echo "[init]          otherwise chat will fail with a model-not-found error."
+            ;;
+        anthropic)
+            # The server's built-in default is already an Anthropic model.
+            :
             ;;
     esac
-
-    # Model, with a per-provider default when the user leaves it blank.
-    # Only OpenRouter used to get a default; every other provider fell through to
-    # the server's own built-in default, which is an Anthropic model id. Pointing
-    # that at OpenAI or Ollama gets a "model not found" error that reads like the
-    # add-on is broken rather than like a missing setting.
-    if [ -n "$LLM_MODEL" ]; then
-        write_env "LLM_MODEL" "$LLM_MODEL"
-    else
-        case "$LLM_PROVIDER" in
-            openrouter)
-                write_env "LLM_MODEL" "anthropic/claude-haiku-4.5"
-                echo "[init] No model set — defaulting to anthropic/claude-haiku-4.5"
-                ;;
-            openai)
-                write_env "LLM_MODEL" "gpt-5-mini"
-                echo "[init] No model set — defaulting to gpt-5-mini"
-                ;;
-            ollama)
-                echo "[init] WARNING: Ollama has no default model. Set 'Model' in the add-on"
-                echo "[init]          configuration to the name you pulled (e.g. qwen3:8b),"
-                echo "[init]          otherwise chat will fail with a model-not-found error."
-                ;;
-            anthropic)
-                # The server's built-in default is already an Anthropic model.
-                :
-                ;;
-        esac
-    fi
 fi
+
 
 # --- Home Assistant (automatic via Supervisor) ---
 # SUPERVISOR_TOKEN may be in the s6 container environment or shell env
@@ -249,14 +167,14 @@ if mkdir -p "$(dirname "$TOKEN_HANDOFF")" 2>/dev/null &&
         write_env "API_TOKEN" "$API_TOKEN"
         echo "[init] API authentication enabled"
     else
-        echo "[init] API authentication not enabled yet — waiting for the Nives"
+        echo "[init] API authentication not enabled yet — waiting for the MaDo"
         echo "[init]          integration to confirm it has the access token."
         echo "[init]          This is normal right after an update; it takes effect"
         echo "[init]          the next time the add-on starts."
     fi
 else
     echo "[init] WARNING: could not write ${TOKEN_HANDOFF}."
-    echo "[init]          Leaving the Nives API unauthenticated so the integration"
+    echo "[init]          Leaving the MaDo API unauthenticated so the integration"
     echo "[init]          keeps working. Port 3100 is reachable by anything on the"
     echo "[init]          same network."
 fi
@@ -270,6 +188,7 @@ write_env "LOG_LEVEL" "$LOG_LEVEL"
 
 # --- Optional ---
 [ -n "$CUSTOM_PROMPT" ] && write_env "CUSTOM_PROMPT" "$CUSTOM_PROMPT"
+write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$MAX_OUTPUT_TOKENS" ] && write_env "MAX_OUTPUT_TOKENS" "$MAX_OUTPUT_TOKENS"
 [ -n "$REASONING_EFFORT" ] && write_env "REASONING_EFFORT" "$REASONING_EFFORT"
 [ -n "$LAYOUT_FROM_EXPOSED" ] && write_env "LAYOUT_FROM_EXPOSED" "$LAYOUT_FROM_EXPOSED"

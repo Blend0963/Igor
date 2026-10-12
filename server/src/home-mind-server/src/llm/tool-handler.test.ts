@@ -19,7 +19,7 @@ describe("handleToolCall", () => {
       getHistory: vi.fn().mockResolvedValue([{ state: "22" }]),
       createAutomation: vi.fn().mockResolvedValue({
         id: "1700000000000",
-        alias: "Nives: Kitchen lights at 20:00",
+        alias: "MaDo: Kitchen lights at 20:00",
         entity_id: "automation.kitchen_lights_at_20_00",
       }),
       listAutomations: vi.fn().mockResolvedValue([
@@ -28,14 +28,14 @@ describe("handleToolCall", () => {
           state: "on",
           attributes: {
             id: "1700000000000",
-            friendly_name: "Nives: Living room light off at 23:00",
+            friendly_name: "MaDo: Living room light off at 23:00",
           },
         },
       ]),
       deleteAutomation: vi.fn().mockResolvedValue(undefined),
       updateAutomation: vi.fn().mockResolvedValue({
         id: "1700000000000",
-        alias: "Nives: Living room light off at 22:00",
+        alias: "MaDo: Living room light off at 22:00",
         entity_id: "automation.living_room_light_off_at_23_00",
       }),
       listServices: vi.fn().mockResolvedValue({
@@ -46,6 +46,42 @@ describe("handleToolCall", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("reports that web search is not configured when no Mistral key is present", async () => {
+    delete process.env.MISTRAL_API_KEY;
+    const result = await handleToolCall(ha, "web_search", { query: "latest Home Assistant release" });
+    expect(result).toMatchObject({ error: expect.stringContaining("Mistral web search is not configured") });
+  });
+
+  it("uses Mistral Conversations API native web_search and preserves its outputs", async () => {
+    vi.stubEnv("MISTRAL_API_KEY", "test-mistral-key");
+    const outputs = [
+      { type: "message.output", content: [{ type: "text", text: "Latest release: 2026.10.1 (https://example.com/release)" }] },
+    ];
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ outputs }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await handleToolCall(ha, "web_search", { query: "latest Home Assistant release" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.mistral.ai/v1/conversations",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer test-mistral-key" }),
+        body: expect.stringContaining('"type":"web_search"'),
+      }),
+    );
+    expect(result).toMatchObject({
+      query: "latest Home Assistant release",
+      provider: "Mistral web_search",
+      outputs,
+    });
   });
 
   it("dispatches get_state to ha.getState", async () => {
@@ -116,7 +152,7 @@ describe("handleToolCall", () => {
     });
   });
 
-  it("dispatches create_automation to ha.createAutomation with a Nives: prefix", async () => {
+  it("dispatches create_automation to ha.createAutomation with a MaDo: prefix", async () => {
     const result = await handleToolCall(ha, "create_automation", {
       alias: "Kitchen lights at 20:00",
       trigger: { platform: "time", at: "20:00:00" },
@@ -124,7 +160,7 @@ describe("handleToolCall", () => {
     });
 
     expect(ha.createAutomation).toHaveBeenCalledWith({
-      alias: "Nives: Kitchen lights at 20:00",
+      alias: "MaDo: Kitchen lights at 20:00",
       trigger: { platform: "time", at: "20:00:00" },
       condition: undefined,
       action: { service: "light.turn_on", target: { entity_id: "light.kitchen" } },
@@ -133,19 +169,19 @@ describe("handleToolCall", () => {
     expect(result).toMatchObject({
       success: true,
       entity_id: "automation.kitchen_lights_at_20_00",
-      alias: "Nives: Kitchen lights at 20:00",
+      alias: "MaDo: Kitchen lights at 20:00",
     });
   });
 
-  it("does not double-prefix an alias that already starts with Nives:", async () => {
+  it("does not double-prefix an alias that already starts with MaDo:", async () => {
     await handleToolCall(ha, "create_automation", {
-      alias: "Nives: Porch at sunset",
+      alias: "MaDo: Porch at sunset",
       trigger: { platform: "sun", event: "sunset" },
       action: { service: "light.turn_on", target: { entity_id: "light.porch" } },
     });
 
     const call = (ha.createAutomation as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(call.alias).toBe("Nives: Porch at sunset");
+    expect(call.alias).toBe("MaDo: Porch at sunset");
   });
 
   it("returns an error when create_automation is missing a trigger", async () => {
@@ -189,7 +225,7 @@ describe("handleToolCall", () => {
     expect(result).toEqual([
       {
         entity_id: "automation.living_room_light_off_at_23_00",
-        name: "Nives: Living room light off at 23:00",
+        name: "MaDo: Living room light off at 23:00",
         state: "on",
         id: "1700000000000",
       },
@@ -205,7 +241,7 @@ describe("handleToolCall", () => {
     expect(result).toMatchObject({
       success: true,
       entity_id: "automation.living_room_light_off_at_23_00",
-      name: "Nives: Living room light off at 23:00",
+      name: "MaDo: Living room light off at 23:00",
     });
   });
 
@@ -227,7 +263,7 @@ describe("handleToolCall", () => {
     });
   });
 
-  it("dispatches update_automation: resolves entity_id, passes only provided fields with Nives: prefix", async () => {
+  it("dispatches update_automation: resolves entity_id, passes only provided fields with MaDo: prefix", async () => {
     const result = await handleToolCall(ha, "update_automation", {
       entity_id: "automation.living_room_light_off_at_23_00",
       alias: "Living room light off at 22:00",
@@ -235,7 +271,7 @@ describe("handleToolCall", () => {
     });
 
     expect(ha.updateAutomation).toHaveBeenCalledWith("1700000000000", {
-      alias: "Nives: Living room light off at 22:00",
+      alias: "MaDo: Living room light off at 22:00",
       trigger: { platform: "time", at: "22:00:00" },
     });
     expect(result).toMatchObject({
@@ -346,11 +382,11 @@ describe("handleToolCall confirmation gate", () => {
     ha = {
       createAutomation: vi.fn().mockResolvedValue({
         id: "1",
-        alias: "Nives: Kitchen lights at 20:00",
+        alias: "MaDo: Kitchen lights at 20:00",
         entity_id: "automation.kitchen_lights_at_20_00",
       }),
       listAutomations: vi.fn().mockResolvedValue([
-        { entity_id: "automation.x", state: "on", attributes: { id: "9", friendly_name: "Nives: X" } },
+        { entity_id: "automation.x", state: "on", attributes: { id: "9", friendly_name: "MaDo: X" } },
       ]),
       deleteAutomation: vi.fn().mockResolvedValue(undefined),
     } as unknown as HomeAssistantClient;
@@ -428,7 +464,7 @@ describe("handleToolCall confirmation gate", () => {
       ha,
       "create_automation",
       {
-        alias: "Nives: Kitchen lights at 20:00",
+        alias: "MaDo: Kitchen lights at 20:00",
         trigger: { at: "20:00:00", platform: "time" },
         action: { service: "light.turn_on", target: { entity_id: "light.kitchen" } },
       },
@@ -983,7 +1019,7 @@ describe("handleToolCall forget_memory", () => {
 
   it("coexists with a pending automation preview without cross-firing", async () => {
     const gateHa = {
-      createAutomation: vi.fn().mockResolvedValue({ id: "1", alias: "Nives: X", entity_id: "automation.x" }),
+      createAutomation: vi.fn().mockResolvedValue({ id: "1", alias: "MaDo: X", entity_id: "automation.x" }),
     } as unknown as HomeAssistantClient;
     const auto = { alias: "X", trigger: { platform: "time", at: "12:00" }, action: { service: "notify.foo" } };
 

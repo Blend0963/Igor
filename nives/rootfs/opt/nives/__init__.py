@@ -1,4 +1,4 @@
-"""Nives integration for Home Assistant."""
+"""MaDo integration for Home Assistant."""
 from __future__ import annotations
 
 import asyncio
@@ -72,7 +72,7 @@ def _read_token_file(path: str) -> str | None:
     except FileNotFoundError:
         return None
     except OSError as err:
-        _LOGGER.warning("Could not read the Nives API token at %s: %s", path, err)
+        _LOGGER.warning("Could not read the MaDo API token at %s: %s", path, err)
         return None
 
 
@@ -83,7 +83,7 @@ def _write_token_ack(path: str, token: str) -> None:
             handle.write(hashlib.sha256(token.encode()).hexdigest())
     except OSError as err:
         # Not fatal: the add-on simply keeps auth switched off.
-        _LOGGER.warning("Could not confirm the Nives API token at %s: %s", path, err)
+        _LOGGER.warning("Could not confirm the MaDo API token at %s: %s", path, err)
 
 
 async def _async_resolve_token(
@@ -93,7 +93,7 @@ async def _async_resolve_token(
 
     The file the add-on writes wins over anything stored in the entry, so
     rotating the token only takes a restart. The entry value remains the
-    fallback for setups where the integration talks to a Nives server it does
+    fallback for setups where the integration talks to a MaDo server it does
     not share a filesystem with (manual install against a remote add-on).
     """
     token = await hass.async_add_executor_job(
@@ -103,7 +103,7 @@ async def _async_resolve_token(
         await hass.async_add_executor_job(
             _write_token_ack, hass.config.path(TOKEN_ACK_RELPATH), token
         )
-        _LOGGER.info("Using the Nives API token handed over by the add-on")
+        _LOGGER.info("Using the MaDo API token handed over by the add-on")
         return token
 
     entry_token = entry.data.get(CONF_API_TOKEN, "").strip() or None
@@ -169,7 +169,7 @@ async def _async_setup_update_watch(hass: HomeAssistant, entry: ConfigEntry) -> 
 
 
 async def _async_setup_capability_watch(
-    hass: HomeAssistant, entry: NivesConfigEntry
+    hass: HomeAssistant, entry: MaDoConfigEntry
 ) -> None:
     """Reload the entry when the server's listening or speaking settings change.
 
@@ -193,7 +193,7 @@ async def _async_setup_capability_watch(
             and caps["tts_language"] == data.tts_language
         ):
             return
-        _LOGGER.info("Nives voice capabilities changed; reloading")
+        _LOGGER.info("MaDo voice capabilities changed; reloading")
         hass.config_entries.async_schedule_reload(entry.entry_id)
 
     entry.async_on_unload(
@@ -255,10 +255,10 @@ async def _async_server_capabilities(hass: HomeAssistant, api_url: str) -> dict:
     }
 
 
-async def _async_merge_memory(hass: HomeAssistant, entry: NivesConfigEntry) -> None:
+async def _async_merge_memory(hass: HomeAssistant, entry: MaDoConfigEntry) -> None:
     """Copy facts older versions wrote into per-user memories into the shared one.
 
-    Before 2.7.0 every Home Assistant user who spoke to Nives from the
+    Before 2.7.0 every Home Assistant user who spoke to MaDo from the
     dashboard or the app got a memory of their own, separate from the one
     voice satellites used (nives#65). Switching everyone to one memory without
     this would make those facts look forgotten, which is the very failure
@@ -279,7 +279,7 @@ async def _async_merge_memory(hass: HomeAssistant, entry: NivesConfigEntry) -> N
                 if response.status != 200:
                     _LOGGER.warning(
                         "Could not merge older memories into the shared memory: "
-                        "the Nives server answered HTTP %s: %s",
+                        "the MaDo server answered HTTP %s: %s",
                         response.status,
                         (await response.text())[:300],
                     )
@@ -287,7 +287,7 @@ async def _async_merge_memory(hass: HomeAssistant, entry: NivesConfigEntry) -> N
                 result = await response.json()
         except (aiohttp.ClientError, TimeoutError) as err:
             _LOGGER.debug(
-                "Memory merge attempt %s/%s could not reach the Nives server: %s",
+                "Memory merge attempt %s/%s could not reach the MaDo server: %s",
                 attempt, MERGE_ATTEMPTS, err,
             )
             if attempt < MERGE_ATTEMPTS:
@@ -300,8 +300,8 @@ async def _async_merge_memory(hass: HomeAssistant, entry: NivesConfigEntry) -> N
             )
         return
     _LOGGER.warning(
-        "Could not reach the Nives server to merge older memories into the shared "
-        "memory. Nives will try again the next time it is loaded."
+        "Could not reach the MaDo server to merge older memories into the shared "
+        "memory. MaDo will try again the next time it is loaded."
     )
 
 
@@ -312,8 +312,8 @@ def _base_language(language: str) -> str | None:
 
 
 @dataclass
-class NivesData:
-    """Runtime data for a Nives config entry."""
+class MaDoData:
+    """Runtime data for a MaDo config entry."""
 
     api_url: str
     api_token: str | None
@@ -330,18 +330,18 @@ class NivesData:
     platforms: list[Platform] = field(default_factory=list)
 
 
-type NivesConfigEntry = ConfigEntry[NivesData]
+type MaDoConfigEntry = ConfigEntry[MaDoData]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: NivesConfigEntry) -> bool:
-    """Set up Nives from a config entry."""
+async def async_setup_entry(hass: HomeAssistant, entry: MaDoConfigEntry) -> bool:
+    """Set up MaDo from a config entry."""
     api_url = entry.data.get(CONF_API_URL, "").rstrip("/")
     caps = await _async_server_capabilities(hass, api_url)
     platforms = _get_platforms(caps["stt"], caps["tts"])
     # The options flow writes entry.options; entry.data holds what the entry
     # was created with. An option, once set, wins.
     settings = {**entry.data, **entry.options}
-    entry.runtime_data = NivesData(
+    entry.runtime_data = MaDoData(
         api_url=api_url,
         api_token=await _async_resolve_token(hass, entry),
         user_id=str(settings.get(CONF_USER_ID) or "").strip() or DEFAULT_USER_ID,
@@ -360,13 +360,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: NivesConfigEntry) -> boo
     return True
 
 
-async def _async_update_listener(hass: HomeAssistant, entry: NivesConfigEntry) -> None:
+async def _async_update_listener(hass: HomeAssistant, entry: MaDoConfigEntry) -> None:
     """Reload the config entry when options change, so a changed memory
     setting applies at once (and runs the merge when shared memory is on)."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: NivesConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: MaDoConfigEntry) -> bool:
     """Unload a config entry."""
     platforms = getattr(entry.runtime_data, "platforms", None) or _get_platforms()
     return await hass.config_entries.async_unload_platforms(entry, platforms)

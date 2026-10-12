@@ -1,9 +1,9 @@
-name: "Nives"
-version: "2.7.1"
-slug: "nives"
-description: "AI assistant with cognitive memory for Home Assistant"
-url: "https://github.com/hoornet/nives"
-image: ghcr.io/hoornet/nives-{arch}
+name: "MaDo"
+version: "0.1.0"
+slug: "mado"
+description: "MaDo — assistant IA pour Home Assistant avec mémoire persistante"
+url: "https://github.com/Blend0963/MaDo"
+image: ghcr.io/blend0963/mado-{arch}
 arch:
   - amd64
   - aarch64
@@ -24,38 +24,23 @@ ports:
 memory: 768
 panel_icon: "mdi:brain"
 options:
-  llm_mode: "cloud"
-  cloud:
-    api_key: ""
-    transcription: false
-    voice: "off"
   byok:
     provider: "anthropic"
     api_key: ""
     model: ""
     base_url: ""
+  mistral_api_key: ""
   custom_prompt: ""
   log_level: "info"
 schema:
-  llm_mode: "list(cloud|byok)"
-  cloud:
-    # password: masked in the Configuration tab (eye icon to reveal), so a
-    # screenshot of the settings doesn't show the key. Still a plain string.
-    api_key: "password?"
-    transcription: "bool?"
-    # The voice Nives speaks replies in, or "off" to leave speaking to whatever
-    # voice the user's Assist pipeline already has (Piper, HA Cloud...). Each
-    # choice is a voice native to that language, so the list is short and grows
-    # only as languages are tested. HA shows list values raw and cannot relabel
-    # them, so the explanation lives in the translation's description.
-    voice: "list(off|slovene_female|slovene_male)?"
   byok:
     provider: "list(anthropic|openai|openrouter|ollama)?"
     api_key: "password?"
     model: "str?"
     base_url: "str?"
+  mistral_api_key: "password?"
   custom_prompt: "str?"
-  # Ceiling on one written reply. Left unset, Nives picks its own. Deliberately
+  # Ceiling on one written reply. Left unset, MaDo picks its own. Deliberately
   # absent from `options:` above so that "unset" stays a real state rather than
   # a magic number, and so the built-in default can be improved without every
   # existing install being pinned to whatever today's value happens to be.
@@ -64,7 +49,7 @@ schema:
   # same reason: unset sends nothing and leaves the model on its own default.
   reasoning_effort: "list(none|minimal|low|medium|high)?"
   # All three absent from `options:` for the same reason as max_output_tokens:
-  # unset means "Nives decides", which today is the list of entities exposed to
+  # unset means "MaDo decides", which today is the list of entities exposed to
   # Assist, for the room map and for what the assistant can reach.
   layout_from_exposed: "bool?"
   tools_from_exposed: "bool?"

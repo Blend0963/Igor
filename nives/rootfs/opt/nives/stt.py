@@ -1,8 +1,8 @@
-"""Speech-to-text platform for Nives.
+"""Speech-to-text platform for MaDo.
 
-Registers Nives as a Speech-to-text option in the Assist pipeline, so the
+Registers MaDo as a Speech-to-text option in the Assist pipeline, so the
 add-on can do the listening as well as the thinking. Audio is streamed here as
-raw PCM by Assist, wrapped in a WAV container, and posted to the Nives server's
+raw PCM by Assist, wrapped in a WAV container, and posted to the MaDo server's
 transcription endpoint.
 
 The entity exists only when the server reports transcription is switched on
@@ -25,7 +25,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import NivesConfigEntry
+from . import MaDoConfigEntry
 from .const import (
     API_STT_ENDPOINT,
     LANGUAGE_ALIASES,
@@ -39,11 +39,11 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: NivesConfigEntry,
+    config_entry: MaDoConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the Nives speech-to-text entity from a config entry."""
-    async_add_entities([NivesSttEntity(hass, config_entry)])
+    """Set up the MaDo speech-to-text entity from a config entry."""
+    async_add_entities([MaDoSttEntity(hass, config_entry)])
 
 
 def _wav_container(pcm: bytes, sample_rate: int, channels: int, bits: int) -> bytes:
@@ -69,13 +69,13 @@ def _wav_container(pcm: bytes, sample_rate: int, channels: int, bits: int) -> by
     )
 
 
-class NivesSttEntity(stt.SpeechToTextEntity):
-    """Nives speech-to-text provider."""
+class MaDoSttEntity(stt.SpeechToTextEntity):
+    """MaDo speech-to-text provider."""
 
     _attr_has_entity_name = True
     _attr_name = "Speech-to-text"
 
-    def __init__(self, hass: HomeAssistant, entry: NivesConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: MaDoConfigEntry) -> None:
         """Initialize the speech-to-text entity."""
         self.hass = hass
         self.entry = entry
@@ -84,8 +84,8 @@ class NivesSttEntity(stt.SpeechToTextEntity):
         self._attr_unique_id = f"{entry.entry_id}_stt"
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(entry.domain, entry.entry_id)},
-            name="Nives",
-            manufacturer="Nives",
+            name="MaDo",
+            manufacturer="MaDo",
             model="AI Assistant",
             entry_type=dr.DeviceEntryType.SERVICE,
         )
@@ -157,7 +157,7 @@ class NivesSttEntity(stt.SpeechToTextEntity):
         try:
             text = await self._transcribe(audio, language)
         except (aiohttp.ClientError, TimeoutError) as err:
-            _LOGGER.error("Couldn't reach the Nives server to transcribe: %s", err)
+            _LOGGER.error("Couldn't reach the MaDo server to transcribe: %s", err)
             return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
 
         if text is None:
@@ -165,7 +165,7 @@ class NivesSttEntity(stt.SpeechToTextEntity):
         return stt.SpeechResult(text, stt.SpeechResultState.SUCCESS)
 
     async def _transcribe(self, audio: bytes, language: str | None) -> str | None:
-        """POST the audio to the Nives server. None means "no usable text"."""
+        """POST the audio to the MaDo server. None means "no usable text"."""
         data = self.entry.runtime_data
         url = f"{data.api_url}{API_STT_ENDPOINT}"
 
@@ -190,7 +190,7 @@ class NivesSttEntity(stt.SpeechToTextEntity):
             if response.status != 200:
                 body = await response.text()
                 _LOGGER.error(
-                    "Nives transcription failed: HTTP %s — %s",
+                    "MaDo transcription failed: HTTP %s — %s",
                     response.status,
                     body[:200],
                 )

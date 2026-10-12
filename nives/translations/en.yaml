@@ -1,47 +1,10 @@
 configuration:
-  llm_mode:
-    name: LLM Mode
-    description: >-
-      Choose "cloud" to use the managed Nives AI service, or "byok" to bring your own API key.
-  cloud:
-    name: "Nives Cloud"
-    description: >-
-      Settings for Nives Cloud mode. New sign-ups are paused for now; keys you
-      already have keep working, top-ups included.
-    fields:
-      api_key:
-        name: Nives API Key
-        description: >-
-          Your Nives API key, from your nives.house dashboard. Required when LLM Mode is "cloud".
-      transcription:
-        name: Transcription (let Nives do the listening)
-        description: >-
-          Off by default. When on, Nives offers itself as a Speech-to-text choice
-          in your Assist pipeline and transcribes what you say, paid from your
-          Nives balance — better with names and with languages other than English
-          than engines running on your own box. Note this sends the audio of your
-          spoken requests to be transcribed; with it off, only your written
-          request goes out. Cloud mode only. After changing this, restart the
-          add-on; Nives updates Home Assistant on its own within a few minutes.
-      voice:
-        name: Voice (only for languages your assistant can't already speak well)
-        description: >-
-          Leave this on "off" to keep the voice your Assist pipeline already uses,
-          such as Piper or Home Assistant Cloud. That is the right choice for
-          English and most languages. Choose a voice here only when Nives offers
-          one for your language that sounds better than what you have. Today that
-          is Slovene, with a female and a male voice. Once chosen and the add-on
-          restarted, Nives appears as a Text-to-speech choice in your Assist
-          pipeline (Settings, Voice assistants), provided that assistant's own
-          Language, at the top of its settings, matches the voice. Speaking is
-          paid from your Nives balance. Cloud mode only.
   byok:
     name: "Bring Your Own Key (BYOK)"
     description: >-
       Settings for using your own API key. Your model must support function/tool
-      calling, which is how Nives controls your home. Going deep on local or
-      custom models? The open-source home-mind project is built around that, and
-      it is the same engine. Only used when LLM Mode is "byok".
+      calling, which is how MaDo controls your home. Going deep on local or
+      custom models? Only used when LLM Mode is "byok".
     fields:
       provider:
         name: Provider
@@ -61,18 +24,23 @@ configuration:
         description: >-
           Custom API endpoint. Required for Ollama (e.g. http://homeassistant:11434/v1).
           Leave empty for cloud providers.
+  mistral_api_key:
+    name: Mistral API Key (Web Search)
+    description: >-
+      Optional Mistral API key used for Mistral's native web_search tool through
+      the Conversations API. This is separate from your selected chat provider.
   custom_prompt:
     name: Custom Prompt
     description: >-
       Give the assistant its personality — whatever you write here replaces the
-      default Nives persona outright, so one sentence describing who it is does
+      default MaDo persona outright, so one sentence describing who it is does
       the job (e.g. "You are HAL 9000, the calm and precise computer from 2001").
-      Applies once the add-on restarts. Leave empty for the default Nives persona.
+      Applies once the add-on restarts. Leave empty for the default MaDo persona.
   max_output_tokens:
     name: Maximum Answer Length
     description: >-
       How much room one written answer gets, counted in tokens. Leave this empty
-      and Nives chooses for you. Raise it if long answers stop before they
+      and MaDo chooses for you. Raise it if long answers stop before they
       finish, which is most likely when you ask about several sensors at once or
       over a long period. Longer answers cost a little more. Spoken answers are
       not affected and stay short, because they are read out loud.
@@ -86,19 +54,19 @@ configuration:
   layout_from_exposed:
     name: Room map from exposed entities
     description: >-
-      On by default. The room map Nives keeps of your home lists the entities you
+      On by default. The room map MaDo keeps of your home lists the entities you
       have exposed to Assist (Settings, Voice assistants, Expose), which is what
       Home Assistant's own assistant sees too. Turn it off to list entities by
       type instead, as before. This only decides which entities appear in the
-      map; what Nives can read and control is the next setting.
+      map; what MaDo can read and control is the next setting.
   tools_from_exposed:
-    name: Limit Nives to exposed entities
+    name: Limit MaDo to exposed entities
     description: >-
-      On by default. Nives can read and control only the entities you have
+      On by default. MaDo can read and control only the entities you have
       exposed to Assist (Settings, Voice assistants, Expose), just like Home
       Assistant's own assistant. An exposed group still controls all of its
-      members. Something you expose while Nives is running is picked up within
-      30 minutes, or straight away after a restart. Turn this off to let Nives
+      members. Something you expose while MaDo is running is picked up within
+      30 minutes, or straight away after a restart. Turn this off to let MaDo
       reach every entity in the house again.
   layout_domains:
     name: Room map entity types

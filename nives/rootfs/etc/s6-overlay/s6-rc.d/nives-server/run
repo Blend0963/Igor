@@ -13,6 +13,6 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
-echo "[server] Starting Nives server on port 3100..."
+echo "[server] Starting MaDo server on port 3100..."
 cd /opt/nives
 exec node dist/index.js
