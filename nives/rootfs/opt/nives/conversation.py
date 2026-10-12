@@ -1,4 +1,4 @@
-"""Conversation agent for Nives."""
+"""Conversation agent for MaDo."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ except ImportError:  # very old cores
         """Fallback id for cores without the ulid helper."""
         return uuid4().hex
 
-from . import NivesConfigEntry
+from . import MaDoConfigEntry
 from .const import (
     API_CHAT_ENDPOINT,
     API_CHAT_STREAM_ENDPOINT,
@@ -50,7 +50,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class UsageLimitError(Exception):
-    """Raised when the Nives server returns HTTP 402 (usage limit reached)."""
+    """Raised when the MaDo server returns HTTP 402 (usage limit reached)."""
 
 
 class StreamUnavailable(Exception):
@@ -59,22 +59,22 @@ class StreamUnavailable(Exception):
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: NivesConfigEntry,
+    config_entry: MaDoConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up conversation agent from a config entry."""
-    async_add_entities([NivesConversationAgent(hass, config_entry)])
+    async_add_entities([MaDoConversationAgent(hass, config_entry)])
 
 
-class NivesConversationAgent(ConversationEntity):
-    """Nives conversation agent."""
+class MaDoConversationAgent(ConversationEntity):
+    """MaDo conversation agent."""
 
     _attr_has_entity_name = True
     _attr_name = None  # entity name = device name
     _attr_supported_features = ConversationEntityFeature.CONTROL
     _attr_translation_key = "nives"
 
-    def __init__(self, hass: HomeAssistant, entry: NivesConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: MaDoConfigEntry) -> None:
         """Initialize the agent."""
         self.hass = hass
         self.entry = entry
@@ -83,8 +83,8 @@ class NivesConversationAgent(ConversationEntity):
         self._attr_unique_id = entry.entry_id
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(entry.domain, entry.entry_id)},
-            name="Nives",
-            manufacturer="Nives",
+            name="MaDo",
+            manufacturer="MaDo",
             model="AI Assistant",
             entry_type=dr.DeviceEntryType.SERVICE,
         )
@@ -157,19 +157,19 @@ class NivesConversationAgent(ConversationEntity):
         except UsageLimitError:
             return await self._usage_limit_result(user_input, conversation_id)
         except aiohttp.ClientResponseError as err:
-            _LOGGER.error("Nives server returned an error: %s", err.message)
+            _LOGGER.error("MaDo server returned an error: %s", err.message)
             return self._error_result(
                 user_input,
                 conversation_id,
-                f"Sorry, the Nives server returned an error (HTTP {err.status}). "
+                f"Sorry, the MaDo server returned an error (HTTP {err.status}). "
                 "The add-on log has the details.",
             )
         except (aiohttp.ClientError, TimeoutError) as err:
-            _LOGGER.error("Error calling Nives API: %s", err)
+            _LOGGER.error("Error calling MaDo API: %s", err)
             return self._error_result(
                 user_input,
                 conversation_id,
-                "Sorry, I couldn't reach the Nives server right now.",
+                "Sorry, I couldn't reach the MaDo server right now.",
             )
 
         return self._result_from_chat_log(user_input, chat_log)
@@ -219,7 +219,7 @@ class NivesConversationAgent(ConversationEntity):
             # The stream ended without a `done` event and without text: the
             # connection dropped mid-reply. Say so rather than show nothing.
             yield {"role": "assistant"}
-            yield {"content": "Sorry, I lost the connection to the Nives server mid-reply."}
+            yield {"content": "Sorry, I lost the connection to the MaDo server mid-reply."}
 
     async def _stream_events(
         self,
@@ -297,16 +297,16 @@ class NivesConversationAgent(ConversationEntity):
         self, user_input: ConversationInput, conversation_id: str | None
     ) -> ConversationResult:
         """Tell the user the balance is gone, once in the dialog and once as a notification."""
-        _LOGGER.warning("Nives usage limit reached")
+        _LOGGER.warning("MaDo usage limit reached")
         await self.hass.services.async_call(
             "persistent_notification",
             "create",
             {
-                "title": "Nives — Out of balance",
+                "title": "MaDo — Out of balance",
                 "message": (
-                    "Nives has used up its available balance. "
+                    "MaDo has used up its available balance. "
                     "Top up at nives.house — or, if you bring your own "
-                    "key, add credit with your provider — and Nives "
+                    "key, add credit with your provider — and MaDo "
                     "picks right back up."
                 ),
                 "notification_id": "nives_usage_limit",
@@ -372,16 +372,16 @@ class NivesConversationAgent(ConversationEntity):
                 is_voice=is_voice,
             )
         except UsageLimitError:
-            _LOGGER.warning("Nives usage limit reached")
+            _LOGGER.warning("MaDo usage limit reached")
             await self.hass.services.async_call(
                 "persistent_notification",
                 "create",
                 {
-                    "title": "Nives — Out of balance",
+                    "title": "MaDo — Out of balance",
                     "message": (
-                        "Nives has used up its available balance. "
+                        "MaDo has used up its available balance. "
                         "Top up at nives.house — or, if you bring your own "
-                        "key, add credit with your provider — and Nives "
+                        "key, add credit with your provider — and MaDo "
                         "picks right back up."
                     ),
                     "notification_id": "nives_usage_limit",
@@ -400,11 +400,11 @@ class NivesConversationAgent(ConversationEntity):
             # The server ANSWERED — with an error status. Saying "couldn't
             # reach the server" here sends people debugging connectivity when
             # the log already names the real problem (#63, and #1 before it).
-            _LOGGER.error("Nives server returned an error: %s", err.message)
+            _LOGGER.error("MaDo server returned an error: %s", err.message)
             intent_response = intent.IntentResponse(language=user_input.language)
             intent_response.async_set_error(
                 intent.IntentResponseErrorCode.UNKNOWN,
-                f"Sorry, the Nives server returned an error (HTTP {err.status}). "
+                f"Sorry, the MaDo server returned an error (HTTP {err.status}). "
                 "The add-on log has the details.",
             )
             return ConversationResult(
@@ -412,11 +412,11 @@ class NivesConversationAgent(ConversationEntity):
                 conversation_id=conversation_id,
             )
         except (aiohttp.ClientError, TimeoutError) as err:
-            _LOGGER.error("Error calling Nives API: %s", err)
+            _LOGGER.error("Error calling MaDo API: %s", err)
             intent_response = intent.IntentResponse(language=user_input.language)
             intent_response.async_set_error(
                 intent.IntentResponseErrorCode.UNKNOWN,
-                "Sorry, I couldn't reach the Nives server right now.",
+                "Sorry, I couldn't reach the MaDo server right now.",
             )
             return ConversationResult(
                 response=intent_response,
@@ -460,7 +460,7 @@ class NivesConversationAgent(ConversationEntity):
         language: str | None = None,
         is_voice: bool = False,
     ) -> str:
-        """Call the Nives API."""
+        """Call the MaDo API."""
         url = f"{api_url}{API_CHAT_ENDPOINT}"
 
         payload: dict = {
