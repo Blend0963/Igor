@@ -1,4 +1,4 @@
-"""Constants for Nives integration."""
+"""Constants for MaDo integration."""
 
 DOMAIN = "nives"
 CONF_API_URL = "api_url"
@@ -57,7 +57,7 @@ STT_LANGUAGES = [
     "ta", "te", "tg", "th", "tk", "tl", "tr", "tt", "uk", "ur", "uz", "vi",
     "yi", "yo", "yue", "zh",
     # Home Assistant's own code for Norwegian, translated on the way out — see
-    # LANGUAGE_ALIASES. Advertising it is what lets Assist pick Nives at all
+    # LANGUAGE_ALIASES. Advertising it is what lets Assist pick MaDo at all
     # for a Norwegian pipeline; the match is exact, with no fallback to "no".
     "nb",
 ]
