@@ -58,5 +58,7 @@ export interface IConversationStore {
   deleteConversation(conversationId: string): number | Promise<number>;
   getKnownUsers(): string[];
   cleanupOldConversations(hoursOld?: number): number | Promise<number>;
+  storeMessageEmbedding?(messageId: string, embedding: number[]): void | Promise<void>;
+  searchSimilarMessages?(userId: string, embedding: number[], limit?: number): ConversationMessage[] | Promise<ConversationMessage[]>;
   close(): void;
 }
