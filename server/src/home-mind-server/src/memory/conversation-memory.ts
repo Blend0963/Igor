@@ -28,8 +28,8 @@ export class InMemoryConversationStore implements IConversationStore {
       createdAt: new Date(),
     });
 
-    // Keep only last 20 messages per conversation
-    if (messages.length > 20) {
+    // Keep a longer durable history for MaDo's shared cross-device conversation.
+    if (!conversationId.startsWith("mado-user:") && messages.length > 20) {
       messages.shift();
     }
 
@@ -96,7 +96,7 @@ export class InMemoryConversationStore implements IConversationStore {
 
     for (const [convId, messages] of this.conversations.entries()) {
       const lastMessage = messages[messages.length - 1];
-      if (lastMessage && lastMessage.createdAt.getTime() < cutoff) {
+      if (!convId.startsWith("mado-user:") && lastMessage && lastMessage.createdAt.getTime() < cutoff) {
         this.conversations.delete(convId);
         deleted += messages.length;
       }
