@@ -66,8 +66,9 @@ export class SqliteConversationStore implements IConversationStore {
        VALUES (?, ?, ?, ?, ?, ?)`
     ).run(id, conversationId, userId, role, content, now);
 
-    // Keep only last 20 messages per conversation
-    this.db.prepare(
+    // Keep a longer durable history for MaDo's shared cross-device conversation.
+    // Other transient conversations retain the existing 20-message cap.
+    if (!conversationId.startsWith("mado-user:")) this.db.prepare(
       `DELETE FROM messages WHERE id IN (
         SELECT id FROM messages
         WHERE conversation_id = ?
@@ -179,6 +180,7 @@ export class SqliteConversationStore implements IConversationStore {
     const result = this.db.prepare(
       `DELETE FROM messages WHERE conversation_id IN (
         SELECT conversation_id FROM messages
+        WHERE conversation_id NOT LIKE 'mado-user:%'
         GROUP BY conversation_id
         HAVING MAX(created_at) < ?
       )`
