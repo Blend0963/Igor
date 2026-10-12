@@ -2,45 +2,45 @@
   "config": {
     "step": {
       "user": {
-        "title": "Configure Nives",
-        "description": "Enter the URL of your Nives API server. Don't have a server? Get a hosted one at [{cloud_url}]({cloud_url}).",
+        "title": "Configure MaDo",
+        "description": "Enter the URL of your MaDo API server. Don't have a server? Get a hosted one at [{cloud_url}]({cloud_url}).",
         "data": {
           "api_url": "API URL",
           "api_token": "API Token (optional)",
           "user_id": "Memory name (optional)"
         },
         "data_description": {
-          "api_token": "Required for cloud-hosted Nives. Leave empty for self-hosted setups without authentication.",
-          "user_id": "The name of the memory Nives keeps for your household. Leave it as 'default'. You can change it later, and choose whether everyone shares one memory, under Configure."
+          "api_token": "Required for cloud-hosted MaDo. Leave empty for self-hosted setups without authentication.",
+          "user_id": "The name of the memory MaDo keeps for your household. Leave it as 'default'. You can change it later, and choose whether everyone shares one memory, under Configure."
         }
       },
       "hassio_confirm": {
-        "title": "Nives Detected",
-        "description": "The Nives add-on has been detected. Would you like to set it up?"
+        "title": "MaDo Detected",
+        "description": "The MaDo add-on has been detected. Would you like to set it up?"
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to the Nives API. Make sure it's running and accessible.",
-      "invalid_auth": "Invalid API token. Check your token on the Nives dashboard.",
+      "cannot_connect": "Failed to connect to the MaDo API. Make sure it's running and accessible.",
+      "invalid_auth": "Invalid API token. Check your token on the MaDo dashboard.",
       "unknown": "Unexpected error occurred."
     },
     "abort": {
-      "already_configured": "Nives is already configured.",
-      "cannot_connect": "Could not connect to the Nives add-on. Make sure it's running."
+      "already_configured": "MaDo is already configured.",
+      "cannot_connect": "Could not connect to the MaDo add-on. Make sure it's running."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Memory",
-        "description": "Choose whether everyone in your home shares one memory with Nives.",
+        "description": "Choose whether everyone in your home shares one memory with MaDo.",
         "data": {
           "shared_memory": "Shared memory",
           "user_id": "Memory name"
         },
         "data_description": {
           "shared_memory": "On (recommended): everyone shares one memory, so something you tell a voice satellite is also known in the app and on the dashboard, and the other way round. Off: each Home Assistant user gets a memory of their own, and voice satellites and automations use the memory named below.",
-          "user_id": "The memory Nives uses for the whole household, or, with shared memory off, for voice satellites and automations. Leave it as 'default' unless you have a reason to change it."
+          "user_id": "The memory MaDo uses for the whole household, or, with shared memory off, for voice satellites and automations. Leave it as 'default' unless you have a reason to change it."
         }
       }
     }
@@ -48,7 +48,7 @@
   "entity": {
     "conversation": {
       "nives": {
-        "name": "Nives"
+        "name": "MaDo"
       }
     }
   },
@@ -59,7 +59,7 @@
         "step": {
           "confirm": {
             "title": "Restart required",
-            "description": "Home Assistant needs a restart to finish updating Nives ({running_version} → {installed_version}). Click Submit to restart Home Assistant now — or close this and restart later, at a moment that suits you. Nives keeps working in the meantime."
+            "description": "Home Assistant needs a restart to finish updating MaDo ({running_version} → {installed_version}). Click Submit to restart Home Assistant now — or close this and restart later, at a moment that suits you. MaDo keeps working in the meantime."
           }
         }
       }
