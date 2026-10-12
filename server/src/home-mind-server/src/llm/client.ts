@@ -242,7 +242,7 @@ export class LLMClient implements IChatEngine {
     const responseText = textContent?.type === "text" ? textContent.text : "";
 
     // 6. Store assistant response in conversation history
-    if (conversationId && responseText) {
+    if (effectiveConversationId && responseText) {
       this.conversations.storeMessage(effectiveConversationId, userId, "assistant", responseText);
     }
 
