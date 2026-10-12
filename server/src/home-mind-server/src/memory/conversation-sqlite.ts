@@ -129,34 +129,6 @@ export class SqliteConversationStore implements IConversationStore {
     }));
   }
 
-  searchMessages(userId: string, query: string, limit: number = 6): ConversationMessage[] {
-    // Search the complete retained history for this user, not just the latest context window.
-    const terms = [...new Set(query.toLocaleLowerCase().normalize("NFD")
-      .replace(/[\\u0300-\\u036f]/g, "").match(/[a-z0-9]{3,}/g) ?? [])]
-      .filter((term) => !new Set(["rappelle", "rappeler", "souviens", "souviens", "mado", "retrouve", "conversation", "parlais", "parlait", "remember", "recall", "about", "what", "when", "where", "with", "that", "this", "from", "were", "have", "avait", "avais", "dans", "pour", "avec", "estce", "quoi", "comment", "quel", "quelle", "quels", "quelles"]).has(term));
-    if (terms.length === 0) return [];
-    const rows = this.db.prepare(`
-      SELECT id, conversation_id, user_id, role, content, created_at
-      FROM messages WHERE user_id = ?
-      ORDER BY rowid DESC LIMIT 5000
-    `).all(userId) as Array<{
-      id: string; conversation_id: string; user_id: string;
-      role: "user" | "assistant"; content: string; created_at: string;
-    }>;
-    const scored = rows.map((row) => {
-      const text = row.content.toLocaleLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g, "");
-      const score = terms.reduce((total, term) => total + (text.includes(term) ? 1 + Math.min(2, (text.split(term).length - 1) * 0.15) : 0), 0);
-      return { row, score };
-    }).filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score || b.row.created_at.localeCompare(a.row.created_at))
-      .slice(0, limit)
-      .sort((a, b) => a.row.created_at.localeCompare(b.row.created_at));
-    return scored.map(({ row }) => ({
-      id: row.id, conversationId: row.conversation_id, userId: row.user_id,
-      role: row.role, content: row.content, createdAt: new Date(row.created_at),
-    }));
-  }
-
   listConversations(userId: string): ConversationSummary[] {
     const rows = this.db.prepare(
       `SELECT
