@@ -29,7 +29,7 @@ export class SqliteConversationStore implements IConversationStore {
       );
       CREATE INDEX IF NOT EXISTS idx_messages_conv_id ON messages(conversation_id);
       CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
-      CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);\n      CREATE TABLE IF NOT EXISTS message_embeddings (\n        message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,\n        embedding TEXT NOT NULL\n      );
 
       -- Users we have ever seen. Deliberately separate from messages: message
       -- rows are pruned after 24h by cleanupOldConversations(), so deriving the
