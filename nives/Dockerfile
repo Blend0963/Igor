@@ -1,4 +1,4 @@
-# Nives — HA Add-on
+# MaDo — Home Assistant add-on
 # Bundles the Node.js conversation server + Shodh Memory (Rust) in one container
 # Ubuntu 24.04 base required: Shodh needs glibc 2.38+
 
@@ -119,7 +119,7 @@ COPY --from=shodh /usr/local/bin/shodh /usr/local/bin/shodh
 COPY --from=shodh /root/.cache/shodh-memory /root/.cache/shodh-memory
 
 # Copy built server from stage 2
-WORKDIR /opt/nives
+WORKDIR /opt/mado
 COPY --from=builder /build/dist ./dist
 COPY --from=builder /build/node_modules ./node_modules
 COPY --from=builder /build/package.json ./
