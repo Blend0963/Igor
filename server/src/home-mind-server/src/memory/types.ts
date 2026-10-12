@@ -51,6 +51,7 @@ export interface IConversationStore {
     conversationId: string,
     limit?: number
   ): ConversationMessage[] | Promise<ConversationMessage[]>;
+  getRecentMessages(userId: string, hoursOld?: number, limit?: number, excludeConversationId?: string): ConversationMessage[] | Promise<ConversationMessage[]>;
   listConversations(
     userId: string
   ): ConversationSummary[] | Promise<ConversationSummary[]>;
