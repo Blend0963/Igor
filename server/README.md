@@ -221,7 +221,7 @@ Only specify what needs changing — unspecified fields use auto-detected values
 
 ## Easy Install: MaDo Add-on
 
-If you're running Home Assistant and want a **one-click setup**, check out the **[MaDo add-on](https://github.com/hoornet/mado)** (formerly HomeMind PRO).
+If you're running Home Assistant and want a **one-click setup**, check out the **[MaDo add-on](https://github.com/hoornet/mado)** (formerly the legacy product name).
 
 It bundles everything (server + Shodh Memory) into a single HA add-on — no Docker, no manual config, no terminal. Add the repository in HA Supervisor, install, and you're done. Supports both cloud mode (managed API key) and BYOK (bring your own key).
 
@@ -248,7 +248,7 @@ The self-hosted Docker Compose setup below is for advanced users who want full c
 - [x] Home Layout Index (floor/room awareness via HA template API)
 - [x] Server-side STT (`POST /api/stt`, OpenAI Whisper)
 - [x] Server-side TTS (`POST /api/tts`, OpenAI TTS API)
-- [x] MaDo HA Add-on (one-click install, cloud + BYOK; formerly HomeMind PRO)
+- [x] MaDo HA Add-on (one-click install, cloud + BYOK; formerly the legacy product name)
 - [ ] Multi-user support (OIDC)
 
 ## Documentation
