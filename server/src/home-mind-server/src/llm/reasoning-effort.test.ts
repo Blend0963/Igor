@@ -62,6 +62,12 @@ describe("withReasoningEffort", () => {
     expect(sibling).toHaveBeenCalledWith({ reasoning_effort: "low" });
   });
 
+  it("withholds non-none reasoning effort from Mistral endpoints", async () => {
+    const send = vi.fn().mockResolvedValue("ok");
+    await withReasoningEffort("mistral-small-latest", "high", send, "https://api.mistral.ai/v1");
+    expect(send).toHaveBeenCalledWith({});
+  });
+
   it("does not swallow an unrelated 400", async () => {
     const unrelated = Object.assign(new Error("400 Invalid schema for function"), { status: 400 });
     const send = vi.fn().mockRejectedValue(unrelated);
@@ -89,6 +95,13 @@ describe("isReasoningEffortUnsupported", () => {
     expect(
       isReasoningEffortUnsupported({ status: 400, param: "reasoning_effort", message: "nope" })
     ).toBe(true);
+  });
+
+  it("recognises Mistral-style 422 validation errors", () => {
+    expect(isReasoningEffortUnsupported({
+      status: 422,
+      message: "Extra inputs are not permitted: reasoning_effort",
+    })).toBe(true);
   });
 
   it("recognises the parameter named in the message only", () => {

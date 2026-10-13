@@ -34,7 +34,7 @@ options:
   log_level: "info"
 schema:
   byok:
-    provider: "list(anthropic|openai|openrouter|ollama)?"
+    provider: "list(anthropic|openai|openrouter|mistral|ollama)?"
     api_key: "password?"
     model: "str?"
     base_url: "str?"
