@@ -67,6 +67,15 @@ case "$LLM_PROVIDER" in
         write_env "OPENAI_API_KEY" "$LLM_API_KEY"
         [ -n "$LLM_BASE_URL" ] && write_env "OPENAI_BASE_URL" "$LLM_BASE_URL"
         ;;
+    mistral)
+        # Mistral's chat endpoint is OpenAI-compatible but rejects some OpenAI-only fields.
+        write_env "LLM_PROVIDER" "openai"
+        write_env "OPENAI_API_KEY" "$LLM_API_KEY"
+        write_env "OPENAI_BASE_URL" "${LLM_BASE_URL:-https://api.mistral.ai/v1}"
+        if [ -z "$LLM_MODEL" ]; then
+            LLM_MODEL="mistral-small-latest"
+        fi
+        ;;
     openrouter)
         # OpenRouter is OpenAI-compatible — rewrite provider to openai
         write_env "LLM_PROVIDER" "openai"
