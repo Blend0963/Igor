@@ -42,11 +42,15 @@ export function createChatEngine(
 }
 
 export function createFactExtractor(config: Config): IFactExtractor {
+  // The extraction pass is a short, structured call that rereads one turn —
+  // it does not need the main model's general ability, so `extractionModel`
+  // can point it at a cheaper model. Unset keeps it on the main chat model.
+  const extractionModel = config.extractionModel ?? config.llmModel;
   switch (config.llmProvider) {
     case "openai":
       return new OpenAIFactExtractor(
         config.openaiApiKey!,
-        config.llmModel,
+        extractionModel,
         config.openaiBaseUrl,
         config.openaiResponseFormat,
         config.openaiMaxTokens,
@@ -55,13 +59,13 @@ export function createFactExtractor(config: Config): IFactExtractor {
     case "ollama":
       return new OpenAIFactExtractor(
         "ollama",
-        config.llmModel,
+        extractionModel,
         config.ollamaBaseUrl ?? "http://localhost:11434/v1",
         config.openaiResponseFormat,
         config.openaiMaxTokens,
         config.reasoningEffort
       );
     case "anthropic":
-      return new FactExtractor(config.anthropicApiKey!, config.llmModel);
+      return new FactExtractor(config.anthropicApiKey!, extractionModel);
   }
 }
