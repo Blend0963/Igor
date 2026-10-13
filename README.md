@@ -10,7 +10,7 @@ MaDo is a self-hostable AI assistant for Home Assistant with persistent memory, 
 - **Home Assistant tools** for reading states, searching exposed entities, reviewing history, controlling devices, and creating or managing automations.
 - **Confirmation before automation changes** so a preview is shown before an automation is applied.
 - **Independent web search** using Mistral's native web_search. Add a Mistral API key in the add-on configuration to enable current web results with source URLs; without a key, MaDo continues to work for Home Assistant tasks without web search.
-- **Bring your own model/provider** with Anthropic, OpenAI-compatible endpoints, OpenRouter, or Ollama.
+- **Bring your own model/provider** with Anthropic, Mistral, OpenAI-compatible endpoints, OpenRouter, or Ollama.
 - **Voice and text** through Home Assistant Assist. Optional voice services depend on your chosen Home Assistant pipeline and configured providers.
 
 ## Install
@@ -31,7 +31,7 @@ The memory database and conversation store remain on your Home Assistant machine
 
 ## Version
 
-Current release line: **v0.1.0** (initial MaDo release preparation).
+Current release: **v0.1.3** (Mistral BYOK chat provider).
 
 ## License and upstream notices
 

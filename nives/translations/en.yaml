@@ -9,7 +9,8 @@ configuration:
       provider:
         name: Provider
         description: >-
-          Which LLM provider to use. OpenRouter gives access to many models with a single key.
+          Which LLM provider to use. OpenRouter gives access to many models with
+          a single key; Mistral connects to Mistral's own chat API.
       api_key:
         name: API Key
         description: >-
@@ -18,7 +19,8 @@ configuration:
         name: Model
         description: >-
           Model ID to use. Examples: anthropic/claude-haiku-4.5 (OpenRouter),
-          claude-haiku-4-5-20251001 (Anthropic), gpt-4o-mini (OpenAI). Leave empty for provider default.
+          claude-haiku-4-5-20251001 (Anthropic), gpt-4o-mini (OpenAI),
+          mistral-small-latest (Mistral). Leave empty for provider default.
       base_url:
         name: API Base URL
         description: >-
@@ -50,7 +52,7 @@ configuration:
       How much the model thinks before it answers. Lower is faster and cheaper,
       which you notice most with voice; higher can help with harder questions.
       Leave empty to use the model's own default. A model that does not support
-      this setting simply ignores it.
+      this setting simply ignores it. On Mistral, only "none" is currently sent.
   layout_from_exposed:
     name: Room map from exposed entities
     description: >-
