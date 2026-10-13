@@ -48,6 +48,9 @@ CUSTOM_PROMPT=$(jq -r '.custom_prompt // ""' "$OPTIONS")
 MISTRAL_API_KEY=$(jq -r '.mistral_api_key // ""' "$OPTIONS")
 MAX_OUTPUT_TOKENS=$(jq -r '.max_output_tokens // ""' "$OPTIONS")
 REASONING_EFFORT=$(jq -r '.reasoning_effort // ""' "$OPTIONS")
+EXTRACTION_MODEL=$(jq -r '.extraction_model // ""' "$OPTIONS")
+# `// ""` would turn an explicit "off" into "", so test for null instead.
+EXTRACTION_GATE=$(jq -r 'if .extraction_gate == null then "" else .extraction_gate end' "$OPTIONS")
 # `// ""` would turn an explicit false into "", so test for null instead.
 LAYOUT_FROM_EXPOSED=$(jq -r 'if .layout_from_exposed == null then "" else (.layout_from_exposed|tostring) end' "$OPTIONS")
 TOOLS_FROM_EXPOSED=$(jq -r 'if .tools_from_exposed == null then "" else (.tools_from_exposed|tostring) end' "$OPTIONS")
@@ -200,6 +203,8 @@ write_env "LOG_LEVEL" "$LOG_LEVEL"
 write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$MAX_OUTPUT_TOKENS" ] && write_env "MAX_OUTPUT_TOKENS" "$MAX_OUTPUT_TOKENS"
 [ -n "$REASONING_EFFORT" ] && write_env "REASONING_EFFORT" "$REASONING_EFFORT"
+[ -n "$EXTRACTION_MODEL" ] && write_env "EXTRACTION_MODEL" "$EXTRACTION_MODEL"
+[ -n "$EXTRACTION_GATE" ] && write_env "EXTRACTION_GATE" "$EXTRACTION_GATE"
 [ -n "$LAYOUT_FROM_EXPOSED" ] && write_env "LAYOUT_FROM_EXPOSED" "$LAYOUT_FROM_EXPOSED"
 [ -n "$TOOLS_FROM_EXPOSED" ] && write_env "TOOLS_FROM_EXPOSED" "$TOOLS_FROM_EXPOSED"
 [ -n "$LAYOUT_DOMAINS" ] && write_env "LAYOUT_DOMAINS" "$LAYOUT_DOMAINS"
