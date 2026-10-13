@@ -364,6 +364,11 @@ export class OpenAIChatEngine implements IChatEngine {
     return /openrouter\.ai/i.test(this.config.openaiBaseUrl ?? "");
   }
 
+  /** Mistral rejects stream_options on its OpenAI-compatible chat endpoint. */
+  private isMistral(): boolean {
+    return /api\.mistral\.ai/i.test(this.config.openaiBaseUrl ?? "");
+  }
+
   private async streamCompletion(
     messages: OpenAI.ChatCompletionMessageParam[],
     isVoice: boolean,
@@ -396,7 +401,7 @@ export class OpenAIChatEngine implements IChatEngine {
             // Ask for the token breakdown. Without this a streamed call reports no
             // usage at all, which is why a cap being spent entirely on reasoning
             // looked identical to a prompt being too large.
-            stream_options: { include_usage: true },
+            ...(!this.isMistral() ? { stream_options: { include_usage: true } } : {}),
             // OpenRouter only: a stable session id pins the follow-up turns of one
             // conversation to the provider endpoint that already holds the warm
             // prompt cache, instead of re-balancing every turn. Other endpoints
