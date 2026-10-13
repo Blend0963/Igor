@@ -24,7 +24,7 @@ const rejectsReasoningEffort = new Set<string>();
 export function isReasoningEffortUnsupported(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
   const err = error as { status?: number; param?: string; message?: string };
-  if (err.status !== 400) return false;
+  if (err.status !== 400 && err.status !== 422) return false;
   if (err.param === "reasoning_effort") return true;
   return typeof err.message === "string" && /reasoning[_. ]?effort/i.test(err.message);
 }
@@ -41,6 +41,9 @@ export async function withReasoningEffort<T>(
   endpoint = ""
 ): Promise<T> {
   const key = `${endpoint} ${model}`;
+  // Non-"none" reasoning is withheld from Mistral until its structured
+  // reasoning output is supported by MaDo's response parser.
+  if (/api\.mistral\.ai/i.test(endpoint) && effort && effort !== "none") return send({});
   if (!effort || rejectsReasoningEffort.has(key)) return send({});
 
   try {
