@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1 — Options in French
+
+- Every option of the add-on is now explained in French when Home Assistant is set to French (`translations/fr.yaml`).
+
 ## 0.8.0 — Control, savings and a smarter home
 
 - **Stop button**: while MaDo answers, Envoyer becomes ■ Arrêter. The model call is really cut (no more tokens billed) and what was already written stays in the thread, marked as interrupted.
