@@ -59,7 +59,8 @@ export interface IConversationStore {
   listConversations(
     userId: string
   ): ConversationSummary[] | Promise<ConversationSummary[]>;
-  deleteConversation(conversationId: string): number | Promise<number>;
+  /** With `userId`, deletes only that user's messages in the conversation. */
+  deleteConversation(conversationId: string, userId?: string): number | Promise<number>;
   getKnownUsers(): string[];
   cleanupOldConversations(hoursOld?: number): number | Promise<number>;
   storeMessageEmbedding?(messageId: string, embedding: number[]): void | Promise<void>;

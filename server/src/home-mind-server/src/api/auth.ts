@@ -12,13 +12,24 @@ import { timingSafeEqual } from "node:crypto";
  * already authenticates the user with the Home Assistant login. The Supervisor
  * proxy drops the user headers from the browser request and re-adds them itself
  * (supervisor/const.py), so a request carrying X-Remote-User-Id is one that
- * Home Assistant authenticated. This trust is only sound while the raw port is
- * not reachable directly, and the add-on leaves port 3100 unexposed by default.
+ * Home Assistant authenticated — but only when it actually comes from that
+ * proxy. Port 3100 is unexposed on the host, yet every other add-on on the
+ * hassio network can still reach it and set the header itself, so the header
+ * is honoured only from the Supervisor's ingress address (172.30.32.2, the one
+ * address the add-on docs say ingress traffic comes from).
  */
 const INGRESS_USER_HEADER = "x-remote-user-id";
+export const INGRESS_PROXY_ADDRESSES = ["172.30.32.2"] as const;
+
+/** The peer address with any IPv4-mapped IPv6 prefix ("::ffff:") removed. */
+function peerAddress(req: Request): string | undefined {
+  const address = req.socket?.remoteAddress;
+  return address?.startsWith("::ffff:") ? address.slice(7) : address;
+}
 
 export function createAuthMiddleware(
-  token: string | undefined
+  token: string | undefined,
+  ingressProxies: readonly string[] = INGRESS_PROXY_ADDRESSES
 ): (req: Request, res: Response, next: NextFunction) => void {
   return (req: Request, res: Response, next: NextFunction) => {
     // No token configured = no auth enforced
@@ -33,7 +44,13 @@ export function createAuthMiddleware(
 
     // Behind Home Assistant ingress, the HA login is the authentication:
     // the Supervisor stamps the user header the browser cannot set itself.
-    if (req.headers[INGRESS_USER_HEADER] !== undefined) {
+    // Anyone else on the network can set it too, hence the address check.
+    const peer = peerAddress(req);
+    if (
+      req.headers[INGRESS_USER_HEADER] !== undefined &&
+      peer !== undefined &&
+      ingressProxies.includes(peer)
+    ) {
       return next();
     }
 

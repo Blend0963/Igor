@@ -574,10 +574,28 @@ describe("OpenAIChatEngine", () => {
     });
   });
 
+  it("never replays another user's turns from a thread id it was handed", async () => {
+    (conversations.getConversationHistory as ReturnType<typeof vi.fn>).mockReturnValue([
+      { userId: "user-2", role: "user", content: "my door code is 1234" },
+      { userId: "user-2", role: "assistant", content: "Noted." },
+    ]);
+    mockCreate.mockResolvedValue(
+      makeStream([
+        { choices: [{ delta: { content: "Response" }, finish_reason: null }] },
+        { choices: [{ delta: {}, finish_reason: "stop" }] },
+      ])
+    );
+
+    await engine.chat({ message: "what did I say?", userId: "user-1", conversationId: "mado-thread:x" });
+
+    const sent = JSON.stringify(mockCreate.mock.calls[0][0].messages);
+    expect(sent).not.toContain("1234");
+  });
+
   it("loads conversation history when conversationId provided", async () => {
     (conversations.getConversationHistory as ReturnType<typeof vi.fn>).mockReturnValue([
-      { role: "user", content: "previous question" },
-      { role: "assistant", content: "previous answer" },
+      { userId: "user-1", role: "user", content: "previous question" },
+      { userId: "user-1", role: "assistant", content: "previous answer" },
     ]);
 
     mockCreate.mockResolvedValue(
@@ -612,8 +630,8 @@ describe("OpenAIChatEngine", () => {
     // A stamped assistant entry taught the model to open every answer with
     // a recited "[09:12]": it imitates its own past replies.
     (conversations.getConversationHistory as ReturnType<typeof vi.fn>).mockReturnValue([
-      { role: "user", content: "allume la lumière", createdAt: new Date() },
-      { role: "assistant", content: "La lumière du salon est allumée.", createdAt: new Date() },
+      { userId: "user-1", role: "user", content: "allume la lumière", createdAt: new Date() },
+      { userId: "user-1", role: "assistant", content: "La lumière du salon est allumée.", createdAt: new Date() },
     ]);
 
     mockCreate.mockResolvedValue(

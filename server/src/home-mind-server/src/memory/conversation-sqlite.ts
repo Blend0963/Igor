@@ -186,10 +186,10 @@ export class SqliteConversationStore implements IConversationStore {
     }));
   }
 
-  deleteConversation(conversationId: string): number {
+  deleteConversation(conversationId: string, userId?: string): number {
     const result = this.db.prepare(
-      `DELETE FROM messages WHERE conversation_id = ?`
-    ).run(conversationId);
+      `DELETE FROM messages WHERE conversation_id = ? AND (? IS NULL OR user_id = ?)`
+    ).run(conversationId, userId ?? null, userId ?? null);
     return result.changes;
   }
 

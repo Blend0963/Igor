@@ -73,6 +73,60 @@ const INDIRECT_TARGETS = ["area_id", "device_id", "floor_id", "label_id"] as con
 /** Lifecycle services of the script domain; any other `script.X` runs script X. */
 const SCRIPT_LIFECYCLE = new Set(["turn_on", "turn_off", "toggle", "reload"]);
 
+/**
+ * Shape checks for every model-supplied value that ends up in an HA URL path.
+ *
+ * The base URL is `http://supervisor/core` in the add-on, and fetch() resolves
+ * `..` segments, so an unchecked `entity_id` of `../../addons` or a `domain` of
+ * `../../backups/new/full` sends the add-on's Supervisor token to the
+ * Supervisor API instead of to Home Assistant. Home Assistant's own ids never
+ * contain anything outside these alphabets.
+ */
+const ENTITY_ID_PATTERN = /^[a-z0-9_]+\.[a-z0-9_]+$/;
+const SERVICE_PART_PATTERN = /^[a-z0-9_]+$/;
+const AUTOMATION_CONFIG_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+function requireEntityIdShape(entityId: unknown): asserts entityId is string {
+  if (typeof entityId !== "string" || !ENTITY_ID_PATTERN.test(entityId)) {
+    throw new Error(
+      `"${String(entityId)}" is not a valid entity_id. Use the exact id (domain.object_id, lower case) ` +
+        `from search_entities or get_entities.`
+    );
+  }
+}
+
+/**
+ * Services the assistant may never run, directly or from an automation it
+ * writes. The `hassio` domain drives the Supervisor itself (stop, uninstall or
+ * write to the stdin of other add-ons, restore backups, reboot or shut down
+ * the host), and `homeassistant.stop` leaves the house without Home Assistant
+ * until someone restarts it by hand. Nothing a voice assistant is asked for
+ * needs these, and the model also reads untrusted text (web results, entity
+ * names), which must never be able to talk it into them.
+ */
+const BLOCKED_SERVICE_DOMAINS = new Set(["hassio"]);
+const BLOCKED_SERVICES = new Set(["homeassistant.stop"]);
+
+export function isBlockedService(domain: string, service: string): boolean {
+  return BLOCKED_SERVICE_DOMAINS.has(domain) || BLOCKED_SERVICES.has(`${domain}.${service}`);
+}
+
+function blockedServiceMessage(id: string): string {
+  return `The service "${id}" is not available to you: it controls the Home Assistant host or its add-ons. Do not retry it under another name.`;
+}
+
+/**
+ * The config-API path of one automation. The id is read back from HA's own
+ * state attributes, but an automation written by hand or by another tool can
+ * carry anything there, so it is checked rather than trusted.
+ */
+function automationConfigPath(id: string): string {
+  if (typeof id !== "string" || !AUTOMATION_CONFIG_ID_PATTERN.test(id)) {
+    throw new Error(`"${String(id)}" is not a valid automation config id.`);
+  }
+  return `/api/config/automation/config/${id}`;
+}
+
 let lastAutomationId = 0;
 
 /**
@@ -287,6 +341,7 @@ export class HomeAssistantClient {
    * Get state of a single entity (cached)
    */
   async getState(entityId: string): Promise<EntityState> {
+    requireEntityIdShape(entityId);
     await this.requireExposed(entityId);
 
     // Check individual cache first
@@ -368,6 +423,21 @@ export class HomeAssistantClient {
     entityId?: string,
     data?: Record<string, unknown>
   ): Promise<EntityState[] | ServiceCallWithResponse> {
+    if (
+      typeof domain !== "string" ||
+      typeof service !== "string" ||
+      !SERVICE_PART_PATTERN.test(domain) ||
+      !SERVICE_PART_PATTERN.test(service)
+    ) {
+      throw new Error(
+        `"${String(domain)}.${String(service)}" is not a valid service. Use a real service id ` +
+          `(call list_services to discover them).`
+      );
+    }
+    if (isBlockedService(domain, service)) {
+      throw new Error(blockedServiceMessage(`${domain}.${service}`));
+    }
+
     const payload: Record<string, unknown> = { ...data };
     const hint = payload.return_response === true;
     delete payload.return_response;
@@ -450,6 +520,7 @@ export class HomeAssistantClient {
     startTime?: string,
     endTime?: string
   ): Promise<HistoryEntry[]> {
+    requireEntityIdShape(entityId);
     await this.requireExposed(entityId);
 
     const start = startTime || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -558,7 +629,7 @@ export class HomeAssistantClient {
     await this.validateActionServices(body.action);
 
     try {
-      await this.fetch(`/api/config/automation/config/${id}`, {
+      await this.fetch(automationConfigPath(id), {
         method: "POST",
         body: JSON.stringify(body),
       });
@@ -593,7 +664,7 @@ export class HomeAssistantClient {
 
   /** Delete an automation by its config id, then reload. */
   async deleteAutomation(id: string): Promise<void> {
-    await this.fetch(`/api/config/automation/config/${id}`, { method: "DELETE" });
+    await this.fetch(automationConfigPath(id), { method: "DELETE" });
     await this.callService("automation", "reload");
   }
 
@@ -611,7 +682,7 @@ export class HomeAssistantClient {
 
   /** Read an automation's stored config by its config id (the value in attributes.id). */
   async getAutomationConfig(id: string): Promise<Record<string, unknown>> {
-    return this.fetch<Record<string, unknown>>(`/api/config/automation/config/${id}`);
+    return this.fetch<Record<string, unknown>>(automationConfigPath(id));
   }
 
   /**
@@ -653,7 +724,7 @@ export class HomeAssistantClient {
 
     await this.validateActionServices(merged.action);
 
-    await this.fetch(`/api/config/automation/config/${id}`, {
+    await this.fetch(automationConfigPath(id), {
       method: "POST",
       body: JSON.stringify(merged),
     });
@@ -704,6 +775,16 @@ export class HomeAssistantClient {
    * an API hiccup). Templated service names ("{{ ... }}") are skipped.
    */
   private async validateActionServices(action: unknown): Promise<void> {
+    // Checked on the raw text, not only on the parsed refs below, so a
+    // templated service name ("{{ 'hassio.host_shutdown' }}") is caught too.
+    const raw = JSON.stringify(action ?? null);
+    for (const dom of BLOCKED_SERVICE_DOMAINS) {
+      if (new RegExp(`\\b${dom}\\.`).test(raw)) throw new Error(blockedServiceMessage(`${dom}.*`));
+    }
+    for (const id of BLOCKED_SERVICES) {
+      if (raw.includes(id)) throw new Error(blockedServiceMessage(id));
+    }
+
     const refs = new Set<string>();
     const collect = (node: unknown): void => {
       if (Array.isArray(node)) {

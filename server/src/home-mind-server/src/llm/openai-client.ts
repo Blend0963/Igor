@@ -214,7 +214,11 @@ export class OpenAIChatEngine implements IChatEngine {
     ];
 
     if (effectiveConversationId) {
-      const history = await this.conversations.getConversationHistory(effectiveConversationId, 20);
+      // A thread id is chosen by the caller, so only this user's own turns in
+      // it are history; another user's thread under the same id stays theirs.
+      const history = (
+        await this.conversations.getConversationHistory(effectiveConversationId, 20)
+      ).filter((msg) => msg.userId === userId);
       for (const msg of history) {
         // Only the user's turns carry the time marker. Stamping the
         // assistant's own past replies taught the model to open its answers

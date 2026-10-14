@@ -119,9 +119,49 @@ describe("createAuthMiddleware", () => {
       // itself, so its presence is Home Assistant vouching for the caller.
       const next = vi.fn() as unknown as NextFunction;
       const res = mockRes();
-      mw(mockReq({ headers: { "x-remote-user-id": "user-1" } }), res, next);
+      mw(
+        mockReq({
+          headers: { "x-remote-user-id": "user-1" },
+          socket: { remoteAddress: "172.30.32.2" } as Request["socket"],
+        }),
+        res,
+        next
+      );
       expect(next).toHaveBeenCalledOnce();
       expect(res.statusCode).toBe(0);
+    });
+
+    it("accepts the ingress proxy over an IPv4-mapped IPv6 socket", () => {
+      const next = vi.fn() as unknown as NextFunction;
+      const res = mockRes();
+      mw(
+        mockReq({
+          headers: { "x-remote-user-id": "user-1" },
+          socket: { remoteAddress: "::ffff:172.30.32.2" } as Request["socket"],
+        }),
+        res,
+        next
+      );
+      expect(next).toHaveBeenCalledOnce();
+    });
+
+    it("ignores an ingress header that does not come from the Supervisor (401)", () => {
+      // Every other add-on on the hassio network can reach port 3100 and set
+      // the header itself; from them it must count for nothing.
+      for (const remoteAddress of ["172.30.33.5", "127.0.0.1", undefined]) {
+        const next = vi.fn() as unknown as NextFunction;
+        const res = mockRes();
+        mw(
+          mockReq({
+            headers: { "x-remote-user-id": "user-1" },
+            socket: { remoteAddress } as Request["socket"],
+          }),
+          res,
+          next
+        );
+        expect(next, String(remoteAddress)).not.toHaveBeenCalled();
+        expect(res.statusCode, String(remoteAddress)).toBe(401);
+      }
     });
 
     it("still rejects a plain request with no ingress header (401)", () => {

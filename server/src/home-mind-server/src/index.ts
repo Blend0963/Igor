@@ -121,6 +121,15 @@ if (tts) {
 
 // Create Express app
 const app = express();
+app.disable("x-powered-by");
+// The panel is framed by Home Assistant's ingress, so no frame-ancestors ban;
+// these two are free and close MIME sniffing and referrer leaks of the
+// ingress token path.
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
 
 // CORS middleware (only when CORS_ORIGINS is configured)
 if (config.corsOrigins) {

@@ -26,6 +26,16 @@ describe("SqliteConversationStore", () => {
     expect(history[1].role).toBe("assistant");
   });
 
+  it("deletes only the named user's messages when a userId is given", () => {
+    store.storeMessage("mado-thread:x", "user-1", "user", "mine");
+    store.storeMessage("mado-thread:x", "user-2", "user", "theirs");
+
+    expect(store.deleteConversation("mado-thread:x", "user-1")).toBe(1);
+    const left = store.getConversationHistory("mado-thread:x");
+    expect(left.map((m) => m.content)).toEqual(["theirs"]);
+    expect(store.deleteConversation("mado-thread:x", "user-1")).toBe(0);
+  });
+
   it("limits history to last N messages", () => {
     for (let i = 0; i < 5; i++) {
       store.storeMessage("conv-1", "user-1", "user", `Message ${i}`);

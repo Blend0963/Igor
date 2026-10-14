@@ -180,6 +180,9 @@ Optional bearer token auth via `API_TOKEN` env var. When set, all endpoints exce
 
 - **Health endpoint** (`/api/health`) is always public, even when auth is enabled
 - **Timing-safe comparison** prevents timing attacks on the token
+- **Ingress**: a request carrying `X-Remote-User-Id` skips the token only when its peer address is the Supervisor ingress proxy (`172.30.32.2`, `INGRESS_PROXY_ADDRESSES` in `api/auth.ts`); other add-ons on the hassio network can reach port 3100 and set the header themselves
+- **HA URL paths**: `HomeAssistantClient` shape-checks every model-supplied id before it reaches a URL path (entity_id, service domain/name, automation config id), because `..` segments would otherwise reach the Supervisor API with the add-on token. `hassio.*` and `homeassistant.stop` are refused from `call_service` and from automation actions (`isBlockedService`)
+- **Conversations are per user**: `GET`/`DELETE /api/conversations/:userId/:conversationId` and the engines' history only see the requesting user's messages, since thread ids are chosen by the caller
 - **HACS config flow** validates tokens against `/api/memory/{userId}` (not `/api/health`, since health bypasses auth)
 
 ## API Endpoints

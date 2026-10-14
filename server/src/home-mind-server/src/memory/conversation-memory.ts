@@ -85,11 +85,17 @@ export class InMemoryConversationStore implements IConversationStore {
     return results;
   }
 
-  deleteConversation(conversationId: string): number {
+  deleteConversation(conversationId: string, userId?: string): number {
     const messages = this.conversations.get(conversationId);
     if (!messages) return 0;
-    const count = messages.length;
-    this.conversations.delete(conversationId);
+    if (userId === undefined) {
+      this.conversations.delete(conversationId);
+      return messages.length;
+    }
+    const kept = messages.filter((m) => m.userId !== userId);
+    const count = messages.length - kept.length;
+    if (kept.length) this.conversations.set(conversationId, kept);
+    else this.conversations.delete(conversationId);
     return count;
   }
 

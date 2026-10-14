@@ -33,22 +33,37 @@ export const UPLOAD_LIMITS = {
 const upload = multer({ storage: multer.memoryStorage(), limits: { ...UPLOAD_LIMITS } });
 
 // Request validation schemas
+/**
+ * Ceilings on what one chat request may carry. Generous for any real caller
+ * (Assist, the panel, the AI Task entity), but they stop a single request from
+ * filling the conversation database or the provider bill: everything here is
+ * stored, embedded or sent to the model.
+ */
+export const CHAT_LIMITS = {
+  message: 100_000,
+  id: 200,
+  customPrompt: 20_000,
+  images: 10,
+} as const;
+
 export const ChatRequestSchema = z.object({
-  message: z.string().min(1, "Message is required"),
+  message: z.string().min(1, "Message is required").max(CHAT_LIMITS.message),
   // JSON callers send an explicit null for "no value" at least as often as
   // they omit the key — HA's conversation.process without a conversation_id
   // arrives as `"conversationId": null` (#63). `.optional()`/`.default()`
   // only cover ABSENT, so both fields accept null and normalize it here.
   userId: z
     .string()
+    .max(CHAT_LIMITS.id)
     .nullish()
     .transform((v) => v ?? "default"),
   conversationId: z
     .string()
+    .max(CHAT_LIMITS.id)
     .nullish()
     .transform((v) => v ?? undefined),
   isVoice: z.boolean().default(false),
-  customPrompt: z.string().optional(),
+  customPrompt: z.string().max(CHAT_LIMITS.customPrompt).optional(),
   // The caller's UI language (e.g. "sl", "en-US") — in the add-on this is the
   // Assist pipeline's language. A tie-breaker hint only: the language of the
   // user's actual words always wins.
@@ -56,7 +71,7 @@ export const ChatRequestSchema = z.object({
   // Optional images for vision-capable models. Each is a data URL
   // ("data:image/jpeg;base64,…") or a plain https URL. Forwarded to the model
   // as image content; ignored by text-only models.
-  images: z.array(z.string()).optional(),
+  images: z.array(z.string()).max(CHAT_LIMITS.images).optional(),
 });
 
 const AddFactSchema = z.object({
@@ -426,8 +441,13 @@ export function createRouter(
     }
 
     try {
+      const userId = req.params.userId as string;
       const conversationId = req.params.conversationId as string;
-      const messages = await conversations.getConversationHistory(conversationId, 20);
+      // The path names the user; a conversation id alone must not open
+      // somebody else's thread.
+      const messages = (await conversations.getConversationHistory(conversationId, 20)).filter(
+        (m) => m.userId === userId
+      );
       res.json({ conversationId, messages });
     } catch (error) {
       console.error("Get conversation error:", error);
@@ -446,8 +466,9 @@ export function createRouter(
     }
 
     try {
+      const userId = req.params.userId as string;
       const conversationId = req.params.conversationId as string;
-      const deleted = await conversations.deleteConversation(conversationId);
+      const deleted = await conversations.deleteConversation(conversationId, userId);
 
       if (deleted > 0) {
         res.json({ message: `Deleted ${deleted} messages`, deleted });
