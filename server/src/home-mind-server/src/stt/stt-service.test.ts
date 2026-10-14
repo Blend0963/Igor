@@ -1,6 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
 import OpenAI from "openai";
-import { OpenAISttService, STT_MAX_TOTAL_WAIT_MS, STT_RETRY_DELAYS_MS, wavDurationSeconds } from "./stt-service.js";
+import {
+  createSttService,
+  OpenAISttService,
+  STT_MAX_TOTAL_WAIT_MS,
+  STT_RETRY_DELAYS_MS,
+  sttModelFor,
+  wavDurationSeconds,
+} from "./stt-service.js";
+import type { Config } from "../config.js";
 
 /** A 16 kHz mono 16-bit WAV holding `seconds` of silence. */
 function wav(seconds: number): Buffer {
@@ -166,5 +174,29 @@ describe("wavDurationSeconds", () => {
 
   it("returns undefined for anything that is not a WAV", () => {
     expect(wavDurationSeconds(Buffer.from("not audio at all, just some bytes here to pass 44"))).toBeUndefined();
+  });
+});
+
+describe("createSttService providers", () => {
+  const base = { logLevel: "info" } as Config;
+
+  it("stays off without a provider", () => {
+    expect(createSttService({ ...base, sttProvider: "none" })).toBeNull();
+    expect(sttModelFor({ ...base, sttProvider: "none" })).toBeUndefined();
+  });
+
+  it("uses Voxtral on Mistral's API with the Mistral key", () => {
+    const cfg = { ...base, sttProvider: "mistral", mistralApiKey: "mk" } as Config;
+    expect(sttModelFor(cfg)).toBe("voxtral-mini-latest");
+    expect(createSttService(cfg)).toBeInstanceOf(OpenAISttService);
+  });
+
+  it("needs a key for Mistral", () => {
+    expect(createSttService({ ...base, sttProvider: "mistral" } as Config)).toBeNull();
+  });
+
+  it("keeps whisper-1 as the OpenAI default, and an explicit model wins", () => {
+    expect(sttModelFor({ ...base, sttProvider: "openai" } as Config)).toBe("whisper-1");
+    expect(sttModelFor({ ...base, sttProvider: "mistral", sttModel: "voxtral-x" } as Config)).toBe("voxtral-x");
   });
 });

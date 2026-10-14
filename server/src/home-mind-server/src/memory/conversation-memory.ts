@@ -18,6 +18,15 @@ export class InMemoryConversationStore implements IConversationStore {
   private conversations = new Map<string, ConversationMessage[]>();
   private knownUsers = new Set<string>();
   private embeddings = new Map<string, number[]>();
+  private titles = new Map<string, string>();
+
+  private titleKey(conversationId: string, userId: string): string {
+    return `${userId}\u0000${conversationId}`;
+  }
+
+  setConversationTitle(conversationId: string, userId: string, title: string): void {
+    this.titles.set(this.titleKey(conversationId, userId), title);
+  }
 
   storeMessage(
     conversationId: string,
@@ -81,7 +90,9 @@ export class InMemoryConversationStore implements IConversationStore {
       const firstUser = messages.find((m) => m.userId === userId && m.role === "user");
       results.push({
         conversationId: convId,
-        title: summarizeTitle((firstUser ?? lastMsg).content),
+        title:
+          this.titles.get(this.titleKey(convId, userId)) ??
+          summarizeTitle((firstUser ?? lastMsg).content),
         lastMessage: lastMsg.content,
         lastMessageAt: lastMsg.createdAt,
         messageCount: messages.length,
@@ -95,6 +106,11 @@ export class InMemoryConversationStore implements IConversationStore {
 
   deleteConversation(conversationId: string, userId?: string): number {
     const messages = this.conversations.get(conversationId);
+    for (const key of [...this.titles.keys()]) {
+      if (key.endsWith(`\u0000${conversationId}`) && (userId === undefined || key === this.titleKey(conversationId, userId))) {
+        this.titles.delete(key);
+      }
+    }
     if (!messages) return 0;
     if (userId === undefined) {
       this.conversations.delete(conversationId);

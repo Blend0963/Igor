@@ -58,6 +58,16 @@ describe("InMemoryConversationStore", () => {
     expect(store.getConversationHistory("other", 1000)).toHaveLength(20);
   });
 
+  it("shows a given name instead of the first message, until the conversation is deleted", () => {
+    store.storeMessage("mado-thread:a", "user-1", "user", "how do I prune a ficus?");
+    store.setConversationTitle("mado-thread:a", "user-1", "Ficus");
+    expect(store.listConversations("user-1")[0].title).toBe("Ficus");
+
+    store.deleteConversation("mado-thread:a", "user-1");
+    store.storeMessage("mado-thread:a", "user-1", "user", "new start");
+    expect(store.listConversations("user-1")[0].title).toBe("new start");
+  });
+
   it("limits history to last N messages", () => {
     for (let i = 0; i < 5; i++) {
       store.storeMessage("conv-1", "user-1", "user", `Message ${i}`);

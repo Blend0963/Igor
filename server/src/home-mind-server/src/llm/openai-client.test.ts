@@ -620,6 +620,18 @@ describe("OpenAIChatEngine", () => {
       );
     });
 
+    it("builds a thread's system prompt in thread mode, Assist's in Assist mode", async () => {
+      answer();
+      await engine.chat({ message: "hello", userId: "user-1", conversationId: "mado-thread:abc" });
+      answer();
+      await engine.chat({ message: "hello", userId: "user-1", conversationId: "01HXYZ" });
+
+      const system = (call: number) => mockCreate.mock.calls[call][0].messages[0].content as string;
+      expect(system(0)).toContain("THIS CONVERSATION: A CHAT THREAD");
+      expect(system(1)).not.toContain("THIS CONVERSATION: A CHAT THREAD");
+      expect(system(1)).toContain("PLAIN TEXT ONLY");
+    });
+
     it("keeps Assist on the user's shared conversation and bucket", async () => {
       answer();
       await engine.chat({ message: "hello", userId: "user-1", conversationId: "01HXYZ" });

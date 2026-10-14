@@ -162,14 +162,39 @@ export class OpenAISttService implements ISttService {
   }
 }
 
+const STT_DEFAULTS = {
+  openai: { model: "whisper-1", baseUrl: undefined },
+  mistral: { model: "voxtral-mini-latest", baseUrl: "https://api.mistral.ai/v1" },
+} as const;
+
+/** The transcription model a config resolves to, for logging and the service. */
+export function sttModelFor(config: Config): string | undefined {
+  if (config.sttProvider === "none") return undefined;
+  return config.sttModel ?? STT_DEFAULTS[config.sttProvider].model;
+}
+
 export function createSttService(config: Config): ISttService | null {
   if (config.sttProvider === "none") return null;
+
+  // Voxtral on Mistral's API speaks the OpenAI transcriptions protocol
+  // (multipart file + model + language, answering { text }), so the same
+  // client serves it with Mistral's base URL and key.
+  if (config.sttProvider === "mistral") {
+    const apiKey = config.sttApiKey ?? config.mistralApiKey;
+    if (!apiKey) return null;
+    return new OpenAISttService(
+      apiKey,
+      sttModelFor(config)!,
+      config.sttBaseUrl ?? STT_DEFAULTS.mistral.baseUrl,
+      { logText: config.logLevel === "debug" }
+    );
+  }
 
   // Resolve API key: dedicated STT key takes precedence, then fall back to openaiApiKey
   const apiKey = config.sttApiKey ?? config.openaiApiKey;
   if (!apiKey) return null;
 
-  return new OpenAISttService(apiKey, config.sttModel, config.sttBaseUrl ?? config.openaiBaseUrl, {
+  return new OpenAISttService(apiKey, sttModelFor(config)!, config.sttBaseUrl ?? config.openaiBaseUrl, {
     logText: config.logLevel === "debug",
   });
 }

@@ -7,7 +7,7 @@ import type { IMemoryStore } from "../memory/interface.js";
 import { InMemoryConversationStore } from "../memory/conversation-memory.js";
 
 /** One request against a throwaway server running the real router. */
-async function call(router: express.Router, method: string, path: string) {
+async function call(router: express.Router, method: string, path: string, body?: unknown) {
   const app = express();
   app.use(express.json());
   app.use("/api", router);
@@ -16,8 +16,12 @@ async function call(router: express.Router, method: string, path: string) {
   });
   try {
     const { port } = server.address() as AddressInfo;
-    const res = await fetch(`http://127.0.0.1:${port}${path}`, { method });
-    return { status: res.status, body: (await res.json()) as { messages?: unknown[] } };
+    const res = await fetch(`http://127.0.0.1:${port}${path}`, {
+      method,
+      headers: body === undefined ? undefined : { "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    return { status: res.status, body: (await res.json()) as { messages?: unknown[]; title?: string } };
   } finally {
     server.close();
   }
@@ -58,5 +62,26 @@ describe("panel threads in the conversation routes", () => {
     const res = await call(router, "GET", "/api/conversations/default/mado-thread%3At1");
 
     expect(res.body.messages).toHaveLength(30);
+  });
+
+  it("renames a thread, and the new name survives in the list", async () => {
+    const { conversations, router } = setup();
+    conversations.storeMessage("mado-thread:t1", "default", "user", "first question");
+
+    const res = await call(router, "PATCH", "/api/conversations/default/mado-thread%3At1", {
+      title: "  Plantes   du salon ",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe("Plantes du salon");
+    expect(conversations.listConversations("default")[0].title).toBe("Plantes du salon");
+  });
+
+  it("refuses to name someone else's thread, or with an empty title", async () => {
+    const { conversations, router } = setup();
+    conversations.storeMessage("mado-thread:t1", "alice", "user", "hi");
+
+    expect((await call(router, "PATCH", "/api/conversations/bob/mado-thread%3At1", { title: "x" })).status).toBe(404);
+    expect((await call(router, "PATCH", "/api/conversations/alice/mado-thread%3At1", { title: "   " })).status).toBe(400);
   });
 });

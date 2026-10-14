@@ -73,3 +73,17 @@ describe("ChatRequestSchema limits", () => {
     }
   });
 });
+
+describe("ChatRequestSchema images", () => {
+  it("accepts image data URLs and https links", () => {
+    for (const img of ["data:image/jpeg;base64,/9j/4AAQ", "data:image/png;base64,iVBORw0KGgo=", "https://example.com/a.jpg"]) {
+      expect(ChatRequestSchema.safeParse({ message: "hi", images: [img] }).success, img).toBe(true);
+    }
+  });
+
+  it("rejects anything else", () => {
+    for (const img of ["data:text/html;base64,PHNjcmlwdD4=", "http://example.com/a.jpg", "file:///etc/passwd", "data:image/svg+xml;base64,PHN2Zz4="]) {
+      expect(ChatRequestSchema.safeParse({ message: "hi", images: [img] }).success, img).toBe(false);
+    }
+  });
+});

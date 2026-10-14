@@ -38,6 +38,39 @@ configuration:
       default MaDo persona outright, so one sentence describing who it is does
       the job (e.g. "You are HAL 9000, the calm and precise computer from 2001").
       Applies once the add-on restarts. Leave empty for the default MaDo persona.
+      This text applies everywhere; the two fields below add to it for one kind
+      of conversation only, so shared rules are written once.
+  custom_prompt_voice:
+    name: Custom Prompt — Voice
+    description: >-
+      Added after the Custom Prompt for spoken Assist only (satellites, and
+      voice on the phone when Assist Mode is "voice"). The place for speaking
+      rules: short answers, no formatting, how to say numbers. Leave empty to
+      use the Custom Prompt alone.
+  custom_prompt_thread:
+    name: Custom Prompt — Chat Threads
+    description: >-
+      Added after the Custom Prompt for threads in the MaDo chat panel only,
+      where replies are read on screen: Markdown, code blocks with a copy
+      button and longer answers are welcome there. Leave empty to use the
+      Custom Prompt alone.
+  assist_mode:
+    name: Assist Mode
+    description: >-
+      How MaDo treats Assist requests. "auto" (default) treats only voice
+      satellites as spoken, because Home Assistant does not say when you used
+      your voice in the phone app. "voice" treats every Assist request as
+      spoken, the right choice when you talk to Assist rather than type.
+      "text" treats every Assist request as typed. Chat-panel threads are
+      never affected.
+  speech_to_text:
+    name: Speech-to-Text (Panel Microphone)
+    description: >-
+      Transcription for the 🎤 button in the chat panel, done by Mistral's
+      Voxtral. "auto" (default) turns it on whenever a Mistral key is set:
+      the web-search key above, or your chat key when the provider is
+      Mistral. "off" hides the microphone. When on, MaDo also offers itself
+      as a speech-to-text engine in Home Assistant's voice assistants.
   max_output_tokens:
     name: Maximum Answer Length
     description: >-

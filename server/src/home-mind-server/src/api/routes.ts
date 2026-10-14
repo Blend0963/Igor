@@ -52,6 +52,13 @@ export const CHAT_LIMITS = {
   images: 10,
 } as const;
 
+/**
+ * What an image may be: a base64 data URL in one of the formats every
+ * vision provider takes (Anthropic only knows these four media types), or an
+ * https link the provider fetches itself.
+ */
+const IMAGE_PATTERN = /^(data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+|https:\/\/\S+)$/;
+
 export const ChatRequestSchema = z.object({
   message: z.string().min(1, "Message is required").max(CHAT_LIMITS.message),
   // JSON callers send an explicit null for "no value" at least as often as
@@ -77,7 +84,14 @@ export const ChatRequestSchema = z.object({
   // Optional images for vision-capable models. Each is a data URL
   // ("data:image/jpeg;base64,…") or a plain https URL. Forwarded to the model
   // as image content; ignored by text-only models.
-  images: z.array(z.string()).max(CHAT_LIMITS.images).optional(),
+  images: z.array(z.string().regex(IMAGE_PATTERN, "Expected a JPEG/PNG/WebP/GIF data URL or an https URL")).max(CHAT_LIMITS.images).optional(),
+});
+
+const RenameSchema = z.object({
+  title: z
+    .string()
+    .transform((t) => t.replace(/\s+/g, " ").trim())
+    .pipe(z.string().min(1, "Title is required").max(120)),
 });
 
 const AddFactSchema = z.object({
@@ -131,8 +145,48 @@ export function describePersonaSource(
   return "built-in default identity (no custom prompt set anywhere)";
 }
 
-function logPersonaSource(requestPrompt?: string, serverDefault?: string): void {
-  const signature = describePersonaSource(requestPrompt, serverDefault);
+/** What the add-on configures about personas and Assist's style. */
+export interface PersonaOptions {
+  voice?: string;
+  thread?: string;
+  assistMode?: "auto" | "voice" | "text";
+}
+
+/** The common persona, then the one for this kind of conversation. */
+export function composePersona(common?: string, specific?: string): string | undefined {
+  const parts = [common, specific].map((p) => p?.trim()).filter((p): p is string => Boolean(p));
+  return parts.length ? parts.join("\n\n") : undefined;
+}
+
+/**
+ * The style a chat request runs with, and the persona for it. A chat-panel
+ * thread is always "thread"; an Assist request is spoken or typed per
+ * `assistMode`, where "auto" keeps what the integration said. A prompt sent
+ * with the request (AI Task, API clients) still replaces the configured ones.
+ */
+export function resolveChatStyle(
+  request: { isVoice: boolean; conversationId?: string; customPrompt?: string },
+  commonPrompt?: string,
+  personas: PersonaOptions = {}
+): { isVoice: boolean; mode: "voice" | "text" | "thread"; customPrompt?: string } {
+  const isThread = isThreadId(request.conversationId);
+  const assistMode = personas.assistMode ?? "auto";
+  const isVoice = isThread
+    ? false
+    : assistMode === "auto"
+      ? request.isVoice
+      : assistMode === "voice";
+  const mode = isThread ? "thread" : isVoice ? "voice" : "text";
+  const specific = mode === "voice" ? personas.voice : mode === "thread" ? personas.thread : undefined;
+  return {
+    isVoice,
+    mode,
+    customPrompt: request.customPrompt ?? composePersona(commonPrompt, specific),
+  };
+}
+
+function logPersonaSource(mode: string, requestPrompt?: string, serverDefault?: string): void {
+  const signature = `(${mode}) ${describePersonaSource(requestPrompt, serverDefault)}`;
   if (signature === lastPersonaSignature) return;
   lastPersonaSignature = signature;
   console.log(`[persona] ${signature}`);
@@ -175,7 +229,8 @@ export function createRouter(
   stt?: ISttService,
   tts?: ITtsService,
   ttsLanguage?: string,
-  mergeMarkerPath?: string
+  mergeMarkerPath?: string,
+  personas: PersonaOptions = {}
 ): Router {
   const router = Router();
   const checkEmptyBucket = conversations
@@ -197,14 +252,20 @@ export function createRouter(
         });
       }
 
-      logPersonaSource(parsed.data.customPrompt, defaultCustomPrompt);
+      const style = resolveChatStyle(parsed.data, defaultCustomPrompt, personas);
+      logPersonaSource(
+        style.mode,
+        parsed.data.customPrompt,
+        parsed.data.customPrompt ? defaultCustomPrompt : style.customPrompt
+      );
       // A thread starts with an empty memory on purpose.
       if (!isThreadId(parsed.data.conversationId)) void checkEmptyBucket?.(parsed.data.userId);
 
       // Use streaming internally (no callback = just faster processing)
       const response = await llm.chat({
         ...parsed.data,
-        customPrompt: parsed.data.customPrompt ?? defaultCustomPrompt,
+        isVoice: style.isVoice,
+        customPrompt: style.customPrompt,
       });
       res.json(response);
     } catch (error) {
@@ -232,7 +293,12 @@ export function createRouter(
         });
       }
 
-      logPersonaSource(parsed.data.customPrompt, defaultCustomPrompt);
+      const style = resolveChatStyle(parsed.data, defaultCustomPrompt, personas);
+      logPersonaSource(
+        style.mode,
+        parsed.data.customPrompt,
+        parsed.data.customPrompt ? defaultCustomPrompt : style.customPrompt
+      );
       // A thread starts with an empty memory on purpose.
       if (!isThreadId(parsed.data.conversationId)) void checkEmptyBucket?.(parsed.data.userId);
 
@@ -253,7 +319,8 @@ export function createRouter(
       const response = await llm.chat(
         {
           ...parsed.data,
-          customPrompt: parsed.data.customPrompt ?? defaultCustomPrompt,
+          isVoice: style.isVoice,
+          customPrompt: style.customPrompt,
         },
         {
           onTurn: () => send("turn", {}),
@@ -460,6 +527,38 @@ export function createRouter(
       res.json({ conversationId, messages });
     } catch (error) {
       console.error("Get conversation error:", error);
+      const message = error instanceof Error ? error.message : "Unknown error";
+      res.status(500).json({ error: message });
+    }
+  });
+
+  /**
+   * PATCH /api/conversations/:userId/:conversationId
+   * Rename a conversation (the panel's thread names). Body: { title }.
+   * Only a conversation this user has messages in can be named.
+   */
+  router.patch("/conversations/:userId/:conversationId", async (req: Request, res: Response) => {
+    if (!conversations?.setConversationTitle) {
+      return res.status(501).json({ error: "Conversation store not available" });
+    }
+    const parsed = RenameSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+    }
+
+    try {
+      const userId = req.params.userId as string;
+      const conversationId = req.params.conversationId as string;
+      const owned = (await conversations.getConversationHistory(conversationId, 1)).some(
+        (m) => m.userId === userId
+      );
+      if (!owned) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+      await conversations.setConversationTitle(conversationId, userId, parsed.data.title);
+      res.json({ conversationId, title: parsed.data.title });
+    } catch (error) {
+      console.error("Rename conversation error:", error);
       const message = error instanceof Error ? error.message : "Unknown error";
       res.status(500).json({ error: message });
     }

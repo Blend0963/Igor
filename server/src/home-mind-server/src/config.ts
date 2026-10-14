@@ -64,8 +64,17 @@ const ConfigSchema = z
     conversationStorage: z.enum(["memory", "sqlite"]).default("memory"),
     conversationDbPath: z.string().default("/data/conversations.db"),
 
-    // Custom prompt
+    // Custom prompt. CUSTOM_PROMPT applies everywhere; the per-mode ones are
+    // appended to it for that kind of conversation only (spoken Assist, or a
+    // thread in the chat panel), so shared rules are written once.
     customPrompt: z.string().optional(),
+    customPromptVoice: z.string().optional(),
+    customPromptThread: z.string().optional(),
+    // How to treat an Assist request. "auto" trusts the integration, which
+    // only knows a request is spoken when it comes from a satellite; voice
+    // from the phone app arrives as text. "voice" / "text" force one style
+    // for every Assist request. Chat-panel threads are never affected.
+    assistMode: z.enum(["auto", "voice", "text"]).default("auto"),
 
     // Per-entity device capability overrides (JSON, for devices with incorrect HA-reported modes)
     deviceOverrides: z.string().optional(),
@@ -93,10 +102,13 @@ const ConfigSchema = z
     apiToken: z.string().optional(), // Bearer token for API auth (when unset, no auth enforced)
 
     // Speech-to-text (for HomeMind App)
-    sttProvider: z.enum(["openai", "none"]).default("none"),
+    // "mistral" transcribes with Voxtral on Mistral's own API, keyed by
+    // MISTRAL_API_KEY unless STT_API_KEY is set.
+    sttProvider: z.enum(["openai", "mistral", "none"]).default("none"),
     sttApiKey: z.string().optional(), // Overrides openaiApiKey for STT; falls back to openaiApiKey if unset
     sttBaseUrl: z.string().url().optional(), // Custom Whisper-compatible endpoint
-    sttModel: z.string().default("whisper-1"),
+    // Unset = the provider's own default (whisper-1, voxtral-mini-latest).
+    sttModel: z.string().optional(),
 
     // Text-to-speech (for HomeMind App)
     ttsProvider: z.enum(["openai", "none"]).default("none"),
@@ -168,6 +180,9 @@ export function loadConfig(): Config {
     conversationStorage: emptyToUndefined(process.env.CONVERSATION_STORAGE),
     conversationDbPath: emptyToUndefined(process.env.CONVERSATION_DB_PATH),
     customPrompt: emptyToUndefined(process.env.CUSTOM_PROMPT),
+    customPromptVoice: emptyToUndefined(process.env.CUSTOM_PROMPT_VOICE),
+    customPromptThread: emptyToUndefined(process.env.CUSTOM_PROMPT_THREAD),
+    assistMode: emptyToUndefined(process.env.ASSIST_MODE),
     deviceOverrides: emptyToUndefined(process.env.DEVICE_OVERRIDES),
     layoutDomains: emptyToUndefined(process.env.LAYOUT_DOMAINS),
     layoutFromExposed: emptyToUndefined(process.env.LAYOUT_FROM_EXPOSED),

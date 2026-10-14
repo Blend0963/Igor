@@ -63,6 +63,16 @@ export class SqliteConversationStore implements IConversationStore {
       -- user list from them made getKnownUsers() return [] for anyone who had
       -- not chatted that day — which silently disabled the whole fact-cleanup
       -- job. Mirrors InMemoryConversationStore's knownUsers set, but durable.
+      -- Names people gave their conversations (the panel's rename). Not
+      -- derived from messages, so a renamed thread keeps its name as its
+      -- messages roll over.
+      CREATE TABLE IF NOT EXISTS conversation_titles (
+        conversation_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        PRIMARY KEY (conversation_id, user_id)
+      );
+
       CREATE TABLE IF NOT EXISTS users (
         user_id TEXT PRIMARY KEY,
         first_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -199,16 +209,38 @@ export class SqliteConversationStore implements IConversationStore {
       ).map((row) => [row.conversation_id, row.content])
     );
 
+    const custom = new Map<string, string>(
+      (
+        this.db
+          .prepare(`SELECT conversation_id, title FROM conversation_titles WHERE user_id = ?`)
+          .all(userId) as Array<{ conversation_id: string; title: string }>
+      ).map((row) => [row.conversation_id, row.title])
+    );
+
     return rows.map((row) => ({
       conversationId: row.conversation_id,
-      title: summarizeTitle(titles.get(row.conversation_id) ?? row.last_message),
+      title:
+        custom.get(row.conversation_id) ??
+        summarizeTitle(titles.get(row.conversation_id) ?? row.last_message),
       lastMessage: row.last_message,
       lastMessageAt: new Date(row.last_message_at),
       messageCount: row.message_count,
     }));
   }
 
+  setConversationTitle(conversationId: string, userId: string, title: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO conversation_titles (conversation_id, user_id, title) VALUES (?, ?, ?)
+         ON CONFLICT(conversation_id, user_id) DO UPDATE SET title = excluded.title`
+      )
+      .run(conversationId, userId, title);
+  }
+
   deleteConversation(conversationId: string, userId?: string): number {
+    this.db
+      .prepare(`DELETE FROM conversation_titles WHERE conversation_id = ? AND (? IS NULL OR user_id = ?)`)
+      .run(conversationId, userId ?? null, userId ?? null);
     const result = this.db.prepare(
       `DELETE FROM messages WHERE conversation_id = ? AND (? IS NULL OR user_id = ?)`
     ).run(conversationId, userId ?? null, userId ?? null);

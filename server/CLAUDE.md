@@ -109,6 +109,8 @@ import { loadConfig } from "./config.js";
 
 **Tool loop is capped** at `MAX_TOOL_ITERATIONS` (8) in both engines. On the final iteration the request is re-issued with tool calling disabled (`tool_choice: "none"` / `{type: "none"}`) so a stuck model produces a written answer rather than running to the integration's 120s timeout, burning the user's allowance. Tool arguments are parsed defensively — malformed JSON becomes a retryable tool error, never an exception that fails the whole request (cheap models emit these). `/api/chat` also accepts an optional `images` array (data URLs) → forwarded as multimodal content to vision-capable models (used by the integration's `ai_task` entity for camera-snapshot analysis).
 
+**Prompt modes** (`llm/prompts.ts`, `PromptMode`): `voice` (VOICE_INSTRUCTIONS), `text` (SYSTEM_INSTRUCTIONS = TEXT_CORE + STT_AWARENESS + LANGUAGE_AND_FOLLOWUPS + TEXT_STYLE) and `thread` (THREAD_SCOPE + TEXT_CORE + LANGUAGE_AND_FOLLOWUPS + THREAD_STYLE: Markdown, code blocks, any length, home tools kept). The engines pick `thread` for `mado-thread:` ids; `api/routes.ts` `resolveChatStyle()` picks voice/text for Assist from `ASSIST_MODE` (`auto` keeps the integration's isVoice, which is only true for satellites) and composes the persona as `CUSTOM_PROMPT` + `CUSTOM_PROMPT_VOICE` / `CUSTOM_PROMPT_THREAD`; a request's own `customPrompt` (AI Task) replaces both. With a persona set, `PERSONA_PRECEDENCE` tells the model the persona wins on style but not on the tool-enforced confirm flows.
+
 **Prompt caching**: System prompt split into static (cached) + dynamic (facts/datetime) blocks in `llm/prompts.ts`. Two variants: regular and voice (shorter). Custom prompt replaces the default identity line (opening sentence) rather than appending — this gives it maximum authority over persona. Dynamic block includes both human-readable datetime with UTC offset (e.g., `10:15 PM CET (UTC+1)`) and a raw ISO timestamp for unambiguous tool use.
 
 **Timestamp normalization**: `normalizeTimestamp()` in `tool-handler.ts` appends `Z` to bare ISO timestamps (no timezone suffix) before passing them to HA. This prevents HA from misinterpreting timezone-naive timestamps from the LLM. All tool calls are debug-logged with `[tool]` prefix showing name, input, and elapsed time.
@@ -169,7 +171,7 @@ The model is not hardcoded: at boot the add-on asks `GET https://nives.house/api
 
 > Historical note: this section used to describe a "Home Mind Cloud metering proxy" (`OPENAI_BASE_URL=<proxy>/v1`). That proxy was retired and its repo is archived under `Legacy/`. Nothing in the request path goes through us any more.
 
-STT (optional): `STT_PROVIDER` (`openai` | `none`, default `none`), `STT_API_KEY` (overrides `OPENAI_API_KEY`), `STT_BASE_URL` (custom Whisper-compatible endpoint), `STT_MODEL` (default `whisper-1`)
+STT (optional): `STT_PROVIDER` (`openai` | `mistral` | `none`, default `none`), `STT_API_KEY` (overrides `OPENAI_API_KEY`, or `MISTRAL_API_KEY` for mistral), `STT_BASE_URL` (custom Whisper-compatible endpoint; mistral defaults to `https://api.mistral.ai/v1`), `STT_MODEL` (default `whisper-1`, or `voxtral-mini-latest` for mistral). The add-on sets `STT_PROVIDER=mistral` when a Mistral key exists unless `speech_to_text: off`; the chat panel shows its 🎤 button only when `/api/health` reports `stt: true`
 
 TTS (optional): `TTS_PROVIDER` (`openai` | `none`, default `none`), `TTS_API_KEY` (overrides `OPENAI_API_KEY`), `TTS_BASE_URL` (custom OpenAI-compatible endpoint), `TTS_MODEL` (default `tts-1`), `TTS_VOICE` (default `alloy`)
 
@@ -200,6 +202,7 @@ Optional bearer token auth via `API_TOKEN` env var. When set, all endpoints exce
 - `DELETE /api/memory/:userId/facts/:factId` — Delete specific fact
 - `GET /api/conversations/:userId` — List conversations
 - `GET /api/conversations/:userId/:conversationId` — Get conversation messages
+- `PATCH /api/conversations/:userId/:conversationId` — Rename (body `{ title }`, 1-120 chars; 404 unless the user has messages in it). Stored in `conversation_titles`, shown by `listConversations()` instead of the first-message title, removed with the conversation
 - `DELETE /api/conversations/:userId/:conversationId` — Delete conversation
 - `GET /api/admin/conversations` — All users + conversation summaries (auth required)
 
