@@ -52,6 +52,13 @@ export const CHAT_LIMITS = {
   images: 10,
 } as const;
 
+/**
+ * What an image may be: a base64 data URL in one of the formats every
+ * vision provider takes (Anthropic only knows these four media types), or an
+ * https link the provider fetches itself.
+ */
+const IMAGE_PATTERN = /^(data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+|https:\/\/\S+)$/;
+
 export const ChatRequestSchema = z.object({
   message: z.string().min(1, "Message is required").max(CHAT_LIMITS.message),
   // JSON callers send an explicit null for "no value" at least as often as
@@ -77,7 +84,14 @@ export const ChatRequestSchema = z.object({
   // Optional images for vision-capable models. Each is a data URL
   // ("data:image/jpeg;base64,…") or a plain https URL. Forwarded to the model
   // as image content; ignored by text-only models.
-  images: z.array(z.string()).max(CHAT_LIMITS.images).optional(),
+  images: z.array(z.string().regex(IMAGE_PATTERN, "Expected a JPEG/PNG/WebP/GIF data URL or an https URL")).max(CHAT_LIMITS.images).optional(),
+});
+
+const RenameSchema = z.object({
+  title: z
+    .string()
+    .transform((t) => t.replace(/\s+/g, " ").trim())
+    .pipe(z.string().min(1, "Title is required").max(120)),
 });
 
 const AddFactSchema = z.object({
@@ -513,6 +527,38 @@ export function createRouter(
       res.json({ conversationId, messages });
     } catch (error) {
       console.error("Get conversation error:", error);
+      const message = error instanceof Error ? error.message : "Unknown error";
+      res.status(500).json({ error: message });
+    }
+  });
+
+  /**
+   * PATCH /api/conversations/:userId/:conversationId
+   * Rename a conversation (the panel's thread names). Body: { title }.
+   * Only a conversation this user has messages in can be named.
+   */
+  router.patch("/conversations/:userId/:conversationId", async (req: Request, res: Response) => {
+    if (!conversations?.setConversationTitle) {
+      return res.status(501).json({ error: "Conversation store not available" });
+    }
+    const parsed = RenameSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+    }
+
+    try {
+      const userId = req.params.userId as string;
+      const conversationId = req.params.conversationId as string;
+      const owned = (await conversations.getConversationHistory(conversationId, 1)).some(
+        (m) => m.userId === userId
+      );
+      if (!owned) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+      await conversations.setConversationTitle(conversationId, userId, parsed.data.title);
+      res.json({ conversationId, title: parsed.data.title });
+    } catch (error) {
+      console.error("Rename conversation error:", error);
       const message = error instanceof Error ? error.message : "Unknown error";
       res.status(500).json({ error: message });
     }

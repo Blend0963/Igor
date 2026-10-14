@@ -61,6 +61,11 @@ export interface IConversationStore {
   listConversations(
     userId: string
   ): ConversationSummary[] | Promise<ConversationSummary[]>;
+  /**
+   * A name the person gave the conversation, shown instead of the title
+   * derived from its first message. Kept until the conversation is deleted.
+   */
+  setConversationTitle?(conversationId: string, userId: string, title: string): void | Promise<void>;
   /** With `userId`, deletes only that user's messages in the conversation. */
   deleteConversation(conversationId: string, userId?: string): number | Promise<number>;
   getKnownUsers(): string[];

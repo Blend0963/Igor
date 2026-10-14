@@ -243,11 +243,7 @@ export class OpenAIChatEngine implements IChatEngine {
         role: "user",
         content: [
           { type: "text", text: message },
-          ...request.images.map((url) => ({
-            type: "image_url" as const,
-            // detail:"low" keeps token cost bounded for routine snapshots
-            image_url: { url, detail: "low" as const },
-          })),
+          ...request.images.map((url) => this.imagePart(url)),
         ],
       });
     } else {
@@ -434,6 +430,19 @@ export class OpenAIChatEngine implements IChatEngine {
   /** True when the endpoint is OpenRouter, where its own request fields apply. */
   private isOpenRouter(): boolean {
     return /openrouter\.ai/i.test(this.config.openaiBaseUrl ?? "");
+  }
+
+  /**
+   * One image of a user message. OpenAI's shape is an object with a `detail`
+   * hint ("low" keeps routine camera snapshots cheap). Mistral documents
+   * `image_url` as a plain string and rejects fields it does not know, so it
+   * gets the URL (or data URL) alone.
+   */
+  private imagePart(url: string): OpenAI.ChatCompletionContentPartImage {
+    if (this.isMistral()) {
+      return { type: "image_url", image_url: url } as unknown as OpenAI.ChatCompletionContentPartImage;
+    }
+    return { type: "image_url", image_url: { url, detail: "low" } };
   }
 
   /** Mistral rejects stream_options on its OpenAI-compatible chat endpoint. */
