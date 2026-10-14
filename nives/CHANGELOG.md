@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5 — Timestamps are metadata, not speech
+
+- Time-mark only the user's past messages in the conversation history; the assistant's own replies are sent unstamped, because stamped replies taught the model to open answers with "[09:12]".
+- State explicitly in the written and voice system prompts, and in the semantic-recall header, that time markers are metadata about when something was said — never to be copied into a reply.
+
 ## 0.1.4 — Memory is not the present
 
 - Timestamp every conversation-history message and every semantically recalled message sent to the model, so memories read as past events rather than the current state of the home.
