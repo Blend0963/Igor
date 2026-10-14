@@ -63,7 +63,7 @@ export class OpenAIFactExtractor implements IFactExtractor {
           category: f.category,
         }));
         existingFactsSection = `Existing facts (check if new facts should replace any of these):
-${JSON.stringify(factsJson, null, 2)}`;
+${JSON.stringify(factsJson)}`;
       } else {
         existingFactsSection = "No existing facts stored yet.";
       }

@@ -57,7 +57,10 @@ const ConfigSchema = z
     shodhApiKey: z.string().min(1, "SHODH_API_KEY is required"),
 
     // Memory settings
-    memoryTokenLimit: z.coerce.number().default(3000),
+    // Remembered facts sent with every request, in tokens. Re-sent on every
+    // model call of a tool loop, so it multiplies; 1500 holds dozens of facts,
+    // and the most relevant ones are picked first.
+    memoryTokenLimit: z.coerce.number().default(1500),
     memoryCleanupIntervalHours: z.coerce.number().min(0).default(6),
 
     // Conversation history
@@ -175,7 +178,7 @@ export function loadConfig(): Config {
     haSkipTlsVerify: process.env.HA_SKIP_TLS_VERIFY,
     shodhUrl: process.env.SHODH_URL,
     shodhApiKey: process.env.SHODH_API_KEY,
-    memoryTokenLimit: process.env.MEMORY_TOKEN_LIMIT,
+    memoryTokenLimit: emptyToUndefined(process.env.MEMORY_TOKEN_LIMIT),
     memoryCleanupIntervalHours: emptyToUndefined(process.env.MEMORY_CLEANUP_INTERVAL_HOURS),
     conversationStorage: emptyToUndefined(process.env.CONVERSATION_STORAGE),
     conversationDbPath: emptyToUndefined(process.env.CONVERSATION_DB_PATH),

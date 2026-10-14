@@ -9,6 +9,7 @@ describe("resolveMemoryScope", () => {
       factBucket: threadFactBucket("alice", "mado-thread:t1"),
       recall: { conversationId: "mado-thread:t1" },
       isThread: true,
+      historyWindow: 20,
     });
     expect(scope.factBucket).not.toBe("alice");
   });
@@ -20,6 +21,7 @@ describe("resolveMemoryScope", () => {
         factBucket: "alice",
         recall: { excludeConversationPrefix: "mado-thread:" },
         isThread: false,
+        historyWindow: 12,
       });
     }
   });

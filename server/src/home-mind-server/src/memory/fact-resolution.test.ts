@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   normalizeFactContent,
+  factsForExtraction,
   resolveForgetQuery,
   MATCH_THRESHOLD,
   SUGGESTION_THRESHOLD,
@@ -252,5 +253,23 @@ describe("looksLikeRelearn — numeric value swaps (2.4.19 review finding)", () 
         "User prefers the bedroom temperature at night to be 21"
       )
     ).toBe(true);
+  });
+});
+
+describe("factsForExtraction", () => {
+  const fact = (id: string, content: string) =>
+    ({ id, userId: "u", content, category: "preference", confidence: 1, createdAt: new Date(), lastUsed: new Date(), useCount: 0 }) as Fact;
+
+  it("passes a small bucket through untouched", () => {
+    const facts = [fact("1", "a"), fact("2", "b")];
+    expect(factsForExtraction(facts, "anything")).toBe(facts);
+  });
+
+  it("keeps the facts closest to the turn, at most the limit", () => {
+    const facts = Array.from({ length: 60 }, (_, i) => fact(String(i), `unrelated fact number ${i} about weather`));
+    facts.push(fact("cat", "User has a cat named Max"));
+    const kept = factsForExtraction(facts, "my cat Max is now called Felix", 25);
+    expect(kept).toHaveLength(25);
+    expect(kept[0].id).toBe("cat");
   });
 });

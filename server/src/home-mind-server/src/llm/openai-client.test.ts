@@ -636,7 +636,7 @@ describe("OpenAIChatEngine", () => {
       answer();
       await engine.chat({ message: "hello", userId: "user-1", conversationId: "01HXYZ" });
 
-      expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-user:user-1", 20);
+      expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-user:user-1", 12);
       expect(memory.getFactsWithinTokenLimit).toHaveBeenCalledWith("user-1", 1500, "hello");
       expect(vi.mocked(extractAndStoreFacts).mock.calls[0][2]).toBe("user-1");
     });
@@ -661,7 +661,7 @@ describe("OpenAIChatEngine", () => {
       conversationId: "conv-1",
     });
 
-    expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-user:user-1", 20);
+    expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-user:user-1", 12);
 
     // Check messages passed to OpenAI include history
     const createCall = mockCreate.mock.calls[0][0];

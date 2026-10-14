@@ -85,6 +85,42 @@ export function describeUsage(usage: TokenUsage | undefined): string {
 }
 
 /**
+ * The tokens of one whole chat request, summed over every model call of its
+ * tool loop. A single call's usage hides the real cost: a command that runs a
+ * tool is two calls, an SMS four, and each re-sends the whole prompt.
+ */
+export class UsageTally {
+  private calls = 0;
+  private reported = 0;
+  private prompt = 0;
+  private completion = 0;
+  private cached = 0;
+  private cachedReported = false;
+
+  add(usage: TokenUsage | undefined): void {
+    this.calls++;
+    if (!usage) return;
+    this.reported++;
+    this.prompt += usage.promptTokens ?? 0;
+    this.completion += usage.completionTokens ?? 0;
+    if (usage.cachedTokens !== undefined) {
+      this.cachedReported = true;
+      this.cached += usage.cachedTokens;
+    }
+  }
+
+  /** e.g. "calls=2 prompt=28140 cached=19968 completion=64". */
+  describe(): string {
+    if (this.reported === 0) return `calls=${this.calls} usage=unreported`;
+    const partial = this.reported < this.calls ? ` (usage reported for ${this.reported})` : "";
+    return (
+      `calls=${this.calls}${partial} prompt=${this.prompt} ` +
+      `cached=${this.cachedReported ? this.cached : "unreported"} completion=${this.completion}`
+    );
+  }
+}
+
+/**
  * True when the model demonstrably spent this turn thinking rather than
  * writing. Requires a positive reported count: an unreported figure is not
  * evidence of absence, and guessing here produces advice the user cannot act on.

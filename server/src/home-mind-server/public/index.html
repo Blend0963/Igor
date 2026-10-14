@@ -633,7 +633,9 @@
 
   var DEFAULT_IMAGE_QUESTION = "Qu'est-ce que c'est ?";
   var MAX_IMAGES = 10;
-  var MAX_SIDE = 1600;
+  // 1024 px: plenty for a plant, a label or a screen, and vision models bill
+  // by the pixel (16 px patches): about 2,700 tokens instead of 6,700 at 1600.
+  var MAX_SIDE = 1024;
   state.pending = [];
   state.preparing = 0;
 
