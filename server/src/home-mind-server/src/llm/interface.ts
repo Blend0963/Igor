@@ -21,6 +21,17 @@ export interface ChatRequest {
    * in the system prompt when the user's own words don't indicate a language.
    */
   language?: string;
+  /** Aborts the reply (the panel's stop button); what was written is kept. */
+  signal?: AbortSignal;
+}
+
+/** The tokens one request spent, for the cost counter. */
+export interface RequestUsage {
+  model: string;
+  calls: number;
+  promptTokens: number;
+  cachedTokens: number;
+  completionTokens: number;
 }
 
 /**
@@ -43,6 +54,9 @@ export interface ChatResponse {
   toolsUsed: string[];
   factsLearned: number;
   error?: ChatError;
+  usage?: RequestUsage;
+  /** Stopped by the user before the end. */
+  interrupted?: boolean;
 }
 
 export type StreamCallback = (chunk: string) => void;

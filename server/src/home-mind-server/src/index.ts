@@ -25,6 +25,10 @@ import { createSttService, sttModelFor } from "./stt/stt-service.js";
 import { createTtsService } from "./tts/tts-service.js";
 import { configureMediaStore } from "./llm/media-store.js";
 import { createTitleGenerator } from "./llm/thread-title.js";
+import { WorkspaceStore } from "./memory/workspace-store.js";
+import { configureVision, createVisionDescriber } from "./llm/vision.js";
+import { Scheduler, setScheduler } from "./jobs/scheduler.js";
+import { createDiagnostics } from "./api/diagnostics.js";
 import { MemoryCleanupJob } from "./jobs/memory-cleanup.js";
 import { BalanceWatchJob } from "./jobs/balance-watch.js";
 
@@ -161,6 +165,38 @@ app.use((req, res, next) => {
 // The one-time memory merge records itself next to the conversation database.
 // With in-memory conversations there is nowhere durable to put it, and the
 // merge's own duplicate check keeps a repeat from copying anything.
+// Projects and the cost counter, next to the conversation database.
+const dataDir = config.conversationStorage === "sqlite" ? path.dirname(config.conversationDbPath) : undefined;
+const workspace = new WorkspaceStore(dataDir ? path.join(dataDir, "workspace.db") : ":memory:");
+
+// Camera snapshots are described by the chat model (look_at_camera).
+configureVision(createVisionDescriber(config));
+
+// Reminders, scheduled tasks and the morning briefing, in the house's time zone.
+let houseTimeZone: string | undefined;
+const scheduler = new Scheduler({
+  llm,
+  conversations,
+  notify: (title, message) => ha.notify(config.notifyService, title, message),
+  timeZone: async () => {
+    if (!houseTimeZone) {
+      houseTimeZone = await ha
+        .getConfig()
+        .then((c) => c.time_zone)
+        .catch(() => undefined);
+    }
+    return houseTimeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+  },
+  storePath: dataDir ? path.join(dataDir, "scheduled-tasks.json") : undefined,
+});
+setScheduler(scheduler);
+scheduler.start();
+scheduler
+  .configureBriefing({ userId: config.briefingUserId, time: config.dailyBriefingTime, prompt: config.dailyBriefingPrompt })
+  .catch((err) => console.warn("[scheduler] briefing not configured:", err instanceof Error ? err.message : err));
+
+const diagnostics = createDiagnostics({ config, ha, memory, tts: tts ?? undefined, stt: stt ?? undefined });
+
 // Charts and images the tools produce, next to the conversation database so a
 // thread still shows them after a restart.
 configureMediaStore(
@@ -177,7 +213,7 @@ app.use("/api", createRouter(llm, memory, "shodh", version, config.customPrompt,
   voice: config.customPromptVoice,
   thread: config.customPromptThread,
   assistMode: config.assistMode,
-}, { generateTitle: createTitleGenerator(config) }));
+}, { generateTitle: createTitleGenerator(config), workspace, scheduler, diagnostics }));
 
 // The built-in thread panel: plain static files next to the compiled server
 // (the add-on image copies them in). Optional on purpose — when the
@@ -247,6 +283,7 @@ balanceJob.start();
 process.on("SIGTERM", () => {
   console.log("Shutting down...");
   cleanupJob.stop();
+  scheduler.stop();
   balanceJob.stop();
   conversations.close();
   memory.close();
@@ -256,6 +293,7 @@ process.on("SIGTERM", () => {
 process.on("SIGINT", () => {
   console.log("Shutting down...");
   cleanupJob.stop();
+  scheduler.stop();
   balanceJob.stop();
   conversations.close();
   memory.close();

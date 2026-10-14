@@ -19,6 +19,8 @@ MaDo is a self-hostable AI assistant for Home Assistant with persistent memory, 
 - **Charts and rich answers**: in a thread, MaDo draws line, bar and pie charts from real data (sensor history, consumption), with tooltips and a table view, and answers with Markdown tables, headings and lists.
 - **Files in, files out**: attach any file to a thread (PDF, Word, Excel, PowerPoint, OpenDocument, text, ZIP…) and ask about it; ask for a document and MaDo writes it (Word, PDF, Excel, CSV, ZIP…) with a download link. Everything happens on the add-on, PDFs included; only a scanned PDF needs Mistral OCR (paid per page), and MaDo shows the estimated price and asks first.
 - **Mistral's own tools** (with a Mistral key): Python code interpreter for exact calculations and charts, image generation, OCR of scanned PDFs (after a price check), search in your Mistral document libraries (`mistral_library_ids`), connectors to your Mistral-linked services (`mistral_connectors`, experimental), Voxtral voice (`text_to_speech: mistral`, 🔊 under each reply). Threads use Mistral Large 4's reasoning mode (`thread_reasoning`, default high).
+- **Home helpers**: look through a camera ("qui est devant la porte ?"), reminders and scheduled tasks sent to your phone, an optional morning briefing, and comparisons over months from Home Assistant's long-term statistics.
+- **Panel tools**: stop button, search, edit/regenerate, export (PDF, Word, Markdown), projects with their own instructions, a memory page, a cost counter and a diagnostic. A cheaper `fast_model` can answer plain commands.
 - **Thread panel in the Home Assistant sidebar** (add-on ingress): separate conversations like a chat app. Each thread keeps its own conversation; what MaDo remembers about you (people, preferences, nicknames) is shared with Assist and every thread, or kept per thread with `thread_memory: isolated`. Assist keeps one conversation shared by all your devices (voice satellites, phone, laptop).
 
 ## Install
@@ -39,7 +41,7 @@ The memory database and conversation store remain on your Home Assistant machine
 
 ## Version
 
-Current release: **v0.7.0** (Mistral tools, charts and tables).
+Current release: **v0.8.0** (stop button, fast model, cameras, reminders and morning briefing, memory page, projects, cost counter).
 
 ## License and upstream notices
 

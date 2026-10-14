@@ -254,6 +254,35 @@ export class SqliteConversationStore implements IConversationStore {
       .run(conversationId, userId, title);
   }
 
+  searchMessages(userId: string, query: string, limit = 30): ConversationMessage[] {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return [];
+    const escaped = needle.replace(/[\\%_]/g, (c) => `\\${c}`);
+    const rows = this.db
+      .prepare(
+        `SELECT id, conversation_id, user_id, role, content, created_at FROM messages
+         WHERE user_id = ? AND lower(content) LIKE ? ESCAPE '\\'
+         ORDER BY rowid DESC LIMIT ?`
+      )
+      .all(userId, `%${escaped}%`, Math.max(1, Math.min(100, limit))) as Array<{
+      id: string; conversation_id: string; user_id: string; role: "user" | "assistant"; content: string; created_at: string;
+    }>;
+    return rows.map((row) => ({
+      id: row.id, conversationId: row.conversation_id, userId: row.user_id,
+      role: row.role, content: row.content, createdAt: new Date(row.created_at),
+    }));
+  }
+
+  deleteMessagesFrom(conversationId: string, userId: string, messageId: string): number {
+    const target = this.db
+      .prepare(`SELECT rowid AS r FROM messages WHERE id = ? AND conversation_id = ? AND user_id = ?`)
+      .get(messageId, conversationId, userId) as { r: number } | undefined;
+    if (!target) return 0;
+    return this.db
+      .prepare(`DELETE FROM messages WHERE conversation_id = ? AND user_id = ? AND rowid >= ?`)
+      .run(conversationId, userId, target.r).changes;
+  }
+
   setConversationPinned(conversationId: string, userId: string, pinned: boolean): void {
     if (pinned) {
       this.db

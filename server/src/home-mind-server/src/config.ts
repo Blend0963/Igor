@@ -42,6 +42,17 @@ const ConfigSchema = z
     // can run on a much cheaper model (e.g. ministral-8b-latest on Mistral)
     // without making the main answers any less smart.
     extractionModel: z.string().optional(),
+    // Cheaper model for plain commands and quick state questions
+    // (llm/model-router.ts). Unset = every request on the main model.
+    fastModel: z.string().optional(),
+    // Reminders, scheduled tasks and the morning briefing (jobs/scheduler.ts).
+    // Notify service for them ("mobile_app_pixel"); unset = a persistent
+    // notification in Home Assistant.
+    notifyService: z.string().optional(),
+    dailyBriefingTime: z.string().regex(/^\d{1,2}:\d{2}$/, "DAILY_BRIEFING_TIME must be HH:MM").optional(),
+    dailyBriefingPrompt: z.string().optional(),
+    // Whose briefing it is: the user id the panel and Assist use.
+    briefingUserId: z.string().default("default"),
 
     // Ollama
     ollamaBaseUrl: z.string().url().optional(),
@@ -183,6 +194,11 @@ export function loadConfig(): Config {
     reasoningEffort: emptyToUndefined(process.env.REASONING_EFFORT),
     threadReasoning: emptyToUndefined(process.env.THREAD_REASONING),
     extractionModel: emptyToUndefined(process.env.EXTRACTION_MODEL),
+    fastModel: emptyToUndefined(process.env.FAST_MODEL),
+    notifyService: emptyToUndefined(process.env.NOTIFY_SERVICE),
+    dailyBriefingTime: emptyToUndefined(process.env.DAILY_BRIEFING_TIME),
+    dailyBriefingPrompt: emptyToUndefined(process.env.DAILY_BRIEFING_PROMPT),
+    briefingUserId: emptyToUndefined(process.env.BRIEFING_USER_ID),
     ollamaBaseUrl: emptyToUndefined(process.env.OLLAMA_BASE_URL),
     haUrl: process.env.HA_URL,
     haToken: process.env.HA_TOKEN,

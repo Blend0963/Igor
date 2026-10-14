@@ -125,6 +125,41 @@ configuration:
       Mistral OCR, in USD per 1000 pages. Unset = 4 (Mistral's list price for
       its latest OCR model in October 2026). PDFs that contain text are read on
       the add-on for free and never need OCR.
+  fast_model:
+    name: Fast Model (simple commands)
+    description: >-
+      A cheaper model for plain commands ("allume la lumière du salon", "ferme
+      les volets") and quick state questions ("quelle température dans la
+      chambre ?"). Everything else (explanations, files, images, analyses)
+      stays on the main model. Example on Mistral: ministral-8b-latest or
+      mistral-small-latest. If it fails, the main model answers instead.
+      Leave empty to use the main model for everything.
+  notify_service:
+    name: Notification Service
+    description: >-
+      Where reminders, scheduled tasks and the morning briefing are sent: a
+      notify service of Home Assistant, e.g. mobile_app_pixel_8 for the
+      companion app on your phone. Leave empty for a notification inside
+      Home Assistant.
+  daily_briefing_time:
+    name: Morning Briefing Time
+    description: >-
+      HH:MM, house time (e.g. 07:30). Every day at that time MaDo writes a short
+      summary (weather, indoor temperatures, yesterday's consumption, anything
+      unusual at home), sends it as a notification and keeps it in the
+      "Résumé du matin" thread. Each briefing costs one request. Empty = off.
+  daily_briefing_prompt:
+    name: Morning Briefing Request
+    description: >-
+      What the morning briefing should contain, written as you would ask MaDo.
+      Leave empty for the default summary.
+  model_prices:
+    name: Model Prices (cost counter)
+    description: >-
+      Prices used by the 💶 cost counter of the panel, as JSON
+      {"model-prefix": [input, output]} in USD per million tokens, e.g.
+      {"mistral-large": [0.5, 1.5]}. Added to (and overriding) the built-in
+      list of common models.
   max_output_tokens:
     name: Maximum Answer Length
     description: >-

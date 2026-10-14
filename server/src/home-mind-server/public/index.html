@@ -76,6 +76,41 @@
   #cam-shoot { width: 68px; height: 68px; border-radius: 50%; border: 4px solid #fff; background: rgba(255,255,255,0.25); cursor: pointer; padding: 0; }
   #cam-shoot:active { background: rgba(255,255,255,0.6); }
   #main.drag { outline: 2px dashed #3b5bdb; outline-offset: -8px; }
+  .side-tools { padding: 0 10px 8px; display: flex; flex-direction: column; gap: 6px; }
+  #search, #project { width: 100%; background: #111318; color: #e6e9ef; border: 1px solid #2c313d; border-radius: 8px; padding: 6px 9px; font: inherit; font-size: 13px; }
+  .project-row { display: flex; gap: 6px; }
+  .mini { background: none; border: 1px solid transparent; color: #c9d1e0; border-radius: 7px; padding: 3px 6px; cursor: pointer; font-size: 15px; line-height: 1; }
+  .mini:hover { background: #232733; border-color: #2c313d; }
+  .foot-tools { display: flex; gap: 2px; }
+  .head-btn { background: none; border: 0; color: #c9d1e0; cursor: pointer; font-size: 17px; padding: 2px 6px; }
+  .head-btn:hover { color: #fff; }
+  .hit-row { padding: 7px 8px; border-radius: 8px; cursor: pointer; margin-bottom: 2px; }
+  .hit-row:hover { background: #232733; }
+  .hit-title { font-size: 12px; color: #9fb4ff; margin-bottom: 2px; }
+  .hit-snip { font-size: 12px; color: #c9d1e0; }
+  .hit-snip mark { background: rgba(201,133,0,0.35); color: inherit; border-radius: 2px; }
+  #btn-send.stop { background: #c92a2a; }
+  .msg-actions { display: flex; gap: 2px; margin-top: 4px; }
+  .msg.user .msg-actions { justify-content: flex-end; }
+  .msg-act { background: none; border: 0; color: inherit; opacity: 0.6; cursor: pointer; font-size: 13px; padding: 1px 4px; }
+  .msg-act:hover { opacity: 1; }
+  .modal .box.wide { width: min(640px, 94vw); max-height: 86vh; overflow-y: auto; }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .modal-head h2 { margin: 0; }
+  .pm-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+  .pm-item { display: flex; gap: 8px; align-items: flex-start; background: #111318; border: 1px solid #2c313d; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+  .pm-item .grow { flex: 1; min-width: 0; }
+  .pm-item .sub { color: #8b93a5; font-size: 12px; margin-top: 2px; }
+  .pm-form { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .pm-form textarea, .pm-form input, .pm-form select { background: #111318; color: #e6e9ef; border: 1px solid #2c313d; border-radius: 8px; padding: 7px 9px; font: inherit; font-size: 13px; }
+  .pm-form textarea { min-height: 90px; resize: vertical; }
+  .pm-btn { border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; font: inherit; font-size: 13px; background: #3b5bdb; color: #fff; }
+  .pm-btn.secondary { background: #2a2f3d; color: #e6e9ef; }
+  .pm-btn.danger { background: #8a1f1f; }
+  .pm-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .pm-big { font-size: 26px; font-weight: 600; margin: 4px 0; }
+  .pm-note { color: #8b93a5; font-size: 12px; }
+  .diag-ok { color: #69db7c; } .diag-ko { color: #ff6b6b; } .diag-skip { color: #8b93a5; }
   .t-busy { display: inline-flex; gap: 3px; margin-right: 7px; vertical-align: middle; }
   .t-busy i { width: 5px; height: 5px; border-radius: 50%; background: #9fb4ff; animation: t-pulse 1.2s infinite ease-in-out; }
   .t-busy i:nth-child(2) { animation-delay: 0.2s; }
@@ -132,10 +167,11 @@
   .msg.assistant hr { border: 0; border-top: 1px solid #2c313d; margin: 10px 0; }
   .msg.assistant a { color: #9fb4ff; }
   .table-wrap { overflow-x: auto; margin: 0 0 8px; }
-  .msg table { border-collapse: collapse; font-size: 13px; min-width: 50%; }
-  .msg th, .msg td { border: 1px solid #2c313d; padding: 5px 9px; text-align: left; vertical-align: top; }
-  .msg th { background: #1a1d24; font-weight: 600; }
-  .msg tbody tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+  .msg table, .modal table { border-collapse: collapse; font-size: 13px; min-width: 50%; }
+  .msg th, .msg td, .modal th, .modal td { border: 1px solid #2c313d; padding: 5px 9px; text-align: left; vertical-align: top; }
+  .msg th, .modal th { background: #111318; font-weight: 600; }
+  .msg tbody tr:nth-child(even) td, .modal tbody tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+  .modal .table-wrap { margin: 10px 0; }
   .md-img { display: block; max-width: 100%; max-height: 480px; border-radius: 10px; margin: 6px 0; cursor: zoom-in; background: #1a1d24; min-height: 40px; }
   .md-img.broken { cursor: default; color: #8b93a5; font-size: 12px; }
   .msg.assistant:has(.chart), .msg.assistant:has(.table-wrap), .msg.assistant:has(.md-img) { width: 78%; }
@@ -182,9 +218,22 @@
       <button id="btn-new" type="button">+ Nouveau fil</button>
       <button id="btn-close-side" type="button" title="Fermer" aria-label="Fermer la liste">✕</button>
     </div>
+    <div class="side-tools">
+      <input id="search" type="search" placeholder="Rechercher dans les fils…" aria-label="Rechercher dans les fils" autocomplete="off">
+      <div class="project-row">
+        <select id="project" aria-label="Projet"></select>
+        <button id="btn-project-edit" type="button" class="mini" title="Instructions du projet" hidden>⚙</button>
+      </div>
+    </div>
     <nav id="threads"></nav>
     <div class="side-foot">
-      <button id="btn-settings" type="button" class="muted">Clé API</button>
+      <div class="foot-tools">
+        <button id="btn-memory" type="button" class="mini" title="Ce que MaDo retient sur vous">🧠</button>
+        <button id="btn-tasks" type="button" class="mini" title="Rappels et tâches programmées">⏰</button>
+        <button id="btn-costs" type="button" class="mini" title="Coûts">💶</button>
+        <button id="btn-diag" type="button" class="mini" title="Diagnostic">🩺</button>
+        <button id="btn-settings" type="button" class="mini" title="Clé API">🔑</button>
+      </div>
       <span id="health" class="muted"></span>
     </div>
   </aside>
@@ -193,6 +242,8 @@
     <header id="chat-head">
       <button id="btn-menu" type="button" title="Fils de discussion" aria-label="Afficher les fils de discussion">☰</button>
       <span id="chat-title" class="untitled">MaDo</span>
+      <button id="btn-move" type="button" class="head-btn" title="Ranger dans un projet" hidden>📁</button>
+      <button id="btn-export" type="button" class="head-btn" title="Exporter ce fil" hidden>⤓</button>
       <button id="btn-new-top" type="button" title="Nouveau fil" aria-label="Nouveau fil">＋</button>
     </header>
     <div id="empty">
@@ -222,6 +273,12 @@
     <button id="cam-cancel" class="cam-side" type="button">Annuler</button>
     <button id="cam-shoot" type="button" title="Prendre la photo" aria-label="Prendre la photo"></button>
     <button id="cam-flip" class="cam-side" type="button" title="Changer de caméra">⟲</button>
+  </div>
+</div>
+<div id="panel-modal" class="modal" hidden>
+  <div class="box wide">
+    <div class="modal-head"><h2 id="pm-title"></h2><button type="button" id="pm-close" class="mini" title="Fermer">✕</button></div>
+    <div id="pm-body"></div>
   </div>
 </div>
 <div id="settings" class="modal" hidden>
@@ -296,6 +353,8 @@
   function renderThreads(threads) {
     var nav = el("threads");
     nav.textContent = "";
+    if (state.projectFilter) threads = threads.filter(function (t) { return t.projectId === state.projectFilter; });
+    if (state.searching && el("search").value.trim().length >= 2) return;
     var pinned = threads.filter(function (t) { return t.pinned; });
     var others = threads.filter(function (t) { return !t.pinned; });
     function heading(text) {
@@ -312,9 +371,10 @@
       var hint = document.createElement("div");
       hint.className = "muted";
       hint.style.padding = "10px";
-      hint.textContent = "Aucun fil pour le moment.";
+      hint.textContent = state.projectFilter ? "Aucun fil dans ce projet." : "Aucun fil pour le moment.";
       nav.appendChild(hint);
     }
+    if (el("btn-send")) refreshSendButton();
   }
 
   function threadRow(t) {
@@ -467,22 +527,30 @@
 
   // ----- chat -----
 
-  function openThread(id) {
+  function openThread(id, quiet) {
     state.current = id;
     state.liveFor = null;
+    state.editFrom = null;
+    el("btn-export").hidden = false;
+    el("btn-move").hidden = !state.projects.length;
     el("chat").hidden = false;
     el("empty").hidden = true;
     var known = state.threads.filter(function (t) { return t.conversationId === id; })[0];
     el("chat-title").textContent = (known && known.title) || "Fil";
     el("chat-title").classList.remove("untitled");
-    el("messages").textContent = "";
-    setStatus("");
-    closeSide();
+    if (!quiet) { el("messages").textContent = ""; setStatus(""); closeSide(); }
+    refreshSendButton();
     api("api/conversations/" + USER_ID + "/" + encodeURIComponent(id))
       .then(function (res) { return res.json(); })
       .then(function (data) {
+        if (state.current !== id) return;
         var messages = (data && data.messages) || [];
-        messages.forEach(function (m) { addBubble(m.role, m.content); });
+        el("messages").textContent = "";
+        messages.forEach(function (m) {
+          var box = addBubble(m.role, m.content);
+          if (m.id) box.dataset.id = m.id;
+        });
+        decorateLast(messages);
         scrollDown();
         // A reply still being written (asked from another page, or before
         // the panel was left) is followed until it is stored.
@@ -495,6 +563,11 @@
   function newThread() {
     state.current = THREAD_PREFIX + uuid();
     state.liveFor = null;
+    state.editFrom = null;
+    el("btn-export").hidden = true;
+    el("btn-move").hidden = true;
+    // A thread started inside a project belongs to it.
+    if (state.projectFilter) assignProject(state.current, state.projectFilter).catch(function () {});
     el("chat").hidden = false;
     el("empty").hidden = true;
     el("chat-title").textContent = "Nouveau fil";
@@ -849,7 +922,9 @@
   function fmt(v, unit) {
     if (v === null || v === undefined) return "—";
     var abs = Math.abs(v);
-    var s = abs >= 1000 ? Math.round(v).toLocaleString("fr-FR") : String(Math.round(v * 100) / 100).replace(".", ",");
+    // Small values (a cost of 0,0042 $) keep enough digits to differ.
+    var digits = abs >= 100 ? 0 : abs >= 1 ? 2 : abs >= 0.01 ? 3 : 4;
+    var s = abs >= 1000 ? Math.round(v).toLocaleString("fr-FR") : String(Math.round(v * Math.pow(10, digits)) / Math.pow(10, digits)).replace(".", ",");
     return unit ? s + " " + unit : s;
   }
 
@@ -1291,7 +1366,6 @@
   // already on screen. `ocr`: the answer to that question, "yes" or "no".
   function send(text, images, shown, docs, ocr) {
     state.busy = true;
-    el("btn-send").disabled = true;
     if (shown !== null) addBubble("user", shown, images);
     scrollDown();
     var ocrQuestion = null;
@@ -1300,6 +1374,7 @@
     state.liveFor = threadId;
     state.localRunning[threadId] = true;
     renderThreads(state.threads);
+    refreshSendButton();
     var bubble = addBubble("assistant", "");
     var acc = "";
     var finalResponse = null;
@@ -1377,7 +1452,7 @@
         if (ocrQuestion) {
           askOcr(bubble, ocrQuestion, function (answer) { send(text, images, null, docs, answer); });
           state.busy = false;
-          el("btn-send").disabled = false;
+          refreshSendButton();
           return;
         }
         // The final payload is authoritative: when nothing streamed (a
@@ -1403,9 +1478,12 @@
         if (!acc && bubble.parentNode) bubble.parentNode.removeChild(bubble);
         else addSpeak(bubble);
         state.busy = false;
-        el("btn-send").disabled = false;
+        refreshSendButton();
         el("input").focus();
         refreshThreads();
+        // Shown again from the server: one bubble per stored message, with
+        // the edit / regenerate actions on the last ones.
+        if (state.current === threadId && state.liveFor === null) openThread(threadId, true);
       });
   }
 
@@ -1413,6 +1491,7 @@
 
   el("composer").addEventListener("submit", function (ev) {
     ev.preventDefault();
+    if (el("btn-send").classList.contains("stop")) { stopCurrent(); return; }
     var input = el("input");
     var text = input.value.trim();
     var images = state.pending.slice();
@@ -1426,6 +1505,17 @@
     // A photo alone is a question too: "what is this?"; a document alone, "summarise it".
     var question = text || (docs.length && !images.length ? DEFAULT_DOC_QUESTION : DEFAULT_IMAGE_QUESTION);
     var shown = text + docs.map(function (d) { return '<document name="' + d.name.replace(/"/g, "") + '"></document>'; }).join("");
+    // Editing the last question: the server forgets it and what followed
+    // before the new version is sent (it would otherwise be forgotten too).
+    var from = state.editFrom;
+    state.editFrom = null;
+    if (from && from.parentNode && from.dataset.id) {
+      state.busy = true;
+      truncateFrom(from)
+        .then(function () { dropFrom(from); state.busy = false; send(question, images, shown, docs); })
+        .catch(function (err) { state.busy = false; setStatus("Modification impossible : " + err.message, true); });
+      return;
+    }
     send(question, images, shown, docs);
   });
 
@@ -1867,6 +1957,505 @@
     refreshThreads();
   });
 
+  // ----- stop button -----
+
+  function refreshSendButton() {
+    var btn = el("btn-send");
+    var running = Boolean(state.current && isRunning(state.current));
+    btn.classList.toggle("stop", running);
+    btn.textContent = running ? "■ Arrêter" : "Envoyer";
+    btn.title = running ? "Arrêter la réponse (le début est gardé)" : "";
+    btn.disabled = !running && state.busy;
+  }
+
+  function stopCurrent() {
+    var id = state.current;
+    if (!id) return;
+    setStatus("Arrêt…");
+    api("api/running/" + USER_ID + "/" + encodeURIComponent(id) + "/stop", { method: "POST" })
+      .catch(function (err) { setStatus("Arrêt impossible : " + err.message, true); });
+  }
+
+  // ----- edit and regenerate -----
+  //
+  // The last question can be edited and the last answer regenerated: the
+  // server forgets that message and everything after it, then the question
+  // is sent again.
+
+  function decorateLast(messages) {
+    var boxes = el("messages").querySelectorAll(".msg[data-id]");
+    var lastUser = null, lastAssistant = null;
+    Array.prototype.forEach.call(boxes, function (b) {
+      if (b.classList.contains("user")) lastUser = b; else lastAssistant = b;
+    });
+    var lastMsg = messages[messages.length - 1];
+    if (lastUser) addAction(lastUser, "✎", "Modifier et renvoyer", function () { editFrom(lastUser); });
+    if (lastAssistant && lastMsg && lastMsg.role === "assistant" && lastUser) {
+      addAction(lastAssistant, "↻", "Régénérer la réponse", function () { regenerate(lastUser); });
+    }
+  }
+
+  function addAction(box, label, title, fn) {
+    var bar = box.querySelector(".msg-actions");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.className = "msg-actions";
+      box.appendChild(bar);
+    }
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "msg-act";
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener("click", function () { if (!state.busy) fn(); });
+    bar.appendChild(b);
+  }
+
+  function userText(box) {
+    return (box.dataset.text || "").replace(/\n*<document name="[^"]*">[\s\S]*?(<\/document>|$)/g, "").trim();
+  }
+
+  function dropFrom(box) {
+    while (box.nextSibling) box.parentNode.removeChild(box.nextSibling);
+    box.parentNode.removeChild(box);
+  }
+
+  function truncateFrom(box) {
+    return api("api/conversations/" + USER_ID + "/" + encodeURIComponent(state.current) + "/truncate", {
+      method: "POST",
+      body: JSON.stringify({ messageId: box.dataset.id })
+    });
+  }
+
+  function editFrom(box) {
+    var input = el("input");
+    input.value = userText(box);
+    autoGrow();
+    input.focus();
+    state.editFrom = box;
+    setStatus("Modification du dernier message : envoyez pour remplacer la suite.");
+  }
+
+  function regenerate(userBox) {
+    var text = userText(userBox);
+    if (!text) return;
+    truncateFrom(userBox).then(function () {
+      dropFrom(userBox);
+      send(text, [], text);
+    }).catch(function (err) { setStatus("Impossible de régénérer : " + err.message, true); });
+  }
+
+  // ----- search -----
+
+  var searchTimer = null;
+  el("search").addEventListener("input", function () {
+    clearTimeout(searchTimer);
+    var q = el("search").value.trim();
+    if (q.length < 2) { state.searching = false; renderThreads(state.threads); return; }
+    searchTimer = setTimeout(function () {
+      api("api/search/" + USER_ID + "?q=" + encodeURIComponent(q))
+        .then(function (res) { return res.json(); })
+        .then(function (hits) { if (el("search").value.trim() === q) renderHits(hits, q); })
+        .catch(function (err) { setStatus("Recherche impossible : " + err.message, true); });
+    }, 300);
+  });
+
+  function renderHits(hits, q) {
+    state.searching = true;
+    var nav = el("threads");
+    nav.textContent = "";
+    if (!hits.length) {
+      var none = document.createElement("div");
+      none.className = "muted";
+      none.style.padding = "10px";
+      none.textContent = "Aucun résultat.";
+      nav.appendChild(none);
+      return;
+    }
+    hits.forEach(function (h) {
+      var row = document.createElement("div");
+      row.className = "hit-row";
+      var t = document.createElement("div");
+      t.className = "hit-title";
+      t.textContent = (h.title || "Fil") + (h.role === "assistant" ? " · MaDo" : "");
+      var snip = document.createElement("div");
+      snip.className = "hit-snip";
+      var text = h.snippet || "";
+      var at = text.toLowerCase().indexOf(q.toLowerCase());
+      if (at >= 0) {
+        snip.appendChild(document.createTextNode(text.slice(0, at)));
+        var mark = document.createElement("mark");
+        mark.textContent = text.slice(at, at + q.length);
+        snip.appendChild(mark);
+        snip.appendChild(document.createTextNode(text.slice(at + q.length)));
+      } else snip.textContent = text;
+      row.appendChild(t);
+      row.appendChild(snip);
+      row.addEventListener("click", function () { openThread(h.conversationId); });
+      nav.appendChild(row);
+    });
+  }
+
+  // ----- projects -----
+  //
+  // Threads can be grouped in projects, each with its own instructions,
+  // added to the persona of its threads on the server.
+
+  state.projects = [];
+  state.projectFilter = "";
+
+  function loadProjects() {
+    return api("api/projects/" + USER_ID)
+      .then(function (res) { return res.json(); })
+      .then(function (list) { state.projects = Array.isArray(list) ? list : []; renderProjectSelect(); })
+      .catch(function () { state.projects = []; renderProjectSelect(); });
+  }
+
+  function renderProjectSelect() {
+    var sel = el("project");
+    sel.textContent = "";
+    function opt(value, label) {
+      var o = document.createElement("option");
+      o.value = value;
+      o.textContent = label;
+      sel.appendChild(o);
+    }
+    opt("", "📂 Tous les fils");
+    state.projects.forEach(function (p) { opt(p.id, "📁 " + p.name); });
+    opt("__new", "＋ Nouveau projet…");
+    if (state.projectFilter && !state.projects.some(function (p) { return p.id === state.projectFilter; })) state.projectFilter = "";
+    sel.value = state.projectFilter;
+    el("btn-project-edit").hidden = !state.projectFilter;
+    el("btn-move").hidden = !state.current || !state.projects.length;
+  }
+
+  el("project").addEventListener("change", function () {
+    var v = el("project").value;
+    if (v === "__new") { el("project").value = state.projectFilter; projectForm(null); return; }
+    state.projectFilter = v;
+    el("btn-project-edit").hidden = !v;
+    renderThreads(state.threads);
+  });
+  el("btn-project-edit").addEventListener("click", function () {
+    projectForm(state.projects.filter(function (p) { return p.id === state.projectFilter; })[0] || null);
+  });
+
+  function projectForm(project) {
+    openPanel(project ? "Projet « " + project.name + " »" : "Nouveau projet", function (body, close) {
+      var form = document.createElement("div");
+      form.className = "pm-form";
+      var name = document.createElement("input");
+      name.placeholder = "Nom du projet";
+      name.maxLength = 80;
+      name.value = project ? project.name : "";
+      var instr = document.createElement("textarea");
+      instr.placeholder = "Instructions pour les fils de ce projet (facultatif). Ex. : « Tu m'aides à rénover la salle de bain ; budget 8 000 €, travaux en mars. »";
+      instr.maxLength = 8000;
+      instr.value = project ? project.instructions : "";
+      var row = document.createElement("div");
+      row.className = "pm-row";
+      var save = button("Enregistrer", "", function () {
+        var payload = JSON.stringify({ name: name.value, instructions: instr.value });
+        var req = project
+          ? api("api/projects/" + USER_ID + "/" + project.id, { method: "PATCH", body: payload })
+          : api("api/projects/" + USER_ID, { method: "POST", body: payload }).then(function (res) { return res.json(); }).then(function (p) { state.projectFilter = p.id; });
+        req.then(function () { close(); return loadProjects(); }).then(function () { renderThreads(state.threads); })
+          .catch(function (err) { setStatus("Projet non enregistré : " + err.message, true); });
+      });
+      row.appendChild(save);
+      if (project) {
+        row.appendChild(button("Supprimer le projet", "danger", function () {
+          if (!window.confirm("Supprimer ce projet ? Ses fils sont gardés, hors projet.")) return;
+          api("api/projects/" + USER_ID + "/" + project.id, { method: "DELETE" })
+            .then(function () { state.projectFilter = ""; close(); return loadProjects(); })
+            .then(refreshThreads)
+            .catch(function (err) { setStatus(err.message, true); });
+        }));
+      }
+      form.appendChild(name);
+      form.appendChild(instr);
+      form.appendChild(row);
+      body.appendChild(form);
+      name.focus();
+    });
+  }
+
+  function assignProject(id, projectId) {
+    return api("api/conversations/" + USER_ID + "/" + encodeURIComponent(id) + "/project", {
+      method: "PUT",
+      body: JSON.stringify({ projectId: projectId || null })
+    });
+  }
+
+  el("btn-move").addEventListener("click", function () {
+    var id = state.current;
+    var known = state.threads.filter(function (t) { return t.conversationId === id; })[0];
+    openPanel("Ranger dans un projet", function (body, close) {
+      var list = document.createElement("div");
+      list.className = "pm-list";
+      [{ id: "", name: "Aucun projet" }].concat(state.projects).forEach(function (p) {
+        var current = (known && known.projectId || "") === p.id;
+        list.appendChild(button((current ? "✓ " : "") + (p.id ? "📁 " : "") + p.name, current ? "" : "secondary", function () {
+          assignProject(id, p.id).then(function () { close(); return refreshThreads(); })
+            .catch(function (err) { setStatus(err.message, true); });
+        }));
+      });
+      body.appendChild(list);
+    });
+  });
+
+  // ----- export -----
+
+  el("btn-export").addEventListener("click", function () {
+    var id = state.current;
+    openPanel("Exporter ce fil", function (body, close) {
+      var row = document.createElement("div");
+      row.className = "pm-row";
+      [["pdf", "PDF"], ["docx", "Word"], ["md", "Markdown"]].forEach(function (f) {
+        row.appendChild(button(f[1], "secondary", function () {
+          fetch("api/conversations/" + USER_ID + "/" + encodeURIComponent(id) + "/export?format=" + f[0], { headers: authHeaders() })
+            .then(function (res) {
+              if (!res.ok) throw new Error("HTTP " + res.status);
+              var cd = res.headers.get("content-disposition") || "";
+              var m = /filename\*=UTF-8''([^;]+)/.exec(cd);
+              var name = m ? decodeURIComponent(m[1]) : "fil." + f[0];
+              return res.blob().then(function (blob) { saveBlob(blob, name); close(); });
+            })
+            .catch(function (err) { setStatus("Export impossible : " + err.message, true); });
+        }));
+      });
+      body.appendChild(row);
+    });
+  });
+
+  function saveBlob(blob, name) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+  }
+
+  // ----- side panels: memory, tasks, costs, diagnostic -----
+
+  function button(label, kind, fn) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "pm-btn" + (kind ? " " + kind : "");
+    b.textContent = label;
+    b.addEventListener("click", fn);
+    return b;
+  }
+
+  function note(text) {
+    var p = document.createElement("p");
+    p.className = "pm-note";
+    p.textContent = text;
+    return p;
+  }
+
+  function openPanel(title, build) {
+    var modal = el("panel-modal");
+    el("pm-title").textContent = title;
+    var body = el("pm-body");
+    body.textContent = "";
+    function close() { modal.hidden = true; body.textContent = ""; }
+    el("pm-close").onclick = close;
+    modal.onclick = function (ev) { if (ev.target === modal) close(); };
+    modal.hidden = false;
+    build(body, close);
+  }
+
+  var CATEGORIES = { identity: "Identité", preference: "Préférence", baseline: "Repère", device: "Appareil", pattern: "Habitude", correction: "Correction" };
+
+  el("btn-memory").addEventListener("click", function () {
+    openPanel("🧠 Ce que MaDo retient", function (body) {
+      var list = document.createElement("div");
+      list.className = "pm-list";
+      function load() {
+        list.textContent = "Chargement…";
+        api("api/memory/" + USER_ID).then(function (res) { return res.json(); }).then(function (data) {
+          var facts = (data && data.facts) || [];
+          list.textContent = "";
+          if (!facts.length) list.appendChild(note("Rien pour l'instant. MaDo apprend au fil des conversations, ou ajoutez un souvenir ci-dessous."));
+          facts.sort(function (a, b) { return String(a.category).localeCompare(String(b.category)); }).forEach(function (f) {
+            var item = document.createElement("div");
+            item.className = "pm-item";
+            var grow = document.createElement("div");
+            grow.className = "grow";
+            grow.textContent = f.content;
+            var sub = document.createElement("div");
+            sub.className = "sub";
+            sub.textContent = CATEGORIES[f.category] || f.category;
+            grow.appendChild(sub);
+            var edit = document.createElement("button");
+            edit.type = "button"; edit.className = "mini"; edit.textContent = "✎"; edit.title = "Corriger";
+            edit.addEventListener("click", function () {
+              content.value = f.content;
+              category.value = f.category;
+              replacing = f.id;
+              content.focus();
+            });
+            var del = document.createElement("button");
+            del.type = "button"; del.className = "mini"; del.textContent = "🗑"; del.title = "Oublier";
+            del.addEventListener("click", function () {
+              api("api/memory/" + USER_ID + "/facts/" + encodeURIComponent(f.id), { method: "DELETE" }).then(load)
+                .catch(function (err) { setStatus(err.message, true); });
+            });
+            item.appendChild(grow);
+            item.appendChild(edit);
+            item.appendChild(del);
+            list.appendChild(item);
+          });
+        }).catch(function (err) { list.textContent = "Mémoire indisponible : " + err.message; });
+      }
+      var replacing = null;
+      var form = document.createElement("div");
+      form.className = "pm-form";
+      var content = document.createElement("textarea");
+      content.placeholder = "Un souvenir à ajouter ou corriger. Ex. : « Ma fille s'appelle Léa. »";
+      content.style.minHeight = "60px";
+      var category = document.createElement("select");
+      Object.keys(CATEGORIES).forEach(function (k) {
+        var o = document.createElement("option");
+        o.value = k; o.textContent = CATEGORIES[k];
+        category.appendChild(o);
+      });
+      category.value = "preference";
+      var row = document.createElement("div");
+      row.className = "pm-row";
+      row.appendChild(category);
+      row.appendChild(button("Enregistrer", "", function () {
+        var text = content.value.trim();
+        if (!text) return;
+        var old = replacing;
+        api("api/memory/" + USER_ID + "/facts", { method: "POST", body: JSON.stringify({ content: text, category: category.value }) })
+          .then(function () { return old ? api("api/memory/" + USER_ID + "/facts/" + encodeURIComponent(old), { method: "DELETE" }) : null; })
+          .then(function () { content.value = ""; replacing = null; load(); })
+          .catch(function (err) { setStatus("Souvenir non enregistré : " + err.message, true); });
+      }));
+      form.appendChild(content);
+      form.appendChild(row);
+      body.appendChild(list);
+      body.appendChild(form);
+      load();
+    });
+  });
+
+  el("btn-tasks").addEventListener("click", function () {
+    openPanel("⏰ Rappels et tâches", function (body) {
+      var list = document.createElement("div");
+      list.className = "pm-list";
+      body.appendChild(note("Pour en créer, demandez simplement à MaDo : « rappelle-moi de sortir les poubelles mardi à 19 h », « chaque dimanche à 18 h, fais le bilan énergie de la semaine ». Les rappels sont gratuits ; une tâche coûte une requête à chaque exécution."));
+      body.appendChild(list);
+      function load() {
+        list.textContent = "Chargement…";
+        api("api/tasks/" + USER_ID).then(function (res) { return res.json(); }).then(function (tasks) {
+          list.textContent = "";
+          if (!tasks.length) list.appendChild(note("Aucun rappel ni tâche programmée."));
+          tasks.forEach(function (t) {
+            var item = document.createElement("div");
+            item.className = "pm-item";
+            var grow = document.createElement("div");
+            grow.className = "grow";
+            grow.textContent = (t.kind === "reminder" ? "⏰ " : "🤖 ") + t.text;
+            var sub = document.createElement("div");
+            sub.className = "sub";
+            sub.textContent = t.description + " · prochaine : " + new Date(t.nextRunAt).toLocaleString() +
+              (t.builtin ? " · réglé dans les options de l'add-on" : "") + (t.lastError ? " · dernière erreur : " + t.lastError : "");
+            grow.appendChild(sub);
+            item.appendChild(grow);
+            if (!t.builtin) {
+              var del = document.createElement("button");
+              del.type = "button"; del.className = "mini"; del.textContent = "🗑"; del.title = "Annuler";
+              del.addEventListener("click", function () {
+                api("api/tasks/" + USER_ID + "/" + encodeURIComponent(t.id), { method: "DELETE" }).then(load)
+                  .catch(function (err) { setStatus(err.message, true); });
+              });
+              item.appendChild(del);
+            }
+            list.appendChild(item);
+          });
+        }).catch(function (err) { list.textContent = "Indisponible : " + err.message; });
+      }
+      load();
+    });
+  });
+
+  el("btn-costs").addEventListener("click", function () {
+    openPanel("💶 Coûts des 30 derniers jours", function (body) {
+      body.appendChild(note("Chargement…"));
+      api("api/usage/" + USER_ID + "?days=30").then(function (res) { return res.json(); }).then(function (u) {
+        body.textContent = "";
+        var big = document.createElement("div");
+        big.className = "pm-big";
+        big.textContent = "≈ " + money(u.total || 0);
+        body.appendChild(big);
+        var calls = (u.byDay || []).reduce(function (n, d) { return n + d.calls; }, 0);
+        body.appendChild(note(calls + " appels au modèle. Estimation aux tarifs publics, en dollars : les échanges avec le modèle de chat seulement (titres, mémoire, OCR, images et recherche web en plus, non comptés)." +
+          (u.unpriced ? " " + u.unpriced + " requête(s) sur un modèle sans tarif connu (option model_prices)." : "")));
+        if ((u.byDay || []).length) {
+          var spec = normalizeChart({
+            type: "bar", title: "Coût par jour", unit: "$",
+            labels: u.byDay.map(function (d) { return d.day.slice(8, 10) + "/" + d.day.slice(5, 7); }),
+            series: [{ name: "Coût", data: u.byDay.map(function (d) { return Math.round(d.cost * 10000) / 10000; }) }]
+          });
+          if (spec) body.appendChild(chartBlock(spec));
+        }
+        if ((u.byConversation || []).length) {
+          body.appendChild(table([["Fil", "Appels", "Coût"]].concat(u.byConversation.map(function (c) { return [c.title, String(c.calls), money(c.cost)]; })), ["", "right", "right"]));
+        }
+        if ((u.byModel || []).length) {
+          body.appendChild(table([["Modèle", "Appels", "Coût"]].concat(u.byModel.map(function (m) { return [m.model, String(m.calls), money(m.cost)]; })), ["", "right", "right"]));
+        }
+      }).catch(function (err) { body.textContent = "Compteur indisponible : " + err.message; });
+    });
+  });
+
+  el("btn-diag").addEventListener("click", function () {
+    openPanel("🩺 Diagnostic", function (body) {
+      var out = document.createElement("div");
+      out.className = "pm-list";
+      var row = document.createElement("div");
+      row.className = "pm-row";
+      function run(paid) {
+        out.textContent = "Vérification…";
+        api("api/diagnostics", { method: "POST", body: JSON.stringify({ paid: paid }) })
+          .then(function (res) { return res.json(); })
+          .then(function (results) {
+            out.textContent = "";
+            results.forEach(function (r) {
+              var item = document.createElement("div");
+              item.className = "pm-item";
+              var icon = document.createElement("span");
+              icon.className = r.skipped ? "diag-skip" : r.ok ? "diag-ok" : "diag-ko";
+              icon.textContent = r.skipped ? "⏭" : r.ok ? "✅" : "❌";
+              var grow = document.createElement("div");
+              grow.className = "grow";
+              grow.textContent = r.name;
+              var sub = document.createElement("div");
+              sub.className = "sub";
+              sub.textContent = r.detail;
+              grow.appendChild(sub);
+              item.appendChild(icon);
+              item.appendChild(grow);
+              out.appendChild(item);
+            });
+          })
+          .catch(function (err) { out.textContent = "Diagnostic impossible : " + err.message; });
+      }
+      row.appendChild(button("Lancer (gratuit)", "", function () { run(false); }));
+      row.appendChild(button("Inclure OCR et voix (≈ 0,01 $)", "secondary", function () { run(true); }));
+      body.appendChild(note("Vérifie Home Assistant, la mémoire, la clé et les modèles Mistral. Les tests payants lisent une page par OCR et synthétisent puis retranscrivent une phrase."));
+      body.appendChild(row);
+      body.appendChild(out);
+      run(false);
+    });
+  });
+
   // ----- boot -----
 
   api("api/health")
@@ -1885,6 +2474,7 @@
       if (h.tts) Array.prototype.forEach.call(document.querySelectorAll(".msg.assistant"), addSpeak);
     })
     .catch(function () {});
+  loadProjects();
   refreshThreads().then(syncRunning);
 })();
 </script>

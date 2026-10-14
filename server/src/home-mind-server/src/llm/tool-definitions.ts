@@ -347,6 +347,78 @@ export function connectorTool(connectors: string[]): ToolDefinition {
   };
 }
 
+/**
+ * Home tools added in 0.8: a camera's view, long-term statistics, and
+ * reminders / scheduled tasks. Offered in every conversation style.
+ */
+export const HOME_EXTRA_TOOLS: ToolDefinition[] = [
+  {
+    name: "look_at_camera",
+    description:
+      "Take a snapshot from a Home Assistant camera (camera.* entity) and look at it: who or what is at the door, " +
+      "whether the garage is open, whether a parcel arrived. Returns a description of the image. Use search_entities " +
+      "with 'camera' to find the camera if you do not know its entity_id. Never identify people by name.",
+    parameters: {
+      type: "object",
+      properties: {
+        entity_id: { type: "string", description: "The camera entity, e.g. camera.entree." },
+        question: { type: "string", description: "What to look for, in the user's words." },
+      },
+      required: ["entity_id"],
+    },
+  },
+  {
+    name: "get_statistics",
+    description:
+      "Long-term statistics of sensors (the data behind the energy dashboard), aggregated per hour, day, week or month, " +
+      "reaching back months or years where get_history only covers the last days. Use it for comparisons over time " +
+      "(this month vs last year, consumption per day, average temperature per week). For energy meters use type 'change' " +
+      "(consumption in the period); for temperatures 'mean', 'min', 'max'.",
+    parameters: {
+      type: "object",
+      properties: {
+        entity_ids: { type: "array", items: { type: "string" }, description: "Sensor entity ids (up to 6)." },
+        start_time: { type: "string", description: "ISO 8601 start, with time zone." },
+        end_time: { type: "string", description: "ISO 8601 end (optional, default now)." },
+        period: { type: "string", enum: ["hour", "day", "week", "month"] },
+        types: { type: "array", items: { type: "string", enum: ["mean", "min", "max", "change", "sum", "state"] } },
+      },
+      required: ["entity_ids", "start_time", "period"],
+    },
+  },
+  {
+    name: "schedule_task",
+    description:
+      "Schedule a reminder or a task. kind 'reminder': the text is sent as a phone notification at that time " +
+      "(\"rappelle-moi de sortir les poubelles mardi à 19h\"); free. kind 'task': at that time MaDo runs the text as a request " +
+      "and sends the answer (\"chaque dimanche à 18h, fais le bilan énergie de la semaine\"); each run costs a request, " +
+      "so for a repeating task say how often it will run before scheduling it. Times are the house's local time. " +
+      "Give 'when' for a single time, or 'repeat' with 'time' (and 'days' for weekly).",
+    parameters: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["reminder", "task"] },
+        text: { type: "string", description: "The reminder text, or the request to run." },
+        when: { type: "string", description: "Single time, local: YYYY-MM-DDTHH:MM." },
+        repeat: { type: "string", enum: ["none", "daily", "weekly"] },
+        time: { type: "string", description: "HH:MM for a repeating item." },
+        days: { type: "array", items: { type: "string", enum: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] }, description: "Weekly: the days." },
+      },
+      required: ["kind", "text"],
+    },
+  },
+  {
+    name: "list_scheduled_tasks",
+    description: "List the user's reminders and scheduled tasks with their ids and next run.",
+    parameters: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "cancel_scheduled_task",
+    description: "Cancel a reminder or scheduled task by its id (from list_scheduled_tasks).",
+    parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+  },
+];
+
 export const CREATE_FILE_TOOL: ToolDefinition = {
   name: "create_file",
   description:
@@ -395,8 +467,8 @@ export interface PlatformToolOptions {
 /** The tools of one conversation style. */
 export function toolsForMode(mode: "voice" | "text" | "thread", platform: PlatformToolOptions): ToolDefinition[] {
   // Files are built on the add-on itself: no Mistral key needed.
-  const extra: ToolDefinition[] = mode === "thread" ? [CREATE_FILE_TOOL] : [];
-  if (!platform.enabled) return extra.length ? [...TOOL_DEFINITIONS, ...extra] : TOOL_DEFINITIONS;
+  const extra: ToolDefinition[] = [...HOME_EXTRA_TOOLS, ...(mode === "thread" ? [CREATE_FILE_TOOL] : [])];
+  if (!platform.enabled) return [...TOOL_DEFINITIONS, ...extra];
   if (mode === "thread") extra.push(RUN_CODE_TOOL, GENERATE_IMAGE_TOOL);
   if (platform.libraryIds.length) extra.push(SEARCH_DOCUMENTS_TOOL);
   if (mode === "thread" && platform.connectors.length) extra.push(connectorTool(platform.connectors));

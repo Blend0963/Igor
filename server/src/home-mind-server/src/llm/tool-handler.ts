@@ -25,6 +25,7 @@ import type { Fact } from "../memory/types.js";
 import { extractionGateReason } from "../memory/extraction-gate.js";
 import { handlePlatformTool, PLATFORM_TOOL_NAMES } from "./platform-tools.js";
 import { createFile, type FileSpec } from "../files/create.js";
+import { handleHomeTool, HOME_TOOL_NAMES } from "./home-tools.js";
 import { getMediaStore, mediaLink } from "./media-store.js";
 
 /**
@@ -57,6 +58,10 @@ export interface ToolContext {
    * images). The engine adds any the answer does not already show.
    */
   attachments?: string[];
+  /** The real user id (userId above may be a thread's own fact bucket). */
+  ownerId?: string;
+  /** The request comes from a chat-panel thread. */
+  isThread?: boolean;
 }
 
 /**
@@ -159,6 +164,17 @@ export async function handleToolCall(
 
   try {
     let result: unknown;
+
+    if (HOME_TOOL_NAMES.has(toolName)) {
+      if (ctx) ctx.attachments ??= [];
+      try {
+        result = await handleHomeTool(ha, toolName, input, ctx ?? {});
+      } catch (error) {
+        result = { error: error instanceof Error ? error.message.slice(0, 400) : "unknown error" };
+      }
+      console.log(`[tool] ${toolName} completed in ${Date.now() - start}ms`);
+      return result;
+    }
 
     if (toolName === "create_file") {
       try {

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   TOOL_DEFINITIONS,
   toolsForMode,
+  HOME_EXTRA_TOOLS,
   toAnthropicTools,
   toOpenAITools,
 } from "./tool-definitions.js";
@@ -127,9 +128,10 @@ describe("toolsForMode", () => {
   const off = { enabled: false, libraryIds: ["l"], connectors: ["c"] };
   const on = { enabled: true, libraryIds: [], connectors: [] };
 
-  it("adds only create_file to threads without a Mistral key", () => {
-    expect(names(toolsForMode("thread", off))).toEqual([...names(TOOL_DEFINITIONS), "create_file"]);
-    expect(toolsForMode("voice", off)).toBe(TOOL_DEFINITIONS);
+  it("adds the home tools everywhere, and create_file to threads, without a Mistral key", () => {
+    const home = HOME_EXTRA_TOOLS.map((t) => t.name);
+    expect(names(toolsForMode("thread", off))).toEqual([...names(TOOL_DEFINITIONS), ...home, "create_file"]);
+    expect(names(toolsForMode("voice", off))).toEqual([...names(TOOL_DEFINITIONS), ...home]);
   });
 
   it("gives threads the code interpreter and images, Assist neither", () => {

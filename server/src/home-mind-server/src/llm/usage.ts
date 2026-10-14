@@ -109,6 +109,11 @@ export class UsageTally {
     }
   }
 
+  /** The sums, for the cost counter. */
+  totals(): { calls: number; promptTokens: number; cachedTokens: number; completionTokens: number } {
+    return { calls: this.calls, promptTokens: this.prompt, cachedTokens: this.cached, completionTokens: this.completion };
+  }
+
   /** e.g. "calls=2 prompt=28140 cached=19968 completion=64". */
   describe(): string {
     if (this.reported === 0) return `calls=${this.calls} usage=unreported`;

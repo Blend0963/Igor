@@ -26,7 +26,7 @@ const MAX_LIVE_CHARS = 200_000;
 const STALE_MS = 15 * 60 * 1000;
 
 export class RunningTurns {
-  private turns = new Map<string, { userId: string; conversationId: string; startedAt: string; status?: string; text: string; at: number }>();
+  private turns = new Map<string, { userId: string; conversationId: string; startedAt: string; status?: string; text: string; at: number; controller: AbortController }>();
 
   private key(userId: string, conversationId: string): string {
     return `${userId}\u0000${conversationId}`;
@@ -34,16 +34,18 @@ export class RunningTurns {
 
   start(userId: string, conversationId: string): RunningTurnHandle {
     const key = this.key(userId, conversationId);
-    const turn: { userId: string; conversationId: string; startedAt: string; status?: string; text: string; at: number } = {
+    const turn: { userId: string; conversationId: string; startedAt: string; status?: string; text: string; at: number; controller: AbortController } = {
       userId,
       conversationId,
       startedAt: new Date().toISOString(),
       text: "",
       at: Date.now(),
+      controller: new AbortController(),
     };
     this.turns.set(key, turn);
     let parts = 0;
     return {
+      signal: turn.controller.signal,
       chunk: (text) => {
         if (turn.text.length < MAX_LIVE_CHARS) turn.text += text;
       },
@@ -70,6 +72,14 @@ export class RunningTurns {
       .map(({ conversationId, startedAt, status }) => ({ conversationId, startedAt, status, text: "" }));
   }
 
+  /** The stop button: aborts the reply in progress. False when none is running. */
+  stop(userId: string, conversationId: string): boolean {
+    const turn = this.turns.get(this.key(userId, conversationId));
+    if (!turn) return false;
+    turn.controller.abort();
+    return true;
+  }
+
   get(userId: string, conversationId: string): RunningTurn | undefined {
     this.prune();
     const turn = this.turns.get(this.key(userId, conversationId));
@@ -85,6 +95,8 @@ export class RunningTurns {
 }
 
 export interface RunningTurnHandle {
+  /** Aborted by stop(). */
+  signal: AbortSignal;
   chunk(text: string): void;
   newTurn(): void;
   status(text: string): void;
