@@ -113,6 +113,26 @@ describe("createAuthMiddleware", () => {
       expect(res.statusCode).toBe(0);
     });
 
+    it("accepts a request proxied through Home Assistant ingress", () => {
+      // The thread panel rides the HA login: the Supervisor ingress proxy
+      // drops the browser's own user headers and re-adds X-Remote-User-Id
+      // itself, so its presence is Home Assistant vouching for the caller.
+      const next = vi.fn() as unknown as NextFunction;
+      const res = mockRes();
+      mw(mockReq({ headers: { "x-remote-user-id": "user-1" } }), res, next);
+      expect(next).toHaveBeenCalledOnce();
+      expect(res.statusCode).toBe(0);
+    });
+
+    it("still rejects a plain request with no ingress header (401)", () => {
+      // Ingress trust is additive: the bearer-token rules below it still
+      // apply to direct callers.
+      const next = vi.fn() as unknown as NextFunction;
+      const res = mockRes();
+      mw(mockReq({ headers: {} }), res, next);
+      expect(next).not.toHaveBeenCalled();
+      expect(res.statusCode).toBe(401);
+    });
     it("guards every non-health route, not just chat", () => {
       for (const path of [
         "/chat",
