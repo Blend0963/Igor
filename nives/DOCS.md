@@ -36,6 +36,19 @@ Keep only the entities you intend the assistant to control exposed to Assist, an
 
 MaDo works as a Home Assistant Assist conversation agent. Speech-to-text and text-to-speech are configured through your Home Assistant pipeline or separately configured voice providers. Supported voice features depend on the chosen provider and model.
 
+## Installed app (PWA) and sharing from the phone
+
+The chat panel can also be installed as an app on a phone or a computer, outside Home Assistant. Installed, MaDo appears in Android's **Share** menu: a PDF, a photo, a Word or Excel file, a link or a piece of text shared to MaDo opens a new thread with it already attached, ready to send with a question.
+
+Installing needs the panel served on its own HTTPS address, which Home Assistant ingress cannot give:
+
+1. In the add-on's **Network** settings, give port 3100 a host port (for example 3100) and restart the add-on.
+2. Put your reverse proxy (Nginx, Caddy, Traefik…) in front of it, on an HTTPS name of your choice, for example `https://mado.example.org/` → `http://<home-assistant-host>:3100/`. Replies stream as server-sent events: turn response buffering off for that location (Nginx: `proxy_buffering off;`, and a `proxy_read_timeout` of a few minutes). Allow request bodies of at least 80 MB (`client_max_body_size 80m;`) for attached files. The app can also live under a sub-path (`/mado/`) as long as the proxy strips it.
+3. Open that address in the phone's browser and choose **Install app** (Chrome) or **Add to Home Screen** (Safari).
+4. Outside Home Assistant there is no HA login in front of MaDo, so the server asks for its API key. Open the MaDo panel inside Home Assistant, tap 🔑: it shows the key with a **Copy** button. Paste it in the installed app's 🔑. The key gives full access to MaDo, and through it to your home: only publish the port behind HTTPS, and preferably behind your VPN or your proxy's own authentication.
+
+Sharing files to MaDo works on Android (Chrome, Edge, Samsung Internet). iOS does not let web apps receive shares; there, open MaDo and use 📎.
+
 ## Troubleshooting
 
 - **Web search says it is not configured:** add a Mistral key to **Mistral API Key (Web Search)**, save, and restart the add-on.

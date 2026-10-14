@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MaDo</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#111318">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="MaDo">
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -164,6 +171,9 @@
   .modal p { margin-bottom: 10px; }
   .modal input { width: 100%; background: #111318; color: #e6e9ef; border: 1px solid #2c313d; border-radius: 8px; padding: 8px 10px; font: inherit; }
   .modal .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  #app-token { margin-top: 14px; }
+  #app-token .row { align-items: center; margin-top: 6px; }
+  #app-token code { flex: 1; min-width: 0; font-size: 12px; word-break: break-all; background: #111318; border: 1px solid #262a33; border-radius: 6px; padding: 6px 8px; user-select: all; }
   .modal button { border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; font: inherit; }
   .modal .save { background: #3b5bdb; color: #fff; }
   .modal .cancel { background: #232733; color: #e6e9ef; }
@@ -340,8 +350,12 @@
 <div id="settings" class="modal" hidden>
   <div class="box">
     <h2>Clé API</h2>
-    <p class="muted">Seulement si un token API protège le serveur. Sous Home Assistant, le panneau est déjà protégé par la connexion HA.</p>
+    <p class="muted">Seulement pour l'application installée (MaDo ouvert hors de Home Assistant, derrière votre propre proxy). Dans Home Assistant, le panneau est déjà protégé par la connexion HA.</p>
     <input id="token" type="password" autocomplete="off">
+    <div id="app-token" hidden>
+      <p class="muted">La clé à coller dans l'application installée :</p>
+      <div class="row"><code id="app-token-value"></code><button type="button" class="cancel" id="btn-copy-token">Copier</button></div>
+    </div>
     <div class="row">
       <button type="button" class="cancel" id="btn-cancel">Annuler</button>
       <button type="button" class="save" id="btn-save">Enregistrer</button>
@@ -2098,7 +2112,28 @@
   function openSettings() {
     el("token").value = localStorage.getItem(LS_TOKEN) || "";
     el("settings").hidden = false;
+    // Inside Home Assistant the server hands out its key, to be copied into
+    // the installed app; anywhere else it answers 403 and nothing shows.
+    el("app-token").hidden = true;
+    fetch("api/app-token", { headers: authHeaders() })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (r) {
+        if (!r || !r.token || localStorage.getItem(LS_TOKEN) === r.token) return;
+        el("app-token-value").textContent = r.token;
+        el("app-token").hidden = false;
+      })
+      .catch(function () {});
   }
+  el("btn-copy-token").addEventListener("click", function () {
+    var v = el("app-token-value").textContent;
+    var done = function () { el("btn-copy-token").textContent = "Copié ✓"; };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(v).then(done, function () {});
+    else {
+      var r = document.createRange();
+      r.selectNodeContents(el("app-token-value"));
+      var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    }
+  });
   el("btn-settings").addEventListener("click", openSettings);
   el("btn-cancel").addEventListener("click", function () { el("settings").hidden = true; });
   el("btn-save").addEventListener("click", function () {
@@ -2696,7 +2731,56 @@
     .catch(function () {});
   loadProjects();
   loadModels();
-  refreshThreads().then(syncRunning);
+  refreshThreads().then(syncRunning).then(receiveShare, receiveShare);
+
+  // ----- installed app -----
+  //
+  // Opened on its own (not inside Home Assistant's frame) over HTTPS, the
+  // panel registers its service worker, which makes it installable and puts
+  // MaDo in the phone's Share menu. Inside HA ingress it stays a plain page.
+  var framed = false;
+  try { framed = window.top !== window.self; } catch (e) { framed = true; }
+  if (!framed && "serviceWorker" in navigator && window.isSecureContext) {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  }
+
+  // What the Share menu sent: the service worker kept it in a cache and
+  // opened "?share=1". It goes into the composer of a new thread, to be
+  // sent as it is or with a question.
+  function receiveShare() {
+    if (!/[?&]share=1\b/.test(location.search)) return;
+    history.replaceState(null, "", location.pathname);
+    if (!window.caches) return;
+    var box;
+    return caches.open("mado-share-v1")
+      .then(function (cache) {
+        box = cache;
+        return cache.match("share/meta");
+      })
+      .then(function (res) { return res ? res.json() : null; })
+      .then(function (meta) {
+        if (!meta) return;
+        newThread();
+        var text = [meta.title, meta.text, meta.url].filter(function (t, i, all) {
+          return t && all.indexOf(t) === i && !(i < 2 && meta.url && t === meta.url);
+        }).join("\n");
+        if (text) {
+          el("input").value = text;
+          el("input").dispatchEvent(new Event("input"));
+        }
+        return Promise.all(meta.files.map(function (f) {
+          return box.match(f.key).then(function (res) { return res ? res.blob() : null; }).then(function (blob) {
+            return blob ? new File([blob], f.name, { type: f.type || blob.type }) : null;
+          });
+        })).then(function (files) {
+          files = files.filter(Boolean);
+          if (files.length) addFiles(files);
+          el("input").focus();
+        });
+      })
+      .catch(function (err) { setStatus("Partage illisible : " + err.message, true); })
+      .then(function () { return caches.delete("mado-share-v1"); });
+  }
 })();
 </script>
 </body>

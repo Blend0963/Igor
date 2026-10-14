@@ -27,6 +27,15 @@ function peerAddress(req: Request): string | undefined {
   return address?.startsWith("::ffff:") ? address.slice(7) : address;
 }
 
+/** True when Home Assistant ingress authenticated this request. */
+export function isIngressRequest(
+  req: Request,
+  ingressProxies: readonly string[] = INGRESS_PROXY_ADDRESSES
+): boolean {
+  const peer = peerAddress(req);
+  return req.headers[INGRESS_USER_HEADER] !== undefined && peer !== undefined && ingressProxies.includes(peer);
+}
+
 export function createAuthMiddleware(
   token: string | undefined,
   ingressProxies: readonly string[] = INGRESS_PROXY_ADDRESSES
@@ -45,12 +54,7 @@ export function createAuthMiddleware(
     // Behind Home Assistant ingress, the HA login is the authentication:
     // the Supervisor stamps the user header the browser cannot set itself.
     // Anyone else on the network can set it too, hence the address check.
-    const peer = peerAddress(req);
-    if (
-      req.headers[INGRESS_USER_HEADER] !== undefined &&
-      peer !== undefined &&
-      ingressProxies.includes(peer)
-    ) {
+    if (isIngressRequest(req, ingressProxies)) {
       return next();
     }
 

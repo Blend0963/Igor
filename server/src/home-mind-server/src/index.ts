@@ -6,7 +6,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
-import { createAuthMiddleware } from "./api/auth.js";
+import { createAuthMiddleware, isIngressRequest } from "./api/auth.js";
 
 // Read version from package.json
 const require = createRequire(import.meta.url);
@@ -153,6 +153,17 @@ app.use(express.json({ limit: "80mb" }));
 const authMiddleware = createAuthMiddleware(config.apiToken);
 app.use("/api", authMiddleware);
 
+// The installed app (the panel opened outside Home Assistant, through the
+// user's own reverse proxy) has no HA login in front of it, so it needs the
+// API token. Only a page that HA already authenticated, the panel inside
+// ingress, may read it, to show it once for copying into the app.
+app.get("/api/app-token", (req, res) => {
+  if (!config.apiToken) return res.json({ token: null });
+  if (!isIngressRequest(req)) return res.status(403).json({ error: "Only from the Home Assistant panel." });
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ token: config.apiToken });
+});
+
 // Add request logging
 app.use((req, res, next) => {
   const start = Date.now();
@@ -235,6 +246,10 @@ const publicDir = path.resolve(
   "public"
 );
 if (existsSync(publicDir)) {
+  // The Android share menu posts here. The service worker answers it
+  // (public/sw.js); this only covers the first share, before the worker is
+  // installed, by opening the app instead of failing.
+  app.post("/share", (_req, res) => res.redirect(303, "./"));
   app.use(express.static(publicDir));
 }
 

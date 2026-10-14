@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Request, Response, NextFunction } from "express";
-import { createAuthMiddleware } from "./auth.js";
+import { createAuthMiddleware, isIngressRequest } from "./auth.js";
 
 /**
  * The add-on has required a token since 2.4.0, so this middleware is the only
@@ -190,5 +190,22 @@ describe("createAuthMiddleware", () => {
         expect(res.statusCode, `${path} must require auth`).toBe(401);
       }
     });
+  });
+});
+
+describe("isIngressRequest", () => {
+  // GET /api/app-token hands the API token to the panel inside Home
+  // Assistant, for the installed app; nothing else may read it.
+  const fromPeer = (address: string, headers: Record<string, string> = { "x-remote-user-id": "u1" }) =>
+    mockReq({ headers, socket: { remoteAddress: address } } as unknown as Partial<Request>);
+
+  it("accepts the user header from the Supervisor ingress proxy", () => {
+    expect(isIngressRequest(fromPeer("172.30.32.2"))).toBe(true);
+    expect(isIngressRequest(fromPeer("::ffff:172.30.32.2"))).toBe(true);
+  });
+
+  it("refuses the header from any other address, and the proxy without it", () => {
+    expect(isIngressRequest(fromPeer("172.30.33.5"))).toBe(false);
+    expect(isIngressRequest(fromPeer("172.30.32.2", {}))).toBe(false);
   });
 });

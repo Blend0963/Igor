@@ -216,3 +216,5 @@ configuration:
     name: Niveau de journal
     description: >-
       Détail du journal de l'add-on. « debug » pour chercher un problème.
+network:
+  3100/tcp: "Application MaDo (PWA) : à ouvrir seulement pour servir l'application derrière votre propre proxy HTTPS"

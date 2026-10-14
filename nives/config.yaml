@@ -1,5 +1,5 @@
 name: "MaDo"
-version: "0.8.3"
+version: "0.8.4"
 slug: "mado"
 description: "MaDo — assistant IA pour Home Assistant avec mémoire persistante"
 url: "https://github.com/Blend0963/MaDo"
@@ -21,6 +21,8 @@ map:
   - config:rw
 ports:
   3100/tcp: null
+ports_description:
+  3100/tcp: MaDo app (PWA), only behind your own HTTPS reverse proxy
 memory: 768
 panel_icon: "mdi:brain"
 
