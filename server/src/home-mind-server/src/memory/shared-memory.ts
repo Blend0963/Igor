@@ -44,6 +44,15 @@ export type MergeResult =
   | { merged: 0; skipped: true };
 
 /**
+ * Sidebar label for a conversation: whitespace flattened to one line and
+ * capped, so a long first message does not blow up a thread list.
+ */
+export function summarizeTitle(text: string, maxLength: number = 60): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > maxLength ? flat.slice(0, maxLength) + "…" : flat;
+}
+
+/**
  * Returns a check to run, fire and forget, at the start of every chat request.
  *
  * Each user id is looked at once per process, so the cost is a handful of

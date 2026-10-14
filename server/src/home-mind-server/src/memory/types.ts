@@ -35,6 +35,10 @@ export interface ConversationMessage {
 
 export interface ConversationSummary {
   conversationId: string;
+  // Sidebar label for the thread: the conversation's first user message,
+  // flattened to one line and truncated. Falls back to the last message
+  // when no user message is stored, so a summary never renders blank.
+  title: string;
   lastMessage: string;
   lastMessageAt: Date;
   messageCount: number;

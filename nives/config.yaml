@@ -1,5 +1,5 @@
 name: "MaDo"
-version: "0.1.5"
+version: "0.2.0"
 slug: "mado"
 description: "MaDo — assistant IA pour Home Assistant avec mémoire persistante"
 url: "https://github.com/Blend0963/MaDo"
@@ -23,6 +23,13 @@ ports:
   3100/tcp: null
 memory: 768
 panel_icon: "mdi:brain"
+
+# Thread panel served by the bundled server. Ingress puts it behind the
+# Home Assistant login and into the sidebar (panel_title above the icon);
+# the raw 3100 port stays unexposed by default.
+ingress: true
+ingress_port: 3100
+panel_title: "MaDo"
 options:
   byok:
     provider: "anthropic"

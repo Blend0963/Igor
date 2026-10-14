@@ -72,6 +72,26 @@ describe("InMemoryConversationStore", () => {
     expect(after).toHaveLength(0);
   });
 
+  it("lists conversations with the first user message as title", () => {
+    store.storeMessage("mado-thread:1", "user-1", "user", "First question");
+    store.storeMessage("mado-thread:1", "user-1", "assistant", "First answer");
+    store.storeMessage("mado-thread:1", "user-1", "user", "Follow-up question");
+
+    const [summary] = store.listConversations("user-1");
+    expect(summary.conversationId).toBe("mado-thread:1");
+    expect(summary.title).toBe("First question");
+    expect(summary.lastMessage).toBe("Follow-up question");
+  });
+
+  it("keeps web threads idle for over 24h, as they are user-visible in the panel", () => {
+    store.storeMessage("mado-thread:old", "user-1", "user", "Old thread message");
+    const history = store.getConversationHistory("mado-thread:old");
+    history[0].createdAt = new Date(Date.now() - 25 * 60 * 60 * 1000);
+
+    expect(store.cleanupOldConversations(24)).toBe(0);
+    expect(store.getConversationHistory("mado-thread:old")).toHaveLength(1);
+  });
+
   it("clears all data on close", () => {
     store.storeMessage("conv-1", "user-1", "user", "Hello");
     store.close();
