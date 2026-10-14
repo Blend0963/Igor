@@ -592,6 +592,44 @@ describe("OpenAIChatEngine", () => {
     expect(sent).not.toContain("1234");
   });
 
+  describe("memory isolation between Assist and panel threads", () => {
+    const answer = () =>
+      mockCreate.mockResolvedValue(
+        makeStream([
+          { choices: [{ delta: { content: "ok" }, finish_reason: null }] },
+          { choices: [{ delta: {}, finish_reason: "stop" }] },
+        ])
+      );
+
+    it("gives a thread its own history, fact bucket and extraction target", async () => {
+      answer();
+      await engine.chat({ message: "hello", userId: "user-1", conversationId: "mado-thread:abc" });
+
+      expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-thread:abc", 20);
+      expect(memory.getFactsWithinTokenLimit).toHaveBeenCalledWith(
+        "user-1@mado-thread:abc",
+        1500,
+        "hello"
+      );
+      expect(vi.mocked(extractAndStoreFacts).mock.calls[0][2]).toBe("user-1@mado-thread:abc");
+      expect(conversations.storeMessage).toHaveBeenCalledWith(
+        "mado-thread:abc",
+        "user-1",
+        "user",
+        "hello"
+      );
+    });
+
+    it("keeps Assist on the user's shared conversation and bucket", async () => {
+      answer();
+      await engine.chat({ message: "hello", userId: "user-1", conversationId: "01HXYZ" });
+
+      expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-user:user-1", 20);
+      expect(memory.getFactsWithinTokenLimit).toHaveBeenCalledWith("user-1", 1500, "hello");
+      expect(vi.mocked(extractAndStoreFacts).mock.calls[0][2]).toBe("user-1");
+    });
+  });
+
   it("loads conversation history when conversationId provided", async () => {
     (conversations.getConversationHistory as ReturnType<typeof vi.fn>).mockReturnValue([
       { userId: "user-1", role: "user", content: "previous question" },

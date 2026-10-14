@@ -1,3 +1,5 @@
+import type { RecallScope } from "./memory-scope.js";
+
 export type FactCategory =
   | "baseline" // Sensor normal values ("NOx 100ppm is normal")
   | "preference" // User preferences ("prefers 22°C")
@@ -64,7 +66,7 @@ export interface IConversationStore {
   getKnownUsers(): string[];
   cleanupOldConversations(hoursOld?: number): number | Promise<number>;
   storeMessageEmbedding?(messageId: string, embedding: number[]): void | Promise<void>;
-  searchSimilarMessages?(userId: string, embedding: number[], limit?: number): ConversationMessage[] | Promise<ConversationMessage[]>;
-  getMessagesWithoutEmbeddings?(userId: string, limit?: number): ConversationMessage[] | Promise<ConversationMessage[]>;
+  searchSimilarMessages?(userId: string, embedding: number[], limit?: number, scope?: RecallScope): ConversationMessage[] | Promise<ConversationMessage[]>;
+  getMessagesWithoutEmbeddings?(userId: string, limit?: number, scope?: RecallScope): ConversationMessage[] | Promise<ConversationMessage[]>;
   close(): void;
 }

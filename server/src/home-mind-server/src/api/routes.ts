@@ -7,6 +7,12 @@ import type { IConversationStore } from "../memory/types.js";
 import type { ISttService } from "../stt/stt-service.js";
 import type { ITtsService } from "../tts/tts-service.js";
 import { createEmptyBucketCheck, mergeMemoryInto } from "../memory/shared-memory.js";
+import {
+  DEFAULT_MESSAGE_CAP,
+  isThreadId,
+  THREAD_MESSAGE_CAP,
+  threadFactBucket,
+} from "../memory/memory-scope.js";
 
 /**
  * Limits for the one multipart endpoint this server has (`POST /api/stt`).
@@ -192,7 +198,8 @@ export function createRouter(
       }
 
       logPersonaSource(parsed.data.customPrompt, defaultCustomPrompt);
-      void checkEmptyBucket?.(parsed.data.userId);
+      // A thread starts with an empty memory on purpose.
+      if (!isThreadId(parsed.data.conversationId)) void checkEmptyBucket?.(parsed.data.userId);
 
       // Use streaming internally (no callback = just faster processing)
       const response = await llm.chat({
@@ -226,7 +233,8 @@ export function createRouter(
       }
 
       logPersonaSource(parsed.data.customPrompt, defaultCustomPrompt);
-      void checkEmptyBucket?.(parsed.data.userId);
+      // A thread starts with an empty memory on purpose.
+      if (!isThreadId(parsed.data.conversationId)) void checkEmptyBucket?.(parsed.data.userId);
 
       // Set up SSE headers
       res.setHeader("Content-Type", "text/event-stream");
@@ -445,7 +453,8 @@ export function createRouter(
       const conversationId = req.params.conversationId as string;
       // The path names the user; a conversation id alone must not open
       // somebody else's thread.
-      const messages = (await conversations.getConversationHistory(conversationId, 20)).filter(
+      const limit = isThreadId(conversationId) ? THREAD_MESSAGE_CAP : DEFAULT_MESSAGE_CAP;
+      const messages = (await conversations.getConversationHistory(conversationId, limit)).filter(
         (m) => m.userId === userId
       );
       res.json({ conversationId, messages });
@@ -469,8 +478,12 @@ export function createRouter(
       const userId = req.params.userId as string;
       const conversationId = req.params.conversationId as string;
       const deleted = await conversations.deleteConversation(conversationId, userId);
+      // A thread's long-term memory lives and dies with the thread.
+      const forgotten = isThreadId(conversationId)
+        ? await memory.clearUserFacts(threadFactBucket(userId, conversationId))
+        : 0;
 
-      if (deleted > 0) {
+      if (deleted > 0 || forgotten > 0) {
         res.json({ message: `Deleted ${deleted} messages`, deleted });
       } else {
         res.status(404).json({ error: "Conversation not found" });
