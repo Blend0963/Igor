@@ -26,6 +26,19 @@ export const THREAD_PREFIX = "mado-thread:";
 export const THREAD_MESSAGE_CAP = 500;
 export const DEFAULT_MESSAGE_CAP = 20;
 
+/**
+ * Past messages sent to the model with each request. Every one of them is
+ * re-sent on every model call of every tool loop, so the window is a direct
+ * multiplier on cost. Assist turns are short commands and answers, where six
+ * exchanges are plenty of context; a thread is a working conversation and
+ * keeps ten. Older messages still come back through semantic recall when
+ * they are relevant.
+ */
+export const HISTORY_WINDOW = { assist: 12, thread: 20 } as const;
+
+/** Distant messages recalled by meaning, besides the history window. */
+export const RECALL_LIMIT = 4;
+
 /** Which stored messages semantic recall may draw from. */
 export interface RecallScope {
   /** Only messages of this conversation. */
@@ -42,6 +55,8 @@ export interface MemoryScope {
   /** What semantic recall may search. */
   recall: RecallScope;
   isThread: boolean;
+  /** How many past messages go to the model with each request. */
+  historyWindow: number;
 }
 
 export function isThreadId(conversationId: string | undefined): conversationId is string {
@@ -67,6 +82,7 @@ export function resolveMemoryScope(userId: string, conversationId?: string): Mem
       factBucket: threadFactBucket(userId, conversationId),
       recall: { conversationId },
       isThread: true,
+      historyWindow: HISTORY_WINDOW.thread,
     };
   }
   // Home Assistant sends its own conversation ids (a new one per chat log);
@@ -76,6 +92,7 @@ export function resolveMemoryScope(userId: string, conversationId?: string): Mem
     factBucket: userId,
     recall: { excludeConversationPrefix: THREAD_PREFIX },
     isThread: false,
+    historyWindow: HISTORY_WINDOW.assist,
   };
 }
 

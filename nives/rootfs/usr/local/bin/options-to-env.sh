@@ -63,6 +63,7 @@ EXTRACTION_GATE=$(jq -r 'if .extraction_gate == null then "" else .extraction_ga
 LAYOUT_FROM_EXPOSED=$(jq -r 'if .layout_from_exposed == null then "" else (.layout_from_exposed|tostring) end' "$OPTIONS")
 TOOLS_FROM_EXPOSED=$(jq -r 'if .tools_from_exposed == null then "" else (.tools_from_exposed|tostring) end' "$OPTIONS")
 LAYOUT_DOMAINS=$(jq -r '.layout_domains // ""' "$OPTIONS")
+MEMORY_TOKEN_LIMIT=$(jq -r '.memory_token_limit // ""' "$OPTIONS")
 LOG_LEVEL=$(jq -r '.log_level // "info"' "$OPTIONS")
 
 # --- LLM configuration: bring your own provider key ---
@@ -234,5 +235,6 @@ write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$LAYOUT_FROM_EXPOSED" ] && write_env "LAYOUT_FROM_EXPOSED" "$LAYOUT_FROM_EXPOSED"
 [ -n "$TOOLS_FROM_EXPOSED" ] && write_env "TOOLS_FROM_EXPOSED" "$TOOLS_FROM_EXPOSED"
 [ -n "$LAYOUT_DOMAINS" ] && write_env "LAYOUT_DOMAINS" "$LAYOUT_DOMAINS"
+[ -n "$MEMORY_TOKEN_LIMIT" ] && write_env "MEMORY_TOKEN_LIMIT" "$MEMORY_TOKEN_LIMIT"
 
 echo "[init] Environment configured (mode=${LLM_MODE}, provider=${LLM_PROVIDER:-cloud}, max_output_tokens=${MAX_OUTPUT_TOKENS:-default}, reasoning_effort=${REASONING_EFFORT:-default})"

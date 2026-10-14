@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   readUsage,
+  UsageTally,
   describeUsage,
   spentBudgetOnReasoning,
   type TokenUsage,
@@ -103,5 +104,22 @@ describe("cached prompt tokens", () => {
     const usage = readUsage({ prompt_tokens: 100, completion_tokens: 5 });
     expect(usage?.cachedTokens).toBeUndefined();
     expect(describeUsage(usage)).not.toContain("cached=");
+  });
+});
+
+describe("UsageTally", () => {
+  it("sums every call of a turn", () => {
+    const t = new UsageTally();
+    t.add({ promptTokens: 14000, completionTokens: 30, cachedTokens: 10000 });
+    t.add({ promptTokens: 14200, completionTokens: 40, cachedTokens: 13900 });
+    expect(t.describe()).toBe("calls=2 prompt=28200 cached=23900 completion=70");
+  });
+
+  it("says when the provider reported nothing", () => {
+    const t = new UsageTally();
+    t.add(undefined);
+    expect(t.describe()).toBe("calls=1 usage=unreported");
+    t.add({ promptTokens: 10, completionTokens: 1 });
+    expect(t.describe()).toBe("calls=2 (usage reported for 1) prompt=10 cached=unreported completion=1");
   });
 });

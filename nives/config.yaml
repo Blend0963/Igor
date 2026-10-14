@@ -1,5 +1,5 @@
 name: "MaDo"
-version: "0.4.2"
+version: "0.5.0"
 slug: "mado"
 description: "MaDo — assistant IA pour Home Assistant avec mémoire persistante"
 url: "https://github.com/Blend0963/MaDo"
@@ -76,6 +76,8 @@ schema:
   # nothing (pure commands, pure questions, bare acknowledgements). On
   # by default; "off" restores the always-extract behaviour.
   extraction_gate: "list(on|off)?"
+  # Remembered facts sent with each request, in tokens. Unset = 1500.
+  memory_token_limit: "int(200,8000)?"
   # All three absent from `options:` for the same reason as max_output_tokens:
   # unset means "MaDo decides", which today is the list of entities exposed to
   # Assist, for the room map and for what the assistant can reach.

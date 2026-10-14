@@ -206,7 +206,7 @@ describe("LLMClient (Anthropic engine)", () => {
     );
     await engine.chat({ message: "Hi", userId: "u", conversationId: "01JDWG7QTQXQF8J1XQ" });
 
-    expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-user:u", 20);
+    expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-user:u", 12);
     expect(conversations.storeMessage).toHaveBeenCalledWith("mado-user:u", "u", "user", "Hi");
   });
 });

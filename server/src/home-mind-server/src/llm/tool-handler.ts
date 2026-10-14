@@ -1,4 +1,5 @@
 import type { HomeAssistantClient, AutomationConfig } from "../ha/client.js";
+import { compactServiceResult, compactState, compactStateList } from "./compact-state.js";
 import { summarizeHistory } from "./history-summary.js";
 import type { IMemoryStore } from "../memory/interface.js";
 import type { IFactExtractor } from "./interface.js";
@@ -18,6 +19,7 @@ import {
   normalizeFactContent,
   looksLikeRelearn,
   MATCH_THRESHOLD,
+  factsForExtraction,
 } from "../memory/fact-resolution.js";
 import type { Fact } from "../memory/types.js";
 import { extractionGateReason } from "../memory/extraction-gate.js";
@@ -207,23 +209,25 @@ export async function handleToolCall(
       }
 
       case "get_state":
-        result = await ha.getState(input.entity_id as string);
+        result = compactState(await ha.getState(input.entity_id as string), true);
         break;
 
       case "get_entities":
-        result = await ha.getEntities(input.domain as string | undefined);
+        result = compactStateList(await ha.getEntities(input.domain as string | undefined));
         break;
 
       case "search_entities":
-        result = await ha.searchEntities(input.query as string);
+        result = compactStateList(await ha.searchEntities(input.query as string));
         break;
 
       case "call_service":
-        result = await ha.callService(
-          input.domain as string,
-          input.service as string,
-          input.entity_id as string | undefined,
-          input.data as Record<string, unknown> | undefined
+        result = compactServiceResult(
+          await ha.callService(
+            input.domain as string,
+            input.service as string,
+            input.entity_id as string | undefined,
+            input.data as Record<string, unknown> | undefined
+          )
         );
         break;
 
@@ -571,7 +575,10 @@ export async function extractAndStoreFacts(
     }
   }
 
-  const existingFacts = await memory.getFacts(userId);
+  const existingFacts = factsForExtraction(
+    await memory.getFacts(userId),
+    `${userMessage}\n${assistantResponse}`
+  );
 
 
   const extractedFacts = await extractor.extract(

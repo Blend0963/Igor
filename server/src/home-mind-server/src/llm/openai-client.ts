@@ -13,7 +13,8 @@ import { withTokenCap } from "./token-cap.js";
 import { withReasoningEffort } from "./reasoning-effort.js";
 import { describeLongBatch } from "./long-task.js";
 import { recallSemantically, rememberSemantically } from "./semantic-recall.js";
-import { resolveMemoryScope } from "../memory/memory-scope.js";
+import { RECALL_LIMIT, resolveMemoryScope } from "../memory/memory-scope.js";
+import { withPromptCacheKey } from "./prompt-cache-key.js";
 import {
   readUsage,
   describeUsage,
@@ -23,6 +24,7 @@ import {
   TRUNCATION_NOTICE,
   VOICE_TRUNCATION_NOTICE,
   type TokenUsage,
+  UsageTally,
 } from "./usage.js";
 import { toStreamEvents } from "./interface.js";
 import type {
@@ -187,8 +189,36 @@ export class OpenAIChatEngine implements IChatEngine {
     const markerIndex = systemPrompt.indexOf(CACHE_MARKER);
     const stableSystemPrompt = markerIndex === -1 ? systemPrompt : systemPrompt.slice(0, markerIndex);
     let volatileSystemPrompt = markerIndex === -1 ? "" : systemPrompt.slice(markerIndex + 2);
+    // 3. Load conversation history, then recall what lies beyond it. The
+    // history comes first so that recall can skip what the model is about to
+    // read anyway: the same message twice is paid twice.
+    const messages: OpenAI.ChatCompletionMessageParam[] = [
+      { role: "system", content: stableSystemPrompt },
+    ];
+
+    // A thread id is chosen by the caller, so only this user's own turns in
+    // it are history; another user's thread under the same id stays theirs.
+    const history = (
+      await this.conversations.getConversationHistory(effectiveConversationId, scope.historyWindow)
+    ).filter((msg) => msg.userId === userId);
+    for (const msg of history) {
+      // Only the user's turns carry the time marker. Stamping the
+      // assistant's own past replies taught the model to open its answers
+      // with a recited "[09:12]" — it imitates its own history entries —
+      // and an unstamped reply right after a stamped user turn is dated
+      // already.
+      const stamp = msg.role === "user" ? historyTimestamp(msg.createdAt) : "";
+      const prefix = stamp ? `[${stamp}] ` : "";
+      messages.push({ role: msg.role, content: `${prefix}${msg.content}` });
+    }
+
     // Retrieve distant history strictly by semantic similarity, never by keywords or recency.
-    const semanticMessages = await recallSemantically(this.config, this.conversations, userId, message, 6, scope.recall);
+    const inHistory = new Set(history.map((msg) => msg.id));
+    const semanticMessages = (
+      await recallSemantically(this.config, this.conversations, userId, message, RECALL_LIMIT + inHistory.size, scope.recall)
+    )
+      .filter((msg) => !inHistory.has(msg.id))
+      .slice(0, RECALL_LIMIT);
     if (semanticMessages.length > 0) {
       const semanticContext = "## Semantically relevant past conversations\n" +
         "These are retrieved by meaning similarity. They are past memories, NOT the present state of the home.\n" +
@@ -203,29 +233,6 @@ export class OpenAIChatEngine implements IChatEngine {
       volatileSystemPrompt = volatileSystemPrompt
         ? `${volatileSystemPrompt}\n\n${semanticContext}`
         : semanticContext;
-    }
-
-    // 3. Load conversation history
-    const messages: OpenAI.ChatCompletionMessageParam[] = [
-      { role: "system", content: stableSystemPrompt },
-    ];
-
-    if (effectiveConversationId) {
-      // A thread id is chosen by the caller, so only this user's own turns in
-      // it are history; another user's thread under the same id stays theirs.
-      const history = (
-        await this.conversations.getConversationHistory(effectiveConversationId, 20)
-      ).filter((msg) => msg.userId === userId);
-      for (const msg of history) {
-        // Only the user's turns carry the time marker. Stamping the
-        // assistant's own past replies taught the model to open its answers
-        // with a recited "[09:12]" — it imitates its own history entries —
-        // and an unstamped reply right after a stamped user turn is dated
-        // already.
-        const stamp = msg.role === "user" ? historyTimestamp(msg.createdAt) : "";
-        const prefix = stamp ? `[${stamp}] ` : "";
-        messages.push({ role: msg.role, content: `${prefix}${msg.content}` });
-      }
     }
 
     // The volatile context goes after the history, right before the current
@@ -258,7 +265,13 @@ export class OpenAIChatEngine implements IChatEngine {
 
     // 5. Stream and handle tool call loop
     events.onTurn?.();
-    let result = await this.streamCompletion(messages, isVoice, onChunk, false, conversationId || effectiveConversationId);
+    // One prompt-cache key per conversation style and memory bucket: those
+    // decide the opening of the prompt, which is what the cache stores.
+    const promptMode = scope.isThread ? "thread" : isVoice ? "voice" : "text";
+    const cacheKey = `mado:${promptMode}:${scope.factBucket}`;
+    const turnUsage = new UsageTally();
+    let result = await this.streamCompletion(messages, isVoice, onChunk, false, conversationId || effectiveConversationId, cacheKey);
+    turnUsage.add(result.usage);
 
     let iterations = 0;
     // Run whatever tool calls arrived, whatever the finish_reason says: some
@@ -316,7 +329,9 @@ export class OpenAIChatEngine implements IChatEngine {
         return {
           role: "tool" as const,
           tool_call_id: tc.id,
-          content: JSON.stringify(toolResult, null, 2),
+          // Compact: indentation is whitespace the model reads and is billed
+          // for, on every later call of the loop.
+          content: JSON.stringify(toolResult),
         };
       });
 
@@ -332,11 +347,14 @@ export class OpenAIChatEngine implements IChatEngine {
         );
       }
       events.onTurn?.();
-      result = await this.streamCompletion(messages, isVoice, onChunk, forceAnswer, conversationId || effectiveConversationId);
+      result = await this.streamCompletion(messages, isVoice, onChunk, forceAnswer, conversationId || effectiveConversationId, cacheKey);
+      turnUsage.add(result.usage);
       if (forceAnswer) break;
     }
 
     const responseText = result.text;
+
+    console.log(`[usage] ${promptMode} ${turnUsage.describe()} tools=${toolsUsed.length} model=${this.config.llmModel}`);
 
     // 6. Store assistant response
     if (effectiveConversationId && responseText) {
@@ -455,7 +473,8 @@ export class OpenAIChatEngine implements IChatEngine {
     isVoice: boolean,
     onChunk?: StreamCallback,
     disableTools = false,
-    sessionId?: string
+    sessionId?: string,
+    cacheKey?: string
   ): Promise<{
     text: string;
     finishReason: string | null;
@@ -469,10 +488,12 @@ export class OpenAIChatEngine implements IChatEngine {
         this.config.llmModel,
         this.config.reasoningEffort,
         (reasoning) =>
+          withPromptCacheKey(this.config.llmModel, cacheKey, (cache) =>
           this.client.chat.completions.create({
             model: this.config.llmModel,
             ...capParam,
             ...reasoning,
+            ...cache,
             messages,
             tools: OPENAI_TOOLS,
             // Keep the tool list in the request (history already references it) but
@@ -488,7 +509,7 @@ export class OpenAIChatEngine implements IChatEngine {
             // prompt cache, instead of re-balancing every turn. Other endpoints
             // reject unknown fields, so it is not sent to them.
             ...(this.isOpenRouter() && sessionId ? { session_id: sessionId } : {}),
-          }),
+          } as OpenAI.ChatCompletionCreateParamsStreaming), this.client.baseURL),
         this.client.baseURL
       )
     );

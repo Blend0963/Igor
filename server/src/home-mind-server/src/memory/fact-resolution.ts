@@ -203,3 +203,22 @@ export function resolveForgetQuery(query: string, facts: Fact[]): ResolutionResu
       .map((g) => g.content),
   };
 }
+
+/** Existing facts handed to the extractor, at most. */
+export const EXTRACTION_FACT_LIMIT = 25;
+
+/**
+ * The existing facts worth showing the extractor for one turn: the ones
+ * closest to what was just said. The extractor reads them to spot a new fact
+ * that replaces an old one, and a fact that shares no words with the turn is
+ * not one it will replace. Sending the whole bucket (up to 100 facts, with
+ * their ids) cost thousands of tokens on every extraction.
+ */
+export function factsForExtraction(facts: Fact[], turnText: string, limit = EXTRACTION_FACT_LIMIT): Fact[] {
+  if (facts.length <= limit) return facts;
+  return facts
+    .map((fact, index) => ({ fact, index, score: contentSimilarity(fact.content, turnText) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, limit)
+    .map((entry) => entry.fact);
+}

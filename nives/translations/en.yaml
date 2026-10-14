@@ -63,6 +63,12 @@ configuration:
       spoken, the right choice when you talk to Assist rather than type.
       "text" treats every Assist request as typed. Chat-panel threads are
       never affected.
+  memory_token_limit:
+    name: Memory Budget (tokens)
+    description: >-
+      How much of what MaDo remembers about you is sent with each request,
+      most relevant first. Every request pays for it, so lower is cheaper.
+      Leave empty for 1500, which holds a few dozen facts.
   speech_to_text:
     name: Speech-to-Text (Panel Microphone)
     description: >-
