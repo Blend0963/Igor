@@ -76,6 +76,12 @@
   #cam-shoot { width: 68px; height: 68px; border-radius: 50%; border: 4px solid #fff; background: rgba(255,255,255,0.25); cursor: pointer; padding: 0; }
   #cam-shoot:active { background: rgba(255,255,255,0.6); }
   #main.drag { outline: 2px dashed #3b5bdb; outline-offset: -8px; }
+  .t-section { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #8b93a5; padding: 10px 8px 4px; }
+  .thread .t-star { visibility: hidden; border: 0; background: none; color: #8b93a5; cursor: pointer; font-size: 14px; padding: 2px; }
+  .thread:hover .t-star, .thread.pinned .t-star { visibility: visible; }
+  .thread.pinned .t-star { color: #c98500; }
+  .thread .t-star:hover { color: #e6c27a; }
+  @media (hover: none) { .thread .t-star { visibility: visible; } }
   .thread .t-edit { visibility: hidden; border: 0; background: none; color: #8b93a5; cursor: pointer; font-size: 13px; padding: 2px; }
   .thread:hover .t-edit { visibility: visible; }
   .thread .t-edit:hover { color: #9fb4ff; }
@@ -278,12 +284,35 @@
       });
   }
 
+  // Favourites (★) first, under their own heading; then the rest, newest first.
   function renderThreads(threads) {
     var nav = el("threads");
     nav.textContent = "";
-    threads.forEach(function (t) {
+    var pinned = threads.filter(function (t) { return t.pinned; });
+    var others = threads.filter(function (t) { return !t.pinned; });
+    function heading(text) {
+      var h = document.createElement("div");
+      h.className = "t-section";
+      h.textContent = text;
+      nav.appendChild(h);
+    }
+    if (pinned.length) heading("★ Favoris");
+    pinned.forEach(threadRow);
+    if (pinned.length && others.length) heading("Récents");
+    others.forEach(threadRow);
+    if (!threads.length) {
+      var hint = document.createElement("div");
+      hint.className = "muted";
+      hint.style.padding = "10px";
+      hint.textContent = "Aucun fil pour le moment.";
+      nav.appendChild(hint);
+    }
+  }
+
+  function threadRow(t) {
+      var nav = el("threads");
       var row = document.createElement("div");
-      row.className = "thread" + (t.conversationId === state.current ? " active" : "");
+      row.className = "thread" + (t.conversationId === state.current ? " active" : "") + (t.pinned ? " pinned" : "");
       var main = document.createElement("div");
       main.className = "t-main";
       var title = document.createElement("div");
@@ -294,6 +323,14 @@
       try { date.textContent = new Date(t.lastMessageAt).toLocaleString(); } catch (e) { date.textContent = ""; }
       main.appendChild(title);
       main.appendChild(date);
+      var star = document.createElement("button");
+      star.className = "t-star"; star.type = "button"; star.textContent = t.pinned ? "★" : "☆";
+      star.title = t.pinned ? "Retirer des favoris" : "Ajouter aux favoris";
+      star.setAttribute("aria-pressed", t.pinned ? "true" : "false");
+      star.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        togglePin(t);
+      });
       var edit = document.createElement("button");
       edit.className = "t-edit"; edit.type = "button"; edit.textContent = "✎";
       edit.title = "Renommer ce fil";
@@ -309,18 +346,25 @@
         deleteThread(t.conversationId);
       });
       row.appendChild(main);
+      row.appendChild(star);
       row.appendChild(edit);
       row.appendChild(del);
       row.addEventListener("click", function () { openThread(t.conversationId); });
       nav.appendChild(row);
+  }
+
+  function togglePin(t) {
+    var want = !t.pinned;
+    t.pinned = want;
+    renderThreads(state.threads);
+    api("api/conversations/" + USER_ID + "/" + encodeURIComponent(t.conversationId), {
+      method: "PATCH",
+      body: JSON.stringify({ pinned: want })
+    }).catch(function (err) {
+      t.pinned = !want;
+      renderThreads(state.threads);
+      setStatus("Favori non enregistré : " + err.message, true);
     });
-    if (!threads.length) {
-      var hint = document.createElement("div");
-      hint.className = "muted";
-      hint.style.padding = "10px";
-      hint.textContent = "Aucun fil pour le moment.";
-      nav.appendChild(hint);
-    }
   }
 
   function refreshThreads() {

@@ -206,7 +206,7 @@ Optional bearer token auth via `API_TOKEN` env var. When set, all endpoints exce
 - `DELETE /api/memory/:userId/facts/:factId` — Delete specific fact
 - `GET /api/conversations/:userId` — List conversations
 - `GET /api/conversations/:userId/:conversationId` — Get conversation messages
-- `PATCH /api/conversations/:userId/:conversationId` — Rename (body `{ title }`, 1-120 chars; 404 unless the user has messages in it). Stored in `conversation_titles`, shown by `listConversations()` instead of the first-message title, removed with the conversation
+- `PATCH /api/conversations/:userId/:conversationId` — Rename and/or favourite (body `{ title?, pinned? }`, title 1-120 chars; 404 unless the user has messages in it). Titles in `conversation_titles`, favourites in `conversation_pins` (`ConversationSummary.pinned`), both removed with the conversation
 - `DELETE /api/conversations/:userId/:conversationId` — Delete conversation
 - `GET /api/admin/conversations` — All users + conversation summaries (auth required)
 

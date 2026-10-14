@@ -73,6 +73,14 @@ export class SqliteConversationStore implements IConversationStore {
         PRIMARY KEY (conversation_id, user_id)
       );
 
+      -- Favourite conversations (the panel's ★).
+      CREATE TABLE IF NOT EXISTS conversation_pins (
+        conversation_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        pinned_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (conversation_id, user_id)
+      );
+
       CREATE TABLE IF NOT EXISTS users (
         user_id TEXT PRIMARY KEY,
         first_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -217,8 +225,17 @@ export class SqliteConversationStore implements IConversationStore {
       ).map((row) => [row.conversation_id, row.title])
     );
 
+    const pinned = new Set<string>(
+      (
+        this.db
+          .prepare(`SELECT conversation_id FROM conversation_pins WHERE user_id = ?`)
+          .all(userId) as Array<{ conversation_id: string }>
+      ).map((row) => row.conversation_id)
+    );
+
     return rows.map((row) => ({
       conversationId: row.conversation_id,
+      pinned: pinned.has(row.conversation_id),
       title:
         custom.get(row.conversation_id) ??
         summarizeTitle(titles.get(row.conversation_id) ?? row.last_message),
@@ -237,7 +254,20 @@ export class SqliteConversationStore implements IConversationStore {
       .run(conversationId, userId, title);
   }
 
+  setConversationPinned(conversationId: string, userId: string, pinned: boolean): void {
+    if (pinned) {
+      this.db
+        .prepare(`INSERT OR IGNORE INTO conversation_pins (conversation_id, user_id) VALUES (?, ?)`)
+        .run(conversationId, userId);
+    } else {
+      this.db.prepare(`DELETE FROM conversation_pins WHERE conversation_id = ? AND user_id = ?`).run(conversationId, userId);
+    }
+  }
+
   deleteConversation(conversationId: string, userId?: string): number {
+    this.db
+      .prepare(`DELETE FROM conversation_pins WHERE conversation_id = ? AND (? IS NULL OR user_id = ?)`)
+      .run(conversationId, userId ?? null, userId ?? null);
     this.db
       .prepare(`DELETE FROM conversation_titles WHERE conversation_id = ? AND (? IS NULL OR user_id = ?)`)
       .run(conversationId, userId ?? null, userId ?? null);

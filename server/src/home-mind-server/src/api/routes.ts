@@ -142,12 +142,17 @@ export async function withAttachedDocuments(
   return { request: { ...rest, message: read.message } };
 }
 
-const RenameSchema = z.object({
-  title: z
-    .string()
-    .transform((t) => t.replace(/\s+/g, " ").trim())
-    .pipe(z.string().min(1, "Title is required").max(120)),
-});
+/** PATCH a conversation: rename it, mark it as a favourite, or both. */
+export const RenameSchema = z
+  .object({
+    title: z
+      .string()
+      .transform((t) => t.replace(/\s+/g, " ").trim())
+      .pipe(z.string().min(1, "Title is required").max(120))
+      .optional(),
+    pinned: z.boolean().optional(),
+  })
+  .refine((v) => v.title !== undefined || v.pinned !== undefined, "Nothing to change: send a title or pinned");
 
 const AddFactSchema = z.object({
   content: z.string().min(1, "Fact content is required"),
@@ -615,7 +620,7 @@ export function createRouter(
    * Only a conversation this user has messages in can be named.
    */
   router.patch("/conversations/:userId/:conversationId", async (req: Request, res: Response) => {
-    if (!conversations?.setConversationTitle) {
+    if (!conversations?.setConversationTitle || !conversations.setConversationPinned) {
       return res.status(501).json({ error: "Conversation store not available" });
     }
     const parsed = RenameSchema.safeParse(req.body);
@@ -632,8 +637,10 @@ export function createRouter(
       if (!owned) {
         return res.status(404).json({ error: "Conversation not found" });
       }
-      await conversations.setConversationTitle(conversationId, userId, parsed.data.title);
-      res.json({ conversationId, title: parsed.data.title });
+      const { title, pinned } = parsed.data;
+      if (title !== undefined) await conversations.setConversationTitle(conversationId, userId, title);
+      if (pinned !== undefined) await conversations.setConversationPinned(conversationId, userId, pinned);
+      res.json({ conversationId, ...(title !== undefined ? { title } : {}), ...(pinned !== undefined ? { pinned } : {}) });
     } catch (error) {
       console.error("Rename conversation error:", error);
       const message = error instanceof Error ? error.message : "Unknown error";

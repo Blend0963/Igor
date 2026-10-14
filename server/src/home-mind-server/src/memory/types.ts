@@ -44,6 +44,8 @@ export interface ConversationSummary {
   lastMessage: string;
   lastMessageAt: Date;
   messageCount: number;
+  /** Marked as a favourite: the panel lists it first. */
+  pinned?: boolean;
 }
 
 export interface IConversationStore {
@@ -66,6 +68,8 @@ export interface IConversationStore {
    * derived from its first message. Kept until the conversation is deleted.
    */
   setConversationTitle?(conversationId: string, userId: string, title: string): void | Promise<void>;
+  /** Marks the conversation as a favourite, or not. Kept until it is deleted. */
+  setConversationPinned?(conversationId: string, userId: string, pinned: boolean): void | Promise<void>;
   /** With `userId`, deletes only that user's messages in the conversation. */
   deleteConversation(conversationId: string, userId?: string): number | Promise<number>;
   getKnownUsers(): string[];
