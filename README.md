@@ -32,7 +32,7 @@ The memory database and conversation store remain on your Home Assistant machine
 
 ## Version
 
-Current release: **v0.2.1** (thread panel behind ingress, no API key needed).
+Current release: **v0.2.2** (thread panel, each thread with its own history).
 
 ## License and upstream notices
 
