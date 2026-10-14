@@ -31,7 +31,7 @@ The memory database and conversation store remain on your Home Assistant machine
 
 ## Version
 
-Current release: **v0.1.4** (memory is not the present).
+Current release: **v0.1.5** (timestamps are metadata, not speech).
 
 ## License and upstream notices
 

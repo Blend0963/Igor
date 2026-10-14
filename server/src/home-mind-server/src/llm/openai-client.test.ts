@@ -608,6 +608,41 @@ describe("OpenAIChatEngine", () => {
     );
   });
 
+  it("stamps only the user's history turns with a time marker, never its own replies", async () => {
+    // A stamped assistant entry taught the model to open every answer with
+    // a recited "[09:12]": it imitates its own past replies.
+    (conversations.getConversationHistory as ReturnType<typeof vi.fn>).mockReturnValue([
+      { role: "user", content: "allume la lumière", createdAt: new Date() },
+      { role: "assistant", content: "La lumière du salon est allumée.", createdAt: new Date() },
+    ]);
+
+    mockCreate.mockResolvedValue(
+      makeStream([
+        { choices: [{ delta: { content: "Response" }, finish_reason: null }] },
+        { choices: [{ delta: {}, finish_reason: "stop" }] },
+      ])
+    );
+
+    await engine.chat({ message: "follow up", userId: "user-1" });
+
+    const createCall = mockCreate.mock.calls[0][0];
+    const historyUser = createCall.messages.filter(
+      (m: { role: string; content: string }) =>
+        m.role === "user" && m.content.includes("allume la lumière")
+    );
+    expect(historyUser).toHaveLength(1);
+    expect(historyUser[0].content).toMatch(
+      /^\[(?:\d{1,2} [A-Za-z]{3}, )?\d{2}:\d{2}\] allume la lumière$/
+    );
+
+    const historyAssistant = createCall.messages.filter(
+      (m: { role: string; content: string }) =>
+        m.role === "assistant" && m.content.includes("allumée")
+    );
+    expect(historyAssistant).toHaveLength(1);
+    expect(historyAssistant[0].content).toBe("La lumière du salon est allumée.");
+  });
+
   it("stores user and assistant messages when conversationId present", async () => {
     mockCreate.mockResolvedValue(
       makeStream([
