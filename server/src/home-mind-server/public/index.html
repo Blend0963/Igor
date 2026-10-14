@@ -37,6 +37,16 @@
   .msg { max-width: 78%; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
   .msg.user { align-self: flex-end; background: #3b5bdb; color: #fff; border-bottom-right-radius: 4px; }
   .msg.assistant { align-self: flex-start; background: #232733; border-bottom-left-radius: 4px; }
+  .msg.assistant:has(.code) { width: 78%; }
+  .code { margin: 8px 0; border: 1px solid #2c313d; border-radius: 10px; overflow: hidden; background: #0d0f14; white-space: normal; }
+  .code-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 4px 12px; background: #1a1d24; border-bottom: 1px solid #2c313d; font-size: 12px; color: #8b93a5; }
+  .code-copy { background: none; border: 1px solid #2c313d; color: #c9d1e0; border-radius: 6px; padding: 3px 8px; font: inherit; font-size: 12px; cursor: pointer; }
+  .code-copy:hover { background: #232733; }
+  .code-copy.done { color: #69db7c; border-color: #2f5e3a; }
+  .code pre { margin: 0; padding: 10px 12px; overflow-x: auto; }
+  .code code, .inline-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+  .code code { white-space: pre; color: #e6e9ef; }
+  .inline-code { background: #1a1d24; border: 1px solid #2c313d; border-radius: 5px; padding: 0 4px; }
   #statusline { padding: 4px 18px; font-size: 12px; color: #8b93a5; }
   #statusline.err { color: #ff6b6b; }
   #composer { display: flex; gap: 10px; padding: 12px 18px 16px; border-top: 1px solid #262a33; }
@@ -258,9 +268,109 @@
   function addBubble(role, text) {
     var box = document.createElement("div");
     box.className = "msg " + (role === "user" ? "user" : "assistant");
-    box.textContent = text;
+    renderInto(box, role, text);
     el("messages").appendChild(box);
     return box;
+  }
+
+  // ----- message rendering -----
+  //
+  // Assistant replies get their ``` fenced code shown as a block with a copy
+  // button, and `inline code` in a monospace span. Everything is built with
+  // DOM nodes and textContent, never innerHTML, so a reply can never inject
+  // markup. A fence still open at the end (mid-stream) renders as code too.
+
+  var FENCE = /```([^\n`]*)\n?([\s\S]*?)(?:```|$)/g;
+
+  function renderInto(box, role, text) {
+    box.textContent = "";
+    if (role === "user") { box.textContent = text; return; }
+    var last = 0;
+    var match;
+    FENCE.lastIndex = 0;
+    while ((match = FENCE.exec(text)) !== null) {
+      if (match[0] === "") { FENCE.lastIndex++; continue; }
+      // The newlines around a fence are layout, not text: under pre-wrap they
+      // would show as blank lines above and below the block.
+      appendText(box, text.slice(last, match.index).replace(/\n$/, ""));
+      box.appendChild(codeBlock(match[1].trim(), match[2].replace(/\n$/, "")));
+      last = match.index + match[0].length;
+      if (text.charAt(last) === "\n") last++;
+    }
+    appendText(box, text.slice(last));
+  }
+
+  function appendText(box, text) {
+    if (!text) return;
+    var parts = text.split(/`([^`\n]+)`/);
+    parts.forEach(function (part, i) {
+      if (!part) return;
+      if (i % 2 === 1) {
+        var span = document.createElement("code");
+        span.className = "inline-code";
+        span.textContent = part;
+        box.appendChild(span);
+      } else {
+        box.appendChild(document.createTextNode(part));
+      }
+    });
+  }
+
+  function codeBlock(lang, code) {
+    var wrap = document.createElement("div");
+    wrap.className = "code";
+    var head = document.createElement("div");
+    head.className = "code-head";
+    var label = document.createElement("span");
+    label.textContent = lang || "code";
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "code-copy";
+    btn.textContent = "Copier";
+    btn.addEventListener("click", function () {
+      copyText(code).then(function () {
+        btn.textContent = "Copié ✓";
+        btn.classList.add("done");
+      }, function () {
+        btn.textContent = "Échec";
+      }).then(function () {
+        setTimeout(function () { btn.textContent = "Copier"; btn.classList.remove("done"); }, 1500);
+      });
+    });
+    head.appendChild(label);
+    head.appendChild(btn);
+    var pre = document.createElement("pre");
+    var codeEl = document.createElement("code");
+    codeEl.textContent = code;
+    pre.appendChild(codeEl);
+    wrap.appendChild(head);
+    wrap.appendChild(pre);
+    return wrap;
+  }
+
+  // The panel runs in Home Assistant's ingress iframe, where the async
+  // clipboard API can be refused; the textarea + execCommand path still works.
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).catch(function () { return legacyCopy(text); });
+    }
+    return legacyCopy(text);
+  }
+
+  function legacyCopy(text) {
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      document.body.removeChild(area);
+      if (ok) resolve(); else reject(new Error("copy failed"));
+    });
   }
 
   function scrollDown() {
@@ -285,7 +395,7 @@
     var acc = "";
     var finalResponse = null;
 
-    function paint() { bubble.textContent = acc; scrollDown(); }
+    function paint() { renderInto(bubble, "assistant", acc); scrollDown(); }
 
     function handleBlock(block) {
       var lines = block.split("\n");
