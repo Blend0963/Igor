@@ -510,6 +510,23 @@ describe("OpenAIChatEngine", () => {
       expect(mockCreate.mock.calls[0][0]).not.toHaveProperty("reasoning_effort");
     });
 
+    it("defaults to none for a spoken turn, so the voice cap is not spent thinking", async () => {
+      mockCreate.mockResolvedValue(reply());
+
+      await engine.chat({ message: "qui es-tu ?", userId: "user-1", isVoice: true });
+
+      expect(mockCreate.mock.calls[0][0].reasoning_effort).toBe("none");
+    });
+
+    it("keeps an explicit setting on a spoken turn", async () => {
+      config.reasoningEffort = "low";
+      mockCreate.mockResolvedValue(reply());
+
+      await engine.chat({ message: "x", userId: "user-1", isVoice: true });
+
+      expect(mockCreate.mock.calls[0][0].reasoning_effort).toBe("low");
+    });
+
     it("is sent when configured", async () => {
       config.reasoningEffort = "low";
       mockCreate.mockResolvedValue(reply());
@@ -784,7 +801,7 @@ describe("OpenAIChatEngine", () => {
     );
   });
 
-  it("uses max_tokens 500 for voice mode", async () => {
+  it("uses the spoken ceiling (2000) for voice mode", async () => {
     mockCreate.mockResolvedValue(
       makeStream([
         { choices: [{ delta: { content: "Short" }, finish_reason: null }] },
@@ -799,7 +816,7 @@ describe("OpenAIChatEngine", () => {
     });
 
     const createCall = mockCreate.mock.calls[0][0];
-    expect(createCall.max_tokens).toBe(500);
+    expect(createCall.max_tokens).toBe(2000);
   });
 
   it("honours a configured output cap, which OPENAI_MAX_TOKENS never reached before", async () => {

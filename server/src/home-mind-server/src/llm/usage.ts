@@ -141,7 +141,13 @@ export function spentBudgetOnReasoning(usage: TokenUsage | undefined): boolean {
  * changes what happens to the answers that would otherwise be cut off.
  */
 export const WRITTEN_OUTPUT_CAP = 8192;
-export const VOICE_OUTPUT_CAP = 500;
+// Spoken replies are kept short by the voice prompt, not by this number; the
+// cap only stops a runaway. It used to be 500, and a reasoning model (Mistral
+// Large 4 thinks before it answers) spent all of it thinking on a plain "who
+// are you?" and returned nothing but a truncation notice. Voice turns now
+// default to no reasoning at all (see openai-client.ts), and this leaves room
+// for the turns that still reason.
+export const VOICE_OUTPUT_CAP = 2000;
 
 /**
  * Appended when a reply stopped because it ran out of room. A plain sentence,

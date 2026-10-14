@@ -104,7 +104,7 @@ describe("LLMClient (Anthropic engine)", () => {
       finalMessage({ content: [{ type: "text", text: "Hello" }] })
     );
     await engine.chat({ message: "Hi", userId: "u", isVoice: true });
-    expect(mockStream.mock.calls[0][0].max_tokens).toBe(500);
+    expect(mockStream.mock.calls[0][0].max_tokens).toBe(2000);
   });
 
   it("honours a configured ceiling over the default", async () => {
