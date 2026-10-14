@@ -28,11 +28,11 @@ Enter a Mistral API key in the add-on option **Mistral API Key (Web Search)**. M
 
 ## Privacy
 
-The memory database and conversation store remain on your Home Assistant machine. When using a hosted language model, the current request and relevant context are sent to that provider. When web search is enabled and used, the search query is sent to Mistral's Conversations API and the response is returned to MaDo. Review each provider's privacy terms before configuring it. For a fully local language model, configure a compatible local endpoint such as Ollama; web search remains an optional external service.
+The memory database and conversation store remain on your Home Assistant machine. When using a hosted language model, the current request and relevant context are sent to that provider. When web search is enabled and used, the search query is sent to Mistral's Conversations API and the response is returned to MaDo. Review each provider's privacy terms before configuring it. For a fully local language model, configure a compatible local endpoint such as Ollama; web search remains an optional external service. Keep port 3100 unexposed (the add-on default): the thread panel authenticates through the Home Assistant login via ingress, and direct reachability of the server would bypass that.
 
 ## Version
 
-Current release: **v0.2.0** (threads panel).
+Current release: **v0.2.1** (thread panel behind ingress, no API key needed).
 
 ## License and upstream notices
 

@@ -4,9 +4,19 @@ import { timingSafeEqual } from "node:crypto";
 /**
  * Creates a bearer token auth middleware.
  * When token is undefined, all requests pass through (backward compat with HA integration).
- * When token is set, requests must include "Authorization: Bearer <token>".
+ * When token is set, requests must include "Authorization: Bearer <token>",
+ * or arrive through Home Assistant ingress (see below).
  * Health endpoint is always public.
+ *
+ * Ingress: the thread panel is served through Home Assistant ingress, which
+ * already authenticates the user with the Home Assistant login. The Supervisor
+ * proxy drops the user headers from the browser request and re-adds them itself
+ * (supervisor/const.py), so a request carrying X-Remote-User-Id is one that
+ * Home Assistant authenticated. This trust is only sound while the raw port is
+ * not reachable directly, and the add-on leaves port 3100 unexposed by default.
  */
+const INGRESS_USER_HEADER = "x-remote-user-id";
+
 export function createAuthMiddleware(
   token: string | undefined
 ): (req: Request, res: Response, next: NextFunction) => void {
@@ -18,6 +28,12 @@ export function createAuthMiddleware(
 
     // Health endpoint is always public
     if (req.path === "/health") {
+      return next();
+    }
+
+    // Behind Home Assistant ingress, the HA login is the authentication:
+    // the Supervisor stamps the user header the browser cannot set itself.
+    if (req.headers[INGRESS_USER_HEADER] !== undefined) {
       return next();
     }
 
