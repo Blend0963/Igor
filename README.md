@@ -32,7 +32,7 @@ The memory database and conversation store remain on your Home Assistant machine
 
 ## Version
 
-Current release: **v0.1.5** (timestamps are metadata, not speech).
+Current release: **v0.2.0** (threads panel).
 
 ## License and upstream notices
 
