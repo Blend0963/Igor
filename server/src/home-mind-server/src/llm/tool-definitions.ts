@@ -276,6 +276,96 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 ];
 
+/**
+ * Mistral's own agent tools, each run through one /v1/conversations call
+ * (llm/mistral-platform.ts). They need a Mistral key and are offered per
+ * conversation style: a chat-panel thread gets them all, spoken and typed
+ * Assist only the document search, where a short answer can come out of it.
+ */
+export const RUN_CODE_TOOL: ToolDefinition = {
+  name: "run_code",
+  description:
+    "Run Python in a secure sandbox (Mistral code interpreter). Use it for exact calculations, statistics, unit conversions, data analysis, " +
+    "and for a chart as an IMAGE when the chart block of your answer cannot express it (heatmaps, regressions, maps). " +
+    "The sandbox cannot reach Home Assistant or the internet: put every number it needs in the task. " +
+    "Returns the code's output and any image it saved; images are shown to the user.",
+  parameters: {
+    type: "object",
+    properties: {
+      task: {
+        type: "string",
+        description: "What to compute or draw, self-contained, with all the data inline (values, units, dates).",
+      },
+    },
+    required: ["task"],
+  },
+};
+
+export const GENERATE_IMAGE_TOOL: ToolDefinition = {
+  name: "generate_image",
+  description:
+    "Create an image from a description (illustration, logo, mood board, drawing). Not for charts of data. " +
+    "The image is shown to the user.",
+  parameters: {
+    type: "object",
+    properties: {
+      prompt: { type: "string", description: "A detailed description of the image: subject, style, colours, framing." },
+    },
+    required: ["prompt"],
+  },
+};
+
+export const SEARCH_DOCUMENTS_TOOL: ToolDefinition = {
+  name: "search_documents",
+  description:
+    "Search the owner's own documents (device manuals, invoices, contracts, house notes) stored in their Mistral document library. " +
+    "Use it for questions those documents answer, such as how to reset a device or when a warranty ends. Cite the document you used.",
+  parameters: {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "The question, self-contained." },
+    },
+    required: ["query"],
+  },
+};
+
+export function connectorTool(connectors: string[]): ToolDefinition {
+  return {
+    name: "use_connector",
+    description:
+      "Use one of the services connected to the owner's Mistral account (MCP connectors), such as mail, calendar or a notes app. " +
+      "Describe the request fully. Before anything that sends, books, buys, deletes or shares on the user's behalf, " +
+      "describe it and wait for their yes in a later message.",
+    parameters: {
+      type: "object",
+      properties: {
+        connector: { type: "string", enum: connectors, description: "Which connector." },
+        request: { type: "string", description: "What to do or find, self-contained." },
+      },
+      required: ["connector", "request"],
+    },
+  };
+}
+
+export interface PlatformToolOptions {
+  /** A Mistral key is configured. */
+  enabled: boolean;
+  /** Document libraries search_documents may read. */
+  libraryIds: string[];
+  /** MCP connectors use_connector may call. */
+  connectors: string[];
+}
+
+/** The tools of one conversation style. */
+export function toolsForMode(mode: "voice" | "text" | "thread", platform: PlatformToolOptions): ToolDefinition[] {
+  if (!platform.enabled) return TOOL_DEFINITIONS;
+  const extra: ToolDefinition[] = [];
+  if (mode === "thread") extra.push(RUN_CODE_TOOL, GENERATE_IMAGE_TOOL);
+  if (platform.libraryIds.length) extra.push(SEARCH_DOCUMENTS_TOOL);
+  if (mode === "thread" && platform.connectors.length) extra.push(connectorTool(platform.connectors));
+  return [...TOOL_DEFINITIONS, ...extra];
+}
+
 export function toAnthropicTools(tools: ToolDefinition[]): Anthropic.Tool[] {
   return tools.map((t) => ({
     name: t.name,

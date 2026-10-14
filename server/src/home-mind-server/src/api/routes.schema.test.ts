@@ -87,3 +87,17 @@ describe("ChatRequestSchema images", () => {
     }
   });
 });
+
+describe("ChatRequestSchema documents", () => {
+  it("accepts PDF data URLs", () => {
+    const r = ChatRequestSchema.safeParse({ message: "x", documents: [{ name: "a.pdf", data: "data:application/pdf;base64,JVBERi0=" }] });
+    expect(r.success).toBe(true);
+  });
+
+  it("refuses anything that is not a PDF data URL, and too many", () => {
+    expect(ChatRequestSchema.safeParse({ message: "x", documents: [{ name: "a", data: "https://x/a.pdf" }] }).success).toBe(false);
+    expect(ChatRequestSchema.safeParse({ message: "x", documents: [{ name: "a", data: "data:text/html;base64,AA==" }] }).success).toBe(false);
+    const many = Array.from({ length: CHAT_LIMITS.documents + 1 }, () => ({ name: "a.pdf", data: "data:application/pdf;base64,AA==" }));
+    expect(ChatRequestSchema.safeParse({ message: "x", documents: many }).success).toBe(false);
+  });
+});

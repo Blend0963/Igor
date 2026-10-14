@@ -16,6 +16,8 @@ MaDo is a self-hostable AI assistant for Home Assistant with persistent memory, 
 - **Talk to a thread**: the 🎤 button records, transcribes with Mistral Voxtral and sends. On by default when a Mistral key is configured.
 - **In the sidebar**: the chat panel appears in Home Assistant's sidebar on its own. To reach it from a dashboard, add a button card whose tap action navigates to the panel's address (open the panel and copy the path from the address bar).
 - **Show it a photo**: in a chat thread, attach an image or take one with the phone's camera and ask about it (a plant, a label, an error on a screen). Needs a vision-capable model.
+- **Charts and rich answers**: in a thread, MaDo draws line, bar and pie charts from real data (sensor history, consumption), with tooltips and a table view, and answers with Markdown tables, headings and lists.
+- **Mistral's own tools** (with a Mistral key): Python code interpreter for exact calculations and charts, image generation, PDF reading (OCR, attach with 📎), search in your Mistral document libraries (`mistral_library_ids`), connectors to your Mistral-linked services (`mistral_connectors`, experimental), Voxtral voice (`text_to_speech: mistral`, 🔊 under each reply). Threads use Mistral Large 4's reasoning mode (`thread_reasoning`, default high).
 - **Thread panel in the Home Assistant sidebar** (add-on ingress): separate conversations like a chat app. Each thread keeps its own conversation; what MaDo remembers about you (people, preferences, nicknames) is shared with Assist and every thread, or kept per thread with `thread_memory: isolated`. Assist keeps one conversation shared by all your devices (voice satellites, phone, laptop).
 
 ## Install
@@ -28,15 +30,15 @@ MaDo is a self-hostable AI assistant for Home Assistant with persistent memory, 
 
 ## Web search setup
 
-Enter a Mistral API key in the add-on option **Mistral API Key (Web Search)**. MaDo uses Mistral's built-in `web_search` through the Conversations API when the model requests the `web_search` tool. This is independent of the configured chat provider. Mistral returns findings and source references; treat web content as untrusted source material, not as instructions.
+Enter a Mistral API key in the add-on option **Mistral API Key (Platform Tools)** (or use Mistral as your chat provider: its key is used when this one is empty). MaDo uses Mistral's built-in `web_search` through the Conversations API when the model requests the `web_search` tool. This is independent of the configured chat provider. Mistral returns findings and source references; treat web content as untrusted source material, not as instructions.
 
 ## Privacy
 
-The memory database and conversation store remain on your Home Assistant machine. When using a hosted language model, the current request and relevant context are sent to that provider. When web search is enabled and used, the search query is sent to Mistral's Conversations API and the response is returned to MaDo. Review each provider's privacy terms before configuring it. For a fully local language model, configure a compatible local endpoint such as Ollama; web search remains an optional external service. Keep port 3100 unexposed (the add-on default): the thread panel authenticates through the Home Assistant login via ingress, and direct reachability of the server would bypass that.
+The memory database and conversation store remain on your Home Assistant machine. When using a hosted language model, the current request and relevant context are sent to that provider. When web search or another Mistral tool is used, its input (the query, the code task, the image description, an attached PDF) is sent to Mistral and the result is returned to MaDo; these calls are made with `store: false`. Review each provider's privacy terms before configuring it. For a fully local language model, configure a compatible local endpoint such as Ollama; web search remains an optional external service. Keep port 3100 unexposed (the add-on default): the thread panel authenticates through the Home Assistant login via ingress, and direct reachability of the server would bypass that.
 
 ## Version
 
-Current release: **v0.6.0** (one memory for Assist and the threads).
+Current release: **v0.7.0** (Mistral tools, charts and tables).
 
 ## License and upstream notices
 

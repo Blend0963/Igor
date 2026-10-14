@@ -117,7 +117,16 @@ ${JSON.stringify(factsJson)}`;
       let facts: unknown;
       try {
         const parsed = JSON.parse(cleaned);
-        facts = Array.isArray(parsed) ? parsed : [parsed];
+        // JSON mode (json_object) only allows an object at the top, so the
+        // array comes wrapped: {"facts": [...]}. Unwrap the first array
+        // unless the object is itself one fact (whose "replaces" is an array).
+        const wrapped =
+          parsed && typeof parsed === "object" && !Array.isArray(parsed) && !("content" in parsed)
+            ? Object.values(parsed as Record<string, unknown>).find(Array.isArray)
+            : undefined;
+        facts = Array.isArray(parsed)
+          ? parsed
+          : wrapped ?? (parsed && typeof parsed === "object" && Object.keys(parsed).length === 0 ? [] : [parsed]);
       } catch {
         const arrayMatch = cleaned.match(/\[[\s\S]*\]/);
         if (!arrayMatch) {

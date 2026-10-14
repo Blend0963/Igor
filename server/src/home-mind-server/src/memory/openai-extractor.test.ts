@@ -54,6 +54,18 @@ describe("OpenAIFactExtractor", () => {
     ]);
   });
 
+  it("unwraps the object JSON mode puts around the array", async () => {
+    const fact = { content: "User prefers 22°C", category: "preference", replaces: [] };
+    mockCreate.mockResolvedValue({ choices: [{ message: { content: JSON.stringify({ facts: [fact] }) } }] });
+    expect(await extractor.extract("I prefer 22", "Got it!", [])).toEqual([fact]);
+
+    mockCreate.mockResolvedValue({ choices: [{ message: { content: JSON.stringify(fact) } }] });
+    expect(await extractor.extract("I prefer 22", "Got it!", [])).toEqual([fact]);
+
+    mockCreate.mockResolvedValue({ choices: [{ message: { content: "{}" } }] });
+    expect(await extractor.extract("hi", "hello", [])).toEqual([]);
+  });
+
   it("filters out facts with invalid categories", async () => {
     mockCreate.mockResolvedValue({
       choices: [

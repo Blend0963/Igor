@@ -16,7 +16,19 @@ describe("healthCapabilities", () => {
       stt: false,
       tts: false,
       ttsLanguage: null,
+      documents: false,
     });
+  });
+
+  it("reports PDF reading when a Mistral key is configured", () => {
+    const before = process.env.MISTRAL_API_KEY;
+    process.env.MISTRAL_API_KEY = "k";
+    try {
+      expect(healthCapabilities().documents).toBe(true);
+    } finally {
+      if (before === undefined) delete process.env.MISTRAL_API_KEY;
+      else process.env.MISTRAL_API_KEY = before;
+    }
   });
 
   it("reports each service independently", () => {

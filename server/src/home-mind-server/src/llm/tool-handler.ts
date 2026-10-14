@@ -23,6 +23,7 @@ import {
 } from "../memory/fact-resolution.js";
 import type { Fact } from "../memory/types.js";
 import { extractionGateReason } from "../memory/extraction-gate.js";
+import { handlePlatformTool, PLATFORM_TOOL_NAMES } from "./platform-tools.js";
 
 /**
  * Per-request context for tools that need conversation continuity (e.g. the
@@ -49,6 +50,11 @@ export interface ToolContext {
    * the same breath — "…and my name is now Y" — is still learned normally.
    */
   forgetTargets?: string[];
+  /**
+   * Markdown links to files this turn's tools produced (charts, generated
+   * images). The engine adds any the answer does not already show.
+   */
+  attachments?: string[];
 }
 
 /**
@@ -151,6 +157,18 @@ export async function handleToolCall(
 
   try {
     let result: unknown;
+
+    if (PLATFORM_TOOL_NAMES.has(toolName)) {
+      if (ctx) ctx.attachments ??= [];
+      try {
+        result = await handlePlatformTool(toolName, input, ctx?.attachments);
+      } catch (error) {
+        console.warn(`[tool] ${toolName} failed:`, error instanceof Error ? error.message : error);
+        result = { error: `${toolName} failed: ${error instanceof Error ? error.message.slice(0, 300) : "unknown error"}. Tell the user; do not retry more than once.` };
+      }
+      console.log(`[tool] ${toolName} completed in ${Date.now() - start}ms`);
+      return result;
+    }
 
     switch (toolName) {
       case "web_search": {
@@ -557,6 +575,10 @@ export async function extractAndStoreFacts(
    */
   forgetTargets?: string[]
 ): Promise<number> {
+  // An attached PDF's text is material for this conversation, not facts about
+  // the user: the extraction pass sees only that a document was attached.
+  userMessage = userMessage.replace(/<document name="([^"]*)">[\s\S]*?<\/document>/g, "[attached document: $1]");
+
   // Skip the extraction call only when the user's message provably taught
   // nothing (pure command, pure question, bare acknowledgement) — see
   // extraction-gate.ts, which is deliberately inclusion-shaped: markers

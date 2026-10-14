@@ -13,6 +13,8 @@ import {
   THREAD_MESSAGE_CAP,
   threadFactBucket,
 } from "../memory/memory-scope.js";
+import { mistralKey, withDocuments } from "../llm/mistral-platform.js";
+import { getMediaStore } from "../llm/media-store.js";
 
 /**
  * Limits for the one multipart endpoint this server has (`POST /api/stt`).
@@ -50,7 +52,12 @@ export const CHAT_LIMITS = {
   id: 200,
   customPrompt: 20_000,
   images: 10,
+  documents: 5,
+  /** Characters of one base64 PDF (~10 MB of file). */
+  documentChars: 14_000_000,
 } as const;
+
+const PDF_PATTERN = /^data:application\/pdf;base64,[A-Za-z0-9+/=]+$/;
 
 /**
  * What an image may be: a base64 data URL in one of the formats every
@@ -85,7 +92,33 @@ export const ChatRequestSchema = z.object({
   // ("data:image/jpeg;base64,…") or a plain https URL. Forwarded to the model
   // as image content; ignored by text-only models.
   images: z.array(z.string().regex(IMAGE_PATTERN, "Expected a JPEG/PNG/WebP/GIF data URL or an https URL")).max(CHAT_LIMITS.images).optional(),
+  // PDFs (data URLs), read through Mistral OCR and added to the message.
+  documents: z
+    .array(
+      z.object({
+        name: z.string().max(200).default("document.pdf"),
+        data: z.string().max(CHAT_LIMITS.documentChars).regex(PDF_PATTERN, "Expected a PDF data URL"),
+      })
+    )
+    .max(CHAT_LIMITS.documents)
+    .optional(),
 });
+
+type ParsedChatRequest = z.infer<typeof ChatRequestSchema>;
+
+/**
+ * The request as the engine takes it: attached PDFs read and appended to
+ * the message (OCR needs the Mistral key; without it they are refused).
+ */
+export async function withAttachedDocuments(
+  data: ParsedChatRequest
+): Promise<Omit<ParsedChatRequest, "documents">> {
+  const { documents, ...rest } = data;
+  if (!documents?.length) return rest;
+  const key = mistralKey();
+  if (!key) throw Object.assign(new Error("Reading PDFs needs a Mistral API key in the MaDo add-on configuration."), { status: 400 });
+  return { ...rest, message: await withDocuments(rest.message, documents, key) };
+}
 
 const RenameSchema = z.object({
   title: z
@@ -210,9 +243,11 @@ export function healthCapabilities(
   stt?: unknown,
   tts?: unknown,
   ttsLanguage?: string
-): { stt: boolean; tts: boolean; ttsLanguage: string | null } {
+): { stt: boolean; tts: boolean; ttsLanguage: string | null; documents: boolean } {
   const canSpeak = Boolean(tts);
   return {
+    // PDFs can be attached (Mistral OCR) — the panel's 📎 accepts them.
+    documents: Boolean(mistralKey()),
     stt: Boolean(stt),
     tts: canSpeak,
     ttsLanguage: canSpeak ? ttsLanguage?.trim() || null : null,
@@ -261,9 +296,10 @@ export function createRouter(
       // A thread starts with an empty memory on purpose.
       if (!isThreadId(parsed.data.conversationId)) void checkEmptyBucket?.(parsed.data.userId);
 
+      const request = await withAttachedDocuments(parsed.data);
       // Use streaming internally (no callback = just faster processing)
       const response = await llm.chat({
-        ...parsed.data,
+        ...request,
         isVoice: style.isVoice,
         customPrompt: style.customPrompt,
       });
@@ -272,6 +308,9 @@ export function createRouter(
       console.error("Chat error:", error);
       if ((error as any)?.status === 402) {
         return res.status(402).json({ error: "usage_limit_reached" });
+      }
+      if ((error as any)?.status === 400) {
+        return res.status(400).json({ error: (error as Error).message });
       }
       const message = error instanceof Error ? error.message : "Unknown error";
       res.status(500).json({ error: message });
@@ -316,9 +355,11 @@ export function createRouter(
       // followed by `done` with the complete response as /api/chat returns it.
       const send = (event: string, data: unknown) =>
         res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      if (parsed.data.documents?.length) send("status", { text: "Lecture du document…" });
+      const request = await withAttachedDocuments(parsed.data);
       const response = await llm.chat(
         {
-          ...parsed.data,
+          ...request,
           isVoice: style.isVoice,
           customPrompt: style.customPrompt,
         },
@@ -647,6 +688,22 @@ export function createRouter(
       const message = error instanceof Error ? error.message : "Synthesis failed";
       res.status(500).json({ error: message });
     }
+  });
+
+  /**
+   * GET /api/media/:id
+   * A chart or image a tool produced (see llm/media-store.ts). Raster images
+   * are served inline; anything else only as a download.
+   */
+  router.get("/media/:id", (req: Request, res: Response) => {
+    const id = String(req.params.id ?? "");
+    const media = getMediaStore().get(id);
+    if (!media) return res.status(404).json({ error: "Not found" });
+    res.setHeader("Content-Type", media.mime);
+    res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+    if (!media.inline) res.setHeader("Content-Disposition", `attachment; filename="${id}"`);
+    res.send(media.data);
   });
 
   /**

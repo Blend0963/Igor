@@ -41,9 +41,6 @@ export async function withReasoningEffort<T>(
   endpoint = ""
 ): Promise<T> {
   const key = `${endpoint} ${model}`;
-  // Non-"none" reasoning is withheld from Mistral until its structured
-  // reasoning output is supported by MaDo's response parser.
-  if (/api\.mistral\.ai/i.test(endpoint) && effort && effort !== "none") return send({});
   if (!effort || rejectsReasoningEffort.has(key)) return send({});
 
   try {

@@ -23,6 +23,7 @@ import { createChatEngine, createFactExtractor } from "./llm/factory.js";
 import { createRouter } from "./api/routes.js";
 import { createSttService, sttModelFor } from "./stt/stt-service.js";
 import { createTtsService } from "./tts/tts-service.js";
+import { configureMediaStore } from "./llm/media-store.js";
 import { MemoryCleanupJob } from "./jobs/memory-cleanup.js";
 import { BalanceWatchJob } from "./jobs/balance-watch.js";
 
@@ -112,7 +113,7 @@ if (stt) {
 const tts = createTtsService(config);
 if (tts) {
   console.log(
-    `  TTS: ${config.ttsProvider} / ${config.ttsModel} (voice: ${config.ttsVoice}` +
+    `  TTS: ${config.ttsProvider} / ${config.ttsProvider === "mistral" && config.ttsModel === "tts-1" ? "voxtral" : config.ttsModel} (voice: ${config.ttsVoice}` +
       `${config.ttsLanguage ? `, language: ${config.ttsLanguage}` : ""})`
   );
 } else {
@@ -159,6 +160,12 @@ app.use((req, res, next) => {
 // The one-time memory merge records itself next to the conversation database.
 // With in-memory conversations there is nowhere durable to put it, and the
 // merge's own duplicate check keeps a repeat from copying anything.
+// Charts and images the tools produce, next to the conversation database so a
+// thread still shows them after a restart.
+configureMediaStore(
+  config.conversationStorage === "sqlite" ? path.join(path.dirname(config.conversationDbPath), "media") : undefined
+);
+
 const mergeMarkerPath =
   config.conversationStorage === "sqlite"
     ? path.join(path.dirname(config.conversationDbPath), MERGE_MARKER_FILENAME)

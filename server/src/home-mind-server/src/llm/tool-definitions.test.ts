@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   TOOL_DEFINITIONS,
+  toolsForMode,
   toAnthropicTools,
   toOpenAITools,
 } from "./tool-definitions.js";
@@ -119,4 +120,28 @@ describe("gated tools describe the preview-first flow, not a pre-call question",
       expect(d).toMatch(/NEXT message/);
     });
   }
+});
+
+describe("toolsForMode", () => {
+  const names = (tools: { name: string }[]) => tools.map((t) => t.name);
+  const off = { enabled: false, libraryIds: ["l"], connectors: ["c"] };
+  const on = { enabled: true, libraryIds: [], connectors: [] };
+
+  it("adds nothing without a Mistral key", () => {
+    expect(toolsForMode("thread", off)).toBe(TOOL_DEFINITIONS);
+  });
+
+  it("gives threads the code interpreter and images, Assist neither", () => {
+    expect(names(toolsForMode("thread", on))).toEqual(expect.arrayContaining(["run_code", "generate_image"]));
+    expect(names(toolsForMode("voice", on))).not.toContain("run_code");
+    expect(names(toolsForMode("text", on))).not.toContain("generate_image");
+  });
+
+  it("offers document search everywhere and connectors in threads, once configured", () => {
+    const cfg = { enabled: true, libraryIds: ["lib"], connectors: ["gmail"] };
+    expect(names(toolsForMode("voice", cfg))).toContain("search_documents");
+    expect(names(toolsForMode("voice", cfg))).not.toContain("use_connector");
+    const connector = toolsForMode("thread", cfg).find((t) => t.name === "use_connector")!;
+    expect((connector.parameters.properties.connector as { enum: string[] }).enum).toEqual(["gmail"]);
+  });
 });

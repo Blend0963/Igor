@@ -62,10 +62,10 @@ describe("withReasoningEffort", () => {
     expect(sibling).toHaveBeenCalledWith({ reasoning_effort: "low" });
   });
 
-  it("withholds non-none reasoning effort from Mistral endpoints", async () => {
+  it("sends high reasoning effort to Mistral (its thinking chunks are parsed out of the text)", async () => {
     const send = vi.fn().mockResolvedValue("ok");
-    await withReasoningEffort("mistral-small-latest", "high", send, "https://api.mistral.ai/v1");
-    expect(send).toHaveBeenCalledWith({});
+    await withReasoningEffort("mistral-large-latest", "high", send, "https://api.mistral.ai/v1");
+    expect(send).toHaveBeenCalledWith({ reasoning_effort: "high" });
   });
 
   it("does not swallow an unrelated 400", async () => {
