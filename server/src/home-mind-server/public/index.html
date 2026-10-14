@@ -50,18 +50,29 @@
   .inline-code { background: #1a1d24; border: 1px solid #2c313d; border-radius: 5px; padding: 0 4px; }
   #statusline { padding: 4px 18px; font-size: 12px; color: #8b93a5; }
   #statusline.err { color: #ff6b6b; }
-  #pickers { display: flex; gap: 8px; padding: 8px 18px 0; flex-wrap: wrap; }
-  .pick { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: #8b93a5; }
-  .pick select { background: #1a1d24; color: #c9d1e0; border: 1px solid #2c313d; border-radius: 8px; padding: 3px 6px; font: inherit; font-size: 12px; max-width: 220px; }
-  #composer { display: flex; gap: 10px; padding: 12px 18px 16px; border-top: 1px solid #262a33; }
-  #input { flex: 1; resize: none; background: #1a1d24; color: #e6e9ef; border: 1px solid #2c313d; border-radius: 12px; padding: 10px 14px; font: inherit; font-size: 14px; max-height: 160px; }
-  #input:focus { outline: 1px solid #3b5bdb; }
-  #btn-send { background: #3b5bdb; color: #fff; border: 0; border-radius: 12px; padding: 0 18px; cursor: pointer; font-size: 14px; }
-  #btn-send:disabled { opacity: 0.5; cursor: default; }
-  .icon-btn { background: #1a1d24; color: #c9d1e0; border: 1px solid #2c313d; border-radius: 12px; width: 42px; min-width: 42px; cursor: pointer; font-size: 17px; }
-  .icon-btn:hover { background: #232733; }
-  .icon-btn.rec { background: #c92a2a; border-color: #c92a2a; color: #fff; width: auto; padding: 0 10px; font-size: 13px; white-space: nowrap; }
+  [hidden] { display: none !important; }
+  /* The composer: one rounded card, the text on top, its tools below. */
+  #composer { padding: 10px 18px 16px; }
+  .composer-box { background: #1a1d24; border: 1px solid #2c313d; border-radius: 18px; padding: 10px 10px 8px 14px; transition: border-color 0.15s, box-shadow 0.15s; }
+  .composer-box:focus-within { border-color: #3b5bdb; box-shadow: 0 0 0 3px rgba(59,91,219,0.15); }
+  #input { display: block; width: 100%; resize: none; background: transparent; color: #e6e9ef; border: 0; padding: 4px 4px 8px 0; font: inherit; font-size: 14px; line-height: 1.45; max-height: 200px; outline: none; }
+  .composer-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .bar-left, .bar-right { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .bar-left { flex-wrap: wrap; }
+  .icon-btn { background: transparent; color: #c9d1e0; border: 0; border-radius: 10px; width: 34px; height: 34px; min-width: 34px; cursor: pointer; font-size: 16px; display: inline-flex; align-items: center; justify-content: center; }
+  .icon-btn:hover { background: #2a2f3d; }
+  .icon-btn.rec { background: #c92a2a; color: #fff; width: auto; padding: 0 10px; font-size: 13px; white-space: nowrap; }
   .icon-btn:disabled { opacity: 0.5; cursor: default; }
+  .pill { position: relative; display: inline-flex; align-items: center; height: 30px; border: 1px solid #2c313d; border-radius: 999px; background: #111318; color: #c9d1e0; cursor: pointer; min-width: 0; }
+  .pill:hover { border-color: #3b4560; background: #161922; }
+  .pill-icon { font-size: 12px; padding-left: 10px; color: #9fb4ff; pointer-events: none; }
+  .pill select { appearance: none; -webkit-appearance: none; background: transparent; color: inherit; border: 0; font: inherit; font-size: 12px; padding: 0 24px 0 6px; height: 100%; max-width: 190px; text-overflow: ellipsis; cursor: pointer; outline: none; }
+  .pill select option { background: #1a1d24; color: #e6e9ef; }
+  .pill::after { content: ""; position: absolute; right: 10px; top: 50%; width: 6px; height: 6px; border-right: 1.5px solid #8b93a5; border-bottom: 1.5px solid #8b93a5; transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+  .pill:focus-within { border-color: #3b5bdb; }
+  #btn-send { background: #3b5bdb; color: #fff; border: 0; border-radius: 50%; width: 34px; height: 34px; min-width: 34px; cursor: pointer; font-size: 17px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+  #btn-send:hover { background: #4c6ef5; }
+  #btn-send:disabled { opacity: 0.4; cursor: default; }
   #pending:not([hidden]) { display: flex; gap: 8px; padding: 10px 18px 0; flex-wrap: wrap; }
   .thumb { position: relative; width: 64px; height: 64px; border-radius: 10px; overflow: hidden; border: 1px solid #2c313d; }
   .thumb.doc { width: auto; max-width: 220px; display: flex; align-items: center; padding: 0 28px 0 10px; font-size: 12px; background: #1a1d24; }
@@ -92,7 +103,13 @@
   .hit-title { font-size: 12px; color: #9fb4ff; margin-bottom: 2px; }
   .hit-snip { font-size: 12px; color: #c9d1e0; }
   .hit-snip mark { background: rgba(201,133,0,0.35); color: inherit; border-radius: 2px; }
-  #btn-send.stop { background: #c92a2a; }
+  #btn-send.stop { background: #c92a2a; font-size: 12px; }
+  @media (max-width: 700px) {
+    #composer { padding: 8px 10px 12px; }
+    .pill select { max-width: 110px; }
+    .bar-left { gap: 2px; }
+    .icon-btn { width: 30px; min-width: 30px; }
+  }
   .msg-actions { display: flex; gap: 2px; margin-top: 4px; }
   .msg.user .msg-actions { justify-content: flex-end; }
   .msg-act { background: none; border: 0; color: inherit; opacity: 0.6; cursor: pointer; font-size: 13px; padding: 1px 4px; }
@@ -257,29 +274,37 @@
       <div id="messages"></div>
       <div id="statusline" hidden></div>
       <div id="pending" hidden></div>
-      <div id="pickers">
-        <label class="pick" title="Modèle pour ce fil">🧠
-          <select id="pick-model" aria-label="Modèle"></select>
-        </label>
-        <label class="pick" title="Réflexion avant de répondre, pour ce fil">💭
-          <select id="pick-reasoning" aria-label="Réflexion">
-            <option value="">Réflexion auto</option>
-            <option value="none">Sans réflexion</option>
-            <option value="low">Réflexion faible</option>
-            <option value="medium">Réflexion moyenne</option>
-            <option value="high">Réflexion élevée</option>
-          </select>
-        </label>
-      </div>
       <form id="composer">
-        <button id="btn-attach" class="icon-btn" type="button" title="Joindre une image ou un fichier">📎</button>
-        <button id="btn-camera" class="icon-btn" type="button" title="Prendre une photo">📷</button>
         <input id="file-attach" type="file" accept="image/*" multiple hidden>
         <input id="file-camera" type="file" accept="image/*" capture="environment" hidden>
         <input id="file-audio" type="file" accept="audio/*" capture hidden>
-        <textarea id="input" rows="1" placeholder="Écrivez à MaDo…"></textarea>
-        <button id="btn-mic" class="icon-btn" type="button" title="Parler" hidden>🎤</button>
-        <button id="btn-send" type="submit">Envoyer</button>
+        <div class="composer-box">
+          <textarea id="input" rows="1" placeholder="Écrivez à MaDo…"></textarea>
+          <div class="composer-bar">
+            <div class="bar-left">
+              <button id="btn-attach" class="icon-btn" type="button" title="Joindre une image ou un fichier" aria-label="Joindre">📎</button>
+              <button id="btn-camera" class="icon-btn" type="button" title="Prendre une photo" aria-label="Photo">📷</button>
+              <label class="pill" title="Modèle utilisé dans ce fil">
+                <span class="pill-icon" aria-hidden="true">✦</span>
+                <select id="pick-model" aria-label="Modèle"></select>
+              </label>
+              <label class="pill" title="Réflexion avant de répondre, dans ce fil (Auto : réglage de l'add-on)">
+                <span class="pill-icon" aria-hidden="true">💭</span>
+                <select id="pick-reasoning" aria-label="Réflexion">
+                  <option value="">Auto</option>
+                  <option value="none">Aucune</option>
+                  <option value="low">Faible</option>
+                  <option value="medium">Moyenne</option>
+                  <option value="high">Élevée</option>
+                </select>
+              </label>
+            </div>
+            <div class="bar-right">
+              <button id="btn-mic" class="icon-btn" type="button" title="Parler" aria-label="Parler" hidden>🎤</button>
+              <button id="btn-send" type="submit" title="Envoyer" aria-label="Envoyer">↑</button>
+            </div>
+          </div>
+        </div>
       </form>
     </div>
   </main>
@@ -1796,7 +1821,7 @@
   function autoGrow() {
     var input = el("input");
     input.style.height = "auto";
-    input.style.height = Math.min(input.scrollHeight, 160) + "px";
+    input.style.height = Math.min(input.scrollHeight, 200) + "px";
   }
   el("input").addEventListener("input", autoGrow);
 
@@ -2009,14 +2034,24 @@
     }
     sel.value = p.model || "";
     el("pick-reasoning").value = p.reasoning || "";
+    fitPicks();
   }
   function savePick() {
     var value = { model: el("pick-model").value, reasoning: el("pick-reasoning").value };
     writePick("last", value);
     if (state.current) writePick(state.current, value);
   }
-  el("pick-model").addEventListener("change", savePick);
-  el("pick-reasoning").addEventListener("change", savePick);
+  // A pill is as wide as the choice it shows, not as its longest option.
+  var measure = document.createElement("canvas").getContext("2d");
+  function fitSelect(sel) {
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt) return;
+    measure.font = "12px " + getComputedStyle(sel).fontFamily;
+    sel.style.width = Math.ceil(measure.measureText(opt.textContent).width + 34) + "px";
+  }
+  function fitPicks() { fitSelect(el("pick-model")); fitSelect(el("pick-reasoning")); }
+  el("pick-model").addEventListener("change", function () { savePick(); fitPicks(); });
+  el("pick-reasoning").addEventListener("change", function () { savePick(); fitPicks(); });
 
   function loadModels() {
     return api("api/models").then(function (res) { return res.json(); }).then(function (data) {
@@ -2024,12 +2059,15 @@
       sel.textContent = "";
       var auto = document.createElement("option");
       auto.value = "";
-      auto.textContent = "Modèle auto" + (data.main ? " (" + data.main + (data.fast ? " / " + data.fast + " pour les ordres simples" : "") + ")" : "");
+      auto.textContent = "Auto";
+      el("pick-model").parentNode.title = "Modèle utilisé dans ce fil. Auto : " + (data.main || "le modèle principal") +
+        (data.fast ? ", et " + data.fast + " pour les ordres simples" : "");
       sel.appendChild(auto);
       (data.models || []).forEach(function (m) {
         var o = document.createElement("option");
         o.value = m.id;
-        o.textContent = m.id + (m.role === "main" ? " · principal" : m.role === "fast" ? " · rapide" : m.role === "memory" ? " · mémoire" : "") + (m.vision ? " 👁" : "");
+        o.textContent = m.id.replace(/-latest$/, "") + (m.role === "main" ? " (principal)" : m.role === "fast" ? " (rapide)" : "") + (m.vision ? " 👁" : "");
+        o.title = m.id;
         sel.appendChild(o);
       });
       showPick();
@@ -2042,8 +2080,9 @@
     var btn = el("btn-send");
     var running = Boolean(state.current && isRunning(state.current));
     btn.classList.toggle("stop", running);
-    btn.textContent = running ? "■ Arrêter" : "Envoyer";
-    btn.title = running ? "Arrêter la réponse (le début est gardé)" : "";
+    btn.textContent = running ? "■" : "↑";
+    btn.title = running ? "Arrêter la réponse (le début est gardé)" : "Envoyer";
+    btn.setAttribute("aria-label", running ? "Arrêter la réponse" : "Envoyer");
     btn.disabled = !running && state.busy;
   }
 
