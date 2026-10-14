@@ -38,7 +38,7 @@ describe("panel threads in the conversation routes", () => {
     const res = await call(router, "DELETE", "/api/conversations/default/mado-thread%3At1");
 
     expect(res.status).toBe(200);
-    expect(memory.clearUserFacts).toHaveBeenCalledWith("default@mado-thread:t1");
+    expect(memory.clearUserFacts).toHaveBeenCalledWith("default@mado-thread.t1");
     expect(memory.clearUserFacts).not.toHaveBeenCalledWith("default");
   });
 

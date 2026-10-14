@@ -31,6 +31,22 @@ describe("resolveMemoryScope", () => {
   });
 });
 
+describe("threadFactBucket", () => {
+  // Shodh: "user_id contains invalid characters (allowed: alphanumeric, -, _, @, .)"
+  const SHODH_USER_ID = /^[A-Za-z0-9\-_@.]+$/;
+
+  it("only uses characters Shodh accepts in a user_id", () => {
+    for (const id of [
+      "mado-thread:3f2b1c9e-7a44-4b1d-9e0f-2c5d8a6b7e10",
+      "mado-thread:id-lx3k9-ab12cd34",
+      "mado-thread:weird id/with:stuff",
+    ]) {
+      expect(threadFactBucket("default", id)).toMatch(SHODH_USER_ID);
+    }
+    expect(threadFactBucket("default", "mado-thread:abc")).toBe("default@mado-thread.abc");
+  });
+});
+
 describe("inRecallScope", () => {
   it("keeps a thread's recall inside the thread", () => {
     const scope = resolveMemoryScope("alice", "mado-thread:t1").recall;
