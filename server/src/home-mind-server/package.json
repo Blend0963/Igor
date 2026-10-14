@@ -1,6 +1,6 @@
 {
   "name": "@mado/server",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "MaDo API server - AI assistant with persistent memory for Home Assistant",
   "type": "module",
   "main": "dist/index.js",
