@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4 — Memory is not the present
+
+- Timestamp every conversation-history message and every semantically recalled message sent to the model, so memories read as past events rather than the current state of the home.
+- Add "MEMORY IS NOT THE PRESENT" rules to the written and voice system prompts: never assert device state from a memory, verify the live state with get_state / search_entities, and treat "do it again" as a fresh command to execute now.
+- Recognize French transient-state and command-echo statements ("a été allumée", "actuellement", "vient d'être éteinte") as garbage facts; the periodic cleanup job purges them retroactively.
+
 ## 0.1.3 — Mistral BYOK chat provider
 
 - Add `mistral` to the add-on's bring-your-own-key provider choices (port of upstream Nives PR #107).

@@ -31,7 +31,7 @@ The memory database and conversation store remain on your Home Assistant machine
 
 ## Version
 
-Current release: **v0.1.3** (Mistral BYOK chat provider).
+Current release: **v0.1.4** (memory is not the present).
 
 ## License and upstream notices
 
