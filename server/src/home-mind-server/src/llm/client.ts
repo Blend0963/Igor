@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { RECENT_FILE_MESSAGES, shortenAttachedFiles } from "../files/extract.js";
 import type { Config } from "../config.js";
 import type { IMemoryStore } from "../memory/interface.js";
 import type { IConversationStore } from "../memory/types.js";
@@ -135,9 +136,11 @@ export class LLMClient implements IChatEngine {
       const history = (
         await this.conversations.getConversationHistory(effectiveConversationId, scope.historyWindow)
       ).filter((msg) => msg.userId === userId);
-      for (const msg of history) {
-        messages.push({ role: msg.role, content: msg.content });
-      }
+      history.forEach((msg, index) => {
+        // Files attached long ago keep only an excerpt (see files/extract.ts).
+        const old = index < history.length - RECENT_FILE_MESSAGES;
+        messages.push({ role: msg.role, content: old ? shortenAttachedFiles(msg.content) : msg.content });
+      });
     }
 
     // 4. Add current user message (multimodal when images are present)

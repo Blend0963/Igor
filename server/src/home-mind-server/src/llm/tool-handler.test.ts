@@ -1217,3 +1217,22 @@ describe("extractAndStoreFacts — one-word value swap survives (live 2.4.16 reg
     expect(stored[0].content).toContain("honeybee");
   });
 });
+
+describe("create_file", () => {
+  it("builds the file, keeps it and hands back its download link", async () => {
+    const { handleToolCall } = await import("./tool-handler.js");
+    const { getMediaStore } = await import("./media-store.js");
+    const ctx: { attachments?: string[] } = {};
+    const result = (await handleToolCall({} as never, "create_file", { filename: "liste", format: "xlsx", sheets: [{ rows: [["a"], [1]] }] }, ctx)) as { link: string; filename: string };
+    expect(result.filename).toBe("liste.xlsx");
+    expect(result.link).toMatch(/^\[📎 liste\.xlsx\]\(api\/media\/[0-9a-f-]{36}\)$/);
+    expect(ctx.attachments).toEqual([result.link]);
+    const id = /media\/([0-9a-f-]{36})/.exec(result.link)![1];
+    expect(getMediaStore().get(id)).toMatchObject({ inline: false });
+  });
+
+  it("reports a request it cannot build", async () => {
+    const { handleToolCall } = await import("./tool-handler.js");
+    expect(await handleToolCall({} as never, "create_file", { filename: "x", format: "zip", files: [] }, {})).toHaveProperty("error");
+  });
+});

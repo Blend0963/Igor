@@ -139,9 +139,9 @@ if (config.corsOrigins) {
   console.log(`  CORS: ${origins.join(", ")}`);
 }
 
-// 20mb so base64-encoded camera snapshots (images on /api/chat) aren't rejected
-// by the 100kb default. Aligns with the 25mb multer limit used for audio uploads.
-app.use(express.json({ limit: "20mb" }));
+// Room for what /api/chat may carry in base64: up to 10 images and 5 attached
+// files of 10 MB each (CHAT_LIMITS in api/routes.ts).
+app.use(express.json({ limit: "80mb" }));
 
 // API token auth (only when API_TOKEN is configured)
 const authMiddleware = createAuthMiddleware(config.apiToken);

@@ -8,6 +8,7 @@ import { TopologyScanner } from "../ha/topology-scanner.js";
 import { buildSystemPromptText } from "./prompts.js";
 import { toolsForMode, toOpenAITools } from "./tool-definitions.js";
 import { listFromEnv, mistralKey } from "./mistral-platform.js";
+import { RECENT_FILE_MESSAGES, shortenAttachedFiles } from "../files/extract.js";
 import { randomUUID } from "node:crypto";
 import { handleToolCall, extractAndStoreFacts, type ToolContext } from "./tool-handler.js";
 import { withTokenCap } from "./token-cap.js";
@@ -230,7 +231,9 @@ export class OpenAIChatEngine implements IChatEngine {
     const history = (
       await this.conversations.getConversationHistory(effectiveConversationId, scope.historyWindow)
     ).filter((msg) => msg.userId === userId);
-    for (const msg of history) {
+    history.forEach((msg, index) => {
+      // Files attached long ago keep only an excerpt (see files/extract.ts).
+      const old = index < history.length - RECENT_FILE_MESSAGES;
       // Only the user's turns carry the time marker. Stamping the
       // assistant's own past replies taught the model to open its answers
       // with a recited "[09:12]" — it imitates its own history entries —
@@ -238,8 +241,9 @@ export class OpenAIChatEngine implements IChatEngine {
       // already.
       const stamp = msg.role === "user" ? historyTimestamp(msg.createdAt) : "";
       const prefix = stamp ? `[${stamp}] ` : "";
-      messages.push({ role: msg.role, content: `${prefix}${msg.content}` });
-    }
+      const content = old ? shortenAttachedFiles(msg.content) : msg.content;
+      messages.push({ role: msg.role, content: `${prefix}${content}` });
+    });
 
     // Retrieve distant history strictly by semantic similarity, never by keywords or recency.
     const inHistory = new Set(history.map((msg) => msg.id));

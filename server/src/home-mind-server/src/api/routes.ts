@@ -53,11 +53,12 @@ export const CHAT_LIMITS = {
   customPrompt: 20_000,
   images: 10,
   documents: 5,
-  /** Characters of one base64 PDF (~10 MB of file). */
+  /** Characters of one base64 file (~10 MB of file). */
   documentChars: 14_000_000,
 } as const;
 
-const PDF_PATTERN = /^data:application\/pdf;base64,[A-Za-z0-9+/=]+$/;
+/** Any file as a base64 data URL (browsers send an empty type for unknown ones). */
+const FILE_PATTERN = /^data:[^,;]*(;[^,;]*)*;base64,[A-Za-z0-9+/=]+$/;
 
 /**
  * What an image may be: a base64 data URL in one of the formats every
@@ -92,12 +93,13 @@ export const ChatRequestSchema = z.object({
   // ("data:image/jpeg;base64,…") or a plain https URL. Forwarded to the model
   // as image content; ignored by text-only models.
   images: z.array(z.string().regex(IMAGE_PATTERN, "Expected a JPEG/PNG/WebP/GIF data URL or an https URL")).max(CHAT_LIMITS.images).optional(),
-  // PDFs (data URLs), read through Mistral OCR and added to the message.
+  // Files (data URLs): Word, Excel, PowerPoint, text, ZIP… read on the add-on,
+  // PDFs through Mistral OCR; their text is added to the message.
   documents: z
     .array(
       z.object({
-        name: z.string().max(200).default("document.pdf"),
-        data: z.string().max(CHAT_LIMITS.documentChars).regex(PDF_PATTERN, "Expected a PDF data URL"),
+        name: z.string().max(200).default("document"),
+        data: z.string().max(CHAT_LIMITS.documentChars).regex(FILE_PATTERN, "Expected a base64 data URL"),
       })
     )
     .max(CHAT_LIMITS.documents)
@@ -107,17 +109,16 @@ export const ChatRequestSchema = z.object({
 type ParsedChatRequest = z.infer<typeof ChatRequestSchema>;
 
 /**
- * The request as the engine takes it: attached PDFs read and appended to
- * the message (OCR needs the Mistral key; without it they are refused).
+ * The request as the engine takes it: attached files read and appended to
+ * the message. A PDF needs the Mistral key (OCR); without it the message
+ * says so in place of the PDF's text.
  */
 export async function withAttachedDocuments(
   data: ParsedChatRequest
 ): Promise<Omit<ParsedChatRequest, "documents">> {
   const { documents, ...rest } = data;
   if (!documents?.length) return rest;
-  const key = mistralKey();
-  if (!key) throw Object.assign(new Error("Reading PDFs needs a Mistral API key in the MaDo add-on configuration."), { status: 400 });
-  return { ...rest, message: await withDocuments(rest.message, documents, key) };
+  return { ...rest, message: await withDocuments(rest.message, documents, mistralKey()) };
 }
 
 const RenameSchema = z.object({
@@ -243,11 +244,12 @@ export function healthCapabilities(
   stt?: unknown,
   tts?: unknown,
   ttsLanguage?: string
-): { stt: boolean; tts: boolean; ttsLanguage: string | null; documents: boolean } {
+): { stt: boolean; tts: boolean; ttsLanguage: string | null; documents: boolean; pdf: boolean } {
   const canSpeak = Boolean(tts);
   return {
-    // PDFs can be attached (Mistral OCR) — the panel's 📎 accepts them.
-    documents: Boolean(mistralKey()),
+    // Files can be attached (read on the add-on); PDFs need Mistral OCR.
+    documents: true,
+    pdf: Boolean(mistralKey()),
     stt: Boolean(stt),
     tts: canSpeak,
     ttsLanguage: canSpeak ? ttsLanguage?.trim() || null : null,
@@ -355,7 +357,7 @@ export function createRouter(
       // followed by `done` with the complete response as /api/chat returns it.
       const send = (event: string, data: unknown) =>
         res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-      if (parsed.data.documents?.length) send("status", { text: "Lecture du document…" });
+      if (parsed.data.documents?.length) send("status", { text: "Lecture des fichiers…" });
       const request = await withAttachedDocuments(parsed.data);
       const response = await llm.chat(
         {

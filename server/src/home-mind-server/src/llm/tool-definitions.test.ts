@@ -127,8 +127,9 @@ describe("toolsForMode", () => {
   const off = { enabled: false, libraryIds: ["l"], connectors: ["c"] };
   const on = { enabled: true, libraryIds: [], connectors: [] };
 
-  it("adds nothing without a Mistral key", () => {
-    expect(toolsForMode("thread", off)).toBe(TOOL_DEFINITIONS);
+  it("adds only create_file to threads without a Mistral key", () => {
+    expect(names(toolsForMode("thread", off))).toEqual([...names(TOOL_DEFINITIONS), "create_file"]);
+    expect(toolsForMode("voice", off)).toBe(TOOL_DEFINITIONS);
   });
 
   it("gives threads the code interpreter and images, Assist neither", () => {

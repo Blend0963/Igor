@@ -347,6 +347,42 @@ export function connectorTool(connectors: string[]): ToolDefinition {
   };
 }
 
+export const CREATE_FILE_TOOL: ToolDefinition = {
+  name: "create_file",
+  description:
+    "Create a file the user can download from the chat: a Word document (docx), a PDF, an Excel workbook (xlsx), " +
+    "a CSV, Markdown, text, JSON, HTML, XML or calendar (ics) file, or a zip of several of them. Use it when the user asks for a document, " +
+    "a spreadsheet, an export or a file. For docx and pdf, write the content in light Markdown (# headings, - lists, | tables |, **bold**). " +
+    "For xlsx, give the rows in 'sheets' (first row = headers; numbers as numbers; formulas like \"=SUM(B2:B9)\" are kept). " +
+    "For zip, give the files in 'files'. Returns a download link to put in your answer.",
+  parameters: {
+    type: "object",
+    properties: {
+      filename: { type: "string", description: "File name, e.g. \"facture-octobre.pdf\"." },
+      format: { type: "string", enum: ["docx", "pdf", "xlsx", "csv", "md", "txt", "json", "html", "xml", "ics", "zip"] },
+      content: { type: "string", description: "The text: Markdown for docx/pdf/md, raw text for the others, CSV for csv (or xlsx without sheets)." },
+      sheets: {
+        type: "array",
+        description: "xlsx only: one entry per sheet.",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            rows: { type: "array", items: { type: "array", items: {} } },
+          },
+          required: ["rows"],
+        },
+      },
+      files: {
+        type: "array",
+        description: "zip only: the files inside, each with filename, format and content (or sheets).",
+        items: { type: "object", properties: { filename: { type: "string" }, format: { type: "string" }, content: { type: "string" }, sheets: { type: "array", items: { type: "object" } } }, required: ["filename"] },
+      },
+    },
+    required: ["filename", "format"],
+  },
+};
+
 export interface PlatformToolOptions {
   /** A Mistral key is configured. */
   enabled: boolean;
@@ -358,8 +394,9 @@ export interface PlatformToolOptions {
 
 /** The tools of one conversation style. */
 export function toolsForMode(mode: "voice" | "text" | "thread", platform: PlatformToolOptions): ToolDefinition[] {
-  if (!platform.enabled) return TOOL_DEFINITIONS;
-  const extra: ToolDefinition[] = [];
+  // Files are built on the add-on itself: no Mistral key needed.
+  const extra: ToolDefinition[] = mode === "thread" ? [CREATE_FILE_TOOL] : [];
+  if (!platform.enabled) return extra.length ? [...TOOL_DEFINITIONS, ...extra] : TOOL_DEFINITIONS;
   if (mode === "thread") extra.push(RUN_CODE_TOOL, GENERATE_IMAGE_TOOL);
   if (platform.libraryIds.length) extra.push(SEARCH_DOCUMENTS_TOOL);
   if (mode === "thread" && platform.connectors.length) extra.push(connectorTool(platform.connectors));

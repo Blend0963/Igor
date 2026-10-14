@@ -27,8 +27,21 @@ const EXTENSIONS: Record<string, string> = {
   "application/pdf": "pdf",
   "application/json": "json",
   "text/plain": "txt",
+  "text/markdown": "md",
+  "text/html": "html",
+  "application/xml": "xml",
+  "text/calendar": "ics",
+  "application/zip": "zip",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
 };
 const MIME_BY_EXTENSION = Object.fromEntries(Object.entries(EXTENSIONS).map(([m, e]) => [e, m]));
+/**
+ * Served inline: raster images only. Everything else (HTML, SVG, documents)
+ * is sent as a download, so nothing a tool wrote can run in the panel's
+ * origin.
+ */
 const INLINE = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 

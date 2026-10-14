@@ -144,6 +144,8 @@
   .chart .slice { stroke: #1d2029; stroke-width: 2; }
   .chart .pie-total { fill: #e6e9ef; font-size: 15px; font-weight: 600; font-family: inherit; }
   .chart .table-wrap { margin: 4px 0; }
+  .file-link { display: inline-block; background: #1a1d24; border: 1px solid #2c313d; border-radius: 8px; padding: 4px 10px; margin: 2px 0; text-decoration: none; }
+  .file-link:hover { background: #2a2f3d; }
   .msg-docs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .doc-chip { background: rgba(255,255,255,0.15); border-radius: 8px; padding: 3px 8px; font-size: 12px; }
   .msg-tools { margin-top: 6px; }
@@ -181,7 +183,7 @@
       <div id="statusline" hidden></div>
       <div id="pending" hidden></div>
       <form id="composer">
-        <button id="btn-attach" class="icon-btn" type="button" title="Joindre une image">📎</button>
+        <button id="btn-attach" class="icon-btn" type="button" title="Joindre une image ou un fichier">📎</button>
         <button id="btn-camera" class="icon-btn" type="button" title="Prendre une photo">📷</button>
         <input id="file-attach" type="file" accept="image/*" multiple hidden>
         <input id="file-camera" type="file" accept="image/*" capture="environment" hidden>
@@ -664,9 +666,18 @@
       var dl = document.createElement("a");
       dl.href = "#";
       dl.textContent = label;
+      dl.className = "file-link";
+      // A file MaDo made: downloaded under its own name.
       dl.addEventListener("click", function (ev) {
         ev.preventDefault();
-        mediaUrl(href).then(function (url) { window.open(url, "_blank"); });
+        mediaUrl(href).then(function (url) {
+          var a = document.createElement("a");
+          a.href = url;
+          a.download = String(label).replace(/^📎\s*/, "").replace(/[\\/:*?"<>|]/g, "") || "fichier";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }, function () { setStatus("Fichier indisponible.", true); });
       });
       return dl;
     }
@@ -1193,8 +1204,8 @@
   // the thread remembers what MaDo said about them, not the pictures.
 
   var DEFAULT_IMAGE_QUESTION = "Qu'est-ce que c'est ?";
-  var DEFAULT_DOC_QUESTION = "Résume ce document.";
-  // PDFs are read on the server (Mistral OCR) when /api/health says so.
+  var DEFAULT_DOC_QUESTION = "Résume ce fichier.";
+  // Files are read on the server (PDFs through Mistral OCR when a key is set).
   var MAX_DOCS = 5;
   var MAX_DOC_BYTES = 10 * 1024 * 1024;
   state.docs = [];
@@ -1211,14 +1222,15 @@
 
   function addDocs(list) {
     if (!list.length) return;
-    if (!state.caps.documents) { setStatus("Les PDF demandent une clé Mistral dans la configuration de l'add-on.", true); return; }
     list.forEach(function (file) {
+      if (!file.size) { setStatus((file.name || "Fichier") + " est vide.", true); return; }
+      if (/\.pdf$/i.test(file.name || "") && !state.caps.pdf) setStatus("Les PDF ne seront pas lus : il faut une clé Mistral dans la configuration de l'add-on.", true);
       if (state.docs.length + state.preparing >= MAX_DOCS) { setStatus("Au plus " + MAX_DOCS + " documents par message.", true); return; }
       if (file.size > MAX_DOC_BYTES) { setStatus(file.name + " : 10 Mo au plus.", true); return; }
       state.preparing++;
       readDataUrl(file)
         .then(function (data) {
-          state.docs.push({ name: (file.name || "document.pdf").slice(0, 200), data: data.replace(/^data:[^;,]*;/, "data:application/pdf;") });
+          state.docs.push({ name: (file.name || "document").slice(0, 200), data: data });
         })
         .catch(function (err) { setStatus("Document ignoré : " + err.message, true); })
         .then(function () { state.preparing--; renderPending(); });
@@ -1253,8 +1265,10 @@
   }
 
   function addFiles(files) {
-    addDocs(Array.prototype.filter.call(files || [], function (f) { return f.type === "application/pdf" || /\.pdf$/i.test(f.name || ""); }));
-    var list = Array.prototype.filter.call(files || [], function (f) { return /^image\//.test(f.type); });
+    // Photos go to the model's eyes; every other file is read as a document.
+    var isPhoto = function (f) { return /^image\/(jpeg|png|webp|gif|bmp|avif)$/.test(f.type); };
+    addDocs(Array.prototype.filter.call(files || [], function (f) { return !isPhoto(f); }));
+    var list = Array.prototype.filter.call(files || [], isPhoto);
     if (!list.length) return;
     var room = MAX_IMAGES - state.pending.length - state.preparing;
     if (list.length > room) setStatus("Au plus " + MAX_IMAGES + " images par message.", true);
@@ -1632,8 +1646,8 @@
       el("btn-mic").hidden = !h.stt;
       state.caps = h;
       if (h.documents) {
-        el("file-attach").setAttribute("accept", "image/*,application/pdf,.pdf");
-        el("btn-attach").title = "Joindre une image ou un PDF";
+        el("file-attach").removeAttribute("accept");
+        el("btn-attach").title = "Joindre une image ou un fichier (PDF, Word, Excel, zip…)";
       }
       // Replies already on screen get their 🔊 once the server says it speaks.
       if (h.tts) Array.prototype.forEach.call(document.querySelectorAll(".msg.assistant"), addSpeak);

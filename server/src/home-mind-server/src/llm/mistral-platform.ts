@@ -15,6 +15,8 @@
  * degrade to "no text" rather than throw.
  */
 
+import { extractFileText } from "../files/extract.js";
+
 const API = "https://api.mistral.ai/v1";
 
 /**
@@ -173,33 +175,38 @@ export function listFromEnv(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-/** A PDF attached to a chat message. */
+/** A file attached to a chat message, as a data URL. */
 export interface AttachedDocument {
   name: string;
   data: string;
 }
 
-/** The marker a stored message carries for each document, read back by the panel. */
+/** The marker a stored message carries for each file, read back by the panel. */
 export function documentBlock(name: string, text: string): string {
-  const safeName = name.replace(/["<>\n\r]/g, "").slice(0, 200) || "document.pdf";
+  const safeName = name.replace(/["<>\n\r]/g, "").slice(0, 200) || "document";
   return `<document name="${safeName}">\n${text}\n</document>`;
 }
 
+/** The media type and bytes of a data URL. */
+export function decodeDataUrl(dataUrl: string): { mime: string; data: Buffer } {
+  const comma = dataUrl.indexOf(",");
+  const header = dataUrl.slice(5, comma);
+  return { mime: header.split(";")[0] || "application/octet-stream", data: Buffer.from(dataUrl.slice(comma + 1), "base64") };
+}
+
 /**
- * The user's message with the text of every attached PDF after it. Read
- * once, through OCR, and stored with the message: later turns of the thread
- * see the document in their history without paying for OCR again.
+ * The user's message with the text of every attached file after it. Read
+ * once (on the add-on, or through OCR for a PDF) and stored with the
+ * message: later turns of the thread see the file in their history without
+ * reading it again.
  */
-export async function withDocuments(message: string, documents: AttachedDocument[], apiKey: string): Promise<string> {
+export async function withDocuments(message: string, documents: AttachedDocument[], apiKey?: string): Promise<string> {
   const blocks: string[] = [];
   for (const doc of documents) {
-    let text: string;
-    try {
-      text = (await ocrDocument(apiKey, doc.data)) || "[no text could be read from this document]";
-    } catch (error) {
-      console.warn(`[ocr] ${doc.name}:`, error instanceof Error ? error.message : error);
-      text = "[this document could not be read]";
-    }
+    const { mime, data } = decodeDataUrl(doc.data);
+    const text = await extractFileText(doc.name, mime, data, {
+      ocrPdf: apiKey ? (dataUrl) => ocrDocument(apiKey, dataUrl) : undefined,
+    });
     blocks.push(documentBlock(doc.name, text));
   }
   return blocks.length ? `${message}\n\n${blocks.join("\n\n")}` : message;

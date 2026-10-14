@@ -16,15 +16,16 @@ describe("healthCapabilities", () => {
       stt: false,
       tts: false,
       ttsLanguage: null,
-      documents: false,
+      documents: true,
+      pdf: false,
     });
   });
 
-  it("reports PDF reading when a Mistral key is configured", () => {
+  it("reports PDF reading (OCR) when a Mistral key is configured", () => {
     const before = process.env.MISTRAL_API_KEY;
     process.env.MISTRAL_API_KEY = "k";
     try {
-      expect(healthCapabilities().documents).toBe(true);
+      expect(healthCapabilities().pdf).toBe(true);
     } finally {
       if (before === undefined) delete process.env.MISTRAL_API_KEY;
       else process.env.MISTRAL_API_KEY = before;

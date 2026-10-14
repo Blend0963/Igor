@@ -24,6 +24,8 @@ import {
 import type { Fact } from "../memory/types.js";
 import { extractionGateReason } from "../memory/extraction-gate.js";
 import { handlePlatformTool, PLATFORM_TOOL_NAMES } from "./platform-tools.js";
+import { createFile, type FileSpec } from "../files/create.js";
+import { getMediaStore, mediaLink } from "./media-store.js";
 
 /**
  * Per-request context for tools that need conversation continuity (e.g. the
@@ -157,6 +159,24 @@ export async function handleToolCall(
 
   try {
     let result: unknown;
+
+    if (toolName === "create_file") {
+      try {
+        const file = createFile(input as FileSpec);
+        const id = getMediaStore().save(file.data, file.mime, file.filename);
+        if (!id) {
+          result = { error: "The file is too large to keep (15 MB at most)." };
+        } else {
+          const link = `[📎 ${file.filename.replace(/[[\]()]/g, "")}](${mediaLink(id)})`;
+          if (ctx) (ctx.attachments ??= []).push(link);
+          result = { filename: file.filename, bytes: file.data.length, link, note: "Put the link in your answer, exactly as given." };
+        }
+      } catch (error) {
+        result = { error: `create_file failed: ${error instanceof Error ? error.message : "unknown error"}` };
+      }
+      console.log(`[tool] create_file completed in ${Date.now() - start}ms`);
+      return result;
+    }
 
     if (PLATFORM_TOOL_NAMES.has(toolName)) {
       if (ctx) ctx.attachments ??= [];
