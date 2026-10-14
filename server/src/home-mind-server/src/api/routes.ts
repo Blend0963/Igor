@@ -17,6 +17,13 @@ import { mistralKey, ocrPricePer1000Pages, withDocuments } from "../llm/mistral-
 import { getMediaStore } from "../llm/media-store.js";
 import type { TitleGenerator } from "../llm/thread-title.js";
 import { RunningTurns, type RunningTurnHandle } from "./running-turns.js";
+import type { WorkspaceStore } from "../memory/workspace-store.js";
+import { PROJECT_LIMITS } from "../memory/workspace-store.js";
+import type { Scheduler } from "../jobs/scheduler.js";
+import { describeSchedule } from "../jobs/scheduler.js";
+import type { RequestUsage } from "../llm/interface.js";
+import { createFile } from "../files/create.js";
+import type { DiagnosticResult } from "./diagnostics.js";
 
 /**
  * Limits for the one multipart endpoint this server has (`POST /api/stt`).
@@ -296,10 +303,38 @@ export function createRouter(
   ttsLanguage?: string,
   mergeMarkerPath?: string,
   personas: PersonaOptions = {},
-  extras: { generateTitle?: TitleGenerator; running?: RunningTurns } = {}
+  extras: {
+    generateTitle?: TitleGenerator;
+    running?: RunningTurns;
+    workspace?: WorkspaceStore;
+    scheduler?: Scheduler;
+    diagnostics?: (paid: boolean) => Promise<DiagnosticResult[]>;
+  } = {}
 ): Router {
   const router = Router();
   const running = extras.running ?? new RunningTurns();
+  const workspace = extras.workspace;
+
+  /**
+   * The persona of a request, with the instructions of the thread's project
+   * (when it is in one) after it.
+   */
+  function withProject(customPrompt: string | undefined, userId: string, conversationId?: string): string | undefined {
+    if (!workspace || !isThreadId(conversationId)) return customPrompt;
+    const project = workspace.projectOf(userId, conversationId);
+    if (!project?.instructions.trim()) return customPrompt;
+    return composePersona(customPrompt, `## Project "${project.name}"\n${project.instructions.trim()}`);
+  }
+
+  /** The cost counter: one row per request that reached a model. */
+  function recordUsage(userId: string, conversationId: string | undefined, usage: RequestUsage | undefined): void {
+    if (!workspace || !usage) return;
+    try {
+      workspace.recordUsage(userId, isThreadId(conversationId) ? conversationId : "assist", usage);
+    } catch (error) {
+      console.warn("[usage] not recorded:", error instanceof Error ? error.message : error);
+    }
+  }
 
   /**
    * The title of a thread's first exchange, written by a small model call
@@ -364,9 +399,15 @@ export function createRouter(
       try {
         // Use streaming internally (no callback = just faster processing)
         const response = await llm.chat(
-          { ...request, isVoice: style.isVoice, customPrompt: style.customPrompt },
+          {
+            ...request,
+            isVoice: style.isVoice,
+            customPrompt: withProject(style.customPrompt, request.userId, request.conversationId),
+            ...(live ? { signal: live.signal } : {}),
+          },
           live ? { onChunk: live.chunk, onTurn: live.newTurn, onStatus: live.status } : undefined
         );
+        recordUsage(request.userId, request.conversationId, response.usage);
         const title = await saveTitle?.().catch(() => undefined);
         res.json(title ? { ...response, title } : response);
       } finally {
@@ -447,7 +488,8 @@ export function createRouter(
           {
             ...request,
             isVoice: style.isVoice,
-            customPrompt: style.customPrompt,
+            customPrompt: withProject(style.customPrompt, request.userId, request.conversationId),
+            ...(live ? { signal: live.signal } : {}),
           },
           {
             onTurn: () => { live?.newTurn(); send("turn", {}); },
@@ -458,6 +500,7 @@ export function createRouter(
       } finally {
         live?.finish();
       }
+      recordUsage(request.userId, request.conversationId, response.usage);
       await titled;
 
       // Send final complete response
@@ -629,7 +672,8 @@ export function createRouter(
     try {
       const userId = req.params.userId as string;
       const list = await conversations.listConversations(userId);
-      res.json(list);
+      const projects = workspace?.conversationProjects(userId);
+      res.json(projects ? list.map((c) => ({ ...c, projectId: projects.get(c.conversationId) ?? null })) : list);
     } catch (error) {
       console.error("List conversations error:", error);
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -710,6 +754,7 @@ export function createRouter(
       const userId = req.params.userId as string;
       const conversationId = req.params.conversationId as string;
       const deleted = await conversations.deleteConversation(conversationId, userId);
+      workspace?.forgetConversation(userId, conversationId);
       // A thread's long-term memory lives and dies with the thread.
       const forgotten = isThreadId(conversationId)
         ? await memory.clearUserFacts(threadFactBucket(userId, conversationId))
@@ -797,6 +842,182 @@ export function createRouter(
   router.get("/running/:userId/:conversationId", (req: Request, res: Response) => {
     const turn = running.get(String(req.params.userId), String(req.params.conversationId));
     res.json(turn ? { running: true, ...turn } : { running: false });
+  });
+
+  /**
+   * POST /api/running/:userId/:conversationId/stop
+   * The stop button: what was written so far is kept in the thread.
+   */
+  router.post("/running/:userId/:conversationId/stop", (req: Request, res: Response) => {
+    res.json({ stopped: running.stop(String(req.params.userId), String(req.params.conversationId)) });
+  });
+
+  /**
+   * GET /api/search/:userId?q=
+   * Messages of this user's threads that contain the words, newest first.
+   */
+  router.get("/search/:userId", async (req: Request, res: Response) => {
+    if (!conversations?.searchMessages) return res.status(501).json({ error: "Search not available" });
+    const userId = String(req.params.userId);
+    const q = String(req.query.q ?? "").trim().slice(0, 200);
+    if (q.length < 2) return res.json([]);
+    const hits = (await conversations.searchMessages(userId, q, 60)).filter((m) => isThreadId(m.conversationId));
+    const titles = new Map((await conversations.listConversations(userId)).map((c) => [c.conversationId, c.title]));
+    const needle = q.toLowerCase();
+    res.json(
+      hits.slice(0, 30).map((m) => {
+        const text = m.content.replace(/<document name="([^"]*)">[\s\S]*?(<\/document>|$)/g, "📄 $1").replace(/\s+/g, " ");
+        const at = Math.max(0, text.toLowerCase().indexOf(needle));
+        const from = Math.max(0, at - 60);
+        return {
+          conversationId: m.conversationId,
+          title: titles.get(m.conversationId) ?? "",
+          messageId: m.id,
+          role: m.role,
+          snippet: (from ? "…" : "") + text.slice(from, at + needle.length + 100) + (at + needle.length + 100 < text.length ? "…" : ""),
+          createdAt: m.createdAt,
+        };
+      })
+    );
+  });
+
+  /**
+   * POST /api/conversations/:userId/:conversationId/truncate
+   * Deletes a message and everything after it (edit / regenerate). Body: { messageId }.
+   */
+  router.post("/conversations/:userId/:conversationId/truncate", async (req: Request, res: Response) => {
+    if (!conversations?.deleteMessagesFrom) return res.status(501).json({ error: "Not available" });
+    const messageId = typeof req.body?.messageId === "string" ? req.body.messageId : "";
+    if (!messageId) return res.status(400).json({ error: "messageId is required" });
+    const deleted = await conversations.deleteMessagesFrom(String(req.params.conversationId), String(req.params.userId), messageId);
+    if (!deleted) return res.status(404).json({ error: "Message not found" });
+    res.json({ deleted });
+  });
+
+  /**
+   * GET /api/conversations/:userId/:conversationId/export?format=md|pdf|docx
+   * The thread as a document to download.
+   */
+  router.get("/conversations/:userId/:conversationId/export", async (req: Request, res: Response) => {
+    if (!conversations) return res.status(501).json({ error: "Conversation store not available" });
+    const userId = String(req.params.userId);
+    const conversationId = String(req.params.conversationId);
+    const format = ["md", "pdf", "docx"].includes(String(req.query.format)) ? String(req.query.format) : "md";
+    const messages = (await conversations.getConversationHistory(conversationId, THREAD_MESSAGE_CAP)).filter((m) => m.userId === userId);
+    if (!messages.length) return res.status(404).json({ error: "Conversation not found" });
+    const title = (await conversations.listConversations(userId)).find((c) => c.conversationId === conversationId)?.title || "Fil MaDo";
+    const body = messages
+      .map((m) => {
+        const content = m.content
+          .replace(/<document name="([^"]*)">[\s\S]*?(<\/document>|$)/g, "[📄 $1]")
+          .replace(/!\[([^\]]*)\]\(api\/media\/[^)]*\)/g, "[image : $1]")
+          .replace(/\[📎 ([^\]]*)\]\(api\/media\/[^)]*\)/g, "[fichier : $1]");
+        const when = new Date(m.createdAt ?? Date.now()).toLocaleString("fr-FR");
+        return `## ${m.role === "user" ? "Vous" : "MaDo"} — ${when}\n\n${content}`;
+      })
+      .join("\n\n---\n\n");
+    const file = createFile({ filename: title.slice(0, 80), format, content: `# ${title}\n\n${body}` });
+    res.setHeader("Content-Type", file.mime);
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`);
+    res.send(file.data);
+  });
+
+  // ----- projects -----
+
+  const ProjectSchema = z.object({
+    name: z.string().transform((v) => v.replace(/\s+/g, " ").trim()).pipe(z.string().min(1).max(PROJECT_LIMITS.name)).optional(),
+    instructions: z.string().max(PROJECT_LIMITS.instructions).optional(),
+  });
+
+  router.get("/projects/:userId", (req: Request, res: Response) => {
+    if (!workspace) return res.status(501).json({ error: "Projects not available" });
+    res.json(workspace.listProjects(String(req.params.userId)));
+  });
+
+  router.post("/projects/:userId", (req: Request, res: Response) => {
+    if (!workspace) return res.status(501).json({ error: "Projects not available" });
+    const parsed = ProjectSchema.safeParse(req.body);
+    if (!parsed.success || !parsed.data.name) return res.status(400).json({ error: "A project needs a name (1-80 characters)." });
+    try {
+      res.json(workspace.createProject(String(req.params.userId), parsed.data.name, parsed.data.instructions ?? ""));
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : "Not created" });
+    }
+  });
+
+  router.patch("/projects/:userId/:projectId", (req: Request, res: Response) => {
+    if (!workspace) return res.status(501).json({ error: "Projects not available" });
+    const parsed = ProjectSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid project" });
+    const ok = workspace.updateProject(String(req.params.userId), String(req.params.projectId), parsed.data);
+    res.status(ok ? 200 : 404).json(ok ? { ok } : { error: "Project not found" });
+  });
+
+  router.delete("/projects/:userId/:projectId", (req: Request, res: Response) => {
+    if (!workspace) return res.status(501).json({ error: "Projects not available" });
+    const ok = workspace.deleteProject(String(req.params.userId), String(req.params.projectId));
+    res.status(ok ? 200 : 404).json(ok ? { ok } : { error: "Project not found" });
+  });
+
+  router.put("/conversations/:userId/:conversationId/project", (req: Request, res: Response) => {
+    if (!workspace) return res.status(501).json({ error: "Projects not available" });
+    const projectId = req.body?.projectId;
+    if (projectId !== null && typeof projectId !== "string") return res.status(400).json({ error: "projectId must be a string or null" });
+    try {
+      workspace.setConversationProject(String(req.params.userId), String(req.params.conversationId), projectId);
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(404).json({ error: error instanceof Error ? error.message : "Not found" });
+    }
+  });
+
+  // ----- reminders and scheduled tasks -----
+
+  router.get("/tasks/:userId", async (req: Request, res: Response) => {
+    const scheduler = extras.scheduler;
+    if (!scheduler) return res.json([]);
+    const tz = await scheduler.timeZone();
+    res.json(
+      scheduler.list(String(req.params.userId)).map((t) => ({
+        ...t,
+        description: describeSchedule(t.schedule, tz),
+      }))
+    );
+  });
+
+  router.delete("/tasks/:userId/:taskId", (req: Request, res: Response) => {
+    const ok = extras.scheduler?.cancel(String(req.params.userId), String(req.params.taskId)) ?? false;
+    res.status(ok ? 200 : 404).json(ok ? { ok } : { error: "Not found (the morning briefing is set in the add-on options)" });
+  });
+
+  // ----- cost counter -----
+
+  router.get("/usage/:userId", async (req: Request, res: Response) => {
+    if (!workspace) return res.status(501).json({ error: "Cost counter not available" });
+    const userId = String(req.params.userId);
+    const days = Math.max(1, Math.min(365, Number(req.query.days) || 30));
+    const titles = conversations
+      ? new Map((await conversations.listConversations(userId)).map((c) => [c.conversationId, c.title]))
+      : new Map<string, string>();
+    const byDay = workspace.usageByDay(userId, days);
+    res.json({
+      currency: "USD",
+      days,
+      byDay,
+      byModel: workspace.usageByModel(userId, days),
+      byConversation: workspace
+        .usageByConversation(userId, days)
+        .map((c) => ({ ...c, title: c.conversationId === "assist" ? "Assist (voix et texte)" : titles.get(c.conversationId) ?? "Fil supprimé" })),
+      total: Math.round(byDay.reduce((n, d) => n + d.cost, 0) * 1e6) / 1e6,
+      unpriced: byDay.reduce((n, d) => n + d.unpriced, 0),
+    });
+  });
+
+  // ----- diagnostics -----
+
+  router.post("/diagnostics", async (req: Request, res: Response) => {
+    if (!extras.diagnostics) return res.status(501).json({ error: "Diagnostics not available" });
+    res.json(await extras.diagnostics(req.body?.paid === true));
   });
 
   /**

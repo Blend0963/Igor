@@ -63,6 +63,11 @@ TTS_VOICE=$(jq -r '.tts_voice // ""' "$OPTIONS")
 MISTRAL_LIBRARY_IDS=$(jq -r '.mistral_library_ids // ""' "$OPTIONS")
 MISTRAL_CONNECTORS=$(jq -r '.mistral_connectors // ""' "$OPTIONS")
 OCR_PRICE=$(jq -r '.ocr_price_per_1000_pages // ""' "$OPTIONS")
+FAST_MODEL=$(jq -r '.fast_model // ""' "$OPTIONS")
+NOTIFY_SERVICE=$(jq -r '.notify_service // ""' "$OPTIONS")
+DAILY_BRIEFING_TIME=$(jq -r '.daily_briefing_time // ""' "$OPTIONS")
+DAILY_BRIEFING_PROMPT=$(jq -r '.daily_briefing_prompt // ""' "$OPTIONS")
+MODEL_PRICES=$(jq -r '.model_prices // ""' "$OPTIONS")
 EXTRACTION_MODEL=$(jq -r '.extraction_model // ""' "$OPTIONS")
 # `// ""` would turn an explicit "off" into "", so test for null instead.
 EXTRACTION_GATE=$(jq -r 'if .extraction_gate == null then "" else .extraction_gate end' "$OPTIONS")
@@ -254,6 +259,11 @@ write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$MISTRAL_LIBRARY_IDS" ] && write_env "MISTRAL_LIBRARY_IDS" "$MISTRAL_LIBRARY_IDS"
 [ -n "$MISTRAL_CONNECTORS" ] && write_env "MISTRAL_CONNECTORS" "$MISTRAL_CONNECTORS"
 [ -n "$OCR_PRICE" ] && write_env "OCR_PRICE_PER_1000_PAGES" "$OCR_PRICE"
+[ -n "$FAST_MODEL" ] && write_env "FAST_MODEL" "$FAST_MODEL"
+[ -n "$NOTIFY_SERVICE" ] && write_env "NOTIFY_SERVICE" "$NOTIFY_SERVICE"
+[ -n "$DAILY_BRIEFING_TIME" ] && write_env "DAILY_BRIEFING_TIME" "$DAILY_BRIEFING_TIME"
+[ -n "$DAILY_BRIEFING_PROMPT" ] && write_env "DAILY_BRIEFING_PROMPT" "$DAILY_BRIEFING_PROMPT"
+[ -n "$MODEL_PRICES" ] && write_env "MODEL_PRICES" "$MODEL_PRICES"
 [ -n "$EXTRACTION_MODEL" ] && write_env "EXTRACTION_MODEL" "$EXTRACTION_MODEL"
 [ -n "$EXTRACTION_GATE" ] && write_env "EXTRACTION_GATE" "$EXTRACTION_GATE"
 [ -n "$LAYOUT_FROM_EXPOSED" ] && write_env "LAYOUT_FROM_EXPOSED" "$LAYOUT_FROM_EXPOSED"

@@ -1,0 +1,41 @@
+/**
+ * Which model answers a request.
+ *
+ * "Allume la lumière du salon" needs a tool call and one sentence; sending
+ * it to Mistral Large with reasoning pays for a model that thinks about
+ * philosophy to flip a switch. When FAST_MODEL is set, short plain commands
+ * and quick state questions go to it instead, and everything else (anything
+ * with a file or an image, anything that asks to explain, write, compare,
+ * plan or analyse) stays on the main model.
+ *
+ * The rule is deliberately conservative: a wrong "simple" costs a worse
+ * answer, a wrong "complex" only costs what every request cost before.
+ */
+
+/** Longest message still considered a plain command, in characters. */
+export const FAST_MAX_CHARS = 140;
+
+const COMMAND_START =
+  /^(?:(?:mado|hey mado|ok mado)[,\s]+)?(?:(?:peux[- ]tu|pourrais[- ]tu|tu peux|est[- ]ce que tu peux|merci de|stp|s'il te pla[iî]t|please|can you|could you)\s+)?(?:allume|allumer|[ée]teins|[ée]teindre|ouvre|ouvrir|ferme|fermer|monte|monter|baisse|baisser|mets|mettre|r[èe]gle|r[ée]gler|lance|lancer|arr[êe]te|arr[êe]ter|active|activer|d[ée]sactive|d[ée]sactiver|d[ée]marre|d[ée]marrer|stoppe|pause|reprends|augmente|diminue|passe|tamise|verrouille|d[ée]verrouille|turn on|turn off|switch on|switch off|open|close|set|start|stop|lock|unlock|dim|raise|lower)\b/i;
+
+const STATE_QUESTION =
+  /\b(?:temp[ée]rature|humidit[ée]|allum[ée]e?s?|[ée]teinte?s?|ouverte?s?|ferm[ée]e?s?|verrouill[ée]e?s?|[ée]tat|batterie|niveau|il fait combien|quelle heure|is .* (?:on|off|open|closed)|temperature|humidity)\b/i;
+
+const COMPLEX =
+  /\b(?:pourquoi|explique|expliquer|comment (?:faire|je|on|fonctionne)|compare|comparer|analyse|analyser|graph|graphique|courbe|historique|statistique|consommation|automatisation|automation|sc[ée]nario|script|cr[ée]e|cr[ée]er|[ée]cris|r[ée]dige|r[ée]sume|r[ée]sumer|document|fichier|tableau|code|plan|conseil|recette|traduis|why|explain|compare|analy[sz]e|history|write|create|summari[sz]e|plan)\b/i;
+
+export interface RouteInput {
+  message: string;
+  hasImages?: boolean;
+  hasDocuments?: boolean;
+}
+
+/** True when the request is a plain command or a quick state question. */
+export function isSimpleRequest({ message, hasImages, hasDocuments }: RouteInput): boolean {
+  if (hasImages || hasDocuments) return false;
+  const text = message.trim();
+  if (!text || text.length > FAST_MAX_CHARS || text.includes("\n") || text.includes("<document")) return false;
+  if (COMPLEX.test(text)) return false;
+  if (COMMAND_START.test(text)) return true;
+  return text.length <= 90 && STATE_QUESTION.test(text);
+}

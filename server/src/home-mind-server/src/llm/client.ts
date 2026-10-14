@@ -91,7 +91,7 @@ export class LLMClient implements IChatEngine {
     const turnId = randomUUID(); // nonce for this turn — powers the automation confirmation gate
     // ONE shared context for the whole turn — forget_memory writes
     // suppressExtraction back onto it, so per-call literals would drop the flag.
-    const toolCtx: ToolContext = { conversationId: effectiveConversationId, turnId, userId: scope.factBucket, memory: this.memory };
+    const toolCtx: ToolContext = { conversationId: effectiveConversationId, turnId, userId: scope.factBucket, memory: this.memory, ownerId: userId, isThread: scope.isThread };
 
     // 1. Load user's memory (pass current message as context for Shodh's proactive retrieval)
     const facts = await this.memory.getFactsWithinTokenLimit(

@@ -1,4 +1,5 @@
 import type { Config } from "../config.js";
+import { wsCommand } from "./websocket.js";
 import { AssistExposure, notExposedMessage } from "./exposure.js";
 
 export interface EntityState {
@@ -830,5 +831,78 @@ export class HomeAssistantClient {
     throw new Error(
       `The automation action references services that don't exist in this Home Assistant. ${hints.join("; ")}. Use a real service id (call list_services to discover them) — never invent or use placeholder names.`
     );
+  }
+
+  /**
+   * A still image from a camera, at most 1024 px wide (Home Assistant scales
+   * it): enough to see who is at the door, and a fraction of the vision
+   * tokens a full-HD frame costs.
+   */
+  async getCameraSnapshot(entityId: string, width = 1024): Promise<{ data: Buffer; mime: string }> {
+    requireEntityIdShape(entityId);
+    if (!entityId.startsWith("camera.")) throw new Error(`${entityId} is not a camera (camera.* entities only).`);
+    await this.requireExposed(entityId);
+    const url = `${this.baseUrl}/api/camera_proxy/${entityId}?width=${Math.max(64, Math.min(1920, Math.round(width)))}`;
+    const options: RequestInit = { headers: { Authorization: `Bearer ${this.token}` }, signal: AbortSignal.timeout(20000) };
+    if (this.skipTlsVerify && url.startsWith("https://")) {
+      const { Agent } = await import("undici");
+      (options as any).dispatcher = new Agent({ connect: { rejectUnauthorized: false } });
+    }
+    const response = await fetch(url, options);
+    if (!response.ok) throw new Error(`The camera did not return an image (HTTP ${response.status}).`);
+    return {
+      data: Buffer.from(await response.arrayBuffer()),
+      mime: (response.headers.get("content-type") ?? "image/jpeg").split(";")[0],
+    };
+  }
+
+  /**
+   * Long-term statistics (recorder), the hourly / daily / monthly aggregates
+   * behind the energy dashboard. They reach back years where raw history is
+   * purged after ten days, and a month of daily rows is a few hundred tokens
+   * where the raw readings are thousands.
+   */
+  async getStatistics(
+    statisticIds: string[],
+    start: string,
+    end: string | undefined,
+    period: "5minute" | "hour" | "day" | "week" | "month",
+    types: string[]
+  ): Promise<Record<string, Record<string, unknown>[]>> {
+    for (const id of statisticIds) {
+      // Entity statistics carry the entity id; external ones ("domain:name") pass as they are.
+      if (/^[a-z0-9_]+\.[a-z0-9_]+$/.test(id)) await this.requireExposed(id);
+      else if (!/^[a-z0-9_]+:[a-z0-9_]+$/.test(id)) throw new Error(`"${id}" is not a statistic id.`);
+    }
+    return wsCommand(this.baseUrl, this.token, {
+      type: "recorder/statistics_during_period",
+      start_time: start,
+      ...(end ? { end_time: end } : {}),
+      statistic_ids: statisticIds,
+      period,
+      types,
+    });
+  }
+
+  /** Home Assistant's own settings: the house's time zone, for schedules. */
+  async getConfig(): Promise<{ time_zone?: string; location_name?: string }> {
+    return this.fetch("/api/config");
+  }
+
+  /**
+   * A notification: through a notify service ("mobile_app_pixel") when one
+   * is configured, else as a persistent notification in Home Assistant.
+   */
+  async notify(service: string | undefined, title: string, message: string): Promise<void> {
+    if (service) {
+      const name = service.replace(/^notify\./, "");
+      if (!SERVICE_PART_PATTERN.test(name)) throw new Error(`"${service}" is not a notify service name.`);
+      await this.fetch(`/api/services/notify/${name}`, { method: "POST", body: JSON.stringify({ title, message }) });
+      return;
+    }
+    await this.fetch("/api/services/persistent_notification/create", {
+      method: "POST",
+      body: JSON.stringify({ title, message }),
+    });
   }
 }

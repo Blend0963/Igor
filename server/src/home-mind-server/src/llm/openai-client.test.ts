@@ -564,6 +564,46 @@ describe("OpenAIChatEngine", () => {
     });
   });
 
+  describe("fast model and stop (v0.8.0)", () => {
+    const reply = (text = "ok") => makeStream([{ choices: [{ delta: { content: text }, finish_reason: "stop" }] }]);
+
+    it("sends a plain command to FAST_MODEL without reasoning, the rest to the main model", async () => {
+      config.fastModel = "ministral-8b-latest";
+      config.threadReasoning = "high";
+      mockCreate.mockResolvedValue(reply());
+      const r1 = await engine.chat({ message: "allume la lumière du salon", userId: "u" });
+      expect(mockCreate.mock.calls[0][0]).toMatchObject({ model: "ministral-8b-latest", reasoning_effort: "none" });
+      expect(r1.usage?.model).toBe("ministral-8b-latest");
+      mockCreate.mockResolvedValue(reply());
+      await engine.chat({ message: "pourquoi la chambre est froide le matin ?", userId: "u" });
+      expect(mockCreate.mock.calls[1][0].model).toBe("gpt-4o-mini");
+    });
+
+    it("falls back to the main model when the fast one fails", async () => {
+      config.fastModel = "does-not-exist";
+      mockCreate.mockRejectedValueOnce(Object.assign(new Error("404 model not found"), { status: 404 })).mockResolvedValue(reply("fait"));
+      const r = await engine.chat({ message: "éteins la cuisine", userId: "u" });
+      expect(r.response).toBe("fait");
+      expect(mockCreate.mock.calls[1][0].model).toBe("gpt-4o-mini");
+    });
+
+    it("keeps what was written when the user stops the reply", async () => {
+      const controller = new AbortController();
+      mockCreate.mockImplementation(async () => ({
+        async *[Symbol.asyncIterator]() {
+          yield { choices: [{ delta: { content: "Voici le début" }, finish_reason: null }] };
+          controller.abort();
+          throw Object.assign(new Error("Request was aborted."), { name: "APIUserAbortError" });
+        },
+      }));
+      const r = await engine.chat({ message: "raconte", userId: "u", conversationId: "mado-thread:z", signal: controller.signal });
+      expect(r.interrupted).toBe(true);
+      expect(r.response).toBe("Voici le début\n\n*[Réponse interrompue]*");
+      expect(conversations.storeMessage).toHaveBeenLastCalledWith("mado-thread:z", "u", "assistant", r.response);
+      expect(extractAndStoreFacts).not.toHaveBeenCalled();
+    });
+  });
+
   describe("reasoning_effort", () => {
     const reply = () =>
       makeStream([{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] }]);

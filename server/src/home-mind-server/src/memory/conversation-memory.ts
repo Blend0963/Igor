@@ -29,6 +29,26 @@ export class InMemoryConversationStore implements IConversationStore {
     this.titles.set(this.titleKey(conversationId, userId), title);
   }
 
+  searchMessages(userId: string, query: string, limit = 30): ConversationMessage[] {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return [];
+    return [...this.conversations.values()]
+      .flat()
+      .filter((m) => m.userId === userId && m.content.toLowerCase().includes(needle))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, Math.max(1, Math.min(100, limit)));
+  }
+
+  deleteMessagesFrom(conversationId: string, userId: string, messageId: string): number {
+    const messages = this.conversations.get(conversationId);
+    if (!messages) return 0;
+    const at = messages.findIndex((m) => m.id === messageId && m.userId === userId);
+    if (at < 0) return 0;
+    const kept = messages.filter((m, i) => i < at || m.userId !== userId);
+    this.conversations.set(conversationId, kept);
+    return messages.length - kept.length;
+  }
+
   setConversationPinned(conversationId: string, userId: string, pinned: boolean): void {
     if (pinned) this.pins.add(this.titleKey(conversationId, userId));
     else this.pins.delete(this.titleKey(conversationId, userId));

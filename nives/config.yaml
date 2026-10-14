@@ -1,5 +1,5 @@
 name: "MaDo"
-version: "0.7.1"
+version: "0.8.0"
 slug: "mado"
 description: "MaDo — assistant IA pour Home Assistant avec mémoire persistante"
 url: "https://github.com/Blend0963/MaDo"
@@ -83,6 +83,19 @@ schema:
   mistral_connectors: "str?"
   # Price shown before a scanned PDF goes to Mistral OCR. Unset = 4 (USD).
   ocr_price_per_1000_pages: "float(0,1000)?"
+  # Cheaper model for plain commands ("allume le salon") and quick state
+  # questions. Unset = every request on the main model.
+  fast_model: "str?"
+  # Reminders, scheduled tasks and the morning briefing are sent to this
+  # notify service (e.g. mobile_app_pixel_8). Unset = a persistent
+  # notification in Home Assistant.
+  notify_service: "str?"
+  # Morning briefing time (HH:MM, house time). Unset = no briefing.
+  daily_briefing_time: "match(^\\d{1,2}:\\d{2}$)?"
+  daily_briefing_prompt: "str?"
+  # Prices for the cost counter, JSON {"model-prefix": [input, output]} in
+  # USD per million tokens, added to the built-in list.
+  model_prices: "str?"
   # Cheaper model for the background memory-extraction pass. Unset = the
   # main chat model. Absent from `options:` above, like the rest: an
   # empty value means "same model as the chat model".

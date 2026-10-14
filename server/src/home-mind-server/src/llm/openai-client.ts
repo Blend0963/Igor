@@ -8,6 +8,7 @@ import { TopologyScanner } from "../ha/topology-scanner.js";
 import { buildSystemPromptText } from "./prompts.js";
 import { toolsForMode, toOpenAITools } from "./tool-definitions.js";
 import { listFromEnv, mistralKey } from "./mistral-platform.js";
+import { isSimpleRequest } from "./model-router.js";
 import { RECENT_FILE_MESSAGES, shortenAttachedFiles } from "../files/extract.js";
 import { randomUUID } from "node:crypto";
 import { handleToolCall, extractAndStoreFacts, type ToolContext } from "./tool-handler.js";
@@ -170,7 +171,14 @@ export class OpenAIChatEngine implements IChatEngine {
     const turnId = randomUUID(); // nonce for this turn — powers the automation confirmation gate
     // ONE shared context for the whole turn — forget_memory writes
     // suppressExtraction back onto it, so per-call literals would drop the flag.
-    const toolCtx: ToolContext = { conversationId: effectiveConversationId, turnId, userId: scope.factBucket, memory: this.memory };
+    const toolCtx: ToolContext = {
+      conversationId: effectiveConversationId,
+      turnId,
+      userId: scope.factBucket,
+      memory: this.memory,
+      ownerId: userId,
+      isThread: scope.isThread,
+    };
 
     // 1. Load user's memory
     const facts = await this.memory.getFactsWithinTokenLimit(
@@ -306,110 +314,160 @@ export class OpenAIChatEngine implements IChatEngine {
     const tools = openAIToolsFor(promptMode);
     // A thread reasons first (Mistral Large 4's hybrid mode, THREAD_REASONING);
     // spoken answers never do: thinking only adds silence and output tokens.
-    const effort = scope.isThread
-      ? this.config.threadReasoning
-      : this.config.reasoningEffort ?? (isVoice ? "none" : undefined);
+    // A plain command or a quick state question goes to FAST_MODEL when one
+    // is set (llm/model-router.ts), without reasoning; everything else stays
+    // on the main model.
+    const fastModel =
+      this.config.fastModel && isSimpleRequest({ message, hasImages: Boolean(request.images?.length) })
+        ? this.config.fastModel
+        : undefined;
+    let model = fastModel ?? this.config.llmModel;
+    let effort = fastModel
+      ? "none"
+      : scope.isThread
+        ? this.config.threadReasoning
+        : this.config.reasoningEffort ?? (isVoice ? "none" : undefined);
+    if (fastModel) console.log(`[route] fast model ${fastModel} for: ${message.slice(0, 60)}`);
     let thinkingShown = false;
-    const call = (forceAnswer: boolean) =>
-      this.streamCompletion(messages, isVoice, onChunk, forceAnswer, conversationId || effectiveConversationId, cacheKey, {
-        tools,
-        effort,
-        isThread: scope.isThread,
-        onThinking: () => {
-          if (thinkingShown) return;
-          thinkingShown = true;
-          events.onStatus?.("Réflexion…");
-        },
-      });
-    let result = await call(false);
-    turnUsage.add(result.usage);
-
-    let iterations = 0;
-    // Run whatever tool calls arrived, whatever the finish_reason says: some
-    // OpenAI-compatible endpoints report "stop" on a turn that calls tools.
-    while (result.toolCalls.length > 0) {
-      iterations++;
-
-      // Add assistant message with tool calls
-      messages.push({
-        role: "assistant",
-        content: result.text || null,
-        tool_calls: result.toolCalls,
-      });
-
-      // The batch is known and nothing has run yet: this is the one moment to
-      // warn the person waiting that it will take a while. If the model wrote
-      // a sentence of its own before the calls, that sentence has already been
-      // streamed and is the warning; otherwise the server's own goes out.
-      if (!announced) {
-        const heads = describeLongBatch(
-          result.toolCalls.map((tc) => ({ name: tc.function.name, args: parseArgs(tc) }))
-        );
-        if (heads) {
-          announced = true;
-          if (result.text.trim() === "") events.onStatus?.(heads);
-        }
+    // The text of the model turn being streamed, kept for the stop button:
+    // what was already written stays in the thread.
+    let turnText = "";
+    const signal = request.signal;
+    const sink = (chunk: string) => {
+      turnText += chunk;
+      onChunk?.(chunk);
+    };
+    const call = async (forceAnswer: boolean) => {
+      turnText = "";
+      const once = () =>
+        this.streamCompletion(messages, isVoice, sink, forceAnswer, conversationId || effectiveConversationId, cacheKey, {
+          tools,
+          effort,
+          model,
+          signal,
+          isThread: scope.isThread,
+          onThinking: () => {
+            if (thinkingShown) return;
+            thinkingShown = true;
+            events.onStatus?.("Réflexion…");
+          },
+        });
+      try {
+        return await once();
+      } catch (error) {
+        // A fast model that is misspelled or unavailable must not cost the
+        // user an answer: fall back to the main model for the rest of the turn.
+        if (model === this.config.llmModel || signal?.aborted) throw error;
+        console.warn(`[route] ${model} failed (${error instanceof Error ? error.message : error}); using ${this.config.llmModel}`);
+        model = this.config.llmModel;
+        effort = scope.isThread ? this.config.threadReasoning : this.config.reasoningEffort ?? (isVoice ? "none" : undefined);
+        turnText = "";
+        return once();
       }
+    };
+    let interrupted = false;
+    let result: Awaited<ReturnType<typeof call>>;
+    try {
+      result = await call(false);
+      turnUsage.add(result.usage);
 
-      // Execute all tool calls in parallel
-      const toolPromises = result.toolCalls.map(async (tc: FunctionToolCall) => {
-        toolsUsed.push(tc.function.name);
+      let iterations = 0;
+      // Run whatever tool calls arrived, whatever the finish_reason says: some
+      // OpenAI-compatible endpoints report "stop" on a turn that calls tools.
+      while (result.toolCalls.length > 0) {
+        if (signal?.aborted) throw new Error("aborted");
+        iterations++;
 
-        // Cheap models sometimes emit truncated or non-JSON arguments. Hand that
-        // back as a tool error the model can recover from — throwing here would
-        // reject the whole Promise.all and fail the user's request outright.
-        let args: Record<string, unknown>;
-        try {
-          args = tc.function.arguments ? JSON.parse(tc.function.arguments) : {};
-        } catch {
-          console.warn(
-            `[tool] ${tc.function.name} got unparseable arguments: ${tc.function.arguments}`
+        // Add assistant message with tool calls
+        messages.push({
+          role: "assistant",
+          content: result.text || null,
+          tool_calls: result.toolCalls,
+        });
+
+        // The batch is known and nothing has run yet: this is the one moment to
+        // warn the person waiting that it will take a while. If the model wrote
+        // a sentence of its own before the calls, that sentence has already been
+        // streamed and is the warning; otherwise the server's own goes out.
+        if (!announced) {
+          const heads = describeLongBatch(
+            result.toolCalls.map((tc) => ({ name: tc.function.name, args: parseArgs(tc) }))
           );
+          if (heads) {
+            announced = true;
+            if (result.text.trim() === "") events.onStatus?.(heads);
+          }
+        }
+
+        // Execute all tool calls in parallel
+        const toolPromises = result.toolCalls.map(async (tc: FunctionToolCall) => {
+          toolsUsed.push(tc.function.name);
+
+          // Cheap models sometimes emit truncated or non-JSON arguments. Hand that
+          // back as a tool error the model can recover from — throwing here would
+          // reject the whole Promise.all and fail the user's request outright.
+          let args: Record<string, unknown>;
+          try {
+            args = tc.function.arguments ? JSON.parse(tc.function.arguments) : {};
+          } catch {
+            console.warn(
+              `[tool] ${tc.function.name} got unparseable arguments: ${tc.function.arguments}`
+            );
+            return {
+              role: "tool" as const,
+              tool_call_id: tc.id,
+              content: JSON.stringify({
+                error:
+                  `Arguments for ${tc.function.name} were not valid JSON and could not be read. ` +
+                  `Call the tool again with valid JSON arguments.`,
+              }),
+            };
+          }
+
+          const toolResult = await handleToolCall(this.ha, tc.function.name, args, toolCtx);
           return {
             role: "tool" as const,
             tool_call_id: tc.id,
-            content: JSON.stringify({
-              error:
-                `Arguments for ${tc.function.name} were not valid JSON and could not be read. ` +
-                `Call the tool again with valid JSON arguments.`,
-            }),
+            // Compact: indentation is whitespace the model reads and is billed
+            // for, on every later call of the loop.
+            content: JSON.stringify(toolResult),
           };
+        });
+
+        const toolResults = await Promise.all(toolPromises);
+        messages.push(...toolResults);
+
+        // Continue streaming. On the final allowed iteration, disable tool calling
+        // so the model has to answer in words rather than loop again.
+        const forceAnswer = iterations >= MAX_TOOL_ITERATIONS;
+        if (forceAnswer) {
+          console.warn(
+            `[llm] tool loop hit ${MAX_TOOL_ITERATIONS} iterations — forcing a final answer`
+          );
         }
-
-        const toolResult = await handleToolCall(this.ha, tc.function.name, args, toolCtx);
-        return {
-          role: "tool" as const,
-          tool_call_id: tc.id,
-          // Compact: indentation is whitespace the model reads and is billed
-          // for, on every later call of the loop.
-          content: JSON.stringify(toolResult),
-        };
-      });
-
-      const toolResults = await Promise.all(toolPromises);
-      messages.push(...toolResults);
-
-      // Continue streaming. On the final allowed iteration, disable tool calling
-      // so the model has to answer in words rather than loop again.
-      const forceAnswer = iterations >= MAX_TOOL_ITERATIONS;
-      if (forceAnswer) {
-        console.warn(
-          `[llm] tool loop hit ${MAX_TOOL_ITERATIONS} iterations — forcing a final answer`
-        );
+        events.onTurn?.();
+        result = await call(forceAnswer);
+        turnUsage.add(result.usage);
+        if (forceAnswer) break;
       }
-      events.onTurn?.();
-      result = await call(forceAnswer);
-      turnUsage.add(result.usage);
-      if (forceAnswer) break;
+    } catch (error) {
+      if (!signal?.aborted) throw error;
+      // Stopped by the user: keep what this turn had written.
+      interrupted = true;
+      result = { text: turnText, finishReason: null, toolCalls: [], usage: undefined };
+      console.log(`[llm] stopped by the user after ${turnText.length} characters`);
     }
 
     // Files the tools produced (charts, images) that the answer does not
     // show yet go after it, streamed like the rest, and stored with it.
-    const extraMedia = missingAttachments(result.text, toolCtx.attachments);
+    // Only in a thread: a spoken answer would read the link out loud.
+    const extraMedia = scope.isThread && !interrupted ? missingAttachments(result.text, toolCtx.attachments) : "";
     if (extraMedia) onChunk?.(extraMedia);
-    const responseText = result.text + extraMedia;
+    const responseText = interrupted
+      ? `${result.text.trimEnd()}${result.text.trim() ? "\n\n" : ""}*[Réponse interrompue]*`
+      : result.text + extraMedia;
 
-    console.log(`[usage] ${promptMode} ${turnUsage.describe()} tools=${toolsUsed.length} model=${this.config.llmModel}`);
+    console.log(`[usage] ${promptMode} ${turnUsage.describe()} tools=${toolsUsed.length} model=${model}`);
 
     // 6. Store assistant response
     if (effectiveConversationId && responseText) {
@@ -419,14 +477,16 @@ export class OpenAIChatEngine implements IChatEngine {
     // 7. Extract and store facts (fire-and-forget). Memories a forget_memory
     // call touched this turn are filtered out of the extraction so they can't
     // be re-learned from the "forget that X" transcript.
-    extractAndStoreFacts(
-      this.memory,
-      this.extractor,
-      scope.factBucket,
-      message,
-      responseText,
-      toolCtx.forgetTargets
-    ).catch((err) => console.error("Fact extraction failed:", err));
+    if (!interrupted) {
+      extractAndStoreFacts(
+        this.memory,
+        this.extractor,
+        scope.factBucket,
+        message,
+        responseText,
+        toolCtx.forgetTargets
+      ).catch((err) => console.error("Fact extraction failed:", err));
+    }
 
     // 8. If the model produced no usable response, attach a structured error
     // so the HA integration can surface a useful hint instead of the generic
@@ -450,7 +510,9 @@ export class OpenAIChatEngine implements IChatEngine {
       response,
       toolsUsed,
       factsLearned: 0,
-      ...(error ? { error } : {}),
+      ...(error && !interrupted ? { error } : {}),
+      usage: { model, ...turnUsage.totals() },
+      ...(interrupted ? { interrupted: true } : {}),
     };
   }
 
@@ -535,6 +597,8 @@ export class OpenAIChatEngine implements IChatEngine {
     opts: {
       tools?: OpenAI.ChatCompletionTool[];
       effort?: ReasoningEffort;
+      model?: string;
+      signal?: AbortSignal;
       isThread?: boolean;
       onThinking?: () => void;
     } = {}
@@ -545,20 +609,21 @@ export class OpenAIChatEngine implements IChatEngine {
     usage?: TokenUsage;
   }> {
     const effort = "effort" in opts ? opts.effort : this.config.reasoningEffort ?? (isVoice ? "none" : undefined);
+    const model = opts.model ?? this.config.llmModel;
     const cap = this.maxOutputTokens(isVoice, Boolean(opts.isThread && effort && effort !== "none"));
     const tools = opts.tools ?? openAIToolsFor(isVoice ? "voice" : "text");
     const startedAt = Date.now();
-    const stream = await withTokenCap(this.config.llmModel, cap, (capParam) =>
+    const stream = await withTokenCap(model, cap, (capParam) =>
       withReasoningEffort(
-        this.config.llmModel,
+        model,
         // Chosen by chat(): high in a thread by default, none for voice, the
         // configured REASONING_EFFORT otherwise. A model that refuses the
         // parameter stops getting it.
         effort,
         (reasoning) =>
-          withPromptCacheKey(this.config.llmModel, cacheKey, (cache) =>
+          withPromptCacheKey(model, cacheKey, (cache) =>
           this.client.chat.completions.create({
-            model: this.config.llmModel,
+            model: model,
             ...capParam,
             ...reasoning,
             ...cache,
@@ -577,7 +642,7 @@ export class OpenAIChatEngine implements IChatEngine {
             // prompt cache, instead of re-balancing every turn. Other endpoints
             // reject unknown fields, so it is not sent to them.
             ...(this.isOpenRouter() && sessionId ? { session_id: sessionId } : {}),
-          } as OpenAI.ChatCompletionCreateParamsStreaming), this.client.baseURL),
+          } as OpenAI.ChatCompletionCreateParamsStreaming, opts.signal ? { signal: opts.signal } : undefined), this.client.baseURL),
         this.client.baseURL
       )
     );
@@ -669,7 +734,7 @@ export class OpenAIChatEngine implements IChatEngine {
       console.warn(
         `[llm] output cap reached: cap=${cap} ${describeUsage(usage)} ` +
           `visible_chars=${text.length} tool_calls=${toolCalls.length} ` +
-          `model=${this.config.llmModel}${provider ? ` provider=${provider}` : ""}`
+          `model=${model}${provider ? ` provider=${provider}` : ""}`
       );
     } else if (this.config.logLevel === "debug") {
       // Knowing what a *successful* turn cost is what tells you how close the

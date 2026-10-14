@@ -68,6 +68,13 @@ export interface IConversationStore {
    * derived from its first message. Kept until the conversation is deleted.
    */
   setConversationTitle?(conversationId: string, userId: string, title: string): void | Promise<void>;
+  /** This user's messages containing `query` (case-insensitive), newest first. */
+  searchMessages?(userId: string, query: string, limit?: number): ConversationMessage[] | Promise<ConversationMessage[]>;
+  /**
+   * Deletes one of this user's messages and every later message of the
+   * conversation (edit and regenerate in the panel). Returns how many went.
+   */
+  deleteMessagesFrom?(conversationId: string, userId: string, messageId: string): number | Promise<number>;
   /** Marks the conversation as a favourite, or not. Kept until it is deleted. */
   setConversationPinned?(conversationId: string, userId: string, pinned: boolean): void | Promise<void>;
   /** With `userId`, deletes only that user's messages in the conversation. */
