@@ -187,15 +187,29 @@
   .msg.assistant hr { border: 0; border-top: 1px solid #2c313d; margin: 10px 0; }
   .msg.assistant a { color: #9fb4ff; }
   .table-wrap { overflow-x: auto; margin: 0 0 8px; }
-  .msg table, .modal table { border-collapse: collapse; font-size: 13px; min-width: 50%; }
-  .msg th, .msg td, .modal th, .modal td { border: 1px solid #2c313d; padding: 5px 9px; text-align: left; vertical-align: top; }
-  .msg th, .modal th { background: #111318; font-weight: 600; }
-  .msg tbody tr:nth-child(even) td, .modal tbody tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+  .msg table, .modal table, #fullscreen table { border-collapse: collapse; font-size: 13px; min-width: 50%; }
+  .msg th, .msg td, .modal th, .modal td, #fullscreen th, #fullscreen td { border: 1px solid #2c313d; padding: 5px 9px; text-align: left; vertical-align: top; }
+  .msg th, .modal th, #fullscreen th { background: #1a1d24; font-weight: 600; }
+  .msg tbody tr:nth-child(even) td, .modal tbody tr:nth-child(even) td, #fullscreen tbody tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
   .modal .table-wrap { margin: 10px 0; }
   .md-img { display: block; max-width: 100%; max-height: 480px; border-radius: 10px; margin: 6px 0; cursor: zoom-in; background: #1a1d24; min-height: 40px; }
   .md-img.broken { cursor: default; color: #8b93a5; font-size: 12px; }
   .msg.assistant:has(.chart), .msg.assistant:has(.table-wrap), .msg.assistant:has(.md-img) { width: 78%; }
   .chart { margin: 8px 0; border: 1px solid #2c313d; border-radius: 10px; background: #1d2029; padding: 8px 10px 6px; }
+  .chart-tools { display: inline-flex; gap: 6px; align-items: center; }
+  .expand-btn { background: none; border: 1px solid #2c313d; color: #c9d1e0; border-radius: 6px; width: 26px; height: 24px; cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
+  .expand-btn:hover { background: #232733; color: #fff; }
+  .table-box { position: relative; }
+  .table-box > .expand-btn { position: absolute; top: 4px; right: 4px; background: #1a1d24; opacity: 0.75; }
+  .table-box:hover > .expand-btn, .table-box > .expand-btn:focus { opacity: 1; }
+  #fullscreen { position: fixed; inset: 0; z-index: 60; background: #111318; display: flex; flex-direction: column; }
+  .fs-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; border-bottom: 1px solid #262a33; font-weight: 600; font-size: 15px; }
+  .fs-close { background: none; border: 0; color: #c9d1e0; font-size: 20px; cursor: pointer; padding: 4px 8px; }
+  .fs-body { flex: 1; overflow: auto; padding: 18px; display: flex; align-items: flex-start; justify-content: center; }
+  .fs-body > .chart { width: min(100%, 1400px); margin: 0; }
+  .fs-body > .chart svg.pie { max-width: min(80vh, 640px); }
+  .fs-body > .table-wrap { width: 100%; margin: 0; }
+  .fs-body table { font-size: 14px; width: 100%; }
   .chart-wait { color: #8b93a5; font-size: 13px; padding: 14px; }
   .chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; margin-bottom: 4px; }
   .chart-title { font-weight: 600; color: #e6e9ef; }
@@ -738,7 +752,7 @@
         });
         i += 2;
         while (i < lines.length && lines[i].indexOf("|") !== -1 && lines[i].trim()) { rows.push(splitRow(lines[i])); i++; }
-        box.appendChild(table(rows, aligns));
+        box.appendChild(expandableTable(rows, aligns));
         continue;
       }
       if (/^\s*>/.test(line)) {
@@ -792,6 +806,82 @@
       top.list.appendChild(li);
     });
     return root || document.createElement("ul");
+  }
+
+  // ----- full screen -----
+  //
+  // Charts and tables of a reply open full screen with ⛶: the chart is drawn
+  // again at the size of the screen (its SVG scales), a table gets the whole
+  // width. ✕, Échap or a tap outside closes it.
+
+  function expandButton(fn) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "expand-btn";
+    b.textContent = "⛶";
+    b.title = "Agrandir";
+    b.setAttribute("aria-label", "Afficher en grand");
+    b.addEventListener("click", function (ev) { ev.stopPropagation(); fn(); });
+    return b;
+  }
+
+  function expandableTable(rows, aligns) {
+    var box = document.createElement("div");
+    box.className = "table-box";
+    box.appendChild(table(rows, aligns));
+    box.appendChild(expandButton(function () {
+      openFullscreen("Tableau", function () { return table(rows, aligns); });
+    }));
+    return box;
+  }
+
+  var fsResize = null;
+  function closeFullscreen() {
+    var fs = el("fullscreen");
+    if (!fs) return;
+    fs.parentNode.removeChild(fs);
+    document.removeEventListener("keydown", fullscreenKey);
+    if (fsResize) window.removeEventListener("resize", fsResize);
+    fsResize = null;
+  }
+
+  function fullscreenKey(ev) { if (ev.key === "Escape") closeFullscreen(); }
+
+  // build() makes the content; it runs again when the screen turns, so a
+  // chart is redrawn to the new size.
+  function openFullscreen(title, build) {
+    closeFullscreen();
+    var fs = document.createElement("div");
+    fs.id = "fullscreen";
+    fs.setAttribute("role", "dialog");
+    fs.setAttribute("aria-label", title);
+    var head = document.createElement("div");
+    head.className = "fs-head";
+    var t = document.createElement("span");
+    t.textContent = title;
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "fs-close";
+    close.textContent = "✕";
+    close.title = "Fermer (Échap)";
+    close.addEventListener("click", closeFullscreen);
+    head.appendChild(t);
+    head.appendChild(close);
+    var body = document.createElement("div");
+    body.className = "fs-body";
+    body.appendChild(build());
+    var resizeTimer = null;
+    fsResize = function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function () { body.textContent = ""; body.appendChild(build()); }, 150);
+    };
+    window.addEventListener("resize", fsResize);
+    body.addEventListener("click", function (ev) { if (ev.target === body) closeFullscreen(); });
+    fs.appendChild(head);
+    fs.appendChild(body);
+    document.body.appendChild(fs);
+    document.addEventListener("keydown", fullscreenKey);
+    close.focus();
   }
 
   function table(rows, aligns) {
@@ -985,9 +1075,9 @@
     return ticks;
   }
 
-  function chartBlock(spec) {
+  function chartBlock(spec, big) {
     var wrap = document.createElement("figure");
-    wrap.className = "chart";
+    wrap.className = "chart" + (big ? " big" : "");
     var head = document.createElement("figcaption");
     head.className = "chart-head";
     var title = document.createElement("span");
@@ -998,11 +1088,21 @@
     toggle.className = "code-copy";
     toggle.textContent = "Tableau";
     head.appendChild(title);
-    head.appendChild(toggle);
+    var tools = document.createElement("span");
+    tools.className = "chart-tools";
+    if (!big) {
+      tools.appendChild(expandButton(function () {
+        openFullscreen(spec.title || "Graphique", function () { return chartBlock(spec, true); });
+      }));
+    }
+    tools.appendChild(toggle);
+    head.appendChild(tools);
     wrap.appendChild(head);
 
     if (spec.series.length > 1 || spec.type === "pie") wrap.appendChild(legend(spec));
-    var plot = spec.type === "pie" ? pieChart(spec) : xyChart(spec);
+    // Full screen: the room left once the header, title and legend are drawn.
+    var dims = big ? { w: Math.min(window.innerWidth, 1400) - 64, h: window.innerHeight - 190 } : null;
+    var plot = spec.type === "pie" ? pieChart(spec) : xyChart(spec, dims);
     wrap.appendChild(plot);
     var tbl = dataTable(spec);
     tbl.hidden = true;
@@ -1042,8 +1142,10 @@
 
   function tooltip(node, text) { svgEl("title", {}, node).textContent = text; }
 
-  function xyChart(spec) {
-    var W = 640, H = 310, L = 52, R = 14, T = 24, B = 44;
+  // dims: the pixel size to draw at (full screen), so text keeps its real
+  // size and a phone in portrait gets a tall chart rather than a tiny one.
+  function xyChart(spec, dims) {
+    var W = dims ? Math.max(300, Math.round(dims.w)) : 640, H = dims ? Math.max(260, Math.round(dims.h)) : 310, L = 52, R = 14, T = 24, B = 44;
     var svg = svgEl("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": spec.title || "Graphique" });
     var values = [];
     spec.series.forEach(function (s) { s.data.forEach(function (v) { if (v !== null) values.push(v); }); });
@@ -1068,7 +1170,7 @@
       var u = svgEl("text", { x: 4, y: 10, "text-anchor": "start", class: "tick" }, svg);
       u.textContent = spec.unit;
     }
-    var every = Math.max(1, Math.ceil(n / 8));
+    var every = Math.max(1, Math.ceil(n / Math.max(4, Math.floor((W - L - R) / 72))));
     spec.labels.forEach(function (l, i) {
       if (i % every && i !== n - 1) return;
       if (i === n - 1 && i % every && n - 1 - Math.floor((n - 1) / every) * every < every / 2) return;
