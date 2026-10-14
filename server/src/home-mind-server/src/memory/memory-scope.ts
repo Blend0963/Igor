@@ -48,9 +48,16 @@ export function isThreadId(conversationId: string | undefined): conversationId i
   return typeof conversationId === "string" && conversationId.startsWith(THREAD_PREFIX);
 }
 
-/** The long-term fact bucket of one thread. */
+/**
+ * The long-term fact bucket of one thread.
+ *
+ * Shodh accepts only alphanumerics, `-`, `_`, `@` and `.` in a user_id and
+ * answers 400 to anything else, which fails the whole chat request. Thread ids
+ * carry a `:` ("mado-thread:<uuid>"), so every other character becomes `.`;
+ * the uuid keeps two threads apart.
+ */
 export function threadFactBucket(userId: string, conversationId: string): string {
-  return `${userId}@${conversationId}`;
+  return `${userId}@${conversationId}`.replace(/[^A-Za-z0-9\-_@.]/g, ".");
 }
 
 export function resolveMemoryScope(userId: string, conversationId?: string): MemoryScope {

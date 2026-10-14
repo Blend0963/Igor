@@ -607,11 +607,11 @@ describe("OpenAIChatEngine", () => {
 
       expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-thread:abc", 20);
       expect(memory.getFactsWithinTokenLimit).toHaveBeenCalledWith(
-        "user-1@mado-thread:abc",
+        "user-1@mado-thread.abc",
         1500,
         "hello"
       );
-      expect(vi.mocked(extractAndStoreFacts).mock.calls[0][2]).toBe("user-1@mado-thread:abc");
+      expect(vi.mocked(extractAndStoreFacts).mock.calls[0][2]).toBe("user-1@mado-thread.abc");
       expect(conversations.storeMessage).toHaveBeenCalledWith(
         "mado-thread:abc",
         "user-1",
