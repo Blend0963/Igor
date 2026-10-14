@@ -5,7 +5,8 @@
  */
 
 import Database from "better-sqlite3";
-import type { ConversationMessage, ConversationSummary, IConversationStore } from "./types.js";
+import type { ConversationMessage, ConversationSummary, IConversationStore, ThreadSummary } from "./types.js";
+import { THREAD_PREFIX } from "./types.js";
 
 export class SqliteConversationStore implements IConversationStore {
   private db: Database.Database;
@@ -44,6 +45,19 @@ export class SqliteConversationStore implements IConversationStore {
         user_id TEXT PRIMARY KEY,
         first_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
+
+      -- Web-UI discussion threads. A row exists from the moment the thread is
+      -- created, even before its first message, so the sidebar can list it
+      -- right away. The title stays '' until the first user message fills it
+      -- in (see storeMessage), unless the user renamed the thread first.
+      CREATE TABLE IF NOT EXISTS threads (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_threads_user_id ON threads(user_id);
     `);
 
     // Backfill from any messages still present (upgrades from before the users table).
@@ -70,9 +84,10 @@ export class SqliteConversationStore implements IConversationStore {
        VALUES (?, ?, ?, ?, ?, ?)`
     ).run(id, conversationId, userId, role, content, now);
 
-    // Keep a longer durable history for MaDo's shared cross-device conversation.
-    // Other transient conversations retain the existing 20-message cap.
-    if (!conversationId.startsWith("mado-user:")) this.db.prepare(
+    // Keep a longer durable history for MaDo's own conversations: the shared
+    // cross-device Assist conversation AND every web-UI thread. Other
+    // transient conversations retain the existing 20-message cap.
+    if (!isDurableConversationId(conversationId)) this.db.prepare(
       `DELETE FROM messages WHERE id IN (
         SELECT id FROM messages
         WHERE conversation_id = ?
@@ -80,6 +95,14 @@ export class SqliteConversationStore implements IConversationStore {
         LIMIT -1 OFFSET 20
       )`
     ).run(conversationId);
+
+    // A thread's sidebar entry shows its first user message until it is
+    // renamed. The `title = ''` guard keeps a rename sticky.
+    if (conversationId.startsWith(THREAD_PREFIX) && role === "user") {
+      this.db.prepare(
+        `UPDATE threads SET title = ?, updated_at = ? WHERE id = ? AND title = ''`
+      ).run(content.slice(0, 80), now, conversationId);
+    }
 
     return id;
   }
@@ -164,16 +187,14 @@ export class SqliteConversationStore implements IConversationStore {
   }
 
   deleteConversation(conversationId: string): number {
-    const result = this.db.prepare(
-      `DELETE FROM messages WHERE conversation_id = ?`
-    ).run(conversationId);
+    // A deleted thread also drops its sidebar row.
+    this.db.prepare(`DELETE FROM threads WHERE id = ?`).run(conversationId);
+    const result = this.db.prepare(`DELETE FROM messages WHERE conversation_id = ?`).run(conversationId);
     return result.changes;
   }
 
   getKnownUsers(): string[] {
-    const rows = this.db.prepare(
-      `SELECT user_id FROM users ORDER BY first_seen_at`
-    ).all() as Array<{ user_id: string }>;
+    const rows = this.db.prepare(`SELECT user_id FROM users ORDER BY first_seen_at`).all() as Array<{ user_id: string }>;
 
     return rows.map((row) => row.user_id);
   }
@@ -181,14 +202,13 @@ export class SqliteConversationStore implements IConversationStore {
   cleanupOldConversations(hoursOld: number = 24): number {
     const cutoff = new Date(Date.now() - hoursOld * 60 * 60 * 1000).toISOString();
 
-    const result = this.db.prepare(
-      `DELETE FROM messages WHERE conversation_id IN (
-        SELECT conversation_id FROM messages
-        WHERE conversation_id NOT LIKE 'mado-user:%'
-        GROUP BY conversation_id
-        HAVING MAX(created_at) < ?
-      )`
-    ).run(cutoff);
+    const result = this.db.prepare(`DELETE FROM messages WHERE conversation_id IN (
+      SELECT conversation_id FROM messages
+      WHERE conversation_id NOT LIKE 'mado-user:%'
+        AND conversation_id NOT LIKE 'mado-thread:%'
+      GROUP BY conversation_id
+      HAVING MAX(created_at) < ?
+    )`).run(cutoff);
 
     return result.changes;
   }
@@ -210,13 +230,14 @@ export class SqliteConversationStore implements IConversationStore {
       .run(messageId, JSON.stringify(embedding));
   }
 
-  searchSimilarMessages(userId: string, embedding: number[], limit: number = 6): ConversationMessage[] {
+  searchSimilarMessages(userId: string, embedding: number[], limit: number = 6, conversationId?: string): ConversationMessage[] {
     const rows = this.db.prepare(`
       SELECT m.id, m.conversation_id, m.user_id, m.role, m.content, m.created_at, e.embedding
       FROM messages m JOIN message_embeddings e ON e.message_id = m.id
       WHERE m.user_id = ? AND m.role = 'user'
+        AND (? IS NULL OR m.conversation_id = ?)
       ORDER BY m.rowid DESC
-    `).all(userId) as Array<{id:string;conversation_id:string;user_id:string;role:"user"|"assistant";content:string;created_at:string;embedding:string}>;
+    `).all(userId, conversationId ?? null, conversationId ?? null) as Array<{id:string;conversation_id:string;user_id:string;role:"user"|"assistant";content:string;created_at:string;embedding:string}>;
     const norm = (v:number[]) => Math.sqrt(v.reduce((sum,n)=>sum+n*n,0));
     const qnorm = norm(embedding);
     if (!qnorm) return [];
@@ -231,7 +252,66 @@ export class SqliteConversationStore implements IConversationStore {
       .map(({row})=>({id:row.id,conversationId:row.conversation_id,userId:row.user_id,role:row.role,content:row.content,createdAt:new Date(row.created_at)}));
   }
 
+  createThread(userId: string, title?: string): ThreadSummary {
+    const id = `${THREAD_PREFIX}${crypto.randomUUID()}`;
+    const now = new Date().toISOString();
+    const cleanTitle = title?.trim() ?? "";
+    this.db.prepare(`INSERT OR IGNORE INTO users (user_id) VALUES (?)`).run(userId);
+    this.db.prepare(
+      `INSERT INTO threads (id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`
+    ).run(id, userId, cleanTitle, now, now);
+    return {
+      conversationId: id,
+      title: cleanTitle,
+      createdAt: new Date(now),
+      lastMessageAt: new Date(now),
+      messageCount: 0,
+    };
+  }
+
+  listThreads(userId: string): ThreadSummary[] {
+    const rows = this.db.prepare(`
+      SELECT t.id, t.title, t.created_at,
+        COALESCE(
+          (SELECT MAX(m.created_at) FROM messages m WHERE m.conversation_id = t.id),
+          t.created_at
+        ) AS last_activity,
+        (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = t.id) AS message_count
+      FROM threads t
+      WHERE t.user_id = ?
+      ORDER BY last_activity DESC
+    `).all(userId) as Array<{
+      id: string; title: string; created_at: string;
+      last_activity: string; message_count: number;
+    }>;
+    return rows.map((row) => ({
+      conversationId: row.id,
+      title: row.title,
+      createdAt: new Date(row.created_at),
+      lastMessageAt: new Date(row.last_activity),
+      messageCount: row.message_count,
+    }));
+  }
+
+  renameThread(conversationId: string, title: string): boolean {
+    const clean = title.trim();
+    if (!clean) return false;
+    const result = this.db.prepare(
+      `UPDATE threads SET title = ?, updated_at = ? WHERE id = ?`
+    ).run(clean, new Date().toISOString(), conversationId);
+    return result.changes > 0;
+  }
+
   close(): void {
     this.db.close();
   }
+}
+
+/**
+ * True for MaDo's durable conversations: the shared cross-device Assist
+ * conversation and every web-UI thread. These keep their full history and
+ * are exempt from the 24h cleanup; anything else is transient by design.
+ */
+export function isDurableConversationId(conversationId: string): boolean {
+  return conversationId.startsWith("mado-user:") || conversationId.startsWith(THREAD_PREFIX);
 }

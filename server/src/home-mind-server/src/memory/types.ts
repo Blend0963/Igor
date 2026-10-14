@@ -24,6 +24,14 @@ export interface ExtractedFact {
   replaces?: string[]; // IDs of existing facts this one supersedes
 }
 
+/**
+ * Conversation ids with this prefix are web-UI discussion threads, created
+ * through the thread API and isolated from the shared Assist conversation.
+ * Kept next to the store interfaces so the engine, the stores and the routes
+ * all agree on the one spelling.
+ */
+export const THREAD_PREFIX = "mado-thread:";
+
 export interface ConversationMessage {
   id: string;
   conversationId: string;
@@ -36,6 +44,22 @@ export interface ConversationMessage {
 export interface ConversationSummary {
   conversationId: string;
   lastMessage: string;
+  lastMessageAt: Date;
+  messageCount: number;
+}
+
+/**
+ * A web-UI discussion thread, as the sidebar sees it. Threads are ordinary
+ * conversations with a life of their own: a title, and durability — unlike
+ * transient conversation ids, a thread survives the 24h cleanup and the
+ * 20-message cap, because the whole point of a thread list is coming back
+ * to a discussion days later. Long-term facts stay shared across threads;
+ * the thread isolates the short-term history and the semantic recall.
+ */
+export interface ThreadSummary {
+  conversationId: string;
+  title: string;
+  createdAt: Date;
   lastMessageAt: Date;
   messageCount: number;
 }
@@ -59,7 +83,13 @@ export interface IConversationStore {
   getKnownUsers(): string[];
   cleanupOldConversations(hoursOld?: number): number | Promise<number>;
   storeMessageEmbedding?(messageId: string, embedding: number[]): void | Promise<void>;
-  searchSimilarMessages?(userId: string, embedding: number[], limit?: number): ConversationMessage[] | Promise<ConversationMessage[]>;
+  searchSimilarMessages?(userId: string, embedding: number[], limit?: number, conversationId?: string): ConversationMessage[] | Promise<ConversationMessage[]>;
   getMessagesWithoutEmbeddings?(userId: string, limit?: number): ConversationMessage[] | Promise<ConversationMessage[]>;
+  // Web-UI threads. Optional because stores that predate threads (and test
+  // fakes) still satisfy the interface without them; the routes answer 501
+  // when the configured store does not implement them.
+  createThread?(userId: string, title?: string): ThreadSummary | Promise<ThreadSummary>;
+  listThreads?(userId: string): ThreadSummary[] | Promise<ThreadSummary[]>;
+  renameThread?(conversationId: string, title: string): boolean | Promise<boolean>;
   close(): void;
 }
