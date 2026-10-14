@@ -83,7 +83,7 @@ export class LLMClient implements IChatEngine {
     // Assist (every device) shares one conversation and one fact bucket per
     // user; a panel thread ("mado-thread:") is sealed off with its own
     // history, facts and recall. See memory/memory-scope.ts.
-    const scope = resolveMemoryScope(userId, conversationId);
+    const scope = resolveMemoryScope(userId, conversationId, this.config.threadMemory);
     const effectiveConversationId = scope.conversationId;
     const toolsUsed: string[] = [];
     let announced = false;

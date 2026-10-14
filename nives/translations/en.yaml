@@ -69,6 +69,14 @@ configuration:
       How much of what MaDo remembers about you is sent with each request,
       most relevant first. Every request pays for it, so lower is cheaper.
       Leave empty for 1500, which holds a few dozen facts.
+  thread_memory:
+    name: Thread Memory
+    description: >-
+      What chat threads remember about you. "shared" (default): one memory for
+      Assist and every thread, so what you told the voice assistant is known in
+      the threads and the other way round. "isolated": each thread remembers
+      only what was said in it. Either way a thread's conversation stays its
+      own; other threads and Assist conversations are never mixed into it.
   speech_to_text:
     name: Speech-to-Text (Panel Microphone)
     description: >-

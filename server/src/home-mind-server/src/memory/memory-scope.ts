@@ -1,7 +1,7 @@
 /**
  * Where one chat request reads and writes memory.
  *
- * Two worlds, sealed from each other:
+ * Conversation is always per world; long-term facts are shared by default.
  *
  * - **Assist** (voice satellites, the phone, the laptop, any Home Assistant
  *   conversation): one durable conversation per MaDo user and one long-term
@@ -75,11 +75,26 @@ export function threadFactBucket(userId: string, conversationId: string): string
   return `${userId}@${conversationId}`.replace(/[^A-Za-z0-9\-_@.]/g, ".");
 }
 
-export function resolveMemoryScope(userId: string, conversationId?: string): MemoryScope {
+/**
+ * Where a thread keeps its long-term facts.
+ * - shared (default): the user's own bucket, the one Assist reads and writes.
+ *   What was learned by voice is known in every thread and the other way
+ *   round; only the conversation itself (history, semantic recall) stays the
+ *   thread's own.
+ * - isolated: a bucket per thread, so a thread neither sees nor feeds what
+ *   Assist and the other threads remember.
+ */
+export type ThreadMemory = "shared" | "isolated";
+
+export function resolveMemoryScope(
+  userId: string,
+  conversationId?: string,
+  threadMemory: ThreadMemory = "shared"
+): MemoryScope {
   if (isThreadId(conversationId)) {
     return {
       conversationId,
-      factBucket: threadFactBucket(userId, conversationId),
+      factBucket: threadMemory === "isolated" ? threadFactBucket(userId, conversationId) : userId,
       recall: { conversationId },
       isThread: true,
       historyWindow: HISTORY_WINDOW.thread,

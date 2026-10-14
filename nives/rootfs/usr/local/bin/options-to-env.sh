@@ -52,6 +52,7 @@ CUSTOM_PROMPT=$(jq -r '.custom_prompt // ""' "$OPTIONS")
 CUSTOM_PROMPT_VOICE=$(jq -r '.custom_prompt_voice // ""' "$OPTIONS")
 CUSTOM_PROMPT_THREAD=$(jq -r '.custom_prompt_thread // ""' "$OPTIONS")
 ASSIST_MODE=$(jq -r '.assist_mode // ""' "$OPTIONS")
+THREAD_MEMORY=$(jq -r '.thread_memory // ""' "$OPTIONS")
 SPEECH_TO_TEXT=$(jq -r '.speech_to_text // "auto"' "$OPTIONS")
 MISTRAL_API_KEY=$(jq -r '.mistral_api_key // ""' "$OPTIONS")
 MAX_OUTPUT_TOKENS=$(jq -r '.max_output_tokens // ""' "$OPTIONS")
@@ -227,6 +228,7 @@ write_env "LOG_LEVEL" "$LOG_LEVEL"
 [ -n "$CUSTOM_PROMPT_VOICE" ] && write_env "CUSTOM_PROMPT_VOICE" "$CUSTOM_PROMPT_VOICE"
 [ -n "$CUSTOM_PROMPT_THREAD" ] && write_env "CUSTOM_PROMPT_THREAD" "$CUSTOM_PROMPT_THREAD"
 [ -n "$ASSIST_MODE" ] && write_env "ASSIST_MODE" "$ASSIST_MODE"
+[ -n "$THREAD_MEMORY" ] && write_env "THREAD_MEMORY" "$THREAD_MEMORY"
 write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$MAX_OUTPUT_TOKENS" ] && write_env "MAX_OUTPUT_TOKENS" "$MAX_OUTPUT_TOKENS"
 [ -n "$REASONING_EFFORT" ] && write_env "REASONING_EFFORT" "$REASONING_EFFORT"

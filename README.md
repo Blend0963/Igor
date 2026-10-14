@@ -16,7 +16,7 @@ MaDo is a self-hostable AI assistant for Home Assistant with persistent memory, 
 - **Talk to a thread**: the 🎤 button records, transcribes with Mistral Voxtral and sends. On by default when a Mistral key is configured.
 - **In the sidebar**: the chat panel appears in Home Assistant's sidebar on its own. To reach it from a dashboard, add a button card whose tap action navigates to the panel's address (open the panel and copy the path from the address bar).
 - **Show it a photo**: in a chat thread, attach an image or take one with the phone's camera and ask about it (a plant, a label, an error on a screen). Needs a vision-capable model.
-- **Thread panel in the Home Assistant sidebar** (add-on ingress): separate conversations like a chat app. Each thread is sealed off: its own history and its own long-term memory, with nothing from Assist or the other threads, and nothing learned in a thread reaching them. Assist keeps one memory shared by all your devices (voice satellites, phone, laptop).
+- **Thread panel in the Home Assistant sidebar** (add-on ingress): separate conversations like a chat app. Each thread keeps its own conversation; what MaDo remembers about you (people, preferences, nicknames) is shared with Assist and every thread, or kept per thread with `thread_memory: isolated`. Assist keeps one conversation shared by all your devices (voice satellites, phone, laptop).
 
 ## Install
 
@@ -36,7 +36,7 @@ The memory database and conversation store remain on your Home Assistant machine
 
 ## Version
 
-Current release: **v0.5.1** (token economy: prompt cache, compact tool results, leaner context).
+Current release: **v0.6.0** (one memory for Assist and the threads).
 
 ## License and upstream notices
 

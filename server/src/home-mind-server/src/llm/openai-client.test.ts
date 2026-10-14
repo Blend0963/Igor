@@ -618,11 +618,20 @@ describe("OpenAIChatEngine", () => {
         ])
       );
 
-    it("gives a thread its own history, fact bucket and extraction target", async () => {
+    it("gives a thread its own history, and the facts Assist knows too", async () => {
       answer();
       await engine.chat({ message: "hello", userId: "user-1", conversationId: "mado-thread:abc" });
 
       expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-thread:abc", 20);
+      expect(memory.getFactsWithinTokenLimit).toHaveBeenCalledWith("user-1", 1500, "hello");
+      expect(vi.mocked(extractAndStoreFacts).mock.calls[0][2]).toBe("user-1");
+    });
+
+    it("keeps a thread's facts to itself when thread memory is isolated", async () => {
+      config.threadMemory = "isolated";
+      answer();
+      await engine.chat({ message: "hello", userId: "user-1", conversationId: "mado-thread:abc" });
+
       expect(memory.getFactsWithinTokenLimit).toHaveBeenCalledWith(
         "user-1@mado-thread.abc",
         1500,
