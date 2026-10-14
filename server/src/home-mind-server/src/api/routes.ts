@@ -71,6 +71,20 @@ const AddFactSchema = z.object({
   ]),
 });
 
+const ThreadCreateSchema = z.object({
+  // Same latent shape as ChatRequestSchema: an explicit null means "default",
+  // so the web UI can share the household memory bucket with Assist.
+  userId: z
+    .string()
+    .nullish()
+    .transform((v) => v ?? "default"),
+  title: z.string().max(200).optional(),
+});
+
+const ThreadRenameSchema = z.object({
+  title: z.string().min(1, "Title is required").max(200),
+});
+
 /**
  * Remembers the last persona we announced, so a per-request log line doesn't
  * repeat on every message — it appears once, and again whenever it changes.
@@ -456,6 +470,107 @@ export function createRouter(
       }
     } catch (error) {
       console.error("Delete conversation error:", error);
+      const message = error instanceof Error ? error.message : "Unknown error";
+      res.status(500).json({ error: message });
+    }
+  });
+
+  /**
+   * POST /api/threads
+   * Create a web-UI discussion thread: its own isolated short-term history
+   * and semantic recall, while long-term facts stay shared with the
+   * household (tagged with the thread id as origin).
+   */
+  router.post("/threads", async (req: Request, res: Response) => {
+    if (!conversations?.createThread) {
+      return res.status(501).json({ error: "Threads are not supported by this conversation store" });
+    }
+
+    try {
+      const parsed = ThreadCreateSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: "Invalid request",
+          details: parsed.error.issues,
+        });
+      }
+      const thread = await conversations.createThread(parsed.data.userId, parsed.data.title);
+      res.status(201).json(thread);
+    } catch (error) {
+      console.error("Create thread error:", error);
+      const message = error instanceof Error ? error.message : "Unknown error";
+      res.status(500).json({ error: message });
+    }
+  });
+
+  /**
+   * GET /api/threads/:userId
+   * List a user's web-UI discussion threads, most recently active first.
+   */
+  router.get("/threads/:userId", async (req: Request, res: Response) => {
+    if (!conversations?.listThreads) {
+      return res.status(501).json({ error: "Threads are not supported by this conversation store" });
+    }
+
+    try {
+      const userId = req.params.userId as string;
+      res.json(await conversations.listThreads(userId));
+    } catch (error) {
+      console.error("List threads error:", error);
+      const message = error instanceof Error ? error.message : "Unknown error";
+      res.status(500).json({ error: message });
+    }
+  });
+
+  /**
+   * GET /api/threads/:userId/:threadId/messages
+   * Full message history of one thread, for reopening it in the web UI.
+   */
+  router.get("/threads/:userId/:threadId/messages", async (req: Request, res: Response) => {
+    if (!conversations) {
+      return res.status(501).json({ error: "Conversation store not available" });
+    }
+
+    try {
+      const threadId = req.params.threadId as string;
+      const limitParam = Number.parseInt(String(req.query.limit ?? ""), 10);
+      const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 500) : 200;
+      const messages = await conversations.getConversationHistory(threadId, limit);
+      res.json({ conversationId: threadId, messages });
+    } catch (error) {
+      console.error("Thread history error:", error);
+      const message = error instanceof Error ? error.message : "Unknown error";
+      res.status(500).json({ error: message });
+    }
+  });
+
+  /**
+   * PATCH /api/threads/:userId/:threadId
+   * Rename a thread. The auto-title (first user message) only applies while
+   * no explicit title has been set, so a rename is sticky.
+   */
+  router.patch("/threads/:userId/:threadId", async (req: Request, res: Response) => {
+    if (!conversations?.renameThread) {
+      return res.status(501).json({ error: "Threads are not supported by this conversation store" });
+    }
+
+    try {
+      const parsed = ThreadRenameSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: "Invalid request",
+          details: parsed.error.issues,
+        });
+      }
+      const threadId = req.params.threadId as string;
+      const renamed = await conversations.renameThread(threadId, parsed.data.title);
+      if (renamed) {
+        res.json({ message: "Thread renamed", title: parsed.data.title });
+      } else {
+        res.status(404).json({ error: "Thread not found" });
+      }
+    } catch (error) {
+      console.error("Rename thread error:", error);
       const message = error instanceof Error ? error.message : "Unknown error";
       res.status(500).json({ error: message });
     }
