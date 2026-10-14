@@ -685,6 +685,37 @@ describe("OpenAIChatEngine", () => {
     expect(conversations.storeMessage).toHaveBeenCalledWith("mado-user:user-1", "user-1", "assistant", "Hi!");
   });
 
+  it("gives a mado-thread: id its own conversation, isolated from Assist", async () => {
+    // The thread panel sends "mado-thread:" ids: each thread keeps its own
+    // short-term history; only long-term memory is shared.
+    mockCreate.mockResolvedValue(
+      makeStream([
+        { choices: [{ delta: { content: "Hi!" }, finish_reason: null }] },
+        { choices: [{ delta: {}, finish_reason: "stop" }] },
+      ])
+    );
+
+    await engine.chat({
+      message: "Hello",
+      userId: "user-1",
+      conversationId: "mado-thread:t-1",
+    });
+
+    expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-thread:t-1", 20);
+    expect(conversations.storeMessage).toHaveBeenCalledWith(
+      "mado-thread:t-1",
+      "user-1",
+      "user",
+      "Hello"
+    );
+    expect(conversations.storeMessage).toHaveBeenCalledWith(
+      "mado-thread:t-1",
+      "user-1",
+      "assistant",
+      "Hi!"
+    );
+  });
+
   it("uses max_tokens 500 for voice mode", async () => {
     mockCreate.mockResolvedValue(
       makeStream([
