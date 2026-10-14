@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MaDo</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #111318; color: #e6e9ef; }
+  #app { display: flex; height: 100vh; }
+  #sidebar { width: 280px; min-width: 280px; background: #1a1d24; display: flex; flex-direction: column; border-right: 1px solid #262a33; }
+  .side-head { padding: 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .brand { font-weight: 600; font-size: 16px; letter-spacing: 0.5px; }
+  #btn-new { background: rgba(59,91,219,0.15); color: #9fb4ff; border: 1px solid rgba(59,91,219,0.4); padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  #btn-new:hover { background: rgba(59,91,219,0.3); }
+  #threads { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+  .thread { display: flex; align-items: center; gap: 6px; padding: 8px; border-radius: 8px; cursor: pointer; margin-bottom: 2px; }
+  .thread:hover { background: #232733; }
+  .thread.active { background: #2a2f3d; }
+  .thread .t-main { flex: 1; min-width: 0; }
+  .thread .t-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .thread .t-date { font-size: 11px; color: #8b93a5; }
+  .thread .t-del { visibility: hidden; border: 0; background: none; color: #8b93a5; cursor: pointer; font-size: 13px; padding: 2px; }
+  .thread:hover .t-del { visibility: visible; }
+  .thread .t-del:hover { color: #ff6b6b; }
+  .side-foot { padding: 12px 14px; border-top: 1px solid #262a33; display: flex; align-items: center; justify-content: space-between; }
+  .muted { color: #8b93a5; font-size: 12px; background: none; border: 0; font-family: inherit; }
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #empty:not([hidden]) { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #8b93a5; }
+  #empty .big { font-size: 22px; color: #e6e9ef; }
+  #chat:not([hidden]) { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  #chat-head { padding: 14px 18px; border-bottom: 1px solid #262a33; display: flex; align-items: center; gap: 10px; }
+  #chat-title { font-weight: 600; font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #messages { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 78%; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: #3b5bdb; color: #fff; border-bottom-right-radius: 4px; }
+  .msg.assistant { align-self: flex-start; background: #232733; border-bottom-left-radius: 4px; }
+  #statusline { padding: 4px 18px; font-size: 12px; color: #8b93a5; }
+  #statusline.err { color: #ff6b6b; }
+  #composer { display: flex; gap: 10px; padding: 12px 18px 16px; border-top: 1px solid #262a33; }
+  #input { flex: 1; resize: none; background: #1a1d24; color: #e6e9ef; border: 1px solid #2c313d; border-radius: 12px; padding: 10px 14px; font: inherit; font-size: 14px; max-height: 160px; }
+  #input:focus { outline: 1px solid #3b5bdb; }
+  #btn-send { background: #3b5bdb; color: #fff; border: 0; border-radius: 12px; padding: 0 18px; cursor: pointer; font-size: 14px; }
+  #btn-send:disabled { opacity: 0.5; cursor: default; }
+  #btn-menu { display: none; background: none; border: 0; color: #e6e9ef; font-size: 18px; cursor: pointer; }
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.6); }
+  .modal:not([hidden]) { display: flex; align-items: center; justify-content: center; }
+  .modal .box { background: #1a1d24; border: 1px solid #2c313d; border-radius: 12px; padding: 20px; width: min(420px, 90vw); }
+  .modal h2 { font-size: 15px; margin-bottom: 8px; }
+  .modal p { margin-bottom: 10px; }
+  .modal input { width: 100%; background: #111318; color: #e6e9ef; border: 1px solid #2c313d; border-radius: 8px; padding: 8px 10px; font: inherit; }
+  .modal .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  .modal button { border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; font: inherit; }
+  .modal .save { background: #3b5bdb; color: #fff; }
+  .modal .cancel { background: #232733; color: #e6e9ef; }
+  @media (max-width: 700px) {
+    #sidebar { position: absolute; z-index: 10; height: 100%; left: -280px; transition: left 0.2s; }
+    #sidebar.open { left: 0; }
+    #btn-menu { display: block; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="side-head">
+      <span class="brand">MaDo</span>
+      <button id="btn-new" type="button">+ Nouveau fil</button>
+    </div>
+    <nav id="threads"></nav>
+    <div class="side-foot">
+      <button id="btn-settings" type="button" class="muted">Clé API</button>
+      <span id="health" class="muted"></span>
+    </div>
+  </aside>
+  <main id="main">
+    <div id="empty">
+      <div class="big">MaDo</div>
+      <div>Créez un fil ou choisissez-en un dans la liste.</div>
+    </div>
+    <div id="chat" hidden>
+      <header id="chat-head">
+        <button id="btn-menu" type="button">☰</button>
+        <span id="chat-title"></span>
+      </header>
+      <div id="messages"></div>
+      <div id="statusline" hidden></div>
+      <form id="composer">
+        <textarea id="input" rows="1" placeholder="Écrivez à MaDo…"></textarea>
+        <button id="btn-send" type="submit">Envoyer</button>
+      </form>
+    </div>
+  </main>
+</div>
+<div id="settings" class="modal" hidden>
+  <div class="box">
+    <h2>Clé API</h2>
+    <p class="muted">Seulement si un token API protège le serveur. Sous Home Assistant, le panneau est déjà protégé par la connexion HA.</p>
+    <input id="token" type="password" autocomplete="off">
+    <div class="row">
+      <button type="button" class="cancel" id="btn-cancel">Annuler</button>
+      <button type="button" class="save" id="btn-save">Enregistrer</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+  // The panel talks to the same server that serves this page, under one
+  // user id for every thread: short-term history is isolated per
+  // conversation id (each thread below carries its own), while long-term
+  // memory lives server-side keyed by this id, shared with Assist.
+  var USER_ID = "default";
+  var THREAD_PREFIX = "mado-thread:";
+  var LS_TOKEN = "mado_api_token";
+
+  var el = function (id) { return document.getElementById(id); };
+  var state = { current: null, threads: [], busy: false };
+
+  function headers() {
+    var h = { "Content-Type": "application/json" };
+    var token = localStorage.getItem(LS_TOKEN);
+    if (token) h["Authorization"] = "Bearer " + token;
+    return h;
+  }
+
+  function api(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign(headers(), opts.headers || {});
+    return fetch(path, opts).then(function (res) {
+      if (res.ok) return res;
+      var status = res.status;
+      return res.text().then(function (text) {
+        var err = new Error("HTTP " + status + " " + (text || "").slice(0, 200));
+        err.status = status;
+        throw err;
+      });
+    });
+  }
+
+  function uuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return "id-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+  }
+
+  // ----- sidebar -----
+
+  function loadThreads() {
+    return api("api/conversations/" + USER_ID)
+      .then(function (res) { return res.json(); })
+      .then(function (list) {
+        return (Array.isArray(list) ? list : []).filter(function (c) {
+          return typeof c.conversationId === "string" && c.conversationId.indexOf(THREAD_PREFIX) === 0;
+        });
+      });
+  }
+
+  function renderThreads(threads) {
+    var nav = el("threads");
+    nav.textContent = "";
+    threads.forEach(function (t) {
+      var row = document.createElement("div");
+      row.className = "thread" + (t.conversationId === state.current ? " active" : "");
+      var main = document.createElement("div");
+      main.className = "t-main";
+      var title = document.createElement("div");
+      title.className = "t-title";
+      title.textContent = t.title || "Sans titre";
+      var date = document.createElement("div");
+      date.className = "t-date";
+      try { date.textContent = new Date(t.lastMessageAt).toLocaleString(); } catch (e) { date.textContent = ""; }
+      main.appendChild(title);
+      main.appendChild(date);
+      var del = document.createElement("button");
+      del.className = "t-del"; del.type = "button"; del.textContent = "✕";
+      del.title = "Supprimer ce fil";
+      del.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        deleteThread(t.conversationId);
+      });
+      row.appendChild(main);
+      row.appendChild(del);
+      row.addEventListener("click", function () { openThread(t.conversationId); });
+      nav.appendChild(row);
+    });
+    if (!threads.length) {
+      var hint = document.createElement("div");
+      hint.className = "muted";
+      hint.style.padding = "10px";
+      hint.textContent = "Aucun fil pour le moment.";
+      nav.appendChild(hint);
+    }
+  }
+
+  function refreshThreads() {
+    return loadThreads()
+      .then(function (list) { state.threads = list; renderThreads(list); })
+      .catch(showListError);
+  }
+
+  function showListError(err) {
+    var nav = el("threads");
+    nav.textContent = "";
+    var hint = document.createElement("div");
+    hint.className = "muted";
+    hint.style.padding = "10px";
+    hint.style.color = "#ff6b6b";
+    hint.textContent = "Liste indisponible : " + err.message;
+    nav.appendChild(hint);
+    if (err.status === 401 || err.status === 403) openSettings();
+  }
+
+  function deleteThread(id) {
+    if (!window.confirm("Supprimer ce fil ? Les messages de ce fil seront perdus.")) return;
+    api("api/conversations/" + USER_ID + "/" + encodeURIComponent(id), { method: "DELETE" })
+      .then(function () {
+        if (state.current === id) newThread();
+        return refreshThreads();
+      })
+      .catch(function (err) { setStatus(err.message, true); });
+  }
+
+  // ----- chat -----
+
+  function openThread(id) {
+    state.current = id;
+    el("chat").hidden = false;
+    el("empty").hidden = true;
+    var known = state.threads.filter(function (t) { return t.conversationId === id; })[0];
+    el("chat-title").textContent = (known && known.title) || "Fil";
+    el("messages").textContent = "";
+    setStatus("");
+    el("sidebar").classList.remove("open");
+    api("api/conversations/" + USER_ID + "/" + encodeURIComponent(id))
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        var messages = (data && data.messages) || [];
+        messages.forEach(function (m) { addBubble(m.role, m.content); });
+        scrollDown();
+      })
+      .catch(function (err) { addBubble("assistant", "Historique indisponible : " + err.message); });
+  }
+
+  function newThread() {
+    state.current = THREAD_PREFIX + uuid();
+    el("chat").hidden = false;
+    el("empty").hidden = true;
+    el("chat-title").textContent = "Nouveau fil";
+    el("messages").textContent = "";
+    setStatus("");
+    el("sidebar").classList.remove("open");
+    el("input").focus();
+  }
+
+  function addBubble(role, text) {
+    var box = document.createElement("div");
+    box.className = "msg " + (role === "user" ? "user" : "assistant");
+    box.textContent = text;
+    el("messages").appendChild(box);
+    return box;
+  }
+
+  function scrollDown() {
+    var m = el("messages");
+    m.scrollTop = m.scrollHeight;
+  }
+
+  function setStatus(text, isError) {
+    var s = el("statusline");
+    if (!text) { s.hidden = true; s.textContent = ""; s.className = ""; return; }
+    s.hidden = false;
+    s.textContent = text;
+    s.className = isError ? "err" : "";
+  }
+
+  function send(text) {
+    state.busy = true;
+    el("btn-send").disabled = true;
+    addBubble("user", text);
+    scrollDown();
+    var bubble = addBubble("assistant", "");
+    var acc = "";
+    var finalResponse = null;
+
+    function paint() { bubble.textContent = acc; scrollDown(); }
+
+    function handleBlock(block) {
+      var lines = block.split("\n");
+      var eventName = "message";
+      var data = "";
+      lines.forEach(function (line) {
+        if (line.indexOf("event: ") === 0) eventName = line.slice(7).trim();
+        else if (line.indexOf("data: ") === 0) data += line.slice(6);
+      });
+      if (!data) return;
+      var payload = null;
+      try { payload = JSON.parse(data); } catch (e) { return; }
+      if (eventName === "chunk") { acc += payload.text || ""; paint(); }
+      else if (eventName === "turn") { bubble = addBubble("assistant", ""); acc = ""; }
+      else if (eventName === "status") { setStatus(payload.text || ""); }
+      else if (eventName === "error") { setStatus(payload.error || "Erreur", true); }
+      else if (eventName === "done") { finalResponse = payload; }
+    }
+
+    var body = JSON.stringify({
+      message: text,
+      userId: USER_ID,
+      conversationId: state.current,
+      isVoice: false,
+      language: navigator.language
+    });
+
+    fetch("api/chat/stream", { method: "POST", headers: headers(), body: body })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        var reader = res.body.getReader();
+        var decoder = new TextDecoder();
+        var buf = "";
+        function pump() {
+          return reader.read().then(function (r) {
+            if (r.done) return;
+            buf += decoder.decode(r.value, { stream: true });
+            var blocks = buf.split("\n\n");
+            buf = blocks.pop();
+            blocks.forEach(handleBlock);
+            return pump();
+          });
+        }
+        return pump();
+      })
+      .catch(function (err) { setStatus(String(err.message || err), true); })
+      .then(function () {
+        // The final payload is authoritative: when nothing streamed (a
+        // silent model, a structured error) it is the only place the
+        // answer exists.
+        if (finalResponse) {
+          if (finalResponse.error) {
+            if (!acc) { acc = finalResponse.error.hint || finalResponse.error.code; paint(); }
+            setStatus("Réponse incomplète : " + finalResponse.error.code, true);
+          } else if (!acc && finalResponse.response) {
+            acc = finalResponse.response;
+            paint();
+          }
+          if (Array.isArray(finalResponse.toolsUsed) && finalResponse.toolsUsed.length) {
+            setStatus("Outils : " + finalResponse.toolsUsed.join(", "));
+          }
+        } else if (!acc) {
+          addBubble("assistant", "Aucune réponse du serveur.");
+        }
+        state.busy = false;
+        el("btn-send").disabled = false;
+        el("input").focus();
+        refreshThreads();
+      });
+  }
+
+  // ----- composer -----
+
+  el("composer").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var input = el("input");
+    var text = input.value.trim();
+    if (!text || state.busy) return;
+    if (!state.current) newThread();
+    input.value = "";
+    autoGrow();
+    setStatus("");
+    send(text);
+  });
+
+  el("input").addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter" && !ev.shiftKey) {
+      ev.preventDefault();
+      el("composer").requestSubmit();
+    }
+  });
+
+  function autoGrow() {
+    var input = el("input");
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 160) + "px";
+  }
+  el("input").addEventListener("input", autoGrow);
+
+  el("btn-new").addEventListener("click", newThread);
+  el("btn-menu").addEventListener("click", function () {
+    el("sidebar").classList.toggle("open");
+  });
+
+  // ----- settings -----
+
+  function openSettings() {
+    el("token").value = localStorage.getItem(LS_TOKEN) || "";
+    el("settings").hidden = false;
+  }
+  el("btn-settings").addEventListener("click", openSettings);
+  el("btn-cancel").addEventListener("click", function () { el("settings").hidden = true; });
+  el("btn-save").addEventListener("click", function () {
+    var v = el("token").value.trim();
+    if (v) localStorage.setItem(LS_TOKEN, v); else localStorage.removeItem(LS_TOKEN);
+    el("settings").hidden = true;
+    refreshThreads();
+  });
+
+  // ----- boot -----
+
+  api("api/health")
+    .then(function (res) { return res.json(); })
+    .then(function (h) { el("health").textContent = "v" + (h.version || "?"); })
+    .catch(function () {});
+  refreshThreads();
+})();
+</script>
+</body>
+</html>

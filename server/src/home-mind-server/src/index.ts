@@ -3,6 +3,8 @@ import express from "express";
 import cors from "cors";
 import { createRequire } from "module";
 import path from "node:path";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import { createAuthMiddleware } from "./api/auth.js";
 
@@ -155,6 +157,22 @@ const mergeMarkerPath =
 
 // Mount API routes
 app.use("/api", createRouter(llm, memory, "shodh", version, config.customPrompt, conversations, stt ?? undefined, tts ?? undefined, config.ttsLanguage, mergeMarkerPath));
+
+// The built-in thread panel: plain static files next to the compiled server
+// (the add-on image copies them in). Optional on purpose — when the
+// directory is absent, e.g. a server built from dist alone, the root
+// endpoint below stays the JSON descriptor it always was. In the add-on,
+// Home Assistant ingress proxies this page behind the HA login, which is
+// the whole authentication story for the panel; the raw port stays
+// unexposed.
+const publicDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "public"
+);
+if (existsSync(publicDir)) {
+  app.use(express.static(publicDir));
+}
 
 // Root endpoint
 app.get("/", (_req, res) => {

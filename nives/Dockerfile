@@ -124,6 +124,9 @@ COPY --from=builder /build/dist ./dist
 COPY --from=builder /build/node_modules ./node_modules
 COPY --from=builder /build/package.json ./
 
+# The thread panel: plain static files served by the server, no build step.
+COPY server/src/home-mind-server/public ./public
+
 # Copy s6-overlay service definitions and scripts
 COPY nives/rootfs /
 
