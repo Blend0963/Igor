@@ -6,6 +6,7 @@
 
 import Database from "better-sqlite3";
 import type { ConversationMessage, ConversationSummary, IConversationStore } from "./types.js";
+import { summarizeTitle } from "./shared-memory.js";
 
 export class SqliteConversationStore implements IConversationStore {
   private db: Database.Database;
@@ -155,8 +156,30 @@ export class SqliteConversationStore implements IConversationStore {
       message_count: number;
     }>;
 
+    // The sidebar label: each conversation's first user message, looked up in
+    // a second small query (one row per conversation) rather than a JOIN that
+    // would make the summary query unreadable. Falls back to the last message
+    // for a conversation that somehow has no user message left.
+    const titles = new Map<string, string>(
+      (
+        this.db
+          .prepare(
+            `SELECT m.conversation_id AS conversation_id, m.content AS content
+             FROM messages m
+             JOIN (
+               SELECT conversation_id, MIN(rowid) AS min_rowid
+               FROM messages
+               WHERE user_id = ? AND role = 'user'
+               GROUP BY conversation_id
+             ) firsts ON firsts.min_rowid = m.rowid`
+          )
+          .all(userId) as Array<{ conversation_id: string; content: string }>
+      ).map((row) => [row.conversation_id, row.content])
+    );
+
     return rows.map((row) => ({
       conversationId: row.conversation_id,
+      title: summarizeTitle(titles.get(row.conversation_id) ?? row.last_message),
       lastMessage: row.last_message,
       lastMessageAt: new Date(row.last_message_at),
       messageCount: row.message_count,
@@ -184,7 +207,12 @@ export class SqliteConversationStore implements IConversationStore {
     const result = this.db.prepare(
       `DELETE FROM messages WHERE conversation_id IN (
         SELECT conversation_id FROM messages
-        WHERE conversation_id NOT LIKE 'mado-user:%'
+        -- Web threads (mado-thread:) are user-visible conversations in the
+      -- panel: silently deleting one from under its own sidebar is not
+      -- cleanup. They keep the 20-message rolling cap; only the shared
+      -- Assist conversation and transient ids are pruned by age here.
+      WHERE conversation_id NOT LIKE 'mado-user:%'
+        AND conversation_id NOT LIKE 'mado-thread:%'
         GROUP BY conversation_id
         HAVING MAX(created_at) < ?
       )`

@@ -137,6 +137,44 @@ describe("SqliteConversationStore", () => {
     expect(store.getConversationHistory("conv-1")[0].content).toBe("Message A");
   });
 
+  it("lists conversations with the first user message as title", () => {
+    store.storeMessage("mado-thread:1", "user-1", "user", "How do I insulate the attic?");
+    store.storeMessage("mado-thread:1", "user-1", "assistant", "You could start with…");
+    store.storeMessage("mado-thread:2", "user-1", "user", "Draft plan for the renovation");
+    store.storeMessage("mado-thread:2", "user-1", "assistant", "Here is a draft.");
+
+    const list = store.listConversations("user-1");
+    expect(list).toHaveLength(2);
+    const byId = new Map(list.map((c) => [c.conversationId, c]));
+    expect(byId.get("mado-thread:1")?.title).toBe("How do I insulate the attic?");
+    expect(byId.get("mado-thread:1")?.messageCount).toBe(2);
+    expect(byId.get("mado-thread:2")?.title).toBe("Draft plan for the renovation");
+  });
+
+  it("truncates a long title to one line", () => {
+    store.storeMessage("mado-thread:1", "user-1", "user", "word ".repeat(40).trim());
+    const [summary] = store.listConversations("user-1");
+    expect(summary.title.length).toBeLessThanOrEqual(61);
+    expect(summary.title.endsWith("…")).toBe(true);
+  });
+
+  it("falls back to the last message when no user message is stored", () => {
+    store.storeMessage("conv-1", "user-1", "assistant", "assistant-only note");
+    const [summary] = store.listConversations("user-1");
+    expect(summary.title).toBe("assistant-only note");
+  });
+
+  it("keeps web threads idle for over 24h, as they are user-visible in the panel", () => {
+    const db = (store as unknown as { db: import("better-sqlite3").Database }).db;
+    const oldDate = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    db.prepare(
+      "INSERT INTO messages (id, conversation_id, user_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run("old-id", "mado-thread:old", "user-1", "user", "Old thread message", oldDate);
+
+    expect(store.cleanupOldConversations(24)).toBe(0);
+    expect(store.getConversationHistory("mado-thread:old")).toHaveLength(1);
+  });
+
   it("retrieves semantically similar messages only for the same user", () => {
     const relevantId = store.storeMessage("mado-user:user-1", "user-1", "user", "We discussed insulating the attic");
     store.storeMessageEmbedding(relevantId, [1, 0, 0]);

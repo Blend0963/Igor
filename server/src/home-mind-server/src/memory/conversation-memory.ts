@@ -5,6 +5,7 @@
  */
 
 import type { ConversationMessage, ConversationSummary, IConversationStore } from "./types.js";
+import { summarizeTitle } from "./shared-memory.js";
 
 export class InMemoryConversationStore implements IConversationStore {
   private conversations = new Map<string, ConversationMessage[]>();
@@ -66,8 +67,13 @@ export class InMemoryConversationStore implements IConversationStore {
       if (userMessages.length === 0) continue;
 
       const lastMsg = userMessages[userMessages.length - 1];
+      // Sidebar label: the first user message, not the most recent one — a
+      // thread about insulating the attic stays labelled by the question
+      // that opened it. Falls back to the last message if none exists.
+      const firstUser = messages.find((m) => m.userId === userId && m.role === "user");
       results.push({
         conversationId: convId,
+        title: summarizeTitle((firstUser ?? lastMsg).content),
         lastMessage: lastMsg.content,
         lastMessageAt: lastMsg.createdAt,
         messageCount: messages.length,
@@ -126,7 +132,14 @@ export class InMemoryConversationStore implements IConversationStore {
 
     for (const [convId, messages] of this.conversations.entries()) {
       const lastMessage = messages[messages.length - 1];
-      if (!convId.startsWith("mado-user:") && lastMessage && lastMessage.createdAt.getTime() < cutoff) {
+      if (
+        // Web threads (mado-thread:) are user-visible in the panel; deleting
+        // one by age is not cleanup. They keep the 20-message rolling cap.
+        !convId.startsWith("mado-user:") &&
+        !convId.startsWith("mado-thread:") &&
+        lastMessage &&
+        lastMessage.createdAt.getTime() < cutoff
+      ) {
         this.conversations.delete(convId);
         deleted += messages.length;
       }
