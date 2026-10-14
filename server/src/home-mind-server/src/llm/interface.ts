@@ -21,6 +21,10 @@ export interface ChatRequest {
    * in the system prompt when the user's own words don't indicate a language.
    */
   language?: string;
+  /** The panel's model picker: overrides the main model and the fast-model routing. */
+  model?: string;
+  /** The panel's thinking picker: overrides the configured reasoning effort. */
+  reasoning?: "none" | "low" | "medium" | "high";
   /** Aborts the reply (the panel's stop button); what was written is kept. */
   signal?: AbortSignal;
 }

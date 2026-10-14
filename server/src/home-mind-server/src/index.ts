@@ -29,6 +29,7 @@ import { WorkspaceStore } from "./memory/workspace-store.js";
 import { configureVision, createVisionDescriber } from "./llm/vision.js";
 import { Scheduler, setScheduler } from "./jobs/scheduler.js";
 import { createDiagnostics } from "./api/diagnostics.js";
+import { createModelLister } from "./llm/model-list.js";
 import { MemoryCleanupJob } from "./jobs/memory-cleanup.js";
 import { BalanceWatchJob } from "./jobs/balance-watch.js";
 
@@ -213,7 +214,13 @@ app.use("/api", createRouter(llm, memory, "shodh", version, config.customPrompt,
   voice: config.customPromptVoice,
   thread: config.customPromptThread,
   assistMode: config.assistMode,
-}, { generateTitle: createTitleGenerator(config), workspace, scheduler, diagnostics }));
+}, {
+  generateTitle: createTitleGenerator(config),
+  workspace,
+  scheduler,
+  diagnostics,
+  models: createModelLister(config, config.openaiApiKey),
+}));
 
 // The built-in thread panel: plain static files next to the compiled server
 // (the add-on image copies them in). Optional on purpose — when the

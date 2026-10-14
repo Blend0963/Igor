@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.1 — Model and thinking pickers, options in French
+
+- Chat panel: two pickers above the message box choose, for each thread, the model (every chat model of your Mistral account, or "auto" for the add-on settings) and how much it thinks before answering. A new thread starts from the last choice; Assist keeps the add-on settings.
+- Every option of the add-on is now explained in French when Home Assistant is set to French (`translations/fr.yaml`).
+
 ## 0.8.0 — Control, savings and a smarter home
 
 - **Stop button**: while MaDo answers, Envoyer becomes ■ Arrêter. The model call is really cut (no more tokens billed) and what was already written stays in the thread, marked as interrupted.

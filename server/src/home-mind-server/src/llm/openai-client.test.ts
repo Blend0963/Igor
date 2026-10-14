@@ -579,6 +579,13 @@ describe("OpenAIChatEngine", () => {
       expect(mockCreate.mock.calls[1][0].model).toBe("gpt-4o-mini");
     });
 
+    it("uses the model and thinking picked in the panel, over the fast model", async () => {
+      config.fastModel = "ministral-8b-latest";
+      mockCreate.mockResolvedValue(reply());
+      await engine.chat({ message: "allume le salon", userId: "u", conversationId: "mado-thread:p", model: "mistral-medium-latest", reasoning: "low" });
+      expect(mockCreate.mock.calls[0][0]).toMatchObject({ model: "mistral-medium-latest", reasoning_effort: "low" });
+    });
+
     it("falls back to the main model when the fast one fails", async () => {
       config.fastModel = "does-not-exist";
       mockCreate.mockRejectedValueOnce(Object.assign(new Error("404 model not found"), { status: 404 })).mockResolvedValue(reply("fait"));

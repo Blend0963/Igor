@@ -24,6 +24,7 @@ import { describeSchedule } from "../jobs/scheduler.js";
 import type { RequestUsage } from "../llm/interface.js";
 import { createFile } from "../files/create.js";
 import type { DiagnosticResult } from "./diagnostics.js";
+import type { ModelChoices } from "../llm/model-list.js";
 
 /**
  * Limits for the one multipart endpoint this server has (`POST /api/stt`).
@@ -116,6 +117,9 @@ export const ChatRequestSchema = z.object({
   // A scanned PDF needs Mistral OCR, billed per page: "ask" (default) stops
   // and returns the price for the user to accept; "yes" / "no" is the answer.
   ocr: z.enum(["ask", "yes", "no"]).default("ask"),
+  // The panel's pickers (threads only): a model id and a thinking level.
+  model: z.string().max(100).regex(/^[A-Za-z0-9._:/@-]+$/, "Invalid model id").optional(),
+  reasoning: z.enum(["none", "low", "medium", "high"]).optional(),
 });
 
 type ParsedChatRequest = z.infer<typeof ChatRequestSchema>;
@@ -139,6 +143,11 @@ export async function withAttachedDocuments(
   data: ParsedChatRequest
 ): Promise<{ request: Omit<ParsedChatRequest, "documents" | "ocr">; confirm?: OcrConfirmation }> {
   const { documents, ocr, ...rest } = data;
+  // The pickers belong to the panel's threads; Assist keeps the add-on settings.
+  if (!isThreadId(rest.conversationId)) {
+    delete rest.model;
+    delete rest.reasoning;
+  }
   if (!documents?.length) return { request: rest };
   const read = await withDocuments(rest.message, documents, mistralKey(), ocr);
   if (read.ocrRequests.length) {
@@ -309,6 +318,7 @@ export function createRouter(
     workspace?: WorkspaceStore;
     scheduler?: Scheduler;
     diagnostics?: (paid: boolean) => Promise<DiagnosticResult[]>;
+    models?: () => Promise<ModelChoices>;
   } = {}
 ): Router {
   const router = Router();
@@ -1011,6 +1021,13 @@ export function createRouter(
       total: Math.round(byDay.reduce((n, d) => n + d.cost, 0) * 1e6) / 1e6,
       unpriced: byDay.reduce((n, d) => n + d.unpriced, 0),
     });
+  });
+
+  // ----- model picker -----
+
+  router.get("/models", async (_req: Request, res: Response) => {
+    if (!extras.models) return res.json({ models: [] });
+    res.json(await extras.models());
   });
 
   // ----- diagnostics -----

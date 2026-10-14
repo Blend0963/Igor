@@ -98,4 +98,17 @@ describe("workspace routes", () => {
       expect(seen?.aborted).toBe(true);
     });
   });
+
+  it("passes the panel's model and thinking for threads only", async () => {
+    const { llm, router } = setup();
+    await withServer(router, async (base) => {
+      await fetch(`${base}/chat`, json({ message: "x", conversationId: "mado-thread:m", model: "mistral-small-latest", reasoning: "none" }));
+      await fetch(`${base}/chat`, json({ message: "x", conversationId: "01ASSIST", model: "mistral-small-latest", reasoning: "none" }));
+      expect((await fetch(`${base}/chat`, json({ message: "x", model: "bad model!" }))).status).toBe(400);
+    });
+    const calls = vi.mocked(llm.chat).mock.calls.map((c) => c[0]);
+    expect(calls[0]).toMatchObject({ model: "mistral-small-latest", reasoning: "none" });
+    expect(calls[1].model).toBeUndefined();
+    expect(calls[1].reasoning).toBeUndefined();
+  });
 });
