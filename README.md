@@ -36,7 +36,7 @@ The memory database and conversation store remain on your Home Assistant machine
 
 ## Version
 
-Current release: **v0.4.0** (a prompt per kind of conversation: voice Assist, typed Assist, chat threads).
+Current release: **v0.4.1** (a prompt per kind of conversation: voice Assist, typed Assist, chat threads).
 
 ## License and upstream notices
 
