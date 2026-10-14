@@ -15,6 +15,8 @@ import {
 } from "../memory/memory-scope.js";
 import { mistralKey, ocrPricePer1000Pages, withDocuments } from "../llm/mistral-platform.js";
 import { getMediaStore } from "../llm/media-store.js";
+import type { TitleGenerator } from "../llm/thread-title.js";
+import { RunningTurns, type RunningTurnHandle } from "./running-turns.js";
 
 /**
  * Limits for the one multipart endpoint this server has (`POST /api/stt`).
@@ -293,9 +295,37 @@ export function createRouter(
   tts?: ITtsService,
   ttsLanguage?: string,
   mergeMarkerPath?: string,
-  personas: PersonaOptions = {}
+  personas: PersonaOptions = {},
+  extras: { generateTitle?: TitleGenerator; running?: RunningTurns } = {}
 ): Router {
   const router = Router();
+  const running = extras.running ?? new RunningTurns();
+
+  /**
+   * The title of a thread's first exchange, written by a small model call
+   * that runs alongside the reply. Only for a thread with no message yet:
+   * a later message, or one the person renamed, keeps its title.
+   */
+  async function titleForNewThread(
+    request: { conversationId?: string; userId: string; message: string }
+  ): Promise<(() => Promise<string | undefined>) | undefined> {
+    if (!extras.generateTitle || !conversations?.setConversationTitle || !isThreadId(request.conversationId)) return undefined;
+    const history = await conversations.getConversationHistory(request.conversationId, 1);
+    if (history.length) return undefined;
+    const conversationId = request.conversationId;
+    const pending = extras.generateTitle(request.message);
+    return async () => {
+      const title = await pending;
+      if (!title) return undefined;
+      await conversations.setConversationTitle!(conversationId, request.userId, title);
+      return title;
+    };
+  }
+
+  /** Follows a thread's reply for a panel that comes back mid-answer. */
+  function track(request: { conversationId?: string; userId: string }): RunningTurnHandle | undefined {
+    return isThreadId(request.conversationId) ? running.start(request.userId, request.conversationId) : undefined;
+  }
   const checkEmptyBucket = conversations
     ? createEmptyBucketCheck(memory, conversations)
     : undefined;
@@ -329,13 +359,19 @@ export function createRouter(
         // Nothing is read or stored until the caller resends with ocr: yes/no.
         return res.status(409).json({ error: "ocr_confirmation_required", ocr: confirm });
       }
-      // Use streaming internally (no callback = just faster processing)
-      const response = await llm.chat({
-        ...request,
-        isVoice: style.isVoice,
-        customPrompt: style.customPrompt,
-      });
-      res.json(response);
+      const saveTitle = await titleForNewThread(request);
+      const live = track(request);
+      try {
+        // Use streaming internally (no callback = just faster processing)
+        const response = await llm.chat(
+          { ...request, isVoice: style.isVoice, customPrompt: style.customPrompt },
+          live ? { onChunk: live.chunk, onTurn: live.newTurn, onStatus: live.status } : undefined
+        );
+        const title = await saveTitle?.().catch(() => undefined);
+        res.json(title ? { ...response, title } : response);
+      } finally {
+        live?.finish();
+      }
     } catch (error) {
       console.error("Chat error:", error);
       if ((error as any)?.status === 402) {
@@ -398,18 +434,31 @@ export function createRouter(
         res.end();
         return;
       }
-      const response = await llm.chat(
-        {
-          ...request,
-          isVoice: style.isVoice,
-          customPrompt: style.customPrompt,
-        },
-        {
-          onTurn: () => send("turn", {}),
-          onChunk: (chunk: string) => send("chunk", { text: chunk }),
-          onStatus: (text: string) => send("status", { text }),
-        }
-      );
+      // The title is written while the reply streams, and sent as soon as
+      // it exists; a panel that left early finds it in the thread list.
+      const saveTitle = await titleForNewThread(request);
+      const titled = saveTitle?.()
+        .then((title) => { if (title) send("title", { title }); })
+        .catch((err) => console.warn("[title] not saved:", err instanceof Error ? err.message : err));
+      const live = track(request);
+      let response;
+      try {
+        response = await llm.chat(
+          {
+            ...request,
+            isVoice: style.isVoice,
+            customPrompt: style.customPrompt,
+          },
+          {
+            onTurn: () => { live?.newTurn(); send("turn", {}); },
+            onChunk: (chunk: string) => { live?.chunk(chunk); send("chunk", { text: chunk }); },
+            onStatus: (text: string) => { live?.status(text); send("status", { text }); },
+          }
+        );
+      } finally {
+        live?.finish();
+      }
+      await titled;
 
       // Send final complete response
       res.write(`event: done\ndata: ${JSON.stringify(response)}\n\n`);
@@ -731,6 +780,23 @@ export function createRouter(
       const message = error instanceof Error ? error.message : "Synthesis failed";
       res.status(500).json({ error: message });
     }
+  });
+
+  /**
+   * GET /api/running/:userId
+   * This user's threads with a reply still being written.
+   */
+  router.get("/running/:userId", (req: Request, res: Response) => {
+    res.json(running.list(String(req.params.userId)).map(({ conversationId, startedAt, status }) => ({ conversationId, startedAt, status })));
+  });
+
+  /**
+   * GET /api/running/:userId/:conversationId
+   * One thread's reply so far, or { running: false } once it is stored.
+   */
+  router.get("/running/:userId/:conversationId", (req: Request, res: Response) => {
+    const turn = running.get(String(req.params.userId), String(req.params.conversationId));
+    res.json(turn ? { running: true, ...turn } : { running: false });
   });
 
   /**

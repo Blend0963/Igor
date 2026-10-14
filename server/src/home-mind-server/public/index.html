@@ -76,6 +76,14 @@
   #cam-shoot { width: 68px; height: 68px; border-radius: 50%; border: 4px solid #fff; background: rgba(255,255,255,0.25); cursor: pointer; padding: 0; }
   #cam-shoot:active { background: rgba(255,255,255,0.6); }
   #main.drag { outline: 2px dashed #3b5bdb; outline-offset: -8px; }
+  .t-busy { display: inline-flex; gap: 3px; margin-right: 7px; vertical-align: middle; }
+  .t-busy i { width: 5px; height: 5px; border-radius: 50%; background: #9fb4ff; animation: t-pulse 1.2s infinite ease-in-out; }
+  .t-busy i:nth-child(2) { animation-delay: 0.2s; }
+  .t-busy i:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes t-pulse { 0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) { .t-busy i { animation: none; opacity: 0.8; } }
+  .thread.running .t-title { color: #c9d6ff; }
+  .msg.live { opacity: 0.92; }
   .t-section { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #8b93a5; padding: 10px 8px 4px; }
   .thread .t-star { visibility: hidden; border: 0; background: none; color: #8b93a5; cursor: pointer; font-size: 14px; padding: 2px; }
   .thread:hover .t-star, .thread.pinned .t-star { visibility: visible; }
@@ -312,12 +320,21 @@
   function threadRow(t) {
       var nav = el("threads");
       var row = document.createElement("div");
-      row.className = "thread" + (t.conversationId === state.current ? " active" : "") + (t.pinned ? " pinned" : "");
+      row.className = "thread" + (t.conversationId === state.current ? " active" : "") + (t.pinned ? " pinned" : "") +
+        (isRunning(t.conversationId) ? " running" : "");
       var main = document.createElement("div");
       main.className = "t-main";
       var title = document.createElement("div");
       title.className = "t-title";
-      title.textContent = t.title || "Sans titre";
+      if (isRunning(t.conversationId)) {
+        var dots = document.createElement("span");
+        dots.className = "t-busy";
+        dots.title = "MaDo réfléchit…";
+        dots.setAttribute("aria-label", "MaDo réfléchit");
+        for (var d = 0; d < 3; d++) dots.appendChild(document.createElement("i"));
+        title.appendChild(dots);
+      }
+      title.appendChild(document.createTextNode(t.title || "Sans titre"));
       var date = document.createElement("div");
       date.className = "t-date";
       try { date.textContent = new Date(t.lastMessageAt).toLocaleString(); } catch (e) { date.textContent = ""; }
@@ -452,6 +469,7 @@
 
   function openThread(id) {
     state.current = id;
+    state.liveFor = null;
     el("chat").hidden = false;
     el("empty").hidden = true;
     var known = state.threads.filter(function (t) { return t.conversationId === id; })[0];
@@ -466,12 +484,17 @@
         var messages = (data && data.messages) || [];
         messages.forEach(function (m) { addBubble(m.role, m.content); });
         scrollDown();
+        // A reply still being written (asked from another page, or before
+        // the panel was left) is followed until it is stored.
+        if (state.current === id && isRunning(id)) follow(id);
+        syncRunning();
       })
       .catch(function (err) { addBubble("assistant", "Historique indisponible : " + err.message); });
   }
 
   function newThread() {
     state.current = THREAD_PREFIX + uuid();
+    state.liveFor = null;
     el("chat").hidden = false;
     el("empty").hidden = true;
     el("chat-title").textContent = "Nouveau fil";
@@ -1006,6 +1029,85 @@
     return svg;
   }
 
+  // ----- replies in progress -----
+  //
+  // A reply goes on on the server when the panel is left (another Home
+  // Assistant page, the app in the background): only this page's stream is
+  // cut. The list shows which threads are still being answered, and an open
+  // thread whose reply is in progress is followed until it is stored.
+
+  state.localRunning = {};
+  state.serverRunning = {};
+  state.liveFor = null;
+  var syncTimer = null;
+
+  function isRunning(id) { return Boolean(state.localRunning[id] || state.serverRunning[id]); }
+
+  function setThreadTitle(id, title) {
+    if (!title) return;
+    var known = state.threads.filter(function (t) { return t.conversationId === id; })[0];
+    if (known) { known.title = title; renderThreads(state.threads); }
+    if (state.current === id) {
+      el("chat-title").textContent = title;
+      el("chat-title").classList.remove("untitled");
+    }
+  }
+
+  function syncRunning() {
+    clearTimeout(syncTimer);
+    return api("api/running/" + USER_ID)
+      .then(function (res) { return res.json(); })
+      .then(function (list) {
+        var before = Object.keys(state.serverRunning).sort().join("|");
+        state.serverRunning = {};
+        (Array.isArray(list) ? list : []).forEach(function (t) { state.serverRunning[t.conversationId] = true; });
+        var after = Object.keys(state.serverRunning).sort().join("|");
+        if (before !== after) refreshThreads();
+        if (state.current && state.serverRunning[state.current] && state.liveFor === null) follow(state.current);
+        // Poll while something runs; otherwise only on demand.
+        if (after) syncTimer = setTimeout(syncRunning, 3000);
+      })
+      .catch(function () {});
+  }
+
+  function follow(id) {
+    // Distinct from this page's own stream (state.liveFor === id), which
+    // must not add bubbles to a thread that is being followed.
+    var tag = "follow:" + id;
+    state.liveFor = tag;
+    var bubble = addBubble("assistant", "");
+    bubble.classList.add("live");
+    function tick() {
+      if (state.current !== id || state.liveFor !== tag) { if (bubble.parentNode) bubble.parentNode.removeChild(bubble); return; }
+      api("api/running/" + USER_ID + "/" + encodeURIComponent(id))
+        .then(function (res) { return res.json(); })
+        .then(function (live) {
+          if (state.current !== id || state.liveFor !== tag) return;
+          if (!live.running) {
+            // Stored: show the thread as it is now.
+            state.liveFor = null;
+            openThread(id);
+            refreshThreads();
+            return;
+          }
+          if (live.text) {
+            bubble.dataset.text = live.text;
+            renderInto(bubble, "assistant", live.text);
+          } else {
+            bubble.textContent = live.status || "MaDo réfléchit…";
+          }
+          setStatus(live.status || "MaDo répond…");
+          scrollDown();
+          setTimeout(tick, 1500);
+        })
+        .catch(function () { setTimeout(tick, 4000); });
+    }
+    tick();
+  }
+
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) syncRunning(); });
+  window.addEventListener("focus", function () { syncRunning(); });
+
   // ----- OCR price check -----
   //
   // A PDF without text (a scan) can only be read by Mistral OCR, billed per
@@ -1193,6 +1295,11 @@
     if (shown !== null) addBubble("user", shown, images);
     scrollDown();
     var ocrQuestion = null;
+    var threadId = state.current;
+    var listed = false;
+    state.liveFor = threadId;
+    state.localRunning[threadId] = true;
+    renderThreads(state.threads);
     var bubble = addBubble("assistant", "");
     var acc = "";
     var finalResponse = null;
@@ -1210,11 +1317,22 @@
       if (!data) return;
       var payload = null;
       try { payload = JSON.parse(data); } catch (e) { return; }
-      if (eventName === "chunk") { acc += payload.text || ""; paint(); }
+      if (eventName === "chunk") {
+        acc += payload.text || "";
+        // The person opened another thread meanwhile: this one is followed
+        // again from the server if they come back to it.
+        if (state.liveFor === threadId) paint();
+      }
       // The server opens every model turn with "turn", the first one too, and
       // a turn that only calls tools writes nothing. A new bubble is only
       // worth opening once the current one holds text.
-      else if (eventName === "turn") { if (acc) { bubble = addBubble("assistant", ""); acc = ""; } }
+      else if (eventName === "turn") {
+        // The thread exists on the server now: show it, busy, in the list.
+        if (!listed) { listed = true; refreshThreads(); }
+        if (state.liveFor !== threadId) return;
+        if (acc) { bubble = addBubble("assistant", ""); acc = ""; }
+      }
+      else if (eventName === "title") { setThreadTitle(threadId, payload.title); }
       else if (eventName === "status") { setStatus(payload.text || ""); }
       else if (eventName === "error") { streamError = payload.error || "Erreur"; setStatus(streamError, true); }
       else if (eventName === "done") { finalResponse = payload; }
@@ -1254,6 +1372,8 @@
       })
       .catch(function (err) { streamError = String(err.message || err); setStatus(streamError, true); })
       .then(function () {
+        delete state.localRunning[threadId];
+        if (state.liveFor === threadId) state.liveFor = null;
         if (ocrQuestion) {
           askOcr(bubble, ocrQuestion, function (answer) { send(text, images, null, docs, answer); });
           state.busy = false;
@@ -1765,7 +1885,7 @@
       if (h.tts) Array.prototype.forEach.call(document.querySelectorAll(".msg.assistant"), addSpeak);
     })
     .catch(function () {});
-  refreshThreads();
+  refreshThreads().then(syncRunning);
 })();
 </script>
 </body>

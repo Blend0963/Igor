@@ -208,6 +208,7 @@ Optional bearer token auth via `API_TOKEN` env var. When set, all endpoints exce
 - `GET /api/conversations/:userId/:conversationId` — Get conversation messages
 - `PATCH /api/conversations/:userId/:conversationId` — Rename and/or favourite (body `{ title?, pinned? }`, title 1-120 chars; 404 unless the user has messages in it). Titles in `conversation_titles`, favourites in `conversation_pins` (`ConversationSummary.pinned`), both removed with the conversation
 - `DELETE /api/conversations/:userId/:conversationId` — Delete conversation
+- `GET /api/running/:userId` — Threads with a reply still being written (`api/running-turns.ts`, fed by both chat routes for `mado-thread:` ids); `GET /api/running/:userId/:conversationId` → `{ running, text, status }` so a panel that lost its stream can follow the reply until it is stored. A new thread's first request also gets a title from `llm/thread-title.ts` (extraction model, run alongside the reply), stored with `setConversationTitle` and sent as SSE `event: title`
 - `GET /api/admin/conversations` — All users + conversation summaries (auth required)
 
 ## Deployment
