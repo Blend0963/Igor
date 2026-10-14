@@ -165,7 +165,11 @@ const mergeMarkerPath =
     : undefined;
 
 // Mount API routes
-app.use("/api", createRouter(llm, memory, "shodh", version, config.customPrompt, conversations, stt ?? undefined, tts ?? undefined, config.ttsLanguage, mergeMarkerPath));
+app.use("/api", createRouter(llm, memory, "shodh", version, config.customPrompt, conversations, stt ?? undefined, tts ?? undefined, config.ttsLanguage, mergeMarkerPath, {
+  voice: config.customPromptVoice,
+  thread: config.customPromptThread,
+  assistMode: config.assistMode,
+}));
 
 // The built-in thread panel: plain static files next to the compiled server
 // (the add-on image copies them in). Optional on purpose — when the

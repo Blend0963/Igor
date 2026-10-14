@@ -1,5 +1,5 @@
 name: "MaDo"
-version: "0.3.2"
+version: "0.4.0"
 slug: "mado"
 description: "MaDo — assistant IA pour Home Assistant avec mémoire persistante"
 url: "https://github.com/Blend0963/MaDo"
@@ -47,6 +47,15 @@ schema:
     base_url: "str?"
   mistral_api_key: "password?"
   custom_prompt: "str?"
+  # Appended to custom_prompt for one kind of conversation only: spoken
+  # Assist, or a thread in the chat panel. Absent from `options:` above so an
+  # existing install keeps exactly the persona it had.
+  custom_prompt_voice: "str?"
+  custom_prompt_thread: "str?"
+  # Assist request style. Unset = auto: the integration flags only satellites
+  # as spoken, so voice from the phone app arrives as typed text; "voice"
+  # treats every Assist request as spoken. Panel threads are never affected.
+  assist_mode: "list(auto|voice|text)?"
   # Ceiling on one written reply. Left unset, MaDo picks its own. Deliberately
   # absent from `options:` above so that "unset" stays a real state rather than
   # a magic number, and so the built-in default can be improved without every

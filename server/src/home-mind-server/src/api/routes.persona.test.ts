@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describePersonaSource } from "./routes.js";
+import { composePersona, describePersonaSource, resolveChatStyle } from "./routes.js";
 
 describe("describePersonaSource", () => {
   // nives#54: a user set the add-on's Custom Prompt correctly and nothing
@@ -43,5 +43,53 @@ describe("describePersonaSource", () => {
     const line = describePersonaSource(long, undefined);
     expect(line.length).toBeLessThan(160);
     expect(line).toContain("…");
+  });
+});
+
+describe("resolveChatStyle", () => {
+  const COMMON = "Tu es Mado.";
+  const personas = { voice: "Style vocal.", thread: "Style écrit." };
+
+  it("runs a chat-panel thread in thread mode with the common + thread persona", () => {
+    const style = resolveChatStyle(
+      { isVoice: true, conversationId: "mado-thread:t1" },
+      COMMON,
+      { ...personas, assistMode: "voice" }
+    );
+    expect(style).toEqual({ isVoice: false, mode: "thread", customPrompt: "Tu es Mado.\n\nStyle écrit." });
+  });
+
+  it("trusts the integration in auto mode", () => {
+    expect(resolveChatStyle({ isVoice: true }, COMMON, personas)).toMatchObject({
+      mode: "voice",
+      customPrompt: "Tu es Mado.\n\nStyle vocal.",
+    });
+    expect(resolveChatStyle({ isVoice: false }, COMMON, personas)).toMatchObject({
+      mode: "text",
+      customPrompt: "Tu es Mado.",
+    });
+  });
+
+  it("forces every Assist request to voice or text when configured", () => {
+    expect(resolveChatStyle({ isVoice: false }, COMMON, { ...personas, assistMode: "voice" })).toMatchObject({
+      isVoice: true,
+      mode: "voice",
+    });
+    expect(resolveChatStyle({ isVoice: true }, COMMON, { ...personas, assistMode: "text" })).toMatchObject({
+      isVoice: false,
+      mode: "text",
+    });
+  });
+
+  it("lets a prompt sent with the request replace the configured ones", () => {
+    expect(
+      resolveChatStyle({ isVoice: false, customPrompt: "Task mode." }, COMMON, personas).customPrompt
+    ).toBe("Task mode.");
+  });
+
+  it("works with only a per-mode persona, or none at all", () => {
+    expect(composePersona(undefined, "Style vocal.")).toBe("Style vocal.");
+    expect(composePersona("  ", "")).toBeUndefined();
+    expect(resolveChatStyle({ isVoice: false }).customPrompt).toBeUndefined();
   });
 });

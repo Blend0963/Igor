@@ -49,6 +49,9 @@ LLM_API_KEY=$(jq -r '.byok.api_key // ""' "$OPTIONS")
 LLM_MODEL=$(jq -r '.byok.model // ""' "$OPTIONS")
 LLM_BASE_URL=$(jq -r '.byok.base_url // ""' "$OPTIONS")
 CUSTOM_PROMPT=$(jq -r '.custom_prompt // ""' "$OPTIONS")
+CUSTOM_PROMPT_VOICE=$(jq -r '.custom_prompt_voice // ""' "$OPTIONS")
+CUSTOM_PROMPT_THREAD=$(jq -r '.custom_prompt_thread // ""' "$OPTIONS")
+ASSIST_MODE=$(jq -r '.assist_mode // ""' "$OPTIONS")
 MISTRAL_API_KEY=$(jq -r '.mistral_api_key // ""' "$OPTIONS")
 MAX_OUTPUT_TOKENS=$(jq -r '.max_output_tokens // ""' "$OPTIONS")
 REASONING_EFFORT=$(jq -r '.reasoning_effort // ""' "$OPTIONS")
@@ -204,6 +207,9 @@ write_env "LOG_LEVEL" "$LOG_LEVEL"
 
 # --- Optional ---
 [ -n "$CUSTOM_PROMPT" ] && write_env "CUSTOM_PROMPT" "$CUSTOM_PROMPT"
+[ -n "$CUSTOM_PROMPT_VOICE" ] && write_env "CUSTOM_PROMPT_VOICE" "$CUSTOM_PROMPT_VOICE"
+[ -n "$CUSTOM_PROMPT_THREAD" ] && write_env "CUSTOM_PROMPT_THREAD" "$CUSTOM_PROMPT_THREAD"
+[ -n "$ASSIST_MODE" ] && write_env "ASSIST_MODE" "$ASSIST_MODE"
 write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$MAX_OUTPUT_TOKENS" ] && write_env "MAX_OUTPUT_TOKENS" "$MAX_OUTPUT_TOKENS"
 [ -n "$REASONING_EFFORT" ] && write_env "REASONING_EFFORT" "$REASONING_EFFORT"

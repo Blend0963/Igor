@@ -112,7 +112,7 @@ export class LLMClient implements IChatEngine {
       ? this.scanner.formatCheatSheet()
       : undefined;
     const homeLayout = this.topology.hasLayout() ? this.topology.formatSection() : undefined;
-    let systemPrompt = buildSystemPrompt(factContents, isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender);
+    let systemPrompt = buildSystemPrompt(factContents, scope.isThread ? "thread" : isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender);
     // Retrieve distant history strictly by semantic similarity, never by keywords or recency.
     const semanticMessages = await recallSemantically(this.config, this.conversations, userId, message, 6, scope.recall);
     if (semanticMessages.length > 0) {

@@ -131,8 +131,48 @@ export function describePersonaSource(
   return "built-in default identity (no custom prompt set anywhere)";
 }
 
-function logPersonaSource(requestPrompt?: string, serverDefault?: string): void {
-  const signature = describePersonaSource(requestPrompt, serverDefault);
+/** What the add-on configures about personas and Assist's style. */
+export interface PersonaOptions {
+  voice?: string;
+  thread?: string;
+  assistMode?: "auto" | "voice" | "text";
+}
+
+/** The common persona, then the one for this kind of conversation. */
+export function composePersona(common?: string, specific?: string): string | undefined {
+  const parts = [common, specific].map((p) => p?.trim()).filter((p): p is string => Boolean(p));
+  return parts.length ? parts.join("\n\n") : undefined;
+}
+
+/**
+ * The style a chat request runs with, and the persona for it. A chat-panel
+ * thread is always "thread"; an Assist request is spoken or typed per
+ * `assistMode`, where "auto" keeps what the integration said. A prompt sent
+ * with the request (AI Task, API clients) still replaces the configured ones.
+ */
+export function resolveChatStyle(
+  request: { isVoice: boolean; conversationId?: string; customPrompt?: string },
+  commonPrompt?: string,
+  personas: PersonaOptions = {}
+): { isVoice: boolean; mode: "voice" | "text" | "thread"; customPrompt?: string } {
+  const isThread = isThreadId(request.conversationId);
+  const assistMode = personas.assistMode ?? "auto";
+  const isVoice = isThread
+    ? false
+    : assistMode === "auto"
+      ? request.isVoice
+      : assistMode === "voice";
+  const mode = isThread ? "thread" : isVoice ? "voice" : "text";
+  const specific = mode === "voice" ? personas.voice : mode === "thread" ? personas.thread : undefined;
+  return {
+    isVoice,
+    mode,
+    customPrompt: request.customPrompt ?? composePersona(commonPrompt, specific),
+  };
+}
+
+function logPersonaSource(mode: string, requestPrompt?: string, serverDefault?: string): void {
+  const signature = `(${mode}) ${describePersonaSource(requestPrompt, serverDefault)}`;
   if (signature === lastPersonaSignature) return;
   lastPersonaSignature = signature;
   console.log(`[persona] ${signature}`);
@@ -175,7 +215,8 @@ export function createRouter(
   stt?: ISttService,
   tts?: ITtsService,
   ttsLanguage?: string,
-  mergeMarkerPath?: string
+  mergeMarkerPath?: string,
+  personas: PersonaOptions = {}
 ): Router {
   const router = Router();
   const checkEmptyBucket = conversations
@@ -197,14 +238,20 @@ export function createRouter(
         });
       }
 
-      logPersonaSource(parsed.data.customPrompt, defaultCustomPrompt);
+      const style = resolveChatStyle(parsed.data, defaultCustomPrompt, personas);
+      logPersonaSource(
+        style.mode,
+        parsed.data.customPrompt,
+        parsed.data.customPrompt ? defaultCustomPrompt : style.customPrompt
+      );
       // A thread starts with an empty memory on purpose.
       if (!isThreadId(parsed.data.conversationId)) void checkEmptyBucket?.(parsed.data.userId);
 
       // Use streaming internally (no callback = just faster processing)
       const response = await llm.chat({
         ...parsed.data,
-        customPrompt: parsed.data.customPrompt ?? defaultCustomPrompt,
+        isVoice: style.isVoice,
+        customPrompt: style.customPrompt,
       });
       res.json(response);
     } catch (error) {
@@ -232,7 +279,12 @@ export function createRouter(
         });
       }
 
-      logPersonaSource(parsed.data.customPrompt, defaultCustomPrompt);
+      const style = resolveChatStyle(parsed.data, defaultCustomPrompt, personas);
+      logPersonaSource(
+        style.mode,
+        parsed.data.customPrompt,
+        parsed.data.customPrompt ? defaultCustomPrompt : style.customPrompt
+      );
       // A thread starts with an empty memory on purpose.
       if (!isThreadId(parsed.data.conversationId)) void checkEmptyBucket?.(parsed.data.userId);
 
@@ -253,7 +305,8 @@ export function createRouter(
       const response = await llm.chat(
         {
           ...parsed.data,
-          customPrompt: parsed.data.customPrompt ?? defaultCustomPrompt,
+          isVoice: style.isVoice,
+          customPrompt: style.customPrompt,
         },
         {
           onTurn: () => send("turn", {}),
