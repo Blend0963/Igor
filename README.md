@@ -32,7 +32,7 @@ The memory database and conversation store remain on your Home Assistant machine
 
 ## Version
 
-Current release: **v0.2.2** (thread panel, each thread with its own history).
+Current release: **v0.3.0** (sealed threads: each thread with its own history and memory; security hardening).
 
 ## License and upstream notices
 
