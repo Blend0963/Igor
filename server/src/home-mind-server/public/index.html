@@ -109,9 +109,10 @@
 (function () {
   "use strict";
   // The panel talks to the same server that serves this page, under one
-  // user id for every thread: short-term history is isolated per
-  // conversation id (each thread below carries its own), while long-term
-  // memory lives server-side keyed by this id, shared with Assist.
+  // user id for every thread. Each "mado-thread:" id is a sealed world on
+  // the server: its own history, its own long-term memory and its own
+  // recall, with nothing from Assist or the other threads, and nothing
+  // learned here reaching them (memory/memory-scope.ts).
   var USER_ID = "default";
   var THREAD_PREFIX = "mado-thread:";
   var LS_TOKEN = "mado_api_token";
@@ -213,7 +214,7 @@
   }
 
   function deleteThread(id) {
-    if (!window.confirm("Supprimer ce fil ? Les messages de ce fil seront perdus.")) return;
+    if (!window.confirm("Supprimer ce fil ? Ses messages et tout ce qu'il a mémorisé seront perdus.")) return;
     api("api/conversations/" + USER_ID + "/" + encodeURIComponent(id), { method: "DELETE" })
       .then(function () {
         if (state.current === id) newThread();

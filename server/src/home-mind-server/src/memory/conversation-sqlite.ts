@@ -7,6 +7,28 @@
 import Database from "better-sqlite3";
 import type { ConversationMessage, ConversationSummary, IConversationStore } from "./types.js";
 import { summarizeTitle } from "./shared-memory.js";
+import {
+  DEFAULT_MESSAGE_CAP,
+  isThreadId,
+  THREAD_MESSAGE_CAP,
+  type RecallScope,
+} from "./memory-scope.js";
+
+/** The SQL filter for a recall scope, on the `m` alias. */
+function scopeClause(scope?: RecallScope): { sql: string; params: string[] } {
+  let sql = "";
+  const params: string[] = [];
+  if (scope?.conversationId !== undefined) {
+    sql += " AND m.conversation_id = ?";
+    params.push(scope.conversationId);
+  }
+  if (scope?.excludeConversationPrefix) {
+    // substr rather than LIKE: a prefix is matched literally, `_` and `%` included.
+    sql += " AND substr(m.conversation_id, 1, ?) != ?";
+    params.push(String(scope.excludeConversationPrefix.length), scope.excludeConversationPrefix);
+  }
+  return { sql, params };
+}
 
 export class SqliteConversationStore implements IConversationStore {
   private db: Database.Database;
@@ -72,15 +94,15 @@ export class SqliteConversationStore implements IConversationStore {
     ).run(id, conversationId, userId, role, content, now);
 
     // Keep a longer durable history for MaDo's shared cross-device conversation.
-    // Other transient conversations retain the existing 20-message cap.
+    // Threads keep their own longer cap; other transient conversations roll at 20.
     if (!conversationId.startsWith("mado-user:")) this.db.prepare(
       `DELETE FROM messages WHERE id IN (
         SELECT id FROM messages
         WHERE conversation_id = ?
         ORDER BY rowid DESC
-        LIMIT -1 OFFSET 20
+        LIMIT -1 OFFSET ?
       )`
-    ).run(conversationId);
+    ).run(conversationId, isThreadId(conversationId) ? THREAD_MESSAGE_CAP : DEFAULT_MESSAGE_CAP);
 
     return id;
   }
@@ -186,10 +208,10 @@ export class SqliteConversationStore implements IConversationStore {
     }));
   }
 
-  deleteConversation(conversationId: string): number {
+  deleteConversation(conversationId: string, userId?: string): number {
     const result = this.db.prepare(
-      `DELETE FROM messages WHERE conversation_id = ?`
-    ).run(conversationId);
+      `DELETE FROM messages WHERE conversation_id = ? AND (? IS NULL OR user_id = ?)`
+    ).run(conversationId, userId ?? null, userId ?? null);
     return result.changes;
   }
 
@@ -223,13 +245,14 @@ export class SqliteConversationStore implements IConversationStore {
 
 
 
-  getMessagesWithoutEmbeddings(userId: string, limit: number = 30): ConversationMessage[] {
+  getMessagesWithoutEmbeddings(userId: string, limit: number = 30, scope?: RecallScope): ConversationMessage[] {
+    const { sql, params } = scopeClause(scope);
     const rows = this.db.prepare(`
       SELECT m.id, m.conversation_id, m.user_id, m.role, m.content, m.created_at
       FROM messages m LEFT JOIN message_embeddings e ON e.message_id = m.id
-      WHERE m.user_id = ? AND m.role = 'user' AND e.message_id IS NULL
+      WHERE m.user_id = ? AND m.role = 'user' AND e.message_id IS NULL${sql}
       ORDER BY m.rowid DESC LIMIT ?
-    `).all(userId, limit) as Array<{id:string;conversation_id:string;user_id:string;role:"user"|"assistant";content:string;created_at:string}>;
+    `).all(userId, ...params, limit) as Array<{id:string;conversation_id:string;user_id:string;role:"user"|"assistant";content:string;created_at:string}>;
     return rows.map(row => ({id:row.id,conversationId:row.conversation_id,userId:row.user_id,role:row.role,content:row.content,createdAt:new Date(row.created_at)}));
   }
 
@@ -238,13 +261,14 @@ export class SqliteConversationStore implements IConversationStore {
       .run(messageId, JSON.stringify(embedding));
   }
 
-  searchSimilarMessages(userId: string, embedding: number[], limit: number = 6): ConversationMessage[] {
+  searchSimilarMessages(userId: string, embedding: number[], limit: number = 6, scope?: RecallScope): ConversationMessage[] {
+    const { sql, params } = scopeClause(scope);
     const rows = this.db.prepare(`
       SELECT m.id, m.conversation_id, m.user_id, m.role, m.content, m.created_at, e.embedding
       FROM messages m JOIN message_embeddings e ON e.message_id = m.id
-      WHERE m.user_id = ? AND m.role = 'user'
+      WHERE m.user_id = ? AND m.role = 'user'${sql}
       ORDER BY m.rowid DESC
-    `).all(userId) as Array<{id:string;conversation_id:string;user_id:string;role:"user"|"assistant";content:string;created_at:string;embedding:string}>;
+    `).all(userId, ...params) as Array<{id:string;conversation_id:string;user_id:string;role:"user"|"assistant";content:string;created_at:string;embedding:string}>;
     const norm = (v:number[]) => Math.sqrt(v.reduce((sum,n)=>sum+n*n,0));
     const qnorm = norm(embedding);
     if (!qnorm) return [];

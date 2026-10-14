@@ -574,10 +574,66 @@ describe("OpenAIChatEngine", () => {
     });
   });
 
+  it("never replays another user's turns from a thread id it was handed", async () => {
+    (conversations.getConversationHistory as ReturnType<typeof vi.fn>).mockReturnValue([
+      { userId: "user-2", role: "user", content: "my door code is 1234" },
+      { userId: "user-2", role: "assistant", content: "Noted." },
+    ]);
+    mockCreate.mockResolvedValue(
+      makeStream([
+        { choices: [{ delta: { content: "Response" }, finish_reason: null }] },
+        { choices: [{ delta: {}, finish_reason: "stop" }] },
+      ])
+    );
+
+    await engine.chat({ message: "what did I say?", userId: "user-1", conversationId: "mado-thread:x" });
+
+    const sent = JSON.stringify(mockCreate.mock.calls[0][0].messages);
+    expect(sent).not.toContain("1234");
+  });
+
+  describe("memory isolation between Assist and panel threads", () => {
+    const answer = () =>
+      mockCreate.mockResolvedValue(
+        makeStream([
+          { choices: [{ delta: { content: "ok" }, finish_reason: null }] },
+          { choices: [{ delta: {}, finish_reason: "stop" }] },
+        ])
+      );
+
+    it("gives a thread its own history, fact bucket and extraction target", async () => {
+      answer();
+      await engine.chat({ message: "hello", userId: "user-1", conversationId: "mado-thread:abc" });
+
+      expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-thread:abc", 20);
+      expect(memory.getFactsWithinTokenLimit).toHaveBeenCalledWith(
+        "user-1@mado-thread:abc",
+        1500,
+        "hello"
+      );
+      expect(vi.mocked(extractAndStoreFacts).mock.calls[0][2]).toBe("user-1@mado-thread:abc");
+      expect(conversations.storeMessage).toHaveBeenCalledWith(
+        "mado-thread:abc",
+        "user-1",
+        "user",
+        "hello"
+      );
+    });
+
+    it("keeps Assist on the user's shared conversation and bucket", async () => {
+      answer();
+      await engine.chat({ message: "hello", userId: "user-1", conversationId: "01HXYZ" });
+
+      expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-user:user-1", 20);
+      expect(memory.getFactsWithinTokenLimit).toHaveBeenCalledWith("user-1", 1500, "hello");
+      expect(vi.mocked(extractAndStoreFacts).mock.calls[0][2]).toBe("user-1");
+    });
+  });
+
   it("loads conversation history when conversationId provided", async () => {
     (conversations.getConversationHistory as ReturnType<typeof vi.fn>).mockReturnValue([
-      { role: "user", content: "previous question" },
-      { role: "assistant", content: "previous answer" },
+      { userId: "user-1", role: "user", content: "previous question" },
+      { userId: "user-1", role: "assistant", content: "previous answer" },
     ]);
 
     mockCreate.mockResolvedValue(
@@ -612,8 +668,8 @@ describe("OpenAIChatEngine", () => {
     // A stamped assistant entry taught the model to open every answer with
     // a recited "[09:12]": it imitates its own past replies.
     (conversations.getConversationHistory as ReturnType<typeof vi.fn>).mockReturnValue([
-      { role: "user", content: "allume la lumière", createdAt: new Date() },
-      { role: "assistant", content: "La lumière du salon est allumée.", createdAt: new Date() },
+      { userId: "user-1", role: "user", content: "allume la lumière", createdAt: new Date() },
+      { userId: "user-1", role: "assistant", content: "La lumière du salon est allumée.", createdAt: new Date() },
     ]);
 
     mockCreate.mockResolvedValue(

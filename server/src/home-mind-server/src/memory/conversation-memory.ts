@@ -5,6 +5,13 @@
  */
 
 import type { ConversationMessage, ConversationSummary, IConversationStore } from "./types.js";
+import {
+  DEFAULT_MESSAGE_CAP,
+  inRecallScope,
+  isThreadId,
+  THREAD_MESSAGE_CAP,
+  type RecallScope,
+} from "./memory-scope.js";
 import { summarizeTitle } from "./shared-memory.js";
 
 export class InMemoryConversationStore implements IConversationStore {
@@ -31,7 +38,8 @@ export class InMemoryConversationStore implements IConversationStore {
     });
 
     // Keep a longer durable history for MaDo's shared cross-device conversation.
-    if (!conversationId.startsWith("mado-user:") && messages.length > 20) {
+    const cap = isThreadId(conversationId) ? THREAD_MESSAGE_CAP : DEFAULT_MESSAGE_CAP;
+    if (!conversationId.startsWith("mado-user:") && messages.length > cap) {
       messages.shift();
     }
 
@@ -85,11 +93,17 @@ export class InMemoryConversationStore implements IConversationStore {
     return results;
   }
 
-  deleteConversation(conversationId: string): number {
+  deleteConversation(conversationId: string, userId?: string): number {
     const messages = this.conversations.get(conversationId);
     if (!messages) return 0;
-    const count = messages.length;
-    this.conversations.delete(conversationId);
+    if (userId === undefined) {
+      this.conversations.delete(conversationId);
+      return messages.length;
+    }
+    const kept = messages.filter((m) => m.userId !== userId);
+    const count = messages.length - kept.length;
+    if (kept.length) this.conversations.set(conversationId, kept);
+    else this.conversations.delete(conversationId);
     return count;
   }
 
@@ -99,9 +113,10 @@ export class InMemoryConversationStore implements IConversationStore {
 
 
 
-  getMessagesWithoutEmbeddings(userId: string, limit: number = 30): ConversationMessage[] {
+  getMessagesWithoutEmbeddings(userId: string, limit: number = 30, scope?: RecallScope): ConversationMessage[] {
     return [...this.conversations.values()].flat()
-      .filter(message => message.userId === userId && message.role === "user" && !this.embeddings.has(message.id))
+      .filter(message => message.userId === userId && message.role === "user" && !this.embeddings.has(message.id)
+        && inRecallScope(message.conversationId, scope))
       .sort((a,b)=>b.createdAt.getTime()-a.createdAt.getTime())
       .slice(0,Math.max(0,limit));
   }
@@ -110,13 +125,14 @@ export class InMemoryConversationStore implements IConversationStore {
     this.embeddings.set(messageId, embedding);
   }
 
-  searchSimilarMessages(userId: string, embedding: number[], limit: number = 6): ConversationMessage[] {
+  searchSimilarMessages(userId: string, embedding: number[], limit: number = 6, scope?: RecallScope): ConversationMessage[] {
     const norm = (v:number[]) => Math.sqrt(v.reduce((sum,n)=>sum+n*n,0));
     const qnorm = norm(embedding);
     if (!qnorm) return [];
     const ranked: Array<{message: ConversationMessage; score:number}> = [];
     for (const messages of this.conversations.values()) for (const message of messages) {
       if (message.userId !== userId || message.role !== "user") continue;
+      if (!inRecallScope(message.conversationId, scope)) continue;
       const vector = this.embeddings.get(message.id);
       if (!vector || vector.length !== embedding.length) continue;
       const denom = qnorm * norm(vector);

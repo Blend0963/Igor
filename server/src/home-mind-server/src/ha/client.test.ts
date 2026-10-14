@@ -541,7 +541,7 @@ describe("HomeAssistantClient and the Assist exposure list", () => {
       const client = new HomeAssistantClient(baseConfig, exposing("light.kitchen_table"));
       await expect(
         client.getHistory("light.kitchen_table,sensor.kitchen_presence")
-      ).rejects.toThrow(/not available to you/);
+      ).rejects.toThrow(/not available to you|not a valid entity_id/);
       expect(calls.some((u) => u.includes("/api/history"))).toBe(false);
     });
 
@@ -713,5 +713,95 @@ describe("HomeAssistantClient and the Assist exposure list", () => {
       await client.callService("light", "turn_on", "light.kitchen_table_1");
       expect(posted("light/turn_on")).toBe(true);
     });
+  });
+});
+
+describe("HomeAssistantClient keeps model input inside the HA API", () => {
+  // In the add-on the base URL is http://supervisor/core and fetch() resolves
+  // `..`, so an unchecked id would carry the Supervisor token to the
+  // Supervisor API itself.
+  let calls: string[];
+
+  beforeEach(() => {
+    calls = [];
+    global.fetch = vi.fn(async (input: unknown) => {
+      calls.push(typeof input === "string" ? input : String(input));
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+  });
+
+  const config = {
+    haUrl: "http://supervisor/core",
+    haToken: "t",
+    haSkipTlsVerify: false,
+  } as unknown as Config;
+
+  it("refuses an entity_id that is not domain.object_id", async () => {
+    const client = new HomeAssistantClient(config);
+    for (const id of ["../../addons", "light.kitchen/../../../backups", "light", "Light.Kitchen"]) {
+      await expect(client.getState(id), id).rejects.toThrow(/not a valid entity_id/);
+      await expect(client.getHistory(id), id).rejects.toThrow(/not a valid entity_id/);
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses a domain or service that is not a bare identifier", async () => {
+    const client = new HomeAssistantClient(config);
+    await expect(
+      client.callService("../../backups/new", "full")
+    ).rejects.toThrow(/not a valid service/);
+    await expect(client.callService("light", "turn_on/../../x")).rejects.toThrow(
+      /not a valid service/
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses Supervisor and shutdown services", async () => {
+    const client = new HomeAssistantClient(config);
+    for (const [domain, service] of [
+      ["hassio", "addon_stop"],
+      ["hassio", "host_shutdown"],
+      ["homeassistant", "stop"],
+    ]) {
+      await expect(client.callService(domain, service), `${domain}.${service}`).rejects.toThrow(
+        /not available to you/
+      );
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it("still runs ordinary services", async () => {
+    const client = new HomeAssistantClient(config);
+    await client.callService("light", "turn_on", "light.kitchen");
+    await client.callService("homeassistant", "restart");
+    expect(calls.some((u) => u.endsWith("/api/services/light/turn_on"))).toBe(true);
+  });
+
+  it("refuses an automation whose actions reach a blocked service, templated or not", async () => {
+    const client = new HomeAssistantClient(config);
+    for (const action of [
+      { service: "hassio.addon_stdin", data: { addon: "core_ssh", input: "rm -rf /" } },
+      { action: "{{ 'hassio.host_shutdown' }}" },
+      { action: "homeassistant.stop" },
+    ]) {
+      await expect(
+        client.createAutomation({ alias: "x", trigger: { platform: "sun", event: "sunset" }, action })
+      ).rejects.toThrow(/not available to you/);
+    }
+    expect(calls.some((u) => u.includes("/api/config/automation/config/"))).toBe(false);
+  });
+
+  it("refuses an automation config id that would leave the config path", async () => {
+    const client = new HomeAssistantClient(config);
+    await expect(client.deleteAutomation("../../../addons/self/stop")).rejects.toThrow(
+      /not a valid automation config id/
+    );
+    await expect(client.getAutomationConfig("1/../../x")).rejects.toThrow(
+      /not a valid automation config id/
+    );
+    expect(calls).toEqual([]);
   });
 });

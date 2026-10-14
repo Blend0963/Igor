@@ -16,6 +16,10 @@ write_env() {
     fi
 }
 
+# Secrets below are created owner-only from the start, rather than world-readable
+# until the chmod further down.
+umask 077
+
 # Generate Shodh API key on first run
 if [ ! -f /data/.shodh_key ]; then
     openssl rand -hex 32 > /data/.shodh_key

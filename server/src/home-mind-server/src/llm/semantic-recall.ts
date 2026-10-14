@@ -1,5 +1,6 @@
 import type { Config } from "../config.js";
 import type { ConversationMessage, IConversationStore } from "../memory/types.js";
+import type { RecallScope } from "../memory/memory-scope.js";
 
 const EMBEDDING_MODEL = "mistral-embed";
 const EMBEDDING_URL = "https://api.mistral.ai/v1/embeddings";
@@ -35,19 +36,20 @@ export async function rememberSemantically(
 }
 
 export async function recallSemantically(
-  config: Config, store: IConversationStore, userId: string, query: string, limit = 6
+  config: Config, store: IConversationStore, userId: string, query: string, limit = 6,
+  scope?: RecallScope
 ): Promise<ConversationMessage[]> {
   if (!config.mistralApiKey || !store.searchSimilarMessages || !query.trim()) return [];
   try {
     const missing = store.getMessagesWithoutEmbeddings
-      ? await store.getMessagesWithoutEmbeddings(userId, 30)
+      ? await store.getMessagesWithoutEmbeddings(userId, 30, scope)
       : [];
     const texts = [...missing.map(message => message.content), query];
     const vectors = await embedTexts(config.mistralApiKey, texts);
     for (let index = 0; index < missing.length; index++) {
       await store.storeMessageEmbedding?.(missing[index].id, vectors[index]);
     }
-    return await store.searchSimilarMessages(userId, vectors[vectors.length - 1], limit);
+    return await store.searchSimilarMessages(userId, vectors[vectors.length - 1], limit, scope);
   } catch (error) {
     console.warn("[semantic-recall] Semantic search unavailable; no keyword fallback used:", error instanceof Error ? error.message : error);
     return [];

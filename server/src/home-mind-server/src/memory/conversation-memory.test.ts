@@ -19,6 +19,45 @@ describe("InMemoryConversationStore", () => {
     expect(history[1].content).toBe("Hi there!");
   });
 
+  it("deletes only the named user's messages when a userId is given", () => {
+    store.storeMessage("mado-thread:x", "user-1", "user", "mine");
+    store.storeMessage("mado-thread:x", "user-2", "user", "theirs");
+
+    expect(store.deleteConversation("mado-thread:x", "user-1")).toBe(1);
+    const left = store.getConversationHistory("mado-thread:x");
+    expect(left.map((m) => m.content)).toEqual(["theirs"]);
+    expect(store.deleteConversation("mado-thread:x", "user-1")).toBe(0);
+  });
+
+  it("scopes semantic recall to one thread, or keeps it out of every thread", () => {
+    const a = store.storeMessage("mado-thread:a", "user-1", "user", "secret of thread a");
+    const b = store.storeMessage("mado-thread:b", "user-1", "user", "secret of thread b");
+    const assist = store.storeMessage("mado-user:user-1", "user-1", "user", "assist note");
+    for (const id of [a, b, assist]) store.storeMessageEmbedding(id, [1, 0]);
+
+    const inA = store.searchSimilarMessages("user-1", [1, 0], 10, { conversationId: "mado-thread:a" });
+    expect(inA.map((m) => m.content)).toEqual(["secret of thread a"]);
+
+    const inAssist = store.searchSimilarMessages("user-1", [1, 0], 10, {
+      excludeConversationPrefix: "mado-thread:",
+    });
+    expect(inAssist.map((m) => m.content)).toEqual(["assist note"]);
+
+    store.storeMessage("mado-thread:c", "user-1", "user", "unembedded");
+    expect(
+      store
+        .getMessagesWithoutEmbeddings("user-1", 30, { excludeConversationPrefix: "mado-thread:" })
+        .map((m) => m.content)
+    ).toEqual([]);
+  });
+
+  it("keeps far more than 20 messages in a thread", () => {
+    for (let i = 0; i < 60; i++) store.storeMessage("mado-thread:long", "user-1", "user", `m${i}`);
+    for (let i = 0; i < 60; i++) store.storeMessage("other", "user-1", "user", `m${i}`);
+    expect(store.getConversationHistory("mado-thread:long", 1000)).toHaveLength(60);
+    expect(store.getConversationHistory("other", 1000)).toHaveLength(20);
+  });
+
   it("limits history to last N messages", () => {
     for (let i = 0; i < 5; i++) {
       store.storeMessage("conv-1", "user-1", "user", `Message ${i}`);
