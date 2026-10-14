@@ -94,3 +94,26 @@ describe("filterFacts", () => {
     expect(skipped[0].reason).toMatch(/meta-fact/);
   });
 });
+
+describe("French transient and command-echo state assertions", () => {
+  // French state echoes slipped through the English-only garbage patterns and
+  // were stored as durable facts ("la lumière a été allumée"), then re-injected
+  // every turn as if they were the present state of the home.
+  it.each([
+    ["La lumière du salon a été allumée.", /command echo/],
+    ["Le chauffage a été réglé sur 21 °C.", /command echo/],
+    ["La porte du garage a été fermée.", /command echo/],
+    ["Le salon est actuellement à 21 °C.", /transient/],
+    ["La lumière vient d’être éteinte.", /transient/],
+    ["La lumière vient d'être éteinte.", /transient/],
+  ])("drops state echo: %s", (fact, reason) => {
+    expect(matchesGarbagePattern(fact)).toMatch(reason);
+  });
+
+  it.each([
+    "L'utilisateur préfère 21 °C le soir dans le salon.",
+    "L'utilisateur allume la cuisine tous les matins à 7h.",
+  ])("keeps genuine French fact: %s", (fact) => {
+    expect(matchesGarbagePattern(fact)).toBeNull();
+  });
+});

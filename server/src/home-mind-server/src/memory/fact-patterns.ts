@@ -4,16 +4,32 @@
  */
 
 // Patterns that indicate transient state — these should not be stored as long-term facts
-export const TRANSIENT_PATTERNS =
-  /\b(currently|right now|at the moment|is showing|was just|is displaying|just turned|just set|is now)\b/i;
+// French transient-state markers are matched without \b: JavaScript word
+// boundaries do not work next to accented letters, so "actuellement" would
+// never match as \bactuellement\b.
+export const TRANSIENT_PATTERNS = new RegExp(
+  [
+    String.raw`\b(currently|right now|at the moment|is showing|was just|is displaying|just turned|just set|is now)\b`,
+    String.raw`(?:actuellement|en ce moment|est en train de|vient d[’'](?:ê|e)tre)`,
+  ].join("|"),
+  "i"
+);
 
 // Device spec/capability dump patterns — LLM catalogs entity attributes instead of extracting user facts
 export const DEVICE_SPEC_PATTERNS =
   /\b(supports?\s+\d+|supports?\s+(rgbw|rgb|color_temp|xy|hs|brightness|on_off)|color.?mode|effect.?list|\d+\+?\s+effects?|firmware|protocol|supported.?features?|supported.?color)\b/i;
 
 // Command-echo patterns — assistant restating what it just did, not a user-stated fact
-export const COMMAND_ECHO_PATTERNS =
-  /\b(was set to|was changed to|was turned|has been set|has been turned|has been changed)\b/i;
+// French command echoes ("la lumière a été allumée", "le chauffage a été réglé")
+// previously slipped through as durable facts and were re-injected each turn
+// as if they were the present state. No trailing \b: it fails next to accents.
+export const COMMAND_ECHO_PATTERNS = new RegExp(
+  [
+    String.raw`\b(was set to|was changed to|was turned|has been set|has been turned|has been changed)\b`,
+    String.raw`\b(?:a|ont)\s+été\s+(?:allum|étein|éteind|régl|ferm|ouvert|verrouill|déverrouill|activ|désactiv|arm|désarm|mis)[\wà-ÿ]*`,
+  ].join("|"),
+  "i"
+);
 
 /**
  * Memory meta-facts — facts about the conversation rather than about the user's home.
