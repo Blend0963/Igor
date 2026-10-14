@@ -102,24 +102,44 @@ describe("extractFileText", () => {
   });
 
   it("says why a file cannot be read", async () => {
-    expect(await extractFileText("a.pdf", "application/pdf", Buffer.from("%PDF"))).toContain("Mistral API key");
+    expect(await extractFileText("a.pdf", "application/pdf", buildPdf(""))).toContain("Mistral API key");
     expect(await extractFileText("old.doc", "", Buffer.from([0xd0, 0xcf, 0x11, 0xe0]))).toContain(".docx");
     expect(await extractFileText("x.bin", "application/octet-stream", Buffer.from([0, 1, 2, 3, 0, 255]))).toContain("binary file");
     expect(await extractFileText("broken.docx", "", Buffer.from("nope"))).toContain("could not be read");
   });
 
-  it("sends PDFs to OCR when it can", async () => {
-    const text = await extractFileText("a.pdf", "", Buffer.from("%PDF"), { ocrPdf: async (url) => `ocr:${url.slice(0, 28)}` });
-    expect(text).toBe("ocr:data:application/pdf;base64,");
+  it("reads a PDF's own text without OCR", async () => {
+    let ocr = 0;
+    const text = await extractFileText("a.pdf", "", buildPdf("# Facture\n\nTotal à payer : 42,50 € pour le mois d'octobre."), { ocrPdf: async () => { ocr++; return ""; } });
+    expect(text).toContain("--- page 1 ---\nFacture");
+    expect(text).toContain("42,50 €");
+    expect(ocr).toBe(0);
+  });
+
+  it("asks before sending a scan to OCR, and follows the answer", async () => {
+    const scan = buildPdf("");
+    const ocrPdf = async (url: string) => `ocr:${url.slice(0, 28)}`;
+    const requests: { name: string; pages: number }[] = [];
+    expect(await extractFileText("s.pdf", "", scan, { ocrPdf, ocrRequests: requests })).toContain("waiting for the user");
+    expect(requests).toEqual([{ name: "s.pdf", pages: 1 }]);
+    expect(await extractFileText("s.pdf", "", scan, { ocrPdf, ocr: "no" })).toContain("chose not to pay");
+    expect(await extractFileText("s.pdf", "", scan, { ocrPdf, ocr: "yes" })).toBe("ocr:data:application/pdf;base64,");
   });
 
   it("reads the files inside an archive, without OCR", async () => {
-    const zip = writeZip([{ name: "notes.md", data: Buffer.from("# Notes") }, { name: "scan.pdf", data: Buffer.from("%PDF") }]);
+    const zip = writeZip([
+      { name: "notes.md", data: Buffer.from("# Notes") },
+      { name: "doc.pdf", data: buildPdf("Contenu du PDF texte, lisible sans OCR.") },
+      { name: "scan.pdf", data: buildPdf("") },
+    ]);
     let ocr = 0;
-    const text = await extractFileText("a.zip", "application/zip", zip, { ocrPdf: async () => { ocr++; return ""; } });
+    const requests: { name: string; pages: number }[] = [];
+    const text = await extractFileText("a.zip", "application/zip", zip, { ocrPdf: async () => { ocr++; return ""; }, ocr: "yes", ocrRequests: requests });
     expect(text).toContain("--- notes.md ---\n# Notes");
-    expect(text).toContain("attach it on its own");
+    expect(text).toContain("Contenu du PDF texte");
+    expect(text).toContain("--- scan.pdf ---\n[scanned PDF");
     expect(ocr).toBe(0);
+    expect(requests).toEqual([]);
   });
 
   it("caps a long file", async () => {

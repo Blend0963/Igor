@@ -13,7 +13,7 @@ import {
   THREAD_MESSAGE_CAP,
   threadFactBucket,
 } from "../memory/memory-scope.js";
-import { mistralKey, withDocuments } from "../llm/mistral-platform.js";
+import { mistralKey, ocrPricePer1000Pages, withDocuments } from "../llm/mistral-platform.js";
 import { getMediaStore } from "../llm/media-store.js";
 
 /**
@@ -104,21 +104,42 @@ export const ChatRequestSchema = z.object({
     )
     .max(CHAT_LIMITS.documents)
     .optional(),
+  // A scanned PDF needs Mistral OCR, billed per page: "ask" (default) stops
+  // and returns the price for the user to accept; "yes" / "no" is the answer.
+  ocr: z.enum(["ask", "yes", "no"]).default("ask"),
 });
 
 type ParsedChatRequest = z.infer<typeof ChatRequestSchema>;
 
+/** What the user is asked before scanned PDFs go to OCR. */
+export interface OcrConfirmation {
+  files: { name: string; pages: number; cost: number }[];
+  pages: number;
+  /** Estimated total, in USD, at `pricePer1000Pages`. */
+  cost: number;
+  pricePer1000Pages: number;
+}
+
 /**
  * The request as the engine takes it: attached files read and appended to
- * the message. A PDF needs the Mistral key (OCR); without it the message
- * says so in place of the PDF's text.
+ * the message. When a scanned PDF needs OCR and the user has not answered
+ * yet (`ocr: "ask"`), nothing is sent to the model: `confirm` carries the
+ * pages and the estimated price to put to them.
  */
 export async function withAttachedDocuments(
   data: ParsedChatRequest
-): Promise<Omit<ParsedChatRequest, "documents">> {
-  const { documents, ...rest } = data;
-  if (!documents?.length) return rest;
-  return { ...rest, message: await withDocuments(rest.message, documents, mistralKey()) };
+): Promise<{ request: Omit<ParsedChatRequest, "documents" | "ocr">; confirm?: OcrConfirmation }> {
+  const { documents, ocr, ...rest } = data;
+  if (!documents?.length) return { request: rest };
+  const read = await withDocuments(rest.message, documents, mistralKey(), ocr);
+  if (read.ocrRequests.length) {
+    const price = ocrPricePer1000Pages();
+    // An unreadable PDF reports 0 pages; count it as one for the estimate.
+    const files = read.ocrRequests.map((f) => ({ ...f, cost: (Math.max(1, f.pages) * price) / 1000 }));
+    const pages = files.reduce((n, f) => n + Math.max(1, f.pages), 0);
+    return { request: rest, confirm: { files, pages, cost: (pages * price) / 1000, pricePer1000Pages: price } };
+  }
+  return { request: { ...rest, message: read.message } };
 }
 
 const RenameSchema = z.object({
@@ -244,12 +265,12 @@ export function healthCapabilities(
   stt?: unknown,
   tts?: unknown,
   ttsLanguage?: string
-): { stt: boolean; tts: boolean; ttsLanguage: string | null; documents: boolean; pdf: boolean } {
+): { stt: boolean; tts: boolean; ttsLanguage: string | null; documents: boolean; ocr: boolean } {
   const canSpeak = Boolean(tts);
   return {
-    // Files can be attached (read on the add-on); PDFs need Mistral OCR.
+    // Files can be attached (read on the add-on); scanned PDFs need Mistral OCR.
     documents: true,
-    pdf: Boolean(mistralKey()),
+    ocr: Boolean(mistralKey()),
     stt: Boolean(stt),
     tts: canSpeak,
     ttsLanguage: canSpeak ? ttsLanguage?.trim() || null : null,
@@ -298,7 +319,11 @@ export function createRouter(
       // A thread starts with an empty memory on purpose.
       if (!isThreadId(parsed.data.conversationId)) void checkEmptyBucket?.(parsed.data.userId);
 
-      const request = await withAttachedDocuments(parsed.data);
+      const { request, confirm } = await withAttachedDocuments(parsed.data);
+      if (confirm) {
+        // Nothing is read or stored until the caller resends with ocr: yes/no.
+        return res.status(409).json({ error: "ocr_confirmation_required", ocr: confirm });
+      }
       // Use streaming internally (no callback = just faster processing)
       const response = await llm.chat({
         ...request,
@@ -354,11 +379,20 @@ export function createRouter(
       //   chunk  — text of the current message
       //   status — the server's heads-up before a long batch of tool calls;
       //            shown to the person waiting, never part of the reply
+      //   ocr_confirm — a scanned PDF needs paid OCR: the price to accept,
+      //            sent instead of a reply (the request is resent with ocr)
       // followed by `done` with the complete response as /api/chat returns it.
       const send = (event: string, data: unknown) =>
         res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
       if (parsed.data.documents?.length) send("status", { text: "Lecture des fichiers…" });
-      const request = await withAttachedDocuments(parsed.data);
+      const { request, confirm } = await withAttachedDocuments(parsed.data);
+      if (confirm) {
+        // The panel asks the user and resends with ocr: "yes" or "no";
+        // nothing was sent to the model or stored.
+        send("ocr_confirm", confirm);
+        res.end();
+        return;
+      }
       const response = await llm.chat(
         {
           ...request,

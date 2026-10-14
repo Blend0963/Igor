@@ -144,6 +144,13 @@
   .chart .slice { stroke: #1d2029; stroke-width: 2; }
   .chart .pie-total { fill: #e6e9ef; font-size: 15px; font-weight: 600; font-family: inherit; }
   .chart .table-wrap { margin: 4px 0; }
+  .ocr-card { border: 1px solid #c98500; }
+  .ocr-card p { margin: 0 0 8px; }
+  .ocr-cost { color: #e6c27a; font-size: 13px; }
+  .ocr-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ocr-actions button { border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; font: inherit; font-size: 13px; }
+  .ocr-yes { background: #3b5bdb; color: #fff; }
+  .ocr-no { background: #2a2f3d; color: #e6e9ef; }
   .file-link { display: inline-block; background: #1a1d24; border: 1px solid #2c313d; border-radius: 8px; padding: 4px 10px; margin: 2px 0; text-decoration: none; }
   .file-link:hover { background: #2a2f3d; }
   .msg-docs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
@@ -955,6 +962,57 @@
     return svg;
   }
 
+  // ----- OCR price check -----
+  //
+  // A PDF without text (a scan) can only be read by Mistral OCR, billed per
+  // page. The server stops before reading it and sends the estimate; the
+  // user decides here, and the message is sent again with the answer.
+
+  function money(v) {
+    var digits = v < 0.01 ? 4 : v < 1 ? 3 : 2;
+    return v.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: digits }) + " $";
+  }
+
+  function askOcr(box, q, answer) {
+    box.textContent = "";
+    box.classList.add("ocr-card");
+    var files = (q.files || []).map(function (f) {
+      return "« " + f.name + " » (" + Math.max(1, f.pages) + " page" + (f.pages > 1 ? "s" : "") + ")";
+    }).join(", ");
+    var p = document.createElement("p");
+    p.textContent = (q.files.length > 1 ? "Ces PDF sont des scans sans texte : " : "Ce PDF est un scan sans texte : ") + files +
+      ". Pour le lire, MaDo doit passer par l'OCR de Mistral, facturé à la page.";
+    var cost = document.createElement("p");
+    cost.className = "ocr-cost";
+    cost.textContent = "Coût estimé : ≈ " + money(q.cost) + " pour " + q.pages + " page" + (q.pages > 1 ? "s" : "") +
+      " (tarif indicatif " + money(q.pricePer1000Pages) + " les 1000 pages ; par exemple 10 pages ≈ " + money(q.pricePer1000Pages / 100) +
+      ", 100 pages ≈ " + money(q.pricePer1000Pages / 10) + ").";
+    var row = document.createElement("div");
+    row.className = "ocr-actions";
+    var yes = document.createElement("button");
+    yes.type = "button";
+    yes.className = "ocr-yes";
+    yes.textContent = "Lire avec l'OCR (≈ " + money(q.cost) + ")";
+    var no = document.createElement("button");
+    no.type = "button";
+    no.className = "ocr-no";
+    no.textContent = "Envoyer sans le lire";
+    function pick(choice) {
+      if (state.busy) return;
+      yes.disabled = no.disabled = true;
+      if (box.parentNode) box.parentNode.removeChild(box);
+      answer(choice);
+    }
+    yes.addEventListener("click", function () { pick("yes"); });
+    no.addEventListener("click", function () { pick("no"); });
+    row.appendChild(yes);
+    row.appendChild(no);
+    box.appendChild(p);
+    box.appendChild(cost);
+    box.appendChild(row);
+    scrollDown();
+  }
+
   // ----- read aloud -----
   //
   // 🔊 under a reply when the server has a voice (TTS). Code, charts and
@@ -1083,11 +1141,14 @@
     s.className = isError ? "err" : "";
   }
 
-  function send(text, images, shown, docs) {
+  // `shown` null: a resend (after the OCR question), the user's bubble is
+  // already on screen. `ocr`: the answer to that question, "yes" or "no".
+  function send(text, images, shown, docs, ocr) {
     state.busy = true;
     el("btn-send").disabled = true;
-    addBubble("user", shown, images);
+    if (shown !== null) addBubble("user", shown, images);
     scrollDown();
+    var ocrQuestion = null;
     var bubble = addBubble("assistant", "");
     var acc = "";
     var finalResponse = null;
@@ -1113,6 +1174,7 @@
       else if (eventName === "status") { setStatus(payload.text || ""); }
       else if (eventName === "error") { streamError = payload.error || "Erreur"; setStatus(streamError, true); }
       else if (eventName === "done") { finalResponse = payload; }
+      else if (eventName === "ocr_confirm") { ocrQuestion = payload; setStatus(""); }
     }
 
     var payload = {
@@ -1124,6 +1186,7 @@
     };
     if (images && images.length) payload.images = images;
     if (docs && docs.length) payload.documents = docs;
+    if (ocr) payload.ocr = ocr;
     var body = JSON.stringify(payload);
     var streamError = "";
 
@@ -1147,6 +1210,12 @@
       })
       .catch(function (err) { streamError = String(err.message || err); setStatus(streamError, true); })
       .then(function () {
+        if (ocrQuestion) {
+          askOcr(bubble, ocrQuestion, function (answer) { send(text, images, null, docs, answer); });
+          state.busy = false;
+          el("btn-send").disabled = false;
+          return;
+        }
         // The final payload is authoritative: when nothing streamed (a
         // silent model, a structured error) it is the only place the
         // answer exists.
@@ -1224,7 +1293,6 @@
     if (!list.length) return;
     list.forEach(function (file) {
       if (!file.size) { setStatus((file.name || "Fichier") + " est vide.", true); return; }
-      if (/\.pdf$/i.test(file.name || "") && !state.caps.pdf) setStatus("Les PDF ne seront pas lus : il faut une clé Mistral dans la configuration de l'add-on.", true);
       if (state.docs.length + state.preparing >= MAX_DOCS) { setStatus("Au plus " + MAX_DOCS + " documents par message.", true); return; }
       if (file.size > MAX_DOC_BYTES) { setStatus(file.name + " : 10 Mo au plus.", true); return; }
       state.preparing++;

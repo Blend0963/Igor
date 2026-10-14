@@ -118,6 +118,13 @@ configuration:
       Comma-separated names or ids of connectors set up in your Mistral
       account (Gmail, calendar, Notion…). Enables the use_connector tool in
       chat threads. MaDo asks before anything that sends, books or deletes.
+  ocr_price_per_1000_pages:
+    name: OCR Price (per 1000 pages)
+    description: >-
+      Used only for the estimate MaDo shows before reading a scanned PDF with
+      Mistral OCR, in USD per 1000 pages. Unset = 4 (Mistral's list price for
+      its latest OCR model in October 2026). PDFs that contain text are read on
+      the add-on for free and never need OCR.
   max_output_tokens:
     name: Maximum Answer Length
     description: >-

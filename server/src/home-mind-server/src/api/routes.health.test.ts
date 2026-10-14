@@ -17,7 +17,7 @@ describe("healthCapabilities", () => {
       tts: false,
       ttsLanguage: null,
       documents: true,
-      pdf: false,
+      ocr: false,
     });
   });
 
@@ -25,7 +25,7 @@ describe("healthCapabilities", () => {
     const before = process.env.MISTRAL_API_KEY;
     process.env.MISTRAL_API_KEY = "k";
     try {
-      expect(healthCapabilities().pdf).toBe(true);
+      expect(healthCapabilities().ocr).toBe(true);
     } finally {
       if (before === undefined) delete process.env.MISTRAL_API_KEY;
       else process.env.MISTRAL_API_KEY = before;

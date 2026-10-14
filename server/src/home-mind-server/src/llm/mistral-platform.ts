@@ -15,7 +15,7 @@
  * degrade to "no text" rather than throw.
  */
 
-import { extractFileText } from "../files/extract.js";
+import { extractFileText, type OcrRequest } from "../files/extract.js";
 
 const API = "https://api.mistral.ai/v1";
 
@@ -196,18 +196,35 @@ export function decodeDataUrl(dataUrl: string): { mime: string; data: Buffer } {
 
 /**
  * The user's message with the text of every attached file after it. Read
- * once (on the add-on, or through OCR for a PDF) and stored with the
- * message: later turns of the thread see the file in their history without
- * reading it again.
+ * once (on the add-on, or through OCR for a scanned PDF the user agreed to
+ * pay for) and stored with the message: later turns of the thread see the
+ * file in their history without reading it again.
+ *
+ * `ocrRequests` lists the scans still waiting for that agreement; the caller
+ * must ask before going on when it is not empty.
  */
-export async function withDocuments(message: string, documents: AttachedDocument[], apiKey?: string): Promise<string> {
+export async function withDocuments(
+  message: string,
+  documents: AttachedDocument[],
+  apiKey?: string,
+  ocr: "ask" | "yes" | "no" = "ask"
+): Promise<{ message: string; ocrRequests: OcrRequest[] }> {
   const blocks: string[] = [];
+  const ocrRequests: OcrRequest[] = [];
   for (const doc of documents) {
     const { mime, data } = decodeDataUrl(doc.data);
     const text = await extractFileText(doc.name, mime, data, {
       ocrPdf: apiKey ? (dataUrl) => ocrDocument(apiKey, dataUrl) : undefined,
+      ocr,
+      ocrRequests,
     });
     blocks.push(documentBlock(doc.name, text));
   }
-  return blocks.length ? `${message}\n\n${blocks.join("\n\n")}` : message;
+  return { message: blocks.length ? `${message}\n\n${blocks.join("\n\n")}` : message, ocrRequests };
+}
+
+/** Mistral's OCR list price per 1000 pages, in USD (OCR_PRICE_PER_1000_PAGES). */
+export function ocrPricePer1000Pages(): number {
+  const n = Number(process.env.OCR_PRICE_PER_1000_PAGES);
+  return Number.isFinite(n) && n >= 0 ? n : 4;
 }

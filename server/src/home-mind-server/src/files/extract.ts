@@ -3,12 +3,15 @@
  *
  * Read here, on the add-on, whenever the format allows it: Word, Excel,
  * PowerPoint and OpenDocument files are ZIP archives of XML, text formats are
- * text, and an archive is opened and its readable files read in turn. Only a
- * PDF goes out to Mistral OCR, which is billed per page; everything else costs
- * nothing but the tokens of the text itself, which is capped per file.
+ * text, a PDF's own text layer is read with pdf.js, and an archive is opened
+ * and its readable files read in turn. Only a PDF without text (a scan) needs
+ * Mistral OCR, which is billed per page, and only once the user has agreed to
+ * its price; everything else costs nothing but the tokens of the text itself,
+ * which is capped per file.
  */
 
 import { readZip, type ZipEntry } from "./zip.js";
+import { readPdfText } from "./pdf.js";
 
 /** Longest text kept from one attached file, in characters (~10k tokens). */
 export const MAX_FILE_CHARS = 40000;
@@ -197,9 +200,22 @@ export function cut(text: string, max = MAX_FILE_CHARS): string {
   return text.length > max ? `${text.slice(0, max)}\n\n[… cut after ${max} characters of ${text.length}]` : text;
 }
 
+/** A scanned PDF waiting for the user's yes before it is sent to OCR. */
+export interface OcrRequest {
+  name: string;
+  pages: number;
+}
+
 export interface ExtractOptions {
-  /** Reads a PDF (data URL) through OCR; absent means PDFs cannot be read. */
+  /** Reads a PDF (data URL) through OCR; absent means scans cannot be read. */
   ocrPdf?: (dataUrl: string) => Promise<string>;
+  /**
+   * What to do with a scan: "ask" (default) records it in `ocrRequests` and
+   * reads nothing, "yes" sends it to OCR, "no" leaves it unread.
+   */
+  ocr?: "ask" | "yes" | "no";
+  /** Scans waiting for the user's decision ("ask"). */
+  ocrRequests?: OcrRequest[];
   /** Archive nesting depth already reached. */
   depth?: number;
 }
@@ -209,10 +225,7 @@ export async function extractFileText(name: string, mime: string, data: Buffer, 
   const ext = extensionOf(name);
   const type = mime.toLowerCase();
   try {
-    if (ext === "pdf" || type === "application/pdf") {
-      if (!opts.ocrPdf) return "[PDF not read: reading PDFs needs a Mistral API key in the MaDo add-on configuration]";
-      return cut((await opts.ocrPdf(`data:application/pdf;base64,${data.toString("base64")}`)) || "[no text found in this PDF]");
-    }
+    if (ext === "pdf" || type === "application/pdf") return await pdfFileText(name, data, opts);
     if (LEGACY_OFFICE.has(ext)) {
       return `[old binary Office format (.${ext}) not readable: save it as .${ext}x and attach it again]`;
     }
@@ -247,10 +260,8 @@ async function zipText(data: Buffer, depth: number, opts: ExtractOptions): Promi
     if (used > MAX_FILE_CHARS) break;
     const ext = extensionOf(entry.name);
     if (IMAGE_EXTENSIONS.has(ext) || entry.name.startsWith("__MACOSX/")) continue;
-    // PDFs inside an archive are listed, not OCR'd: each page is billed.
-    const text = ext === "pdf"
-      ? "[PDF inside an archive: attach it on its own to have it read]"
-      : await extractFileText(entry.name, "", entry.data, { depth: depth + 1 });
+    // Never OCR inside an archive: a scanned PDF in it is only noted.
+    const text = await extractFileText(entry.name, "", entry.data, { depth: depth + 1 });
     const block = `--- ${entry.name} ---\n${cut(text, Math.max(500, MAX_FILE_CHARS - used))}`;
     parts.push(block);
     used += block.length;
@@ -276,4 +287,33 @@ export function shortenAttachedFiles(content: string, excerpt = OLD_FILE_EXCERPT
       ? whole
       : `<document name="${name}">\n${body.slice(0, excerpt)}\n[… only the opening is kept this far back in the conversation; ask the user to attach the file again if its details are needed]\n</document>`
   );
+}
+
+/** A PDF: its own text when it has one, OCR for a scan once the user agreed. */
+async function pdfFileText(name: string, data: Buffer, opts: ExtractOptions): Promise<string> {
+  let local: Awaited<ReturnType<typeof readPdfText>> | undefined;
+  try {
+    local = await readPdfText(data, MAX_FILE_CHARS);
+  } catch (error) {
+    // Damaged or encrypted: OCR may still manage, so it is treated as a scan.
+    console.warn(`[pdf] ${name}: ${error instanceof Error ? error.message : error}`);
+  }
+  if (local && !local.needsOcr) {
+    const note = local.imagePages
+      ? `\n\n[${local.imagePages} of ${local.pages} pages carry no text (images or scans) and were not read]`
+      : "";
+    return cut(local.text) + note;
+  }
+  const pages = local?.pages ?? 0;
+  const what = `scanned PDF${pages ? ` (${pages} page${pages > 1 ? "s" : ""})` : ""}`;
+  if (!opts.ocrPdf) {
+    return `[${what}: it has no text layer, and reading it needs Mistral OCR, which needs a Mistral API key in the MaDo add-on configuration]`;
+  }
+  const decision = opts.ocr ?? "ask";
+  if (decision === "no") return `[${what} not read: the user chose not to pay for OCR]`;
+  if (decision === "ask") {
+    opts.ocrRequests?.push({ name, pages });
+    return `[${what}: waiting for the user to accept the OCR cost]`;
+  }
+  return cut((await opts.ocrPdf(`data:application/pdf;base64,${data.toString("base64")}`)) || "[no text found in this PDF]");
 }

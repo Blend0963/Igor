@@ -62,6 +62,7 @@ TEXT_TO_SPEECH=$(jq -r '.text_to_speech // "off"' "$OPTIONS")
 TTS_VOICE=$(jq -r '.tts_voice // ""' "$OPTIONS")
 MISTRAL_LIBRARY_IDS=$(jq -r '.mistral_library_ids // ""' "$OPTIONS")
 MISTRAL_CONNECTORS=$(jq -r '.mistral_connectors // ""' "$OPTIONS")
+OCR_PRICE=$(jq -r '.ocr_price_per_1000_pages // ""' "$OPTIONS")
 EXTRACTION_MODEL=$(jq -r '.extraction_model // ""' "$OPTIONS")
 # `// ""` would turn an explicit "off" into "", so test for null instead.
 EXTRACTION_GATE=$(jq -r 'if .extraction_gate == null then "" else .extraction_gate end' "$OPTIONS")
@@ -252,6 +253,7 @@ write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$THREAD_REASONING" ] && write_env "THREAD_REASONING" "$THREAD_REASONING"
 [ -n "$MISTRAL_LIBRARY_IDS" ] && write_env "MISTRAL_LIBRARY_IDS" "$MISTRAL_LIBRARY_IDS"
 [ -n "$MISTRAL_CONNECTORS" ] && write_env "MISTRAL_CONNECTORS" "$MISTRAL_CONNECTORS"
+[ -n "$OCR_PRICE" ] && write_env "OCR_PRICE_PER_1000_PAGES" "$OCR_PRICE"
 [ -n "$EXTRACTION_MODEL" ] && write_env "EXTRACTION_MODEL" "$EXTRACTION_MODEL"
 [ -n "$EXTRACTION_GATE" ] && write_env "EXTRACTION_GATE" "$EXTRACTION_GATE"
 [ -n "$LAYOUT_FROM_EXPOSED" ] && write_env "LAYOUT_FROM_EXPOSED" "$LAYOUT_FROM_EXPOSED"

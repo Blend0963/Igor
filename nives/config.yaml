@@ -81,6 +81,8 @@ schema:
   # (use_connector), comma-separated. Unset = tool not offered.
   mistral_library_ids: "str?"
   mistral_connectors: "str?"
+  # Price shown before a scanned PDF goes to Mistral OCR. Unset = 4 (USD).
+  ocr_price_per_1000_pages: "float(0,1000)?"
   # Cheaper model for the background memory-extraction pass. Unset = the
   # main chat model. Absent from `options:` above, like the rest: an
   # empty value means "same model as the chat model".

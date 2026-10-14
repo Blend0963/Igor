@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { parseConversationOutputs, withDocuments, documentBlock, listFromEnv, MAX_OCR_CHARS, ocrDocument } from "./mistral-platform.js";
 import { handlePlatformTool } from "./platform-tools.js";
 import { configureMediaStore, getMediaStore } from "./media-store.js";
+import { buildPdf } from "../files/create.js";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -40,27 +41,33 @@ describe("parseConversationOutputs", () => {
 });
 
 describe("documents", () => {
-  it("appends the OCR text of each PDF, marked for the panel", async () => {
+  const scan = `data:application/pdf;base64,${buildPdf("").toString("base64")}`;
+
+  it("stops for the user's yes before OCR, then sends the scan to Mistral OCR", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ pages: [{ markdown: "# Facture" }, { markdown: "Total 42 €" }] }));
     vi.stubGlobal("fetch", fetchMock);
-    const out = await withDocuments("Résume", [{ name: "f.pdf", data: "data:application/pdf;base64,JVBERg==" }], "key");
-    expect(out).toBe('Résume\n\n<document name="f.pdf">\n--- page 1 ---\n# Facture\n\n--- page 2 ---\nTotal 42 €\n</document>');
+    const asked = await withDocuments("Résume", [{ name: "f.pdf", data: scan }], "key");
+    expect(asked.ocrRequests).toEqual([{ name: "f.pdf", pages: 1 }]);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const out = await withDocuments("Résume", [{ name: "f.pdf", data: scan }], "key", "yes");
+    expect(out.message).toBe('Résume\n\n<document name="f.pdf">\n--- page 1 ---\n# Facture\n\n--- page 2 ---\nTotal 42 €\n</document>');
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(fetchMock.mock.calls[0][0]).toBe("https://api.mistral.ai/v1/ocr");
-    expect(body.document).toEqual({ type: "document_url", document_url: "data:application/pdf;base64,JVBERg==" });
+    expect(body.document).toEqual({ type: "document_url", document_url: scan });
   });
 
   it("keeps the message going when OCR fails", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("nope", { status: 500 })));
-    const out = await withDocuments("Q", [{ name: "x.pdf", data: "data:application/pdf;base64,AA" }], "key");
-    expect(out).toContain("[file could not be read");
+    const out = await withDocuments("Q", [{ name: "x.pdf", data: scan }], "key", "yes");
+    expect(out.message).toContain("[file could not be read");
   });
 
   it("reads other files on the add-on, without calling Mistral", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const out = await withDocuments("Q", [{ name: "notes.txt", data: `data:text/plain;base64,${Buffer.from("salut").toString("base64")}` }]);
-    expect(out).toBe('Q\n\n<document name="notes.txt">\nsalut\n</document>');
+    expect(out.message).toBe('Q\n\n<document name="notes.txt">\nsalut\n</document>');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
