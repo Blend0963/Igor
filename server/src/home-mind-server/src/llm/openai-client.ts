@@ -189,6 +189,7 @@ export class OpenAIChatEngine implements IChatEngine {
       const semanticContext = "## Semantically relevant past conversations\n" +
         "These are retrieved by meaning similarity. They are past memories, NOT the present state of the home.\n" +
         "Never assume a device is still in a remembered state: always verify the current state via get_state or search_entities before acting.\n" +
+        "The [time] markers on each entry say WHEN it was said; they are metadata, never part of the message itself — never copy them or start a reply with a timestamp.\n" +
         semanticMessages.map((msg) => {
           const t = historyTimestamp(msg.createdAt);
           return (t ? `[${t}] ` : "") + `[${msg.role}] ${msg.content.slice(0, 700)}`;
@@ -208,7 +209,12 @@ export class OpenAIChatEngine implements IChatEngine {
     if (effectiveConversationId) {
       const history = await this.conversations.getConversationHistory(effectiveConversationId, 20);
       for (const msg of history) {
-        const stamp = historyTimestamp(msg.createdAt);
+        // Only the user's turns carry the time marker. Stamping the
+        // assistant's own past replies taught the model to open its answers
+        // with a recited "[09:12]" — it imitates its own history entries —
+        // and an unstamped reply right after a stamped user turn is dated
+        // already.
+        const stamp = msg.role === "user" ? historyTimestamp(msg.createdAt) : "";
         const prefix = stamp ? `[${stamp}] ` : "";
         messages.push({ role: msg.role, content: `${prefix}${msg.content}` });
       }
