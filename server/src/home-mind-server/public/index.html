@@ -66,6 +66,13 @@
   .msg-images { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
   .msg-images img { max-width: 220px; max-height: 220px; border-radius: 10px; display: block; cursor: zoom-in; }
   .msg-images:last-child { margin-bottom: 0; }
+  #camera:not([hidden]) { position: fixed; inset: 0; z-index: 50; background: #000; display: flex; flex-direction: column; }
+  #camera video { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #000; }
+  #camera .cam-bar { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px calc(16px + env(safe-area-inset-bottom)); background: #000; }
+  #camera .cam-side { background: none; border: 0; color: #fff; font: inherit; font-size: 15px; cursor: pointer; min-width: 72px; padding: 8px; }
+  #camera .cam-side:disabled { opacity: 0.3; cursor: default; }
+  #cam-shoot { width: 68px; height: 68px; border-radius: 50%; border: 4px solid #fff; background: rgba(255,255,255,0.25); cursor: pointer; padding: 0; }
+  #cam-shoot:active { background: rgba(255,255,255,0.6); }
   #main.drag { outline: 2px dashed #3b5bdb; outline-offset: -8px; }
   .thread .t-edit { visibility: hidden; border: 0; background: none; color: #8b93a5; cursor: pointer; font-size: 13px; padding: 2px; }
   .thread:hover .t-edit { visibility: visible; }
@@ -129,6 +136,14 @@
       </form>
     </div>
   </main>
+</div>
+<div id="camera" hidden>
+  <video id="cam-video" autoplay playsinline muted></video>
+  <div class="cam-bar">
+    <button id="cam-cancel" class="cam-side" type="button">Annuler</button>
+    <button id="cam-shoot" type="button" title="Prendre la photo" aria-label="Prendre la photo"></button>
+    <button id="cam-flip" class="cam-side" type="button" title="Changer de caméra">⟲</button>
+  </div>
 </div>
 <div id="settings" class="modal" hidden>
   <div class="box">
@@ -672,7 +687,94 @@
   }
 
   el("btn-attach").addEventListener("click", function () { el("file-attach").click(); });
-  el("btn-camera").addEventListener("click", function () { el("file-camera").click(); });
+  // ----- camera -----
+  //
+  // A viewfinder inside the panel. The capture attribute on the file input
+  // only hints at the camera, and desktop browsers and some app webviews
+  // ignore it and show the same file picker as 📎, so the stream is opened
+  // here directly. The panel is same-origin with Home Assistant, which is
+  // what lets it reach the camera at all; where it still cannot (permission
+  // refused, no camera), the file input stays the fallback.
+
+  var cam = { stream: null, facing: "environment" };
+
+  function stopCamera() {
+    if (cam.stream) cam.stream.getTracks().forEach(function (t) { t.stop(); });
+    cam.stream = null;
+    el("cam-video").srcObject = null;
+  }
+
+  function closeCamera() {
+    stopCamera();
+    el("camera").hidden = true;
+  }
+
+  function startCamera() {
+    stopCamera();
+    return navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: cam.facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    }).then(function (stream) {
+      cam.stream = stream;
+      var video = el("cam-video");
+      video.srcObject = stream;
+      return video.play().catch(function () {});
+    });
+  }
+
+  function openCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      el("file-camera").click();
+      return;
+    }
+    if (state.pending.length + state.preparing >= MAX_IMAGES) {
+      setStatus("Au plus " + MAX_IMAGES + " images par message.", true);
+      return;
+    }
+    el("camera").hidden = false;
+    startCamera().then(function () {
+      // A second camera is worth offering only where there is one.
+      return navigator.mediaDevices.enumerateDevices().then(function (devices) {
+        var count = devices.filter(function (d) { return d.kind === "videoinput"; }).length;
+        el("cam-flip").disabled = count < 2;
+      });
+    }).catch(function () {
+      closeCamera();
+      setStatus("Caméra indisponible ici : le sélecteur du téléphone va s'ouvrir.", true);
+      el("file-camera").click();
+    });
+  }
+
+  function shoot() {
+    var video = el("cam-video");
+    if (!cam.stream || !video.videoWidth) return;
+    var scale = Math.min(1, MAX_SIDE / Math.max(video.videoWidth, video.videoHeight));
+    var canvas = document.createElement("canvas");
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+    state.pending.push(canvas.toDataURL("image/jpeg", 0.85));
+    closeCamera();
+    if (!state.current) newThread();
+    renderPending();
+    el("input").focus();
+  }
+
+  el("btn-camera").addEventListener("click", openCamera);
+  el("cam-shoot").addEventListener("click", shoot);
+  el("cam-cancel").addEventListener("click", closeCamera);
+  el("cam-flip").addEventListener("click", function () {
+    cam.facing = cam.facing === "environment" ? "user" : "environment";
+    startCamera().catch(function () { setStatus("Impossible de changer de caméra.", true); });
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape" && !el("camera").hidden) closeCamera();
+  });
+  // Leaving the page (or the app going to the background) must not leave
+  // the camera light on.
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden && !el("camera").hidden) closeCamera();
+  });
   ["file-attach", "file-camera"].forEach(function (id) {
     el(id).addEventListener("change", function (ev) {
       addFiles(ev.target.files);
