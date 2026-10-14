@@ -671,7 +671,38 @@ describe("OpenAIChatEngine", () => {
     );
   });
 
-  it("stores messages in shared history when conversationId is absent", async () => {
+  it("routes a web thread to its own isolated conversation", async () => {
+    // The web UI sends "mado-thread:" ids so each discussion keeps its own
+    // short-term history; Assist/voice keeps the shared cross-device one.
+    mockCreate.mockResolvedValue(
+      makeStream([
+        { choices: [{ delta: { content: "Ok" }, finish_reason: null }] },
+        { choices: [{ delta: {}, finish_reason: "stop" }] },
+      ])
+    );
+
+    await engine.chat({
+      message: "Hello",
+      userId: "user-1",
+      conversationId: "mado-thread:abc",
+    });
+
+    expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-thread:abc", 20);
+    expect(conversations.storeMessage).toHaveBeenCalledWith(
+      "mado-thread:abc",
+      "user-1",
+      "user",
+      "Hello"
+    );
+    expect(conversations.storeMessage).toHaveBeenCalledWith(
+      "mado-thread:abc",
+      "user-1",
+      "assistant",
+      "Ok"
+    );
+  });
+
+    it("stores messages in shared history when conversationId is absent", async () => {
     mockCreate.mockResolvedValue(
       makeStream([
         { choices: [{ delta: { content: "Hi!" }, finish_reason: null }] },

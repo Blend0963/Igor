@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import type { Config } from "../config.js";
 import type { IMemoryStore } from "../memory/interface.js";
 import type { IConversationStore } from "../memory/types.js";
+import { THREAD_PREFIX } from "../memory/types.js";
 import { HomeAssistantClient } from "../ha/client.js";
 import { DeviceScanner } from "../ha/device-scanner.js";
 import { TopologyScanner } from "../ha/topology-scanner.js";
@@ -127,8 +128,15 @@ export class OpenAIChatEngine implements IChatEngine {
     const events = toStreamEvents(streamArg);
     const onChunk = events.onChunk;
     const { message, userId, conversationId, isVoice = false, customPrompt, language } = request;
-    // Use one durable conversation ID per MaDo user across Assist sessions, devices, and dates.
-    const effectiveConversationId = `mado-user:${userId}`;
+    // Two conversation scopes, on purpose:
+    // - no thread id → the ONE durable shared conversation per user, which is
+    //   what makes MaDo remember across the phone, the laptop and the voice
+    //   satellites — Assist sends its own conversation ids and they are
+    //   deliberately ignored there;
+    // - a "mado-thread:" id, created by the web UI → this discussion only,
+    //   isolated from every other thread and from the shared history.
+    const isThread = typeof conversationId === "string" && conversationId.startsWith(THREAD_PREFIX);
+    const effectiveConversationId = isThread ? conversationId : `mado-user:${userId}`;
     const toolsUsed: string[] = [];
     let announced = false;
     const turnId = randomUUID(); // nonce for this turn — powers the automation confirmation gate
@@ -184,7 +192,13 @@ export class OpenAIChatEngine implements IChatEngine {
     const stableSystemPrompt = markerIndex === -1 ? systemPrompt : systemPrompt.slice(0, markerIndex);
     let volatileSystemPrompt = markerIndex === -1 ? "" : systemPrompt.slice(markerIndex + 2);
     // Retrieve distant history strictly by semantic similarity, never by keywords or recency.
-    const semanticMessages = await recallSemantically(this.config, this.conversations, userId, message, 6);
+    // A thread recalls only its own distant past: pulling messages from other
+    // threads would quietly un-isolate the very discussions the web UI keeps
+    // apart. The shared conversation keeps recalling across everything, as before.
+    const semanticMessages = await recallSemantically(
+      this.config, this.conversations, userId, message, 6,
+      isThread ? effectiveConversationId : undefined
+    );
     if (semanticMessages.length > 0) {
       const semanticContext = "## Semantically relevant past conversations\n" +
         "These are retrieved by meaning similarity. They are past memories, NOT the present state of the home.\n" +
