@@ -63,6 +63,14 @@ configuration:
       spoken, the right choice when you talk to Assist rather than type.
       "text" treats every Assist request as typed. Chat-panel threads are
       never affected.
+  speech_to_text:
+    name: Speech-to-Text (Panel Microphone)
+    description: >-
+      Transcription for the 🎤 button in the chat panel, done by Mistral's
+      Voxtral. "auto" (default) turns it on whenever a Mistral key is set:
+      the web-search key above, or your chat key when the provider is
+      Mistral. "off" hides the microphone. When on, MaDo also offers itself
+      as a speech-to-text engine in Home Assistant's voice assistants.
   max_output_tokens:
     name: Maximum Answer Length
     description: >-

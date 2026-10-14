@@ -51,3 +51,23 @@ RESPONSE=$(curl -s -X POST \
 
 # Never log the token itself.
 echo "[discovery] Supervisor response: ${RESPONSE:-no response}"
+
+# Put the chat panel in the Home Assistant sidebar, once. Supervisor leaves an
+# ingress add-on's "Show in sidebar" off on install, which hides the panel
+# from anyone who does not know to look for the toggle. This turns it on the
+# first time only: the marker means a user who switches it off again keeps it
+# off. Needs only the add-on's own token (it changes this add-on's options).
+PANEL_MARKER="/data/.sidebar_panel_enabled"
+if [ ! -f "$PANEL_MARKER" ]; then
+    PANEL_RESPONSE=$(curl -s -X POST \
+        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d '{"ingress_panel": true}' \
+        http://supervisor/addons/self/options 2>&1) || true
+    if printf '%s' "$PANEL_RESPONSE" | grep -q '"result": *"ok"'; then
+        touch "$PANEL_MARKER"
+        echo "[discovery] Chat panel added to the Home Assistant sidebar"
+    else
+        echo "[discovery] Could not add the chat panel to the sidebar: ${PANEL_RESPONSE:-no response}"
+    fi
+fi

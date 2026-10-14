@@ -52,6 +52,7 @@ CUSTOM_PROMPT=$(jq -r '.custom_prompt // ""' "$OPTIONS")
 CUSTOM_PROMPT_VOICE=$(jq -r '.custom_prompt_voice // ""' "$OPTIONS")
 CUSTOM_PROMPT_THREAD=$(jq -r '.custom_prompt_thread // ""' "$OPTIONS")
 ASSIST_MODE=$(jq -r '.assist_mode // ""' "$OPTIONS")
+SPEECH_TO_TEXT=$(jq -r '.speech_to_text // "auto"' "$OPTIONS")
 MISTRAL_API_KEY=$(jq -r '.mistral_api_key // ""' "$OPTIONS")
 MAX_OUTPUT_TOKENS=$(jq -r '.max_output_tokens // ""' "$OPTIONS")
 REASONING_EFFORT=$(jq -r '.reasoning_effort // ""' "$OPTIONS")
@@ -196,6 +197,21 @@ else
     echo "[init]          Leaving the MaDo API unauthenticated so the integration"
     echo "[init]          keeps working. Port 3100 is reachable by anything on the"
     echo "[init]          same network."
+fi
+
+# --- Speech-to-text (the chat panel's microphone) ---
+# Voxtral on Mistral's API. The web-search key is preferred; a Mistral chat
+# key works as well, since both are keys to the same account.
+STT_KEY="$MISTRAL_API_KEY"
+if [ -z "$STT_KEY" ] && [ "$LLM_PROVIDER" = "mistral" ]; then
+    STT_KEY="$LLM_API_KEY"
+fi
+if [ "$SPEECH_TO_TEXT" != "off" ] && [ -n "$STT_KEY" ]; then
+    write_env "STT_PROVIDER" "mistral"
+    write_env "STT_API_KEY" "$STT_KEY"
+    echo "[init] Speech-to-text: Mistral Voxtral"
+else
+    echo "[init] Speech-to-text: off (${SPEECH_TO_TEXT}; needs a Mistral key)"
 fi
 
 # --- Server configuration (always the same in add-on mode) ---

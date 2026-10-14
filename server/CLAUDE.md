@@ -171,7 +171,7 @@ The model is not hardcoded: at boot the add-on asks `GET https://nives.house/api
 
 > Historical note: this section used to describe a "Home Mind Cloud metering proxy" (`OPENAI_BASE_URL=<proxy>/v1`). That proxy was retired and its repo is archived under `Legacy/`. Nothing in the request path goes through us any more.
 
-STT (optional): `STT_PROVIDER` (`openai` | `none`, default `none`), `STT_API_KEY` (overrides `OPENAI_API_KEY`), `STT_BASE_URL` (custom Whisper-compatible endpoint), `STT_MODEL` (default `whisper-1`)
+STT (optional): `STT_PROVIDER` (`openai` | `mistral` | `none`, default `none`), `STT_API_KEY` (overrides `OPENAI_API_KEY`, or `MISTRAL_API_KEY` for mistral), `STT_BASE_URL` (custom Whisper-compatible endpoint; mistral defaults to `https://api.mistral.ai/v1`), `STT_MODEL` (default `whisper-1`, or `voxtral-mini-latest` for mistral). The add-on sets `STT_PROVIDER=mistral` when a Mistral key exists unless `speech_to_text: off`; the chat panel shows its 🎤 button only when `/api/health` reports `stt: true`
 
 TTS (optional): `TTS_PROVIDER` (`openai` | `none`, default `none`), `TTS_API_KEY` (overrides `OPENAI_API_KEY`), `TTS_BASE_URL` (custom OpenAI-compatible endpoint), `TTS_MODEL` (default `tts-1`), `TTS_VOICE` (default `alloy`)
 

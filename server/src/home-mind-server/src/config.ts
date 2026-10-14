@@ -102,10 +102,13 @@ const ConfigSchema = z
     apiToken: z.string().optional(), // Bearer token for API auth (when unset, no auth enforced)
 
     // Speech-to-text (for HomeMind App)
-    sttProvider: z.enum(["openai", "none"]).default("none"),
+    // "mistral" transcribes with Voxtral on Mistral's own API, keyed by
+    // MISTRAL_API_KEY unless STT_API_KEY is set.
+    sttProvider: z.enum(["openai", "mistral", "none"]).default("none"),
     sttApiKey: z.string().optional(), // Overrides openaiApiKey for STT; falls back to openaiApiKey if unset
     sttBaseUrl: z.string().url().optional(), // Custom Whisper-compatible endpoint
-    sttModel: z.string().default("whisper-1"),
+    // Unset = the provider's own default (whisper-1, voxtral-mini-latest).
+    sttModel: z.string().optional(),
 
     // Text-to-speech (for HomeMind App)
     ttsProvider: z.enum(["openai", "none"]).default("none"),

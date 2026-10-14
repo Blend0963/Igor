@@ -57,6 +57,8 @@
   #btn-send:disabled { opacity: 0.5; cursor: default; }
   .icon-btn { background: #1a1d24; color: #c9d1e0; border: 1px solid #2c313d; border-radius: 12px; width: 42px; min-width: 42px; cursor: pointer; font-size: 17px; }
   .icon-btn:hover { background: #232733; }
+  .icon-btn.rec { background: #c92a2a; border-color: #c92a2a; color: #fff; width: auto; padding: 0 10px; font-size: 13px; white-space: nowrap; }
+  .icon-btn:disabled { opacity: 0.5; cursor: default; }
   #pending:not([hidden]) { display: flex; gap: 8px; padding: 10px 18px 0; flex-wrap: wrap; }
   .thumb { position: relative; width: 64px; height: 64px; border-radius: 10px; overflow: hidden; border: 1px solid #2c313d; }
   .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -120,7 +122,9 @@
         <button id="btn-camera" class="icon-btn" type="button" title="Prendre une photo">📷</button>
         <input id="file-attach" type="file" accept="image/*" multiple hidden>
         <input id="file-camera" type="file" accept="image/*" capture="environment" hidden>
+        <input id="file-audio" type="file" accept="audio/*" capture hidden>
         <textarea id="input" rows="1" placeholder="Écrivez à MaDo…"></textarea>
+        <button id="btn-mic" class="icon-btn" type="button" title="Parler" hidden>🎤</button>
         <button id="btn-send" type="submit">Envoyer</button>
       </form>
     </div>
@@ -152,11 +156,15 @@
   var el = function (id) { return document.getElementById(id); };
   var state = { current: null, threads: [], busy: false };
 
-  function headers() {
-    var h = { "Content-Type": "application/json" };
+  function authHeaders() {
+    var h = {};
     var token = localStorage.getItem(LS_TOKEN);
     if (token) h["Authorization"] = "Bearer " + token;
     return h;
+  }
+
+  function headers() {
+    return Object.assign({ "Content-Type": "application/json" }, authHeaders());
   }
 
   function api(path, opts) {
@@ -713,6 +721,141 @@
     el("sidebar").classList.toggle("open");
   });
 
+  // ----- microphone -----
+  //
+  // Records in the browser, converts to 16 kHz mono WAV (every transcription
+  // service reads it, whatever the phone recorded in), and sends it to the
+  // server's /api/stt. Where the browser cannot record (no MediaRecorder, or
+  // the microphone is refused), the system recorder opens instead through a
+  // file input. The text goes into the box and is sent at once, unless
+  // something was already typed there, in which case it is only added.
+
+  var MAX_RECORD_MS = 120000;
+  var rec = null;
+
+  function micLabel(text, recording) {
+    var b = el("btn-mic");
+    b.textContent = text;
+    b.classList.toggle("rec", Boolean(recording));
+  }
+
+  function startRecording() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+      el("file-audio").click();
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      var chunks = [];
+      var recorder = new MediaRecorder(stream);
+      var started = Date.now();
+      rec = { recorder: recorder, stream: stream, timer: null };
+      recorder.ondataavailable = function (ev) { if (ev.data && ev.data.size) chunks.push(ev.data); };
+      recorder.onstop = function () {
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        clearInterval(rec.timer);
+        rec = null;
+        micLabel("🎤", false);
+        var blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+        if (blob.size) transcribe(blob); else setStatus("Rien n'a été enregistré.", true);
+      };
+      recorder.start();
+      micLabel("⏹ 0:00", true);
+      rec.timer = setInterval(function () {
+        var secs = Math.floor((Date.now() - started) / 1000);
+        micLabel("⏹ " + Math.floor(secs / 60) + ":" + ("0" + (secs % 60)).slice(-2), true);
+        if (Date.now() - started >= MAX_RECORD_MS) stopRecording();
+      }, 250);
+      setStatus("J'écoute… touchez ⏹ pour terminer.");
+    }).catch(function () {
+      setStatus("Micro indisponible ici : l'enregistreur du téléphone va s'ouvrir.", true);
+      el("file-audio").click();
+    });
+  }
+
+  function stopRecording() {
+    if (rec && rec.recorder.state !== "inactive") rec.recorder.stop();
+  }
+
+  el("btn-mic").addEventListener("click", function () {
+    if (state.busy) return;
+    if (rec) stopRecording(); else startRecording();
+  });
+
+  el("file-audio").addEventListener("change", function (ev) {
+    var file = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (file) transcribe(file);
+  });
+
+  function toWav(blob) {
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx || !window.OfflineAudioContext) return Promise.reject(new Error("no audio context"));
+    return blob.arrayBuffer().then(function (buf) {
+      var ctx = new Ctx();
+      return new Promise(function (resolve, reject) {
+        ctx.decodeAudioData(buf, resolve, reject);
+      }).then(function (audio) {
+        ctx.close();
+        var rate = 16000;
+        var off = new OfflineAudioContext(1, Math.max(1, Math.ceil(audio.duration * rate)), rate);
+        var src = off.createBufferSource();
+        src.buffer = audio;
+        src.connect(off.destination);
+        src.start();
+        return off.startRendering();
+      });
+    }).then(function (rendered) {
+      var pcm = rendered.getChannelData(0);
+      var out = new DataView(new ArrayBuffer(44 + pcm.length * 2));
+      function str(o, t) { for (var i = 0; i < t.length; i++) out.setUint8(o + i, t.charCodeAt(i)); }
+      str(0, "RIFF"); out.setUint32(4, 36 + pcm.length * 2, true); str(8, "WAVE");
+      str(12, "fmt "); out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, 1, true);
+      out.setUint32(24, 16000, true); out.setUint32(28, 32000, true); out.setUint16(32, 2, true); out.setUint16(34, 16, true);
+      str(36, "data"); out.setUint32(40, pcm.length * 2, true);
+      for (var i = 0; i < pcm.length; i++) {
+        var v = Math.max(-1, Math.min(1, pcm[i]));
+        out.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+      }
+      return new Blob([out.buffer], { type: "audio/wav" });
+    });
+  }
+
+  function transcribe(blob) {
+    var mic = el("btn-mic");
+    mic.disabled = true;
+    setStatus("Transcription…");
+    toWav(blob)
+      .catch(function () { return blob; })
+      .then(function (audio) {
+        var ext = audio.type === "audio/wav" ? "wav" : (audio.type.split("/")[1] || "webm").split(";")[0];
+        var form = new FormData();
+        form.append("audio", audio, "dictee." + ext);
+        form.append("language", (navigator.language || "fr").split("-")[0]);
+        return fetch("api/stt", { method: "POST", headers: authHeaders(), body: form });
+      })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+          return (data.text || "").trim();
+        });
+      })
+      .then(function (text) {
+        if (!text) { setStatus("Je n'ai rien entendu.", true); return; }
+        setStatus("");
+        var input = el("input");
+        if (input.value.trim()) {
+          input.value = input.value.replace(/\s*$/, " ") + text;
+          autoGrow();
+          input.focus();
+        } else {
+          input.value = text;
+          el("composer").requestSubmit();
+        }
+      })
+      .catch(function (err) { setStatus("Transcription impossible : " + err.message, true); })
+      .then(function () { mic.disabled = false; });
+  }
+
   // ----- settings -----
 
   function openSettings() {
@@ -732,7 +875,12 @@
 
   api("api/health")
     .then(function (res) { return res.json(); })
-    .then(function (h) { el("health").textContent = "v" + (h.version || "?"); })
+    .then(function (h) {
+      el("health").textContent = "v" + (h.version || "?");
+      // The microphone needs the server's transcription; without it the
+      // button would only ever answer with an error.
+      el("btn-mic").hidden = !h.stt;
+    })
     .catch(function () {});
   refreshThreads();
 })();

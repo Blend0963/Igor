@@ -21,7 +21,7 @@ import { fetchExposedEntities } from "./ha/exposed-entities.js";
 import { AssistExposure } from "./ha/exposure.js";
 import { createChatEngine, createFactExtractor } from "./llm/factory.js";
 import { createRouter } from "./api/routes.js";
-import { createSttService } from "./stt/stt-service.js";
+import { createSttService, sttModelFor } from "./stt/stt-service.js";
 import { createTtsService } from "./tts/tts-service.js";
 import { MemoryCleanupJob } from "./jobs/memory-cleanup.js";
 import { BalanceWatchJob } from "./jobs/balance-watch.js";
@@ -103,7 +103,7 @@ console.log(`  LLM client: ${config.llmProvider}/${config.llmModel}`);
 // Initialize STT (optional — only when STT_PROVIDER is set)
 const stt = createSttService(config);
 if (stt) {
-  console.log(`  STT: ${config.sttProvider} / ${config.sttModel}`);
+  console.log(`  STT: ${config.sttProvider} / ${sttModelFor(config)}`);
 } else {
   console.log("  STT: disabled");
 }
