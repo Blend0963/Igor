@@ -13,6 +13,8 @@ import {
   THREAD_MESSAGE_CAP,
   threadFactBucket,
 } from "../memory/memory-scope.js";
+import { mistralKey, ocrPricePer1000Pages, withDocuments } from "../llm/mistral-platform.js";
+import { getMediaStore } from "../llm/media-store.js";
 
 /**
  * Limits for the one multipart endpoint this server has (`POST /api/stt`).
@@ -50,7 +52,13 @@ export const CHAT_LIMITS = {
   id: 200,
   customPrompt: 20_000,
   images: 10,
+  documents: 5,
+  /** Characters of one base64 file (~10 MB of file). */
+  documentChars: 14_000_000,
 } as const;
+
+/** Any file as a base64 data URL (browsers send an empty type for unknown ones). */
+const FILE_PATTERN = /^data:[^,;]*(;[^,;]*)*;base64,[A-Za-z0-9+/=]+$/;
 
 /**
  * What an image may be: a base64 data URL in one of the formats every
@@ -85,14 +93,66 @@ export const ChatRequestSchema = z.object({
   // ("data:image/jpeg;base64,…") or a plain https URL. Forwarded to the model
   // as image content; ignored by text-only models.
   images: z.array(z.string().regex(IMAGE_PATTERN, "Expected a JPEG/PNG/WebP/GIF data URL or an https URL")).max(CHAT_LIMITS.images).optional(),
+  // Files (data URLs): Word, Excel, PowerPoint, text, ZIP… read on the add-on,
+  // PDFs through Mistral OCR; their text is added to the message.
+  documents: z
+    .array(
+      z.object({
+        name: z.string().max(200).default("document"),
+        data: z.string().max(CHAT_LIMITS.documentChars).regex(FILE_PATTERN, "Expected a base64 data URL"),
+      })
+    )
+    .max(CHAT_LIMITS.documents)
+    .optional(),
+  // A scanned PDF needs Mistral OCR, billed per page: "ask" (default) stops
+  // and returns the price for the user to accept; "yes" / "no" is the answer.
+  ocr: z.enum(["ask", "yes", "no"]).default("ask"),
 });
 
-const RenameSchema = z.object({
-  title: z
-    .string()
-    .transform((t) => t.replace(/\s+/g, " ").trim())
-    .pipe(z.string().min(1, "Title is required").max(120)),
-});
+type ParsedChatRequest = z.infer<typeof ChatRequestSchema>;
+
+/** What the user is asked before scanned PDFs go to OCR. */
+export interface OcrConfirmation {
+  files: { name: string; pages: number; cost: number }[];
+  pages: number;
+  /** Estimated total, in USD, at `pricePer1000Pages`. */
+  cost: number;
+  pricePer1000Pages: number;
+}
+
+/**
+ * The request as the engine takes it: attached files read and appended to
+ * the message. When a scanned PDF needs OCR and the user has not answered
+ * yet (`ocr: "ask"`), nothing is sent to the model: `confirm` carries the
+ * pages and the estimated price to put to them.
+ */
+export async function withAttachedDocuments(
+  data: ParsedChatRequest
+): Promise<{ request: Omit<ParsedChatRequest, "documents" | "ocr">; confirm?: OcrConfirmation }> {
+  const { documents, ocr, ...rest } = data;
+  if (!documents?.length) return { request: rest };
+  const read = await withDocuments(rest.message, documents, mistralKey(), ocr);
+  if (read.ocrRequests.length) {
+    const price = ocrPricePer1000Pages();
+    // An unreadable PDF reports 0 pages; count it as one for the estimate.
+    const files = read.ocrRequests.map((f) => ({ ...f, cost: (Math.max(1, f.pages) * price) / 1000 }));
+    const pages = files.reduce((n, f) => n + Math.max(1, f.pages), 0);
+    return { request: rest, confirm: { files, pages, cost: (pages * price) / 1000, pricePer1000Pages: price } };
+  }
+  return { request: { ...rest, message: read.message } };
+}
+
+/** PATCH a conversation: rename it, mark it as a favourite, or both. */
+export const RenameSchema = z
+  .object({
+    title: z
+      .string()
+      .transform((t) => t.replace(/\s+/g, " ").trim())
+      .pipe(z.string().min(1, "Title is required").max(120))
+      .optional(),
+    pinned: z.boolean().optional(),
+  })
+  .refine((v) => v.title !== undefined || v.pinned !== undefined, "Nothing to change: send a title or pinned");
 
 const AddFactSchema = z.object({
   content: z.string().min(1, "Fact content is required"),
@@ -210,9 +270,12 @@ export function healthCapabilities(
   stt?: unknown,
   tts?: unknown,
   ttsLanguage?: string
-): { stt: boolean; tts: boolean; ttsLanguage: string | null } {
+): { stt: boolean; tts: boolean; ttsLanguage: string | null; documents: boolean; ocr: boolean } {
   const canSpeak = Boolean(tts);
   return {
+    // Files can be attached (read on the add-on); scanned PDFs need Mistral OCR.
+    documents: true,
+    ocr: Boolean(mistralKey()),
     stt: Boolean(stt),
     tts: canSpeak,
     ttsLanguage: canSpeak ? ttsLanguage?.trim() || null : null,
@@ -261,9 +324,14 @@ export function createRouter(
       // A thread starts with an empty memory on purpose.
       if (!isThreadId(parsed.data.conversationId)) void checkEmptyBucket?.(parsed.data.userId);
 
+      const { request, confirm } = await withAttachedDocuments(parsed.data);
+      if (confirm) {
+        // Nothing is read or stored until the caller resends with ocr: yes/no.
+        return res.status(409).json({ error: "ocr_confirmation_required", ocr: confirm });
+      }
       // Use streaming internally (no callback = just faster processing)
       const response = await llm.chat({
-        ...parsed.data,
+        ...request,
         isVoice: style.isVoice,
         customPrompt: style.customPrompt,
       });
@@ -272,6 +340,9 @@ export function createRouter(
       console.error("Chat error:", error);
       if ((error as any)?.status === 402) {
         return res.status(402).json({ error: "usage_limit_reached" });
+      }
+      if ((error as any)?.status === 400) {
+        return res.status(400).json({ error: (error as Error).message });
       }
       const message = error instanceof Error ? error.message : "Unknown error";
       res.status(500).json({ error: message });
@@ -313,12 +384,23 @@ export function createRouter(
       //   chunk  — text of the current message
       //   status — the server's heads-up before a long batch of tool calls;
       //            shown to the person waiting, never part of the reply
+      //   ocr_confirm — a scanned PDF needs paid OCR: the price to accept,
+      //            sent instead of a reply (the request is resent with ocr)
       // followed by `done` with the complete response as /api/chat returns it.
       const send = (event: string, data: unknown) =>
         res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      if (parsed.data.documents?.length) send("status", { text: "Lecture des fichiers…" });
+      const { request, confirm } = await withAttachedDocuments(parsed.data);
+      if (confirm) {
+        // The panel asks the user and resends with ocr: "yes" or "no";
+        // nothing was sent to the model or stored.
+        send("ocr_confirm", confirm);
+        res.end();
+        return;
+      }
       const response = await llm.chat(
         {
-          ...parsed.data,
+          ...request,
           isVoice: style.isVoice,
           customPrompt: style.customPrompt,
         },
@@ -538,7 +620,7 @@ export function createRouter(
    * Only a conversation this user has messages in can be named.
    */
   router.patch("/conversations/:userId/:conversationId", async (req: Request, res: Response) => {
-    if (!conversations?.setConversationTitle) {
+    if (!conversations?.setConversationTitle || !conversations.setConversationPinned) {
       return res.status(501).json({ error: "Conversation store not available" });
     }
     const parsed = RenameSchema.safeParse(req.body);
@@ -555,8 +637,10 @@ export function createRouter(
       if (!owned) {
         return res.status(404).json({ error: "Conversation not found" });
       }
-      await conversations.setConversationTitle(conversationId, userId, parsed.data.title);
-      res.json({ conversationId, title: parsed.data.title });
+      const { title, pinned } = parsed.data;
+      if (title !== undefined) await conversations.setConversationTitle(conversationId, userId, title);
+      if (pinned !== undefined) await conversations.setConversationPinned(conversationId, userId, pinned);
+      res.json({ conversationId, ...(title !== undefined ? { title } : {}), ...(pinned !== undefined ? { pinned } : {}) });
     } catch (error) {
       console.error("Rename conversation error:", error);
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -647,6 +731,22 @@ export function createRouter(
       const message = error instanceof Error ? error.message : "Synthesis failed";
       res.status(500).json({ error: message });
     }
+  });
+
+  /**
+   * GET /api/media/:id
+   * A chart or image a tool produced (see llm/media-store.ts). Raster images
+   * are served inline; anything else only as a download.
+   */
+  router.get("/media/:id", (req: Request, res: Response) => {
+    const id = String(req.params.id ?? "");
+    const media = getMediaStore().get(id);
+    if (!media) return res.status(404).json({ error: "Not found" });
+    res.setHeader("Content-Type", media.mime);
+    res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+    if (!media.inline) res.setHeader("Content-Disposition", `attachment; filename="${id}"`);
+    res.send(media.data);
   });
 
   /**

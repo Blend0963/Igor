@@ -19,6 +19,7 @@ export class InMemoryConversationStore implements IConversationStore {
   private knownUsers = new Set<string>();
   private embeddings = new Map<string, number[]>();
   private titles = new Map<string, string>();
+  private pins = new Set<string>();
 
   private titleKey(conversationId: string, userId: string): string {
     return `${userId}\u0000${conversationId}`;
@@ -26,6 +27,11 @@ export class InMemoryConversationStore implements IConversationStore {
 
   setConversationTitle(conversationId: string, userId: string, title: string): void {
     this.titles.set(this.titleKey(conversationId, userId), title);
+  }
+
+  setConversationPinned(conversationId: string, userId: string, pinned: boolean): void {
+    if (pinned) this.pins.add(this.titleKey(conversationId, userId));
+    else this.pins.delete(this.titleKey(conversationId, userId));
   }
 
   storeMessage(
@@ -90,6 +96,7 @@ export class InMemoryConversationStore implements IConversationStore {
       const firstUser = messages.find((m) => m.userId === userId && m.role === "user");
       results.push({
         conversationId: convId,
+        pinned: this.pins.has(this.titleKey(convId, userId)),
         title:
           this.titles.get(this.titleKey(convId, userId)) ??
           summarizeTitle((firstUser ?? lastMsg).content),
@@ -109,6 +116,11 @@ export class InMemoryConversationStore implements IConversationStore {
     for (const key of [...this.titles.keys()]) {
       if (key.endsWith(`\u0000${conversationId}`) && (userId === undefined || key === this.titleKey(conversationId, userId))) {
         this.titles.delete(key);
+      }
+    }
+    for (const key of [...this.pins]) {
+      if (key.endsWith(`\u0000${conversationId}`) && (userId === undefined || key === this.titleKey(conversationId, userId))) {
+        this.pins.delete(key);
       }
     }
     if (!messages) return 0;

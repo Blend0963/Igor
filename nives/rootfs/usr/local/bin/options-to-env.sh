@@ -57,6 +57,12 @@ SPEECH_TO_TEXT=$(jq -r '.speech_to_text // "auto"' "$OPTIONS")
 MISTRAL_API_KEY=$(jq -r '.mistral_api_key // ""' "$OPTIONS")
 MAX_OUTPUT_TOKENS=$(jq -r '.max_output_tokens // ""' "$OPTIONS")
 REASONING_EFFORT=$(jq -r '.reasoning_effort // ""' "$OPTIONS")
+THREAD_REASONING=$(jq -r '.thread_reasoning // ""' "$OPTIONS")
+TEXT_TO_SPEECH=$(jq -r '.text_to_speech // "off"' "$OPTIONS")
+TTS_VOICE=$(jq -r '.tts_voice // ""' "$OPTIONS")
+MISTRAL_LIBRARY_IDS=$(jq -r '.mistral_library_ids // ""' "$OPTIONS")
+MISTRAL_CONNECTORS=$(jq -r '.mistral_connectors // ""' "$OPTIONS")
+OCR_PRICE=$(jq -r '.ocr_price_per_1000_pages // ""' "$OPTIONS")
 EXTRACTION_MODEL=$(jq -r '.extraction_model // ""' "$OPTIONS")
 # `// ""` would turn an explicit "off" into "", so test for null instead.
 EXTRACTION_GATE=$(jq -r 'if .extraction_gate == null then "" else .extraction_gate end' "$OPTIONS")
@@ -201,19 +207,31 @@ else
     echo "[init]          same network."
 fi
 
-# --- Speech-to-text (the chat panel's microphone) ---
-# Voxtral on Mistral's API. The web-search key is preferred; a Mistral chat
-# key works as well, since both are keys to the same account.
-STT_KEY="$MISTRAL_API_KEY"
-if [ -z "$STT_KEY" ] && [ "$LLM_PROVIDER" = "mistral" ]; then
-    STT_KEY="$LLM_API_KEY"
+# --- Mistral platform key ---
+# Web search, the agent tools (code, images, documents, connectors), PDF OCR,
+# Voxtral speech. The dedicated key is preferred; a Mistral chat key works as
+# well, since both are keys to the same account.
+if [ -z "$MISTRAL_API_KEY" ] && [ "$LLM_PROVIDER" = "mistral" ]; then
+    MISTRAL_API_KEY="$LLM_API_KEY"
 fi
+
+# --- Speech-to-text (the chat panel's microphone) ---
+STT_KEY="$MISTRAL_API_KEY"
 if [ "$SPEECH_TO_TEXT" != "off" ] && [ -n "$STT_KEY" ]; then
     write_env "STT_PROVIDER" "mistral"
     write_env "STT_API_KEY" "$STT_KEY"
     echo "[init] Speech-to-text: Mistral Voxtral"
 else
     echo "[init] Speech-to-text: off (${SPEECH_TO_TEXT}; needs a Mistral key)"
+fi
+
+# --- Text-to-speech (Voxtral) ---
+if [ "$TEXT_TO_SPEECH" = "mistral" ] && [ -n "$MISTRAL_API_KEY" ]; then
+    write_env "TTS_PROVIDER" "mistral"
+    [ -n "$TTS_VOICE" ] && write_env "TTS_VOICE" "$TTS_VOICE"
+    echo "[init] Text-to-speech: Mistral Voxtral"
+else
+    echo "[init] Text-to-speech: off (${TEXT_TO_SPEECH}; needs a Mistral key)"
 fi
 
 # --- Server configuration (always the same in add-on mode) ---
@@ -232,6 +250,10 @@ write_env "LOG_LEVEL" "$LOG_LEVEL"
 write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$MAX_OUTPUT_TOKENS" ] && write_env "MAX_OUTPUT_TOKENS" "$MAX_OUTPUT_TOKENS"
 [ -n "$REASONING_EFFORT" ] && write_env "REASONING_EFFORT" "$REASONING_EFFORT"
+[ -n "$THREAD_REASONING" ] && write_env "THREAD_REASONING" "$THREAD_REASONING"
+[ -n "$MISTRAL_LIBRARY_IDS" ] && write_env "MISTRAL_LIBRARY_IDS" "$MISTRAL_LIBRARY_IDS"
+[ -n "$MISTRAL_CONNECTORS" ] && write_env "MISTRAL_CONNECTORS" "$MISTRAL_CONNECTORS"
+[ -n "$OCR_PRICE" ] && write_env "OCR_PRICE_PER_1000_PAGES" "$OCR_PRICE"
 [ -n "$EXTRACTION_MODEL" ] && write_env "EXTRACTION_MODEL" "$EXTRACTION_MODEL"
 [ -n "$EXTRACTION_GATE" ] && write_env "EXTRACTION_GATE" "$EXTRACTION_GATE"
 [ -n "$LAYOUT_FROM_EXPOSED" ] && write_env "LAYOUT_FROM_EXPOSED" "$LAYOUT_FROM_EXPOSED"

@@ -75,6 +75,19 @@ describe("SqliteConversationStore", () => {
     expect(store.listConversations("user-1")[0].title).toBe("new start");
   });
 
+  it("keeps favourites per user, until the conversation is deleted", () => {
+    store.storeMessage("mado-thread:a", "user-1", "user", "hi");
+    store.storeMessage("mado-thread:a", "user-2", "user", "hi");
+    store.setConversationPinned("mado-thread:a", "user-1", true);
+    store.setConversationPinned("mado-thread:a", "user-1", true);
+    expect(store.listConversations("user-1")[0].pinned).toBe(true);
+    expect(store.listConversations("user-2")[0].pinned).toBe(false);
+
+    store.deleteConversation("mado-thread:a", "user-1");
+    store.storeMessage("mado-thread:a", "user-1", "user", "new start");
+    expect(store.listConversations("user-1")[0].pinned).toBe(false);
+  });
+
   it("limits history to last N messages", () => {
     for (let i = 0; i < 5; i++) {
       store.storeMessage("conv-1", "user-1", "user", `Message ${i}`);

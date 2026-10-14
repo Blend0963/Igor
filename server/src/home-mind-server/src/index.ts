@@ -23,6 +23,7 @@ import { createChatEngine, createFactExtractor } from "./llm/factory.js";
 import { createRouter } from "./api/routes.js";
 import { createSttService, sttModelFor } from "./stt/stt-service.js";
 import { createTtsService } from "./tts/tts-service.js";
+import { configureMediaStore } from "./llm/media-store.js";
 import { MemoryCleanupJob } from "./jobs/memory-cleanup.js";
 import { BalanceWatchJob } from "./jobs/balance-watch.js";
 
@@ -112,7 +113,7 @@ if (stt) {
 const tts = createTtsService(config);
 if (tts) {
   console.log(
-    `  TTS: ${config.ttsProvider} / ${config.ttsModel} (voice: ${config.ttsVoice}` +
+    `  TTS: ${config.ttsProvider} / ${config.ttsProvider === "mistral" && config.ttsModel === "tts-1" ? "voxtral" : config.ttsModel} (voice: ${config.ttsVoice}` +
       `${config.ttsLanguage ? `, language: ${config.ttsLanguage}` : ""})`
   );
 } else {
@@ -138,9 +139,9 @@ if (config.corsOrigins) {
   console.log(`  CORS: ${origins.join(", ")}`);
 }
 
-// 20mb so base64-encoded camera snapshots (images on /api/chat) aren't rejected
-// by the 100kb default. Aligns with the 25mb multer limit used for audio uploads.
-app.use(express.json({ limit: "20mb" }));
+// Room for what /api/chat may carry in base64: up to 10 images and 5 attached
+// files of 10 MB each (CHAT_LIMITS in api/routes.ts).
+app.use(express.json({ limit: "80mb" }));
 
 // API token auth (only when API_TOKEN is configured)
 const authMiddleware = createAuthMiddleware(config.apiToken);
@@ -159,6 +160,12 @@ app.use((req, res, next) => {
 // The one-time memory merge records itself next to the conversation database.
 // With in-memory conversations there is nowhere durable to put it, and the
 // merge's own duplicate check keeps a repeat from copying anything.
+// Charts and images the tools produce, next to the conversation database so a
+// thread still shows them after a restart.
+configureMediaStore(
+  config.conversationStorage === "sqlite" ? path.join(path.dirname(config.conversationDbPath), "media") : undefined
+);
+
 const mergeMarkerPath =
   config.conversationStorage === "sqlite"
     ? path.join(path.dirname(config.conversationDbPath), MERGE_MARKER_FILENAME)

@@ -61,6 +61,8 @@
   .icon-btn:disabled { opacity: 0.5; cursor: default; }
   #pending:not([hidden]) { display: flex; gap: 8px; padding: 10px 18px 0; flex-wrap: wrap; }
   .thumb { position: relative; width: 64px; height: 64px; border-radius: 10px; overflow: hidden; border: 1px solid #2c313d; }
+  .thumb.doc { width: auto; max-width: 220px; display: flex; align-items: center; padding: 0 28px 0 10px; font-size: 12px; background: #1a1d24; }
+  .thumb.doc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .thumb button { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border-radius: 50%; border: 0; background: rgba(0,0,0,0.65); color: #fff; font-size: 11px; cursor: pointer; line-height: 20px; padding: 0; }
   .msg-images { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
@@ -74,6 +76,12 @@
   #cam-shoot { width: 68px; height: 68px; border-radius: 50%; border: 4px solid #fff; background: rgba(255,255,255,0.25); cursor: pointer; padding: 0; }
   #cam-shoot:active { background: rgba(255,255,255,0.6); }
   #main.drag { outline: 2px dashed #3b5bdb; outline-offset: -8px; }
+  .t-section { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #8b93a5; padding: 10px 8px 4px; }
+  .thread .t-star { visibility: hidden; border: 0; background: none; color: #8b93a5; cursor: pointer; font-size: 14px; padding: 2px; }
+  .thread:hover .t-star, .thread.pinned .t-star { visibility: visible; }
+  .thread.pinned .t-star { color: #c98500; }
+  .thread .t-star:hover { color: #e6c27a; }
+  @media (hover: none) { .thread .t-star { visibility: visible; } }
   .thread .t-edit { visibility: hidden; border: 0; background: none; color: #8b93a5; cursor: pointer; font-size: 13px; padding: 2px; }
   .thread:hover .t-edit { visibility: visible; }
   .thread .t-edit:hover { color: #9fb4ff; }
@@ -103,6 +111,59 @@
     #btn-new { margin-left: auto; }
     #chat-head { padding: 10px 14px; }
   }
+  .msg.assistant { white-space: normal; }
+  .msg.assistant > :first-child { margin-top: 0; }
+  .msg.assistant > :last-child { margin-bottom: 0; }
+  .msg.assistant p { margin: 0 0 8px; }
+  .msg.assistant h3, .msg.assistant h4, .msg.assistant h5, .msg.assistant h6 { margin: 12px 0 6px; line-height: 1.3; }
+  .msg.assistant h3 { font-size: 17px; } .msg.assistant h4 { font-size: 15px; } .msg.assistant h5, .msg.assistant h6 { font-size: 14px; }
+  .msg.assistant ul, .msg.assistant ol { margin: 0 0 8px; padding-left: 22px; }
+  .msg.assistant li { margin: 2px 0; }
+  .msg.assistant li > ul, .msg.assistant li > ol { margin: 2px 0 0; }
+  .msg.assistant blockquote { margin: 0 0 8px; padding: 2px 0 2px 12px; border-left: 3px solid #3b5bdb; color: #c9d1e0; }
+  .msg.assistant hr { border: 0; border-top: 1px solid #2c313d; margin: 10px 0; }
+  .msg.assistant a { color: #9fb4ff; }
+  .table-wrap { overflow-x: auto; margin: 0 0 8px; }
+  .msg table { border-collapse: collapse; font-size: 13px; min-width: 50%; }
+  .msg th, .msg td { border: 1px solid #2c313d; padding: 5px 9px; text-align: left; vertical-align: top; }
+  .msg th { background: #1a1d24; font-weight: 600; }
+  .msg tbody tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+  .md-img { display: block; max-width: 100%; max-height: 480px; border-radius: 10px; margin: 6px 0; cursor: zoom-in; background: #1a1d24; min-height: 40px; }
+  .md-img.broken { cursor: default; color: #8b93a5; font-size: 12px; }
+  .msg.assistant:has(.chart), .msg.assistant:has(.table-wrap), .msg.assistant:has(.md-img) { width: 78%; }
+  .chart { margin: 8px 0; border: 1px solid #2c313d; border-radius: 10px; background: #1d2029; padding: 8px 10px 6px; }
+  .chart-wait { color: #8b93a5; font-size: 13px; padding: 14px; }
+  .chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; margin-bottom: 4px; }
+  .chart-title { font-weight: 600; color: #e6e9ef; }
+  .chart-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: #c9d1e0; margin: 2px 0 4px; }
+  .chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart svg.pie { max-width: 320px; margin: 0 auto; }
+  .chart .grid { stroke: #2c313d; stroke-width: 1; }
+  .chart .axis { stroke: #4a5160; stroke-width: 1; }
+  .chart .tick { fill: #8b93a5; font-size: 11px; font-family: inherit; }
+  .chart .dot { stroke: #1d2029; stroke-width: 2; }
+  .chart .hit { fill: transparent; cursor: crosshair; }
+  .chart .cross { stroke: #8b93a5; stroke-width: 1; stroke-dasharray: 3 3; opacity: 0; pointer-events: none; }
+  .chart .hit:hover + .cross { opacity: 1; }
+  .chart .mark:hover { opacity: 0.8; }
+  .chart .slice { stroke: #1d2029; stroke-width: 2; }
+  .chart .pie-total { fill: #e6e9ef; font-size: 15px; font-weight: 600; font-family: inherit; }
+  .chart .table-wrap { margin: 4px 0; }
+  .ocr-card { border: 1px solid #c98500; }
+  .ocr-card p { margin: 0 0 8px; }
+  .ocr-cost { color: #e6c27a; font-size: 13px; }
+  .ocr-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ocr-actions button { border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; font: inherit; font-size: 13px; }
+  .ocr-yes { background: #3b5bdb; color: #fff; }
+  .ocr-no { background: #2a2f3d; color: #e6e9ef; }
+  .file-link { display: inline-block; background: #1a1d24; border: 1px solid #2c313d; border-radius: 8px; padding: 4px 10px; margin: 2px 0; text-decoration: none; }
+  .file-link:hover { background: #2a2f3d; }
+  .msg-docs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .doc-chip { background: rgba(255,255,255,0.15); border-radius: 8px; padding: 3px 8px; font-size: 12px; }
+  .msg-tools { margin-top: 6px; }
+  .speak-btn { background: none; border: 0; color: #8b93a5; cursor: pointer; font-size: 14px; padding: 2px 4px; }
+  .speak-btn:hover { color: #e6e9ef; }
 </style>
 </head>
 <body>
@@ -135,7 +196,7 @@
       <div id="statusline" hidden></div>
       <div id="pending" hidden></div>
       <form id="composer">
-        <button id="btn-attach" class="icon-btn" type="button" title="Joindre une image">📎</button>
+        <button id="btn-attach" class="icon-btn" type="button" title="Joindre une image ou un fichier">📎</button>
         <button id="btn-camera" class="icon-btn" type="button" title="Prendre une photo">📷</button>
         <input id="file-attach" type="file" accept="image/*" multiple hidden>
         <input id="file-camera" type="file" accept="image/*" capture="environment" hidden>
@@ -223,12 +284,35 @@
       });
   }
 
+  // Favourites (★) first, under their own heading; then the rest, newest first.
   function renderThreads(threads) {
     var nav = el("threads");
     nav.textContent = "";
-    threads.forEach(function (t) {
+    var pinned = threads.filter(function (t) { return t.pinned; });
+    var others = threads.filter(function (t) { return !t.pinned; });
+    function heading(text) {
+      var h = document.createElement("div");
+      h.className = "t-section";
+      h.textContent = text;
+      nav.appendChild(h);
+    }
+    if (pinned.length) heading("★ Favoris");
+    pinned.forEach(threadRow);
+    if (pinned.length && others.length) heading("Récents");
+    others.forEach(threadRow);
+    if (!threads.length) {
+      var hint = document.createElement("div");
+      hint.className = "muted";
+      hint.style.padding = "10px";
+      hint.textContent = "Aucun fil pour le moment.";
+      nav.appendChild(hint);
+    }
+  }
+
+  function threadRow(t) {
+      var nav = el("threads");
       var row = document.createElement("div");
-      row.className = "thread" + (t.conversationId === state.current ? " active" : "");
+      row.className = "thread" + (t.conversationId === state.current ? " active" : "") + (t.pinned ? " pinned" : "");
       var main = document.createElement("div");
       main.className = "t-main";
       var title = document.createElement("div");
@@ -239,6 +323,14 @@
       try { date.textContent = new Date(t.lastMessageAt).toLocaleString(); } catch (e) { date.textContent = ""; }
       main.appendChild(title);
       main.appendChild(date);
+      var star = document.createElement("button");
+      star.className = "t-star"; star.type = "button"; star.textContent = t.pinned ? "★" : "☆";
+      star.title = t.pinned ? "Retirer des favoris" : "Ajouter aux favoris";
+      star.setAttribute("aria-pressed", t.pinned ? "true" : "false");
+      star.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        togglePin(t);
+      });
       var edit = document.createElement("button");
       edit.className = "t-edit"; edit.type = "button"; edit.textContent = "✎";
       edit.title = "Renommer ce fil";
@@ -254,18 +346,25 @@
         deleteThread(t.conversationId);
       });
       row.appendChild(main);
+      row.appendChild(star);
       row.appendChild(edit);
       row.appendChild(del);
       row.addEventListener("click", function () { openThread(t.conversationId); });
       nav.appendChild(row);
+  }
+
+  function togglePin(t) {
+    var want = !t.pinned;
+    t.pinned = want;
+    renderThreads(state.threads);
+    api("api/conversations/" + USER_ID + "/" + encodeURIComponent(t.conversationId), {
+      method: "PATCH",
+      body: JSON.stringify({ pinned: want })
+    }).catch(function (err) {
+      t.pinned = !want;
+      renderThreads(state.threads);
+      setStatus("Favori non enregistré : " + err.message, true);
     });
-    if (!threads.length) {
-      var hint = document.createElement("div");
-      hint.className = "muted";
-      hint.style.padding = "10px";
-      hint.textContent = "Aucun fil pour le moment.";
-      nav.appendChild(hint);
-    }
   }
 
   function refreshThreads() {
@@ -386,7 +485,9 @@
   function addBubble(role, text, images) {
     var box = document.createElement("div");
     box.className = "msg " + (role === "user" ? "user" : "assistant");
+    box.dataset.text = text || "";
     renderInto(box, role, text);
+    if (role !== "user" && text) addSpeak(box);
     if (images && images.length) {
       var strip = document.createElement("div");
       strip.className = "msg-images";
@@ -405,45 +506,613 @@
 
   // ----- message rendering -----
   //
-  // Assistant replies get their ``` fenced code shown as a block with a copy
-  // button, and `inline code` in a monospace span. Everything is built with
-  // DOM nodes and textContent, never innerHTML, so a reply can never inject
-  // markup. A fence still open at the end (mid-stream) renders as code too.
+  // Assistant replies are Markdown: headings, lists, tables, quotes, links,
+  // images the tools produced, ``` code blocks with a copy button, and
+  // ```chart blocks drawn as SVG charts. Everything is built with DOM nodes
+  // and textContent, never innerHTML, so a reply can never inject markup.
+  // A fence still open at the end (mid-stream) renders as code too.
 
   var FENCE = /```([^\n`]*)\n?([\s\S]*?)(?:```|$)/g;
+  var DOC_BLOCK = /<document name="([^"]*)">[\s\S]*?(?:<\/document>|$)/g;
 
   function renderInto(box, role, text) {
     box.textContent = "";
-    if (role === "user") { box.textContent = text; return; }
+    if (role === "user") { renderUser(box, text); return; }
     var last = 0;
     var match;
     FENCE.lastIndex = 0;
     while ((match = FENCE.exec(text)) !== null) {
       if (match[0] === "") { FENCE.lastIndex++; continue; }
-      // The newlines around a fence are layout, not text: under pre-wrap they
-      // would show as blank lines above and below the block.
-      appendText(box, text.slice(last, match.index).replace(/\n$/, ""));
-      box.appendChild(codeBlock(match[1].trim(), match[2].replace(/\n$/, "")));
+      renderMarkdown(box, text.slice(last, match.index));
+      var lang = match[1].trim().toLowerCase();
+      var body = match[2].replace(/\n$/, "");
+      var closed = /```$/.test(match[0]);
+      if (lang === "chart") box.appendChild(chartOrCode(body, closed));
+      else box.appendChild(codeBlock(match[1].trim(), body));
       last = match.index + match[0].length;
-      if (text.charAt(last) === "\n") last++;
     }
-    appendText(box, text.slice(last));
+    renderMarkdown(box, text.slice(last));
   }
 
-  function appendText(box, text) {
-    if (!text) return;
-    var parts = text.split(/`([^`\n]+)`/);
-    parts.forEach(function (part, i) {
-      if (!part) return;
-      if (i % 2 === 1) {
-        var span = document.createElement("code");
-        span.className = "inline-code";
-        span.textContent = part;
-        box.appendChild(span);
-      } else {
-        box.appendChild(document.createTextNode(part));
+  // A user message shows its attached PDFs as chips, not their whole text.
+  function renderUser(box, text) {
+    var docs = [];
+    var shown = text.replace(DOC_BLOCK, function (_m, name) { docs.push(name); return ""; }).trim();
+    box.appendChild(document.createTextNode(shown));
+    if (docs.length) {
+      var strip = document.createElement("div");
+      strip.className = "msg-docs";
+      docs.forEach(function (name) {
+        var chip = document.createElement("span");
+        chip.className = "doc-chip";
+        chip.textContent = "📄 " + name;
+        strip.appendChild(chip);
+      });
+      box.appendChild(strip);
+    }
+  }
+
+  var TABLE_RULE = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+  var LIST_ITEM = /^(\s*)([-*+]|\d{1,3}[.)])\s+(.*)$/;
+
+  function splitRow(line) {
+    var t = line.trim();
+    if (t.charAt(0) === "|") t = t.slice(1);
+    if (t.charAt(t.length - 1) === "|") t = t.slice(0, -1);
+    return t.split("|").map(function (c) { return c.trim(); });
+  }
+
+  function renderMarkdown(box, text) {
+    if (!text || !text.trim()) return;
+    var lines = text.replace(/\r/g, "").split("\n");
+    var para = [];
+    function flush() {
+      if (!para.length) return;
+      var p = document.createElement("p");
+      para.forEach(function (l, i) {
+        if (i) p.appendChild(document.createElement("br"));
+        inline(p, l);
+      });
+      box.appendChild(p);
+      para = [];
+    }
+    var i = 0;
+    while (i < lines.length) {
+      var line = lines[i];
+      var h = /^(#{1,6})\s+(.*)$/.exec(line);
+      if (!line.trim()) { flush(); i++; continue; }
+      if (h) {
+        flush();
+        var level = Math.min(6, h[1].length + 2);
+        var head = document.createElement("h" + level);
+        inline(head, h[2].replace(/\s+#+\s*$/, ""));
+        box.appendChild(head);
+        i++; continue;
       }
+      if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) { flush(); box.appendChild(document.createElement("hr")); i++; continue; }
+      if (line.indexOf("|") !== -1 && i + 1 < lines.length && TABLE_RULE.test(lines[i + 1])) {
+        flush();
+        var rows = [splitRow(line)];
+        var aligns = splitRow(lines[i + 1]).map(function (c) {
+          return /^:-+:$/.test(c) ? "center" : /-+:$/.test(c) ? "right" : "";
+        });
+        i += 2;
+        while (i < lines.length && lines[i].indexOf("|") !== -1 && lines[i].trim()) { rows.push(splitRow(lines[i])); i++; }
+        box.appendChild(table(rows, aligns));
+        continue;
+      }
+      if (/^\s*>/.test(line)) {
+        flush();
+        var quote = [];
+        while (i < lines.length && /^\s*>/.test(lines[i])) { quote.push(lines[i].replace(/^\s*>\s?/, "")); i++; }
+        var bq = document.createElement("blockquote");
+        renderMarkdown(bq, quote.join("\n"));
+        box.appendChild(bq);
+        continue;
+      }
+      if (LIST_ITEM.test(line)) {
+        flush();
+        var items = [];
+        while (i < lines.length) {
+          var m = LIST_ITEM.exec(lines[i]);
+          if (m) { items.push({ indent: m[1].replace(/\t/g, "  ").length, ordered: /\d/.test(m[2]), start: parseInt(m[2], 10), text: m[3] }); i++; continue; }
+          // An indented line continues the item above it.
+          if (items.length && /^\s{2,}\S/.test(lines[i])) { items[items.length - 1].text += "\n" + lines[i].trim(); i++; continue; }
+          break;
+        }
+        box.appendChild(list(items));
+        continue;
+      }
+      para.push(line);
+      i++;
+    }
+    flush();
+  }
+
+  function list(items) {
+    var root = null;
+    var stack = [];
+    items.forEach(function (it) {
+      while (stack.length && it.indent < stack[stack.length - 1].indent) stack.pop();
+      var top = stack[stack.length - 1];
+      if (!top || it.indent > top.indent) {
+        var l = document.createElement(it.ordered ? "ol" : "ul");
+        if (it.ordered && it.start > 1) l.start = it.start;
+        if (top && top.list.lastChild) top.list.lastChild.appendChild(l);
+        else if (!root) root = l;
+        else root.appendChild(l);
+        stack.push({ indent: it.indent, list: l });
+        top = stack[stack.length - 1];
+      }
+      var li = document.createElement("li");
+      it.text.split("\n").forEach(function (part, n) {
+        if (n) li.appendChild(document.createElement("br"));
+        inline(li, part);
+      });
+      top.list.appendChild(li);
     });
+    return root || document.createElement("ul");
+  }
+
+  function table(rows, aligns) {
+    var wrap = document.createElement("div");
+    wrap.className = "table-wrap";
+    var t = document.createElement("table");
+    rows.forEach(function (cells, r) {
+      var tr = document.createElement("tr");
+      cells.forEach(function (c, ci) {
+        var cell = document.createElement(r === 0 ? "th" : "td");
+        if (aligns[ci]) cell.style.textAlign = aligns[ci];
+        inline(cell, c);
+        tr.appendChild(cell);
+      });
+      (r === 0 ? (t.tHead || t.createTHead()) : (t.tBodies[0] || t.createTBody())).appendChild(tr);
+    });
+    wrap.appendChild(t);
+    return wrap;
+  }
+
+  // Inline Markdown. Links open outside the panel and only for http(s) and
+  // mailto; images only for files MaDo's own tools produced.
+  var INLINE = /(`[^`\n]+`)|(!\[([^\]\n]*)\]\(([^)\s]+)\))|(\[([^\]\n]+)\]\(([^)\s]+)\))|(\*\*([^*\n]+)\*\*)|(__([^_\n]+)__)|(~~([^~\n]+)~~)|(\*([^*\s][^*\n]*)\*)|(\b_([^_\n]+)_\b)|(https?:\/\/[^\s<>()\]]+[^\s<>()\].,;:!?'"])/;
+  var MEDIA_SRC = /^api\/media\/[0-9a-f-]{36}$/;
+
+  function inline(parent, text) {
+    var rest = text;
+    while (rest) {
+      var m = INLINE.exec(rest);
+      if (!m) { parent.appendChild(document.createTextNode(rest)); return; }
+      if (m.index) parent.appendChild(document.createTextNode(rest.slice(0, m.index)));
+      if (m[1]) {
+        var c = document.createElement("code");
+        c.className = "inline-code";
+        c.textContent = m[1].slice(1, -1);
+        parent.appendChild(c);
+      } else if (m[2]) {
+        if (MEDIA_SRC.test(m[4])) parent.appendChild(mediaImage(m[4], m[3]));
+        else parent.appendChild(link(m[4], m[3] || m[4]));
+      } else if (m[5]) {
+        parent.appendChild(link(m[7], m[6]));
+      } else if (m[8] || m[10]) {
+        var b = document.createElement("strong");
+        inline(b, m[9] || m[11]);
+        parent.appendChild(b);
+      } else if (m[12]) {
+        var s = document.createElement("s");
+        inline(s, m[13]);
+        parent.appendChild(s);
+      } else if (m[14] || m[16]) {
+        var em = document.createElement("em");
+        inline(em, m[15] || m[17]);
+        parent.appendChild(em);
+      } else if (m[18]) {
+        parent.appendChild(link(m[18], m[18]));
+      }
+      rest = rest.slice(m.index + m[0].length);
+    }
+  }
+
+  function link(href, label) {
+    if (MEDIA_SRC.test(href)) {
+      var dl = document.createElement("a");
+      dl.href = "#";
+      dl.textContent = label;
+      dl.className = "file-link";
+      // A file MaDo made: downloaded under its own name.
+      dl.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        mediaUrl(href).then(function (url) {
+          var a = document.createElement("a");
+          a.href = url;
+          a.download = String(label).replace(/^📎\s*/, "").replace(/[\\/:*?"<>|]/g, "") || "fichier";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }, function () { setStatus("Fichier indisponible.", true); });
+      });
+      return dl;
+    }
+    if (!/^(https?:\/\/|mailto:)/i.test(href)) return document.createTextNode(label);
+    var a = document.createElement("a");
+    a.href = href;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = label;
+    return a;
+  }
+
+  // Tool files are fetched with the panel's own auth and shown as blob URLs;
+  // a reply is re-rendered on every streamed chunk, so each is fetched once.
+  var mediaCache = {};
+  function mediaUrl(src) {
+    if (!mediaCache[src]) {
+      mediaCache[src] = fetch(src, { headers: authHeaders() }).then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.blob();
+      }).then(function (blob) { return URL.createObjectURL(blob); });
+      mediaCache[src].catch(function () { delete mediaCache[src]; });
+    }
+    return mediaCache[src];
+  }
+
+  function mediaImage(src, alt) {
+    var img = document.createElement("img");
+    img.className = "md-img";
+    img.alt = alt || "image";
+    mediaUrl(src).then(function (url) {
+      img.src = url;
+      img.addEventListener("click", function () { window.open(url, "_blank"); });
+    }, function () { img.alt = "Image indisponible"; img.className = "md-img broken"; });
+    return img;
+  }
+
+  // ----- charts -----
+  //
+  // A ```chart block holds {type, title, unit, labels, series:[{name, data}]}.
+  // Colours: a fixed categorical order validated for colour-blind separation
+  // and 3:1 contrast on the bubble background (#232733); a series keeps its
+  // colour whatever else is shown. Two or more series get a legend, every
+  // mark a tooltip, and the chart a table view.
+
+  var SERIES_COLORS = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9"];
+  var SVG_NS = "http://www.w3.org/2000/svg";
+
+  function svgEl(name, attrs, parent) {
+    var n = document.createElementNS(SVG_NS, name);
+    Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  function chartOrCode(body, closed) {
+    var spec = null;
+    try { spec = normalizeChart(JSON.parse(body)); } catch (e) { spec = null; }
+    if (spec) return chartBlock(spec);
+    if (!closed) {
+      var wait = document.createElement("div");
+      wait.className = "chart chart-wait";
+      wait.textContent = "Graphique en préparation…";
+      return wait;
+    }
+    return codeBlock("chart", body);
+  }
+
+  function normalizeChart(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    var type = raw.type === "bar" || raw.type === "pie" ? raw.type : "line";
+    var labels = Array.isArray(raw.labels) ? raw.labels.slice(0, 200).map(String) : [];
+    var series = (Array.isArray(raw.series) ? raw.series : []).slice(0, 6).map(function (s, i) {
+      var data = (Array.isArray(s && s.data) ? s.data : []).slice(0, labels.length || 200).map(function (v) {
+        var n = typeof v === "number" ? v : parseFloat(v);
+        return isFinite(n) ? n : null;
+      });
+      return { name: String((s && s.name) || "Série " + (i + 1)), data: data, color: SERIES_COLORS[i] };
+    }).filter(function (s) { return s.data.some(function (v) { return v !== null; }); });
+    if (!series.length) return null;
+    if (!labels.length) labels = series[0].data.map(function (_v, i) { return String(i + 1); });
+    if (type === "pie") {
+      // Six slices at most, so no colour repeats: the rest fold into "Autres".
+      series = series.slice(0, 1);
+      if (labels.length > 6) {
+        var d = series[0].data;
+        var other = d.slice(5).reduce(function (a, v) { return a + (v || 0); }, 0);
+        labels = labels.slice(0, 5).concat(["Autres"]);
+        series[0].data = d.slice(0, 5).concat([other]);
+      }
+    }
+    return { type: type, title: raw.title ? String(raw.title) : "", unit: raw.unit ? String(raw.unit) : "", labels: labels, series: series };
+  }
+
+  function fmt(v, unit) {
+    if (v === null || v === undefined) return "—";
+    var abs = Math.abs(v);
+    var s = abs >= 1000 ? Math.round(v).toLocaleString("fr-FR") : String(Math.round(v * 100) / 100).replace(".", ",");
+    return unit ? s + " " + unit : s;
+  }
+
+  function niceTicks(min, max, count) {
+    if (min === max) { min -= 1; max += 1; }
+    var span = max - min;
+    var step = Math.pow(10, Math.floor(Math.log10(span / count)));
+    var err = span / count / step;
+    step *= err >= 7.5 ? 10 : err >= 3.5 ? 5 : err >= 1.5 ? 2 : 1;
+    var lo = Math.floor(min / step) * step;
+    var hi = Math.ceil(max / step) * step;
+    var ticks = [];
+    for (var v = lo; v <= hi + step / 2; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
+    return ticks;
+  }
+
+  function chartBlock(spec) {
+    var wrap = document.createElement("figure");
+    wrap.className = "chart";
+    var head = document.createElement("figcaption");
+    head.className = "chart-head";
+    var title = document.createElement("span");
+    title.className = "chart-title";
+    title.textContent = spec.title || "Graphique";
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "code-copy";
+    toggle.textContent = "Tableau";
+    head.appendChild(title);
+    head.appendChild(toggle);
+    wrap.appendChild(head);
+
+    if (spec.series.length > 1 || spec.type === "pie") wrap.appendChild(legend(spec));
+    var plot = spec.type === "pie" ? pieChart(spec) : xyChart(spec);
+    wrap.appendChild(plot);
+    var tbl = dataTable(spec);
+    tbl.hidden = true;
+    wrap.appendChild(tbl);
+    toggle.addEventListener("click", function () {
+      tbl.hidden = !tbl.hidden;
+      plot.style.display = tbl.hidden ? "" : "none";
+      toggle.textContent = tbl.hidden ? "Tableau" : "Graphique";
+    });
+    return wrap;
+  }
+
+  function legend(spec) {
+    var box = document.createElement("div");
+    box.className = "chart-legend";
+    var entries = spec.type === "pie"
+      ? spec.labels.map(function (l, i) { return { name: l, color: SERIES_COLORS[i % SERIES_COLORS.length] }; })
+      : spec.series;
+    entries.forEach(function (e) {
+      var item = document.createElement("span");
+      var sw = document.createElement("i");
+      sw.style.background = e.color;
+      item.appendChild(sw);
+      item.appendChild(document.createTextNode(e.name));
+      box.appendChild(item);
+    });
+    return box;
+  }
+
+  function dataTable(spec) {
+    var rows = [[""].concat(spec.series.map(function (s) { return s.name; }))];
+    spec.labels.forEach(function (l, i) {
+      rows.push([l].concat(spec.series.map(function (s) { return fmt(s.data[i], spec.unit); })));
+    });
+    return table(rows, ["", "right", "right", "right", "right", "right", "right"]);
+  }
+
+  function tooltip(node, text) { svgEl("title", {}, node).textContent = text; }
+
+  function xyChart(spec) {
+    var W = 640, H = 310, L = 52, R = 14, T = 24, B = 44;
+    var svg = svgEl("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": spec.title || "Graphique" });
+    var values = [];
+    spec.series.forEach(function (s) { s.data.forEach(function (v) { if (v !== null) values.push(v); }); });
+    var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+    if (spec.type === "bar") { min = Math.min(0, min); max = Math.max(0, max); }
+    var ticks = niceTicks(min, max, 5);
+    var lo = ticks[0], hi = ticks[ticks.length - 1];
+    var n = spec.labels.length;
+    var pw = W - L - R, ph = H - T - B;
+    var y = function (v) { return T + ph - (v - lo) / (hi - lo) * ph; };
+    var band = pw / n;
+    var x = spec.type === "bar"
+      ? function (i) { return L + band * i + band / 2; }
+      : function (i) { return n === 1 ? L + pw / 2 : L + pw * i / (n - 1); };
+
+    ticks.forEach(function (t) {
+      svgEl("line", { x1: L, x2: W - R, y1: y(t), y2: y(t), class: t === 0 && lo < 0 ? "axis" : "grid" }, svg);
+      var lbl = svgEl("text", { x: L - 8, y: y(t) + 4, "text-anchor": "end", class: "tick" }, svg);
+      lbl.textContent = fmt(t);
+    });
+    if (spec.unit) {
+      var u = svgEl("text", { x: 4, y: 10, "text-anchor": "start", class: "tick" }, svg);
+      u.textContent = spec.unit;
+    }
+    var every = Math.max(1, Math.ceil(n / 8));
+    spec.labels.forEach(function (l, i) {
+      if (i % every && i !== n - 1) return;
+      if (i === n - 1 && i % every && n - 1 - Math.floor((n - 1) / every) * every < every / 2) return;
+      var t = svgEl("text", { x: x(i), y: H - B + 18, "text-anchor": "middle", class: "tick" }, svg);
+      t.textContent = l.length > 12 ? l.slice(0, 11) + "…" : l;
+    });
+    svgEl("line", { x1: L, x2: W - R, y1: y(Math.max(lo, Math.min(0, hi))), y2: y(Math.max(lo, Math.min(0, hi))), class: "axis" }, svg);
+
+    if (spec.type === "bar") {
+      var k = spec.series.length;
+      var gap = 2;
+      var bw = Math.max(2, Math.min(36, (band * 0.75 - gap * (k - 1)) / k));
+      var zero = y(Math.max(lo, Math.min(0, hi)));
+      spec.series.forEach(function (s, si) {
+        s.data.forEach(function (v, i) {
+          if (v === null) return;
+          var bx = x(i) - (bw * k + gap * (k - 1)) / 2 + si * (bw + gap);
+          var top = Math.min(y(v), zero), h = Math.max(1, Math.abs(y(v) - zero));
+          var r = Math.min(4, bw / 2, h);
+          var up = v >= 0;
+          // Rounded at the data end only, square on the baseline.
+          var d = up
+            ? "M" + bx + "," + (top + h) + "V" + (top + r) + "Q" + bx + "," + top + " " + (bx + r) + "," + top + "H" + (bx + bw - r) + "Q" + (bx + bw) + "," + top + " " + (bx + bw) + "," + (top + r) + "V" + (top + h) + "Z"
+            : "M" + bx + "," + top + "V" + (top + h - r) + "Q" + bx + "," + (top + h) + " " + (bx + r) + "," + (top + h) + "H" + (bx + bw - r) + "Q" + (bx + bw) + "," + (top + h) + " " + (bx + bw) + "," + (top + h - r) + "V" + top + "Z";
+          var bar = svgEl("path", { d: d, fill: s.color, class: "mark" }, svg);
+          tooltip(bar, spec.labels[i] + " · " + s.name + " : " + fmt(v, spec.unit));
+        });
+      });
+    } else {
+      spec.series.forEach(function (s) {
+        var d = "";
+        var pen = false;
+        s.data.forEach(function (v, i) {
+          if (v === null) { pen = false; return; }
+          d += (pen ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1);
+          pen = true;
+        });
+        svgEl("path", { d: d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+        if (n <= 40) {
+          s.data.forEach(function (v, i) {
+            if (v === null) return;
+            svgEl("circle", { cx: x(i), cy: y(v), r: 4, fill: s.color, class: "dot" }, svg);
+          });
+        }
+      });
+      // One hover column per label: crosshair + every series' value.
+      spec.labels.forEach(function (l, i) {
+        var hit = svgEl("rect", { x: x(i) - Math.max(pw / Math.max(n - 1, 1) / 2, 4), y: T, width: Math.max(pw / Math.max(n - 1, 1), 8), height: ph, class: "hit" }, svg);
+        svgEl("line", { x1: x(i), x2: x(i), y1: T, y2: T + ph, class: "cross" }, svg);
+        tooltip(hit, l + "\n" + spec.series.map(function (s) { return s.name + " : " + fmt(s.data[i], spec.unit); }).join("\n"));
+      });
+    }
+    return svg;
+  }
+
+  function pieChart(spec) {
+    var s = spec.series[0];
+    var svg = svgEl("svg", { viewBox: "0 0 300 220", role: "img", "aria-label": spec.title || "Graphique", class: "pie" });
+    var vals = s.data.map(function (v) { return v && v > 0 ? v : 0; });
+    var total = vals.reduce(function (a, b) { return a + b; }, 0) || 1;
+    var cx = 150, cy = 110, r = 96, ri = 56;
+    var a0 = -Math.PI / 2;
+    vals.forEach(function (v, i) {
+      if (!v) return;
+      var a1 = a0 + v / total * Math.PI * 2;
+      var large = a1 - a0 > Math.PI ? 1 : 0;
+      var p = function (rad, a) { return (cx + rad * Math.cos(a)).toFixed(2) + "," + (cy + rad * Math.sin(a)).toFixed(2); };
+      var d = v === total
+        ? "M" + p(r, 0) + "A" + r + "," + r + " 0 1 1 " + p(r, Math.PI) + "A" + r + "," + r + " 0 1 1 " + p(r, 0) + "M" + p(ri, 0) + "A" + ri + "," + ri + " 0 1 0 " + p(ri, Math.PI) + "A" + ri + "," + ri + " 0 1 0 " + p(ri, 0) + "Z"
+        : "M" + p(r, a0) + "A" + r + "," + r + " 0 " + large + " 1 " + p(r, a1) + "L" + p(ri, a1) + "A" + ri + "," + ri + " 0 " + large + " 0 " + p(ri, a0) + "Z";
+      var seg = svgEl("path", { d: d, fill: SERIES_COLORS[i % SERIES_COLORS.length], class: "mark slice", "fill-rule": "evenodd" }, svg);
+      tooltip(seg, spec.labels[i] + " : " + fmt(v, spec.unit) + " (" + Math.round(v / total * 100) + " %)");
+      a0 = a1;
+    });
+    var t = svgEl("text", { x: cx, y: cy + 5, "text-anchor": "middle", class: "pie-total" }, svg);
+    t.textContent = fmt(total, spec.unit);
+    return svg;
+  }
+
+  // ----- OCR price check -----
+  //
+  // A PDF without text (a scan) can only be read by Mistral OCR, billed per
+  // page. The server stops before reading it and sends the estimate; the
+  // user decides here, and the message is sent again with the answer.
+
+  function money(v) {
+    var digits = v < 0.01 ? 4 : v < 1 ? 3 : 2;
+    return v.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: digits }) + " $";
+  }
+
+  function askOcr(box, q, answer) {
+    box.textContent = "";
+    box.classList.add("ocr-card");
+    var files = (q.files || []).map(function (f) {
+      return "« " + f.name + " » (" + Math.max(1, f.pages) + " page" + (f.pages > 1 ? "s" : "") + ")";
+    }).join(", ");
+    var p = document.createElement("p");
+    p.textContent = (q.files.length > 1 ? "Ces PDF sont des scans sans texte : " : "Ce PDF est un scan sans texte : ") + files +
+      ". Pour le lire, MaDo doit passer par l'OCR de Mistral, facturé à la page.";
+    var cost = document.createElement("p");
+    cost.className = "ocr-cost";
+    cost.textContent = "Coût estimé : ≈ " + money(q.cost) + " pour " + q.pages + " page" + (q.pages > 1 ? "s" : "") +
+      " (tarif indicatif " + money(q.pricePer1000Pages) + " les 1000 pages ; par exemple 10 pages ≈ " + money(q.pricePer1000Pages / 100) +
+      ", 100 pages ≈ " + money(q.pricePer1000Pages / 10) + ").";
+    var row = document.createElement("div");
+    row.className = "ocr-actions";
+    var yes = document.createElement("button");
+    yes.type = "button";
+    yes.className = "ocr-yes";
+    yes.textContent = "Lire avec l'OCR (≈ " + money(q.cost) + ")";
+    var no = document.createElement("button");
+    no.type = "button";
+    no.className = "ocr-no";
+    no.textContent = "Envoyer sans le lire";
+    function pick(choice) {
+      if (state.busy) return;
+      yes.disabled = no.disabled = true;
+      if (box.parentNode) box.parentNode.removeChild(box);
+      answer(choice);
+    }
+    yes.addEventListener("click", function () { pick("yes"); });
+    no.addEventListener("click", function () { pick("no"); });
+    row.appendChild(yes);
+    row.appendChild(no);
+    box.appendChild(p);
+    box.appendChild(cost);
+    box.appendChild(row);
+    scrollDown();
+  }
+
+  // ----- read aloud -----
+  //
+  // 🔊 under a reply when the server has a voice (TTS). Code, charts and
+  // images are not read; Markdown marks are dropped.
+
+  var speaking = { audio: null, btn: null };
+
+  function speakable(text) {
+    return text
+      .replace(/```[\s\S]*?(```|$)/g, " ")
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .replace(/https?:\/\/\S+/g, " ")
+      .replace(/^\s*\|?\s*:?-{2,}.*$/gm, " ")
+      .replace(/[*_~`#>|]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 4000);
+  }
+
+  function stopSpeaking() {
+    if (speaking.audio) { speaking.audio.pause(); speaking.audio = null; }
+    if (speaking.btn) { speaking.btn.textContent = "🔊"; speaking.btn = null; }
+  }
+
+  function addSpeak(box) {
+    if (!state.caps || !state.caps.tts || box.querySelector(".speak-btn")) return;
+    var text = speakable(box.dataset.text || "");
+    if (!text) return;
+    var bar = document.createElement("div");
+    bar.className = "msg-tools";
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "speak-btn";
+    btn.title = "Lire à voix haute";
+    btn.textContent = "🔊";
+    btn.addEventListener("click", function () {
+      if (speaking.btn === btn) { stopSpeaking(); return; }
+      stopSpeaking();
+      speaking.btn = btn;
+      btn.textContent = "…";
+      fetch("api/tts", { method: "POST", headers: headers(), body: JSON.stringify({ text: speakable(box.dataset.text || ""), language: navigator.language }) })
+        .then(function (res) { if (!res.ok) throw new Error("HTTP " + res.status); return res.blob(); })
+        .then(function (blob) {
+          if (speaking.btn !== btn) return;
+          var url = URL.createObjectURL(blob);
+          var audio = new Audio(url);
+          speaking.audio = audio;
+          btn.textContent = "⏹";
+          audio.onended = function () { URL.revokeObjectURL(url); if (speaking.btn === btn) stopSpeaking(); };
+          return audio.play();
+        })
+        .catch(function (err) { setStatus("Lecture impossible : " + err.message, true); if (speaking.btn === btn) stopSpeaking(); });
+    });
+    bar.appendChild(btn);
+    box.appendChild(bar);
   }
 
   function codeBlock(lang, code) {
@@ -516,16 +1185,19 @@
     s.className = isError ? "err" : "";
   }
 
-  function send(text, images, shown) {
+  // `shown` null: a resend (after the OCR question), the user's bubble is
+  // already on screen. `ocr`: the answer to that question, "yes" or "no".
+  function send(text, images, shown, docs, ocr) {
     state.busy = true;
     el("btn-send").disabled = true;
-    addBubble("user", shown, images);
+    if (shown !== null) addBubble("user", shown, images);
     scrollDown();
+    var ocrQuestion = null;
     var bubble = addBubble("assistant", "");
     var acc = "";
     var finalResponse = null;
 
-    function paint() { renderInto(bubble, "assistant", acc); scrollDown(); }
+    function paint() { bubble.dataset.text = acc; renderInto(bubble, "assistant", acc); scrollDown(); }
 
     function handleBlock(block) {
       var lines = block.split("\n");
@@ -546,6 +1218,7 @@
       else if (eventName === "status") { setStatus(payload.text || ""); }
       else if (eventName === "error") { streamError = payload.error || "Erreur"; setStatus(streamError, true); }
       else if (eventName === "done") { finalResponse = payload; }
+      else if (eventName === "ocr_confirm") { ocrQuestion = payload; setStatus(""); }
     }
 
     var payload = {
@@ -556,6 +1229,8 @@
       language: navigator.language
     };
     if (images && images.length) payload.images = images;
+    if (docs && docs.length) payload.documents = docs;
+    if (ocr) payload.ocr = ocr;
     var body = JSON.stringify(payload);
     var streamError = "";
 
@@ -579,6 +1254,12 @@
       })
       .catch(function (err) { streamError = String(err.message || err); setStatus(streamError, true); })
       .then(function () {
+        if (ocrQuestion) {
+          askOcr(bubble, ocrQuestion, function (answer) { send(text, images, null, docs, answer); });
+          state.busy = false;
+          el("btn-send").disabled = false;
+          return;
+        }
         // The final payload is authoritative: when nothing streamed (a
         // silent model, a structured error) it is the only place the
         // answer exists.
@@ -600,6 +1281,7 @@
         // A last turn that wrote nothing (tools only, then silence) leaves
         // an empty bubble behind; it says nothing, so it goes.
         if (!acc && bubble.parentNode) bubble.parentNode.removeChild(bubble);
+        else addSpeak(bubble);
         state.busy = false;
         el("btn-send").disabled = false;
         el("input").focus();
@@ -614,14 +1296,17 @@
     var input = el("input");
     var text = input.value.trim();
     var images = state.pending.slice();
-    if ((!text && !images.length) || state.busy || state.preparing) return;
+    var docs = state.docs.slice();
+    if ((!text && !images.length && !docs.length) || state.busy || state.preparing) return;
     if (!state.current) newThread();
     input.value = "";
     autoGrow();
     clearPending();
     setStatus("");
-    // A photo alone is a question too: "what is this?"
-    send(text || DEFAULT_IMAGE_QUESTION, images, text);
+    // A photo alone is a question too: "what is this?"; a document alone, "summarise it".
+    var question = text || (docs.length && !images.length ? DEFAULT_DOC_QUESTION : DEFAULT_IMAGE_QUESTION);
+    var shown = text + docs.map(function (d) { return '<document name="' + d.name.replace(/"/g, "") + '"></document>'; }).join("");
+    send(question, images, shown, docs);
   });
 
   // ----- images -----
@@ -632,6 +1317,37 @@
   // the thread remembers what MaDo said about them, not the pictures.
 
   var DEFAULT_IMAGE_QUESTION = "Qu'est-ce que c'est ?";
+  var DEFAULT_DOC_QUESTION = "Résume ce fichier.";
+  // Files are read on the server (PDFs through Mistral OCR when a key is set).
+  var MAX_DOCS = 5;
+  var MAX_DOC_BYTES = 10 * 1024 * 1024;
+  state.docs = [];
+  state.caps = {};
+
+  function readDataUrl(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(String(reader.result)); };
+      reader.onerror = function () { reject(new Error("fichier illisible")); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function addDocs(list) {
+    if (!list.length) return;
+    list.forEach(function (file) {
+      if (!file.size) { setStatus((file.name || "Fichier") + " est vide.", true); return; }
+      if (state.docs.length + state.preparing >= MAX_DOCS) { setStatus("Au plus " + MAX_DOCS + " documents par message.", true); return; }
+      if (file.size > MAX_DOC_BYTES) { setStatus(file.name + " : 10 Mo au plus.", true); return; }
+      state.preparing++;
+      readDataUrl(file)
+        .then(function (data) {
+          state.docs.push({ name: (file.name || "document").slice(0, 200), data: data });
+        })
+        .catch(function (err) { setStatus("Document ignoré : " + err.message, true); })
+        .then(function () { state.preparing--; renderPending(); });
+    });
+  }
   var MAX_IMAGES = 10;
   // 1024 px: plenty for a plant, a label or a screen, and vision models bill
   // by the pixel (16 px patches): about 2,700 tokens instead of 6,700 at 1600.
@@ -661,7 +1377,10 @@
   }
 
   function addFiles(files) {
-    var list = Array.prototype.filter.call(files || [], function (f) { return /^image\//.test(f.type); });
+    // Photos go to the model's eyes; every other file is read as a document.
+    var isPhoto = function (f) { return /^image\/(jpeg|png|webp|gif|bmp|avif)$/.test(f.type); };
+    addDocs(Array.prototype.filter.call(files || [], function (f) { return !isPhoto(f); }));
+    var list = Array.prototype.filter.call(files || [], isPhoto);
     if (!list.length) return;
     var room = MAX_IMAGES - state.pending.length - state.preparing;
     if (list.length > room) setStatus("Au plus " + MAX_IMAGES + " images par message.", true);
@@ -692,11 +1411,26 @@
       t.appendChild(x);
       box.appendChild(t);
     });
-    box.hidden = state.pending.length === 0;
+    state.docs.forEach(function (d, i) {
+      var chip = document.createElement("div");
+      chip.className = "thumb doc";
+      var label = document.createElement("span");
+      label.textContent = "📄 " + d.name;
+      var x = document.createElement("button");
+      x.type = "button";
+      x.textContent = "✕";
+      x.title = "Retirer";
+      x.addEventListener("click", function () { state.docs.splice(i, 1); renderPending(); });
+      chip.appendChild(label);
+      chip.appendChild(x);
+      box.appendChild(chip);
+    });
+    box.hidden = state.pending.length === 0 && state.docs.length === 0;
   }
 
   function clearPending() {
     state.pending = [];
+    state.docs = [];
     renderPending();
   }
 
@@ -1022,6 +1756,13 @@
       // The microphone needs the server's transcription; without it the
       // button would only ever answer with an error.
       el("btn-mic").hidden = !h.stt;
+      state.caps = h;
+      if (h.documents) {
+        el("file-attach").removeAttribute("accept");
+        el("btn-attach").title = "Joindre une image ou un fichier (PDF, Word, Excel, zip…)";
+      }
+      // Replies already on screen get their 🔊 once the server says it speaks.
+      if (h.tts) Array.prototype.forEach.call(document.querySelectorAll(".msg.assistant"), addSpeak);
     })
     .catch(function () {});
   refreshThreads();

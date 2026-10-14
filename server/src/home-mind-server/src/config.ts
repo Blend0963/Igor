@@ -33,6 +33,10 @@ const ConfigSchema = z
     // That thinking is spent from the output cap above, so voice turns want it
     // low. Unset sends nothing and leaves the model on its own default.
     reasoningEffort: z.enum(["none", "minimal", "low", "medium", "high"]).optional(),
+    // Reasoning in chat-panel threads, where an answer may take a few seconds
+    // more and be worth it (Mistral Large 4's hybrid reasoning). Assist keeps
+    // reasoningEffort above; "none" turns it off here too.
+    threadReasoning: z.enum(["none", "low", "medium", "high"]).default("high"),
     // Dedicated model for the post-turn fact-extraction pass. Unset = the
     // main chat model. The extraction pass is short and structured, so it
     // can run on a much cheaper model (e.g. ministral-8b-latest on Mistral)
@@ -118,7 +122,9 @@ const ConfigSchema = z
     sttModel: z.string().optional(),
 
     // Text-to-speech (for HomeMind App)
-    ttsProvider: z.enum(["openai", "none"]).default("none"),
+    // "mistral" speaks with Voxtral TTS on Mistral's own API, keyed by
+    // MISTRAL_API_KEY unless TTS_API_KEY is set.
+    ttsProvider: z.enum(["openai", "mistral", "none"]).default("none"),
     ttsApiKey: z.string().optional(), // Overrides openaiApiKey for TTS; falls back to openaiApiKey if unset
     ttsBaseUrl: z.string().url().optional(), // Custom OpenAI-compatible TTS endpoint
     ttsModel: z.string().default("tts-1"),
@@ -175,6 +181,7 @@ export function loadConfig(): Config {
     // quietly ignored.
     maxOutputTokens: emptyToUndefined(process.env.MAX_OUTPUT_TOKENS ?? process.env.OPENAI_MAX_TOKENS),
     reasoningEffort: emptyToUndefined(process.env.REASONING_EFFORT),
+    threadReasoning: emptyToUndefined(process.env.THREAD_REASONING),
     extractionModel: emptyToUndefined(process.env.EXTRACTION_MODEL),
     ollamaBaseUrl: emptyToUndefined(process.env.OLLAMA_BASE_URL),
     haUrl: process.env.HA_URL,

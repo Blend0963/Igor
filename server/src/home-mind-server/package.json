@@ -1,6 +1,6 @@
 {
   "name": "@mado/server",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "MaDo API server - AI assistant with persistent memory for Home Assistant",
   "type": "module",
   "main": "dist/index.js",
@@ -22,6 +22,7 @@
     "express": "^5.2.1",
     "multer": "^2.4.0",
     "openai": "^7.28.0",
+    "pdfjs-dist": "6.3.289",
     "undici": "8.10.2",
     "uuid": "^14.0.2",
     "zod": "^4.5.4"

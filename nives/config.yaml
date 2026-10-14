@@ -1,5 +1,5 @@
 name: "MaDo"
-version: "0.6.0"
+version: "0.7.0"
 slug: "mado"
 description: "MaDo — assistant IA pour Home Assistant avec mémoire persistante"
 url: "https://github.com/Blend0963/MaDo"
@@ -72,6 +72,17 @@ schema:
   # How much the model thinks before answering. Absent from `options:` for the
   # same reason: unset sends nothing and leaves the model on its own default.
   reasoning_effort: "list(none|minimal|low|medium|high)?"
+  # Reasoning in chat threads. Unset = high.
+  thread_reasoning: "list(none|low|medium|high)?"
+  # Voxtral TTS (🔊 in the panel, TTS engine in HA). Unset = off.
+  text_to_speech: "list(off|mistral)?"
+  tts_voice: "str?"
+  # Mistral document libraries (search_documents) and MCP connectors
+  # (use_connector), comma-separated. Unset = tool not offered.
+  mistral_library_ids: "str?"
+  mistral_connectors: "str?"
+  # Price shown before a scanned PDF goes to Mistral OCR. Unset = 4 (USD).
+  ocr_price_per_1000_pages: "float(0,1000)?"
   # Cheaper model for the background memory-extraction pass. Unset = the
   # main chat model. Absent from `options:` above, like the rest: an
   # empty value means "same model as the chat model".

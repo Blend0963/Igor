@@ -498,6 +498,72 @@ describe("OpenAIChatEngine", () => {
     });
   });
 
+  describe("chat-panel threads (v0.7.0)", () => {
+    const reply = (chunks: object[] = [{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] }]) => makeStream(chunks);
+    const thread = "mado-thread:0f8c1d9e-1111-4a4a-9b9b-222233334444";
+
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("reasons at the thread setting while Assist stays at none for voice", async () => {
+      config.threadReasoning = "high";
+      mockCreate.mockResolvedValue(reply());
+      await engine.chat({ message: "x", userId: "user-1", conversationId: thread });
+      expect(mockCreate.mock.calls[0][0].reasoning_effort).toBe("high");
+
+      mockCreate.mockResolvedValue(reply());
+      await engine.chat({ message: "x", userId: "user-1", isVoice: true });
+      expect(mockCreate.mock.calls[1][0].reasoning_effort).toBe("none");
+    });
+
+    it("gives a reasoning thread a larger output ceiling", async () => {
+      config.threadReasoning = "high";
+      mockCreate.mockResolvedValue(reply());
+      await engine.chat({ message: "x", userId: "user-1", conversationId: thread });
+      const body = mockCreate.mock.calls[0][0];
+      expect(body.max_completion_tokens ?? body.max_tokens).toBe(16384);
+    });
+
+    it("keeps thinking chunks out of the answer and says it is thinking", async () => {
+      config.threadReasoning = "high";
+      mockCreate.mockResolvedValue(
+        reply([
+          { choices: [{ delta: { content: [{ type: "thinking", thinking: [{ type: "text", text: "secret plan" }] }] }, finish_reason: null }] },
+          { choices: [{ delta: { content: "Voilà." }, finish_reason: "stop" }] },
+        ])
+      );
+      const onStatus = vi.fn();
+      const result = await engine.chat({ message: "x", userId: "user-1", conversationId: thread }, { onStatus });
+      expect(result.response).toBe("Voilà.");
+      expect(onStatus).toHaveBeenCalledWith("Réflexion…");
+    });
+
+    it("offers the Mistral agent tools in threads only, when a Mistral key is set", async () => {
+      vi.stubEnv("MISTRAL_API_KEY", "k");
+      mockCreate.mockResolvedValue(reply());
+      await engine.chat({ message: "x", userId: "user-1", conversationId: thread });
+      mockCreate.mockResolvedValue(reply());
+      await engine.chat({ message: "x", userId: "user-1" });
+      const names = (i: number) => mockCreate.mock.calls[i][0].tools.map((t: { function: { name: string } }) => t.function.name);
+      expect(names(0)).toEqual(expect.arrayContaining(["run_code", "generate_image"]));
+      expect(names(1)).not.toContain("run_code");
+    });
+
+    it("adds the images a tool produced when the answer leaves them out", async () => {
+      vi.mocked(handleToolCall).mockImplementation(async (_ha, _name, _args, ctx) => {
+        ctx?.attachments?.push("![chart](api/media/11111111-2222-4333-8444-555555555555)");
+        if (ctx) ctx.attachments ??= ["![chart](api/media/11111111-2222-4333-8444-555555555555)"];
+        return { images: [] };
+      });
+      mockCreate
+        .mockResolvedValueOnce(
+          reply([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "run_code", arguments: "{\"task\":\"x\"}" } }] }, finish_reason: "tool_calls" }] }])
+        )
+        .mockResolvedValueOnce(reply([{ choices: [{ delta: { content: "Le graphique :" }, finish_reason: "stop" }] }]));
+      const result = await engine.chat({ message: "x", userId: "user-1", conversationId: thread });
+      expect(result.response).toBe("Le graphique :\n\n![chart](api/media/11111111-2222-4333-8444-555555555555)");
+    });
+  });
+
   describe("reasoning_effort", () => {
     const reply = () =>
       makeStream([{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] }]);

@@ -84,4 +84,25 @@ describe("panel threads in the conversation routes", () => {
     expect((await call(router, "PATCH", "/api/conversations/bob/mado-thread%3At1", { title: "x" })).status).toBe(404);
     expect((await call(router, "PATCH", "/api/conversations/alice/mado-thread%3At1", { title: "   " })).status).toBe(400);
   });
+
+  it("marks a thread as a favourite and back, and forgets it with the thread", async () => {
+    const { conversations, router } = setup();
+    conversations.storeMessage("mado-thread:t1", "default", "user", "hi");
+
+    expect((await call(router, "PATCH", "/api/conversations/default/mado-thread%3At1", { pinned: true })).status).toBe(200);
+    expect(conversations.listConversations("default")[0].pinned).toBe(true);
+    await call(router, "PATCH", "/api/conversations/default/mado-thread%3At1", { pinned: false });
+    expect(conversations.listConversations("default")[0].pinned).toBe(false);
+
+    await call(router, "PATCH", "/api/conversations/default/mado-thread%3At1", { pinned: true });
+    await call(router, "DELETE", "/api/conversations/default/mado-thread%3At1");
+    conversations.storeMessage("mado-thread:t1", "default", "user", "again");
+    expect(conversations.listConversations("default")[0].pinned).toBe(false);
+  });
+
+  it("refuses a PATCH that changes nothing", async () => {
+    const { conversations, router } = setup();
+    conversations.storeMessage("mado-thread:t1", "default", "user", "hi");
+    expect((await call(router, "PATCH", "/api/conversations/default/mado-thread%3At1", {})).status).toBe(400);
+  });
 });

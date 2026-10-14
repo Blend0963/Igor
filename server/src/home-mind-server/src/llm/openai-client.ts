@@ -6,11 +6,13 @@ import { HomeAssistantClient } from "../ha/client.js";
 import { DeviceScanner } from "../ha/device-scanner.js";
 import { TopologyScanner } from "../ha/topology-scanner.js";
 import { buildSystemPromptText } from "./prompts.js";
-import { TOOL_DEFINITIONS, toOpenAITools } from "./tool-definitions.js";
+import { toolsForMode, toOpenAITools } from "./tool-definitions.js";
+import { listFromEnv, mistralKey } from "./mistral-platform.js";
+import { RECENT_FILE_MESSAGES, shortenAttachedFiles } from "../files/extract.js";
 import { randomUUID } from "node:crypto";
 import { handleToolCall, extractAndStoreFacts, type ToolContext } from "./tool-handler.js";
 import { withTokenCap } from "./token-cap.js";
-import { withReasoningEffort } from "./reasoning-effort.js";
+import { withReasoningEffort, type ReasoningEffort } from "./reasoning-effort.js";
 import { describeLongBatch } from "./long-task.js";
 import { recallSemantically, rememberSemantically } from "./semantic-recall.js";
 import { RECALL_LIMIT, resolveMemoryScope } from "../memory/memory-scope.js";
@@ -39,7 +41,35 @@ import type {
 
 type FunctionToolCall = OpenAI.ChatCompletionMessageFunctionToolCall;
 
-const OPENAI_TOOLS = toOpenAITools(TOOL_DEFINITIONS);
+/** The tools of one conversation style, read once per request (env can change in tests). */
+function openAIToolsFor(mode: "voice" | "text" | "thread"): OpenAI.ChatCompletionTool[] {
+  return toOpenAITools(
+    toolsForMode(mode, {
+      enabled: Boolean(mistralKey()),
+      libraryIds: listFromEnv(process.env.MISTRAL_LIBRARY_IDS),
+      connectors: listFromEnv(process.env.MISTRAL_CONNECTORS),
+    })
+  );
+}
+
+/** Output ceiling of a thread turn that reasons first: the thinking is billed from it too. */
+export const THREAD_REASONING_OUTPUT_CAP = 16384;
+
+/** True when a content part is a reasoning block (Mistral's "thinking" chunks). */
+function isThinkingPart(content: unknown): boolean {
+  return Array.isArray(content) && content.some(
+    (part) => typeof part === "object" && part !== null && (part as { type?: unknown }).type === "thinking"
+  );
+}
+
+/** Links of `attachments` the answer does not already contain, as a block to append. */
+export function missingAttachments(text: string, attachments: string[] | undefined): string {
+  const missing = [...new Set(attachments ?? [])].filter((md) => {
+    const link = md.slice(md.lastIndexOf("(") + 1, -1);
+    return !text.includes(link);
+  });
+  return missing.length ? `\n\n${missing.join("\n\n")}` : "";
+}
 
 /**
  * Hard cap on tool round-trips per user message. A model that loops (repeatedly
@@ -201,7 +231,9 @@ export class OpenAIChatEngine implements IChatEngine {
     const history = (
       await this.conversations.getConversationHistory(effectiveConversationId, scope.historyWindow)
     ).filter((msg) => msg.userId === userId);
-    for (const msg of history) {
+    history.forEach((msg, index) => {
+      // Files attached long ago keep only an excerpt (see files/extract.ts).
+      const old = index < history.length - RECENT_FILE_MESSAGES;
       // Only the user's turns carry the time marker. Stamping the
       // assistant's own past replies taught the model to open its answers
       // with a recited "[09:12]" — it imitates its own history entries —
@@ -209,8 +241,9 @@ export class OpenAIChatEngine implements IChatEngine {
       // already.
       const stamp = msg.role === "user" ? historyTimestamp(msg.createdAt) : "";
       const prefix = stamp ? `[${stamp}] ` : "";
-      messages.push({ role: msg.role, content: `${prefix}${msg.content}` });
-    }
+      const content = old ? shortenAttachedFiles(msg.content) : msg.content;
+      messages.push({ role: msg.role, content: `${prefix}${content}` });
+    });
 
     // Retrieve distant history strictly by semantic similarity, never by keywords or recency.
     const inHistory = new Set(history.map((msg) => msg.id));
@@ -270,7 +303,25 @@ export class OpenAIChatEngine implements IChatEngine {
     const promptMode = scope.isThread ? "thread" : isVoice ? "voice" : "text";
     const cacheKey = `mado:${promptMode}:${scope.factBucket}`;
     const turnUsage = new UsageTally();
-    let result = await this.streamCompletion(messages, isVoice, onChunk, false, conversationId || effectiveConversationId, cacheKey);
+    const tools = openAIToolsFor(promptMode);
+    // A thread reasons first (Mistral Large 4's hybrid mode, THREAD_REASONING);
+    // spoken answers never do: thinking only adds silence and output tokens.
+    const effort = scope.isThread
+      ? this.config.threadReasoning
+      : this.config.reasoningEffort ?? (isVoice ? "none" : undefined);
+    let thinkingShown = false;
+    const call = (forceAnswer: boolean) =>
+      this.streamCompletion(messages, isVoice, onChunk, forceAnswer, conversationId || effectiveConversationId, cacheKey, {
+        tools,
+        effort,
+        isThread: scope.isThread,
+        onThinking: () => {
+          if (thinkingShown) return;
+          thinkingShown = true;
+          events.onStatus?.("Réflexion…");
+        },
+      });
+    let result = await call(false);
     turnUsage.add(result.usage);
 
     let iterations = 0;
@@ -347,12 +398,16 @@ export class OpenAIChatEngine implements IChatEngine {
         );
       }
       events.onTurn?.();
-      result = await this.streamCompletion(messages, isVoice, onChunk, forceAnswer, conversationId || effectiveConversationId, cacheKey);
+      result = await call(forceAnswer);
       turnUsage.add(result.usage);
       if (forceAnswer) break;
     }
 
-    const responseText = result.text;
+    // Files the tools produced (charts, images) that the answer does not
+    // show yet go after it, streamed like the rest, and stored with it.
+    const extraMedia = missingAttachments(result.text, toolCtx.attachments);
+    if (extraMedia) onChunk?.(extraMedia);
+    const responseText = result.text + extraMedia;
 
     console.log(`[usage] ${promptMode} ${turnUsage.describe()} tools=${toolsUsed.length} model=${this.config.llmModel}`);
 
@@ -441,8 +496,10 @@ export class OpenAIChatEngine implements IChatEngine {
 
 
   /** Ceiling on one reply; see WRITTEN_OUTPUT_CAP for why it is what it is. */
-  private maxOutputTokens(isVoice: boolean): number {
-    return this.config.maxOutputTokens ?? (isVoice ? VOICE_OUTPUT_CAP : WRITTEN_OUTPUT_CAP);
+  private maxOutputTokens(isVoice: boolean, reasoningThread = false): number {
+    if (this.config.maxOutputTokens) return this.config.maxOutputTokens;
+    if (isVoice) return VOICE_OUTPUT_CAP;
+    return reasoningThread ? THREAD_REASONING_OUTPUT_CAP : WRITTEN_OUTPUT_CAP;
   }
 
   /** True when the endpoint is OpenRouter, where its own request fields apply. */
@@ -474,23 +531,30 @@ export class OpenAIChatEngine implements IChatEngine {
     onChunk?: StreamCallback,
     disableTools = false,
     sessionId?: string,
-    cacheKey?: string
+    cacheKey?: string,
+    opts: {
+      tools?: OpenAI.ChatCompletionTool[];
+      effort?: ReasoningEffort;
+      isThread?: boolean;
+      onThinking?: () => void;
+    } = {}
   ): Promise<{
     text: string;
     finishReason: string | null;
     toolCalls: FunctionToolCall[];
     usage?: TokenUsage;
   }> {
-    const cap = this.maxOutputTokens(isVoice);
+    const effort = "effort" in opts ? opts.effort : this.config.reasoningEffort ?? (isVoice ? "none" : undefined);
+    const cap = this.maxOutputTokens(isVoice, Boolean(opts.isThread && effort && effort !== "none"));
+    const tools = opts.tools ?? openAIToolsFor(isVoice ? "voice" : "text");
     const startedAt = Date.now();
     const stream = await withTokenCap(this.config.llmModel, cap, (capParam) =>
       withReasoningEffort(
         this.config.llmModel,
-        // A spoken answer is wanted now, in a sentence: thinking first only
-        // adds seconds of silence and tokens billed as output. Unset means
-        // "none" for voice; an explicit REASONING_EFFORT still wins, and a
-        // model that refuses the parameter stops getting it.
-        this.config.reasoningEffort ?? (isVoice ? "none" : undefined),
+        // Chosen by chat(): high in a thread by default, none for voice, the
+        // configured REASONING_EFFORT otherwise. A model that refuses the
+        // parameter stops getting it.
+        effort,
         (reasoning) =>
           withPromptCacheKey(this.config.llmModel, cacheKey, (cache) =>
           this.client.chat.completions.create({
@@ -499,7 +563,7 @@ export class OpenAIChatEngine implements IChatEngine {
             ...reasoning,
             ...cache,
             messages,
-            tools: OPENAI_TOOLS,
+            tools,
             // Keep the tool list in the request (history already references it) but
             // stop the model from issuing more calls.
             ...(disableTools ? { tool_choice: "none" as const } : {}),
@@ -545,6 +609,7 @@ export class OpenAIChatEngine implements IChatEngine {
 
       // Provider APIs may return text as content blocks rather than a string.
       // Normalize each delta before storing or forwarding it to Home Assistant/TTS.
+      if (opts.onThinking && isThinkingPart(choice.delta?.content)) opts.onThinking();
       const chunkText = contentToText(choice.delta?.content);
       if (chunkText) {
         text += chunkText;

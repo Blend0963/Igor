@@ -52,7 +52,10 @@ export function createFactExtractor(config: Config): IFactExtractor {
         config.openaiApiKey!,
         extractionModel,
         config.openaiBaseUrl,
-        config.openaiResponseFormat,
+        // Mistral's JSON mode guarantees parseable output for the extraction
+        // pass; elsewhere it stays opt-in (some endpoints reject it).
+        config.openaiResponseFormat ??
+          (/api\.mistral\.ai/i.test(config.openaiBaseUrl ?? "") ? "json_object" : undefined),
         config.openaiMaxTokens,
         config.reasoningEffort
       );

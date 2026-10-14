@@ -27,10 +27,12 @@ configuration:
           Custom API endpoint. Required for Ollama (e.g. http://homeassistant:11434/v1).
           Leave empty for cloud providers.
   mistral_api_key:
-    name: Mistral API Key (Web Search)
+    name: Mistral API Key (Platform Tools)
     description: >-
-      Optional Mistral API key used for Mistral's native web_search tool through
-      the Conversations API. This is separate from your selected chat provider.
+      Optional Mistral API key for Mistral's own tools: web search, code
+      interpreter, image generation, document libraries, connectors, PDF reading
+      (OCR) and Voxtral speech. When your chat provider is Mistral, its key is
+      used if this one is empty.
   custom_prompt:
     name: Custom Prompt
     description: >-
@@ -85,6 +87,44 @@ configuration:
       the web-search key above, or your chat key when the provider is
       Mistral. "off" hides the microphone. When on, MaDo also offers itself
       as a speech-to-text engine in Home Assistant's voice assistants.
+  thread_reasoning:
+    name: Thinking in Chat Threads
+    description: >-
+      How much the model thinks before answering in the chat panel's threads.
+      Unset = "high": answers take a few more seconds and are better reasoned
+      (Mistral Large 4's reasoning mode). "none" answers straight away. Spoken
+      Assist never thinks first.
+  text_to_speech:
+    name: Text-to-Speech (Voxtral)
+    description: >-
+      "mistral" gives MaDo a voice through Mistral's Voxtral TTS (needs a
+      Mistral key): a 🔊 button under each reply in the chat panel, and MaDo
+      offered as a text-to-speech engine in Home Assistant's voice assistants.
+      Unset or "off": no voice.
+  tts_voice:
+    name: Voxtral Voice
+    description: >-
+      Voice id for Voxtral TTS, as listed in Mistral's console. Leave empty for
+      the default voice.
+  mistral_library_ids:
+    name: Mistral Document Libraries
+    description: >-
+      Comma-separated ids of Mistral document libraries (Le Chat → Libraries)
+      MaDo may search: device manuals, invoices, contracts. Enables the
+      search_documents tool, in Assist and in threads.
+  mistral_connectors:
+    name: Mistral Connectors (experimental)
+    description: >-
+      Comma-separated names or ids of connectors set up in your Mistral
+      account (Gmail, calendar, Notion…). Enables the use_connector tool in
+      chat threads. MaDo asks before anything that sends, books or deletes.
+  ocr_price_per_1000_pages:
+    name: OCR Price (per 1000 pages)
+    description: >-
+      Used only for the estimate MaDo shows before reading a scanned PDF with
+      Mistral OCR, in USD per 1000 pages. Unset = 4 (Mistral's list price for
+      its latest OCR model in October 2026). PDFs that contain text are read on
+      the add-on for free and never need OCR.
   max_output_tokens:
     name: Maximum Answer Length
     description: >-
@@ -99,7 +139,8 @@ configuration:
       How much the model thinks before it answers. Lower is faster and cheaper,
       which you notice most with voice; higher can help with harder questions.
       Leave empty to use the model's own default. A model that does not support
-      this setting simply ignores it. On Mistral, only "none" is currently sent.
+      this setting simply ignores it. Applies to Assist; chat threads have
+      their own setting below.
   extraction_model:
     name: Memory Extraction Model
     description: >-
