@@ -486,7 +486,11 @@ export class OpenAIChatEngine implements IChatEngine {
     const stream = await withTokenCap(this.config.llmModel, cap, (capParam) =>
       withReasoningEffort(
         this.config.llmModel,
-        this.config.reasoningEffort,
+        // A spoken answer is wanted now, in a sentence: thinking first only
+        // adds seconds of silence and tokens billed as output. Unset means
+        // "none" for voice; an explicit REASONING_EFFORT still wins, and a
+        // model that refuses the parameter stops getting it.
+        this.config.reasoningEffort ?? (isVoice ? "none" : undefined),
         (reasoning) =>
           withPromptCacheKey(this.config.llmModel, cacheKey, (cache) =>
           this.client.chat.completions.create({
