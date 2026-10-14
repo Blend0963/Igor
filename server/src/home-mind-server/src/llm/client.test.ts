@@ -47,6 +47,10 @@ function finalMessage(overrides: Record<string, unknown>) {
 describe("LLMClient (Anthropic engine)", () => {
   let engine: LLMClient;
   let config: Config;
+  let conversations: IConversationStore & {
+    getConversationHistory: ReturnType<typeof vi.fn>;
+    storeMessage: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     mockStream.mockReset();
@@ -61,10 +65,10 @@ describe("LLMClient (Anthropic engine)", () => {
     const memory = {
       getFactsWithinTokenLimit: vi.fn().mockResolvedValue([]),
     } as unknown as IMemoryStore;
-    const conversations = {
+    conversations = {
       getConversationHistory: vi.fn().mockReturnValue([]),
       storeMessage: vi.fn(),
-    } as unknown as IConversationStore;
+    } as unknown as typeof conversations;
     const scanner = {
       refreshIfStale: vi.fn().mockResolvedValue(undefined),
       hasProfiles: vi.fn().mockReturnValue(false),
@@ -179,5 +183,30 @@ describe("LLMClient (Anthropic engine)", () => {
     // Anthropic gives no reasoning count; the log must say so, not print 0.
     expect(line).toContain("reasoning=unreported");
     warn.mockRestore();
+  });
+
+  it("gives a mado-thread: id its own conversation, isolated from Assist", async () => {
+    // The thread panel sends "mado-thread:" ids: short-term history must be
+    // segmented per thread, or every thread shares one stream.
+    mockStream.mockReturnValue(
+      finalMessage({ content: [{ type: "text", text: "Hello" }] })
+    );
+    await engine.chat({ message: "Hi", userId: "u", conversationId: "mado-thread:t-1" });
+
+    expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-thread:t-1", 20);
+    expect(conversations.storeMessage).toHaveBeenCalledWith("mado-thread:t-1", "u", "user", "Hi");
+    expect(conversations.storeMessage).toHaveBeenCalledWith("mado-thread:t-1", "u", "assistant", "Hello");
+  });
+
+  it("keeps non-thread callers on the shared Assist conversation", async () => {
+    // Assist sends Home Assistant own conversation ids, one per chat log:
+    // those must not fragment the durable mado-user: conversation.
+    mockStream.mockReturnValue(
+      finalMessage({ content: [{ type: "text", text: "Hello" }] })
+    );
+    await engine.chat({ message: "Hi", userId: "u", conversationId: "01JDWG7QTQXQF8J1XQ" });
+
+    expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-user:u", 20);
+    expect(conversations.storeMessage).toHaveBeenCalledWith("mado-user:u", "u", "user", "Hi");
   });
 });

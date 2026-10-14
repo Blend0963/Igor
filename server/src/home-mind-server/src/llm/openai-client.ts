@@ -127,8 +127,15 @@ export class OpenAIChatEngine implements IChatEngine {
     const events = toStreamEvents(streamArg);
     const onChunk = events.onChunk;
     const { message, userId, conversationId, isVoice = false, customPrompt, language } = request;
-    // Use one durable conversation ID per MaDo user across Assist sessions, devices, and dates.
-    const effectiveConversationId = `mado-user:${userId}`;
+    // Short-term history is segmented per thread: the panel addresses its
+    // threads with explicit "mado-thread:" ids, and those get a conversation of
+    // their own. Everything else shares one durable conversation per MaDo user
+    // across Assist sessions, devices, and dates — Home Assistant sends its own
+    // conversation ids (a new one per chat log), and those must NOT fragment
+    // the shared conversation.
+    const effectiveConversationId = conversationId?.startsWith("mado-thread:")
+      ? conversationId
+      : `mado-user:${userId}`;
     const toolsUsed: string[] = [];
     let announced = false;
     const turnId = randomUUID(); // nonce for this turn — powers the automation confirmation gate
