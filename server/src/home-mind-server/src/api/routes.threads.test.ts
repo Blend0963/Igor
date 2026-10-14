@@ -105,4 +105,53 @@ describe("panel threads in the conversation routes", () => {
     conversations.storeMessage("mado-thread:t1", "default", "user", "hi");
     expect((await call(router, "PATCH", "/api/conversations/default/mado-thread%3At1", {})).status).toBe(400);
   });
+
+  it("titles a new thread from its first message, and only the first", async () => {
+    const conversations = new InMemoryConversationStore();
+    const generateTitle = vi.fn().mockResolvedValue("Rempotage du ficus");
+    const llm = {
+      chat: vi.fn(async (req: { conversationId: string; userId: string; message: string }) => {
+        conversations.storeMessage(req.conversationId, req.userId, "user", req.message);
+        return { response: "ok", toolsUsed: [], factsLearned: 0 };
+      }),
+    } as unknown as IChatEngine;
+    const router = createRouter(llm, {} as IMemoryStore, "shodh", "0", undefined, conversations, undefined, undefined, undefined, undefined, {}, { generateTitle });
+
+    const first = await call(router, "POST", "/api/chat", { message: "comment rempoter mon ficus ?", conversationId: "mado-thread:t1" });
+    expect((first.body as { title?: string }).title).toBe("Rempotage du ficus");
+    expect(conversations.listConversations("default")[0].title).toBe("Rempotage du ficus");
+
+    await call(router, "POST", "/api/chat", { message: "et l'arroser ?", conversationId: "mado-thread:t1" });
+    expect(generateTitle).toHaveBeenCalledTimes(1);
+
+    await call(router, "POST", "/api/chat", { message: "allume la lampe", conversationId: "01HASSIST" });
+    expect(generateTitle).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a thread's reply while it is being written", async () => {
+    let release!: () => void;
+    const llm = {
+      chat: vi.fn(async (_req: unknown, events?: { onChunk?: (t: string) => void }) => {
+        events?.onChunk?.("Je cherche");
+        await new Promise<void>((r) => (release = r));
+        return { response: "Je cherche", toolsUsed: [], factsLearned: 0 };
+      }),
+    } as unknown as IChatEngine;
+    const router = createRouter(llm, {} as IMemoryStore, "shodh", "0", undefined, new InMemoryConversationStore());
+    const app = express();
+    app.use(express.json());
+    app.use("/api", router);
+    const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => { const s = app.listen(0, () => resolve(s)); });
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
+    try {
+      const pending = fetch(`${base}/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: "x", conversationId: "mado-thread:t9" }) });
+      await vi.waitFor(async () => expect(await (await fetch(`${base}/running/default`)).json()).toHaveLength(1));
+      expect(await (await fetch(`${base}/running/default/mado-thread%3At9`)).json()).toMatchObject({ running: true, text: "Je cherche" });
+      release();
+      await pending;
+      expect(await (await fetch(`${base}/running/default/mado-thread%3At9`)).json()).toEqual({ running: false });
+    } finally {
+      server.close();
+    }
+  });
 });

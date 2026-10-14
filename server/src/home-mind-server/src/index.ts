@@ -24,6 +24,7 @@ import { createRouter } from "./api/routes.js";
 import { createSttService, sttModelFor } from "./stt/stt-service.js";
 import { createTtsService } from "./tts/tts-service.js";
 import { configureMediaStore } from "./llm/media-store.js";
+import { createTitleGenerator } from "./llm/thread-title.js";
 import { MemoryCleanupJob } from "./jobs/memory-cleanup.js";
 import { BalanceWatchJob } from "./jobs/balance-watch.js";
 
@@ -176,7 +177,7 @@ app.use("/api", createRouter(llm, memory, "shodh", version, config.customPrompt,
   voice: config.customPromptVoice,
   thread: config.customPromptThread,
   assistMode: config.assistMode,
-}));
+}, { generateTitle: createTitleGenerator(config) }));
 
 // The built-in thread panel: plain static files next to the compiled server
 // (the add-on image copies them in). Optional on purpose — when the
