@@ -317,16 +317,18 @@ export class OpenAIChatEngine implements IChatEngine {
     // A plain command or a quick state question goes to FAST_MODEL when one
     // is set (llm/model-router.ts), without reasoning; everything else stays
     // on the main model.
+    // A model or thinking level picked in the panel wins over both.
     const fastModel =
-      this.config.fastModel && isSimpleRequest({ message, hasImages: Boolean(request.images?.length) })
+      !request.model && this.config.fastModel && isSimpleRequest({ message, hasImages: Boolean(request.images?.length) })
         ? this.config.fastModel
         : undefined;
-    let model = fastModel ?? this.config.llmModel;
-    let effort = fastModel
-      ? "none"
-      : scope.isThread
-        ? this.config.threadReasoning
-        : this.config.reasoningEffort ?? (isVoice ? "none" : undefined);
+    let model = request.model ?? fastModel ?? this.config.llmModel;
+    let effort = request.reasoning
+      ?? (fastModel
+        ? "none"
+        : scope.isThread
+          ? this.config.threadReasoning
+          : this.config.reasoningEffort ?? (isVoice ? "none" : undefined));
     if (fastModel) console.log(`[route] fast model ${fastModel} for: ${message.slice(0, 60)}`);
     let thinkingShown = false;
     // The text of the model turn being streamed, kept for the stop button:

@@ -50,6 +50,9 @@
   .inline-code { background: #1a1d24; border: 1px solid #2c313d; border-radius: 5px; padding: 0 4px; }
   #statusline { padding: 4px 18px; font-size: 12px; color: #8b93a5; }
   #statusline.err { color: #ff6b6b; }
+  #pickers { display: flex; gap: 8px; padding: 8px 18px 0; flex-wrap: wrap; }
+  .pick { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: #8b93a5; }
+  .pick select { background: #1a1d24; color: #c9d1e0; border: 1px solid #2c313d; border-radius: 8px; padding: 3px 6px; font: inherit; font-size: 12px; max-width: 220px; }
   #composer { display: flex; gap: 10px; padding: 12px 18px 16px; border-top: 1px solid #262a33; }
   #input { flex: 1; resize: none; background: #1a1d24; color: #e6e9ef; border: 1px solid #2c313d; border-radius: 12px; padding: 10px 14px; font: inherit; font-size: 14px; max-height: 160px; }
   #input:focus { outline: 1px solid #3b5bdb; }
@@ -254,6 +257,20 @@
       <div id="messages"></div>
       <div id="statusline" hidden></div>
       <div id="pending" hidden></div>
+      <div id="pickers">
+        <label class="pick" title="Modèle pour ce fil">🧠
+          <select id="pick-model" aria-label="Modèle"></select>
+        </label>
+        <label class="pick" title="Réflexion avant de répondre, pour ce fil">💭
+          <select id="pick-reasoning" aria-label="Réflexion">
+            <option value="">Réflexion auto</option>
+            <option value="none">Sans réflexion</option>
+            <option value="low">Réflexion faible</option>
+            <option value="medium">Réflexion moyenne</option>
+            <option value="high">Réflexion élevée</option>
+          </select>
+        </label>
+      </div>
       <form id="composer">
         <button id="btn-attach" class="icon-btn" type="button" title="Joindre une image ou un fichier">📎</button>
         <button id="btn-camera" class="icon-btn" type="button" title="Prendre une photo">📷</button>
@@ -529,6 +546,7 @@
 
   function openThread(id, quiet) {
     state.current = id;
+    showPick();
     state.liveFor = null;
     state.editFrom = null;
     el("btn-export").hidden = false;
@@ -562,6 +580,7 @@
 
   function newThread() {
     state.current = THREAD_PREFIX + uuid();
+    showPick();
     state.liveFor = null;
     state.editFrom = null;
     el("btn-export").hidden = true;
@@ -1424,6 +1443,11 @@
     if (images && images.length) payload.images = images;
     if (docs && docs.length) payload.documents = docs;
     if (ocr) payload.ocr = ocr;
+    var pick = pickFor(threadId);
+    // The thread keeps the choice it was answered with.
+    writePick(threadId, { model: pick.model || "", reasoning: pick.reasoning || "" });
+    if (pick.model) payload.model = pick.model;
+    if (pick.reasoning) payload.reasoning = pick.reasoning;
     var body = JSON.stringify(payload);
     var streamError = "";
 
@@ -1957,6 +1981,61 @@
     refreshThreads();
   });
 
+  // ----- model and thinking pickers -----
+  //
+  // Per thread, remembered in this browser; a new thread starts from the
+  // last choice. "Auto" keeps the add-on settings (main model, fast model for
+  // simple commands, thread reasoning).
+
+  var LS_PICK = "mado_pick:";
+  function readPick(key) {
+    try { return JSON.parse(localStorage.getItem(LS_PICK + key) || "{}") || {}; } catch (e) { return {}; }
+  }
+  function writePick(key, value) {
+    try { localStorage.setItem(LS_PICK + key, JSON.stringify(value)); } catch (e) { /* private mode */ }
+  }
+  function pickFor(id) {
+    var own = id ? readPick(id) : {};
+    return own.model !== undefined || own.reasoning !== undefined ? own : readPick("last");
+  }
+  function showPick() {
+    var p = pickFor(state.current);
+    var sel = el("pick-model");
+    if (p.model && !Array.prototype.some.call(sel.options, function (o) { return o.value === p.model; })) {
+      var o = document.createElement("option");
+      o.value = p.model;
+      o.textContent = p.model;
+      sel.appendChild(o);
+    }
+    sel.value = p.model || "";
+    el("pick-reasoning").value = p.reasoning || "";
+  }
+  function savePick() {
+    var value = { model: el("pick-model").value, reasoning: el("pick-reasoning").value };
+    writePick("last", value);
+    if (state.current) writePick(state.current, value);
+  }
+  el("pick-model").addEventListener("change", savePick);
+  el("pick-reasoning").addEventListener("change", savePick);
+
+  function loadModels() {
+    return api("api/models").then(function (res) { return res.json(); }).then(function (data) {
+      var sel = el("pick-model");
+      sel.textContent = "";
+      var auto = document.createElement("option");
+      auto.value = "";
+      auto.textContent = "Modèle auto" + (data.main ? " (" + data.main + (data.fast ? " / " + data.fast + " pour les ordres simples" : "") + ")" : "");
+      sel.appendChild(auto);
+      (data.models || []).forEach(function (m) {
+        var o = document.createElement("option");
+        o.value = m.id;
+        o.textContent = m.id + (m.role === "main" ? " · principal" : m.role === "fast" ? " · rapide" : m.role === "memory" ? " · mémoire" : "") + (m.vision ? " 👁" : "");
+        sel.appendChild(o);
+      });
+      showPick();
+    }).catch(function () { showPick(); });
+  }
+
   // ----- stop button -----
 
   function refreshSendButton() {
@@ -2475,6 +2554,7 @@
     })
     .catch(function () {});
   loadProjects();
+  loadModels();
   refreshThreads().then(syncRunning);
 })();
 </script>
