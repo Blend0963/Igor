@@ -53,6 +53,24 @@ configuration:
       which you notice most with voice; higher can help with harder questions.
       Leave empty to use the model's own default. A model that does not support
       this setting simply ignores it. On Mistral, only "none" is currently sent.
+  extraction_model:
+    name: Memory Extraction Model
+    description: >-
+      Model ID for MaDo's background memory pass — the call that rereads each
+      conversation turn and stores what was worth remembering. Leave empty to
+      use the same model as your main chat model, or point it at a cheaper
+      model on the same provider (for example ministral-8b-latest on Mistral)
+      to spend less on memory without making the main answers any less smart.
+  extraction_gate:
+    name: Skip Pointless Memory Extraction
+    description: >-
+      On by default. After each turn, MaDo checks whether the message could
+      have taught it anything: a pure command ("turn off the kitchen light"),
+      a pure question, or a bare "yes"/"thanks" provably did not, so the
+      memory pass is skipped and that API call is never made. Anything that
+      might carry a fact — a preference, "remember...", a correction — is
+      always extracted. Turn this off to always run the memory pass, at the
+      cost of one extra API call per turn.
   layout_from_exposed:
     name: Room map from exposed entities
     description: >-

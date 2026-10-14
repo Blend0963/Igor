@@ -33,6 +33,11 @@ const ConfigSchema = z
     // That thinking is spent from the output cap above, so voice turns want it
     // low. Unset sends nothing and leaves the model on its own default.
     reasoningEffort: z.enum(["none", "minimal", "low", "medium", "high"]).optional(),
+    // Dedicated model for the post-turn fact-extraction pass. Unset = the
+    // main chat model. The extraction pass is short and structured, so it
+    // can run on a much cheaper model (e.g. ministral-8b-latest on Mistral)
+    // without making the main answers any less smart.
+    extractionModel: z.string().optional(),
 
     // Ollama
     ollamaBaseUrl: z.string().url().optional(),
@@ -151,6 +156,7 @@ export function loadConfig(): Config {
     // quietly ignored.
     maxOutputTokens: emptyToUndefined(process.env.MAX_OUTPUT_TOKENS ?? process.env.OPENAI_MAX_TOKENS),
     reasoningEffort: emptyToUndefined(process.env.REASONING_EFFORT),
+    extractionModel: emptyToUndefined(process.env.EXTRACTION_MODEL),
     ollamaBaseUrl: emptyToUndefined(process.env.OLLAMA_BASE_URL),
     haUrl: process.env.HA_URL,
     haToken: process.env.HA_TOKEN,
