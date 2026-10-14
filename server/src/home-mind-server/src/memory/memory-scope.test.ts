@@ -2,16 +2,25 @@ import { describe, it, expect } from "vitest";
 import { inRecallScope, resolveMemoryScope, threadFactBucket } from "./memory-scope.js";
 
 describe("resolveMemoryScope", () => {
-  it("seals a panel thread off: own conversation, own facts, recall inside it only", () => {
-    const scope = resolveMemoryScope("alice", "mado-thread:t1");
-    expect(scope).toEqual({
+  it("gives a thread its own conversation and recall, and the user's shared facts by default", () => {
+    expect(resolveMemoryScope("alice", "mado-thread:t1")).toEqual({
       conversationId: "mado-thread:t1",
-      factBucket: threadFactBucket("alice", "mado-thread:t1"),
+      factBucket: "alice",
       recall: { conversationId: "mado-thread:t1" },
       isThread: true,
       historyWindow: 20,
     });
+  });
+
+  it("seals a thread's facts off too when thread memory is isolated", () => {
+    const scope = resolveMemoryScope("alice", "mado-thread:t1", "isolated");
+    expect(scope.factBucket).toBe(threadFactBucket("alice", "mado-thread:t1"));
     expect(scope.factBucket).not.toBe("alice");
+    expect(scope.recall).toEqual({ conversationId: "mado-thread:t1" });
+  });
+
+  it("never changes Assist, whatever the thread setting", () => {
+    expect(resolveMemoryScope("alice", "01HXYZ", "isolated").factBucket).toBe("alice");
   });
 
   it("puts every Assist device on the one shared conversation, with threads out of recall", () => {

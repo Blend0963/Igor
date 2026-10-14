@@ -340,7 +340,7 @@
   });
 
   function deleteThread(id) {
-    if (!window.confirm("Supprimer ce fil ? Ses messages et tout ce qu'il a mémorisé seront perdus.")) return;
+    if (!window.confirm("Supprimer ce fil ? Ses messages seront perdus.")) return;
     api("api/conversations/" + USER_ID + "/" + encodeURIComponent(id), { method: "DELETE" })
       .then(function () {
         if (state.current === id) newThread();

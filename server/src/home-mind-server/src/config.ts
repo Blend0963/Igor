@@ -78,6 +78,10 @@ const ConfigSchema = z
     // from the phone app arrives as text. "voice" / "text" force one style
     // for every Assist request. Chat-panel threads are never affected.
     assistMode: z.enum(["auto", "voice", "text"]).default("auto"),
+    // Long-term facts of chat-panel threads: shared with Assist and the other
+    // threads (default), or kept per thread. Conversation history is per
+    // thread either way. See memory/memory-scope.ts.
+    threadMemory: z.enum(["shared", "isolated"]).default("shared"),
 
     // Per-entity device capability overrides (JSON, for devices with incorrect HA-reported modes)
     deviceOverrides: z.string().optional(),
@@ -186,6 +190,7 @@ export function loadConfig(): Config {
     customPromptVoice: emptyToUndefined(process.env.CUSTOM_PROMPT_VOICE),
     customPromptThread: emptyToUndefined(process.env.CUSTOM_PROMPT_THREAD),
     assistMode: emptyToUndefined(process.env.ASSIST_MODE),
+    threadMemory: emptyToUndefined(process.env.THREAD_MEMORY),
     deviceOverrides: emptyToUndefined(process.env.DEVICE_OVERRIDES),
     layoutDomains: emptyToUndefined(process.env.LAYOUT_DOMAINS),
     layoutFromExposed: emptyToUndefined(process.env.LAYOUT_FROM_EXPOSED),

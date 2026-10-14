@@ -1,5 +1,5 @@
 name: "MaDo"
-version: "0.5.1"
+version: "0.6.0"
 slug: "mado"
 description: "MaDo — assistant IA pour Home Assistant avec mémoire persistante"
 url: "https://github.com/Blend0963/MaDo"
@@ -56,6 +56,10 @@ schema:
   # as spoken, so voice from the phone app arrives as typed text; "voice"
   # treats every Assist request as spoken. Panel threads are never affected.
   assist_mode: "list(auto|voice|text)?"
+  # Long-term facts in chat threads. Unset = shared with Assist and the
+  # other threads; "isolated" gives each thread its own. History is per
+  # thread either way.
+  thread_memory: "list(shared|isolated)?"
   # Speech-to-text for the chat panel's microphone (Voxtral on Mistral's
   # API). Unset = on whenever a Mistral key is available (the web-search key,
   # or the chat key when the provider is Mistral); "off" disables it.
