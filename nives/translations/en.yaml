@@ -221,3 +221,5 @@ configuration:
     name: Log Level
     description: >-
       Logging verbosity. Use "debug" for troubleshooting.
+network:
+  3100/tcp: "MaDo app (PWA): give it a host port only to serve the app through your own HTTPS reverse proxy"

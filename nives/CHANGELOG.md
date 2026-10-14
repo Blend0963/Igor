@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.4 — Installable app, share to MaDo
+
+- The chat panel is installable as an app (PWA): manifest, icons and a service worker. Served on its own HTTPS address through your reverse proxy, it installs from the browser and opens full screen, without Home Assistant around it. See "Installed app (PWA)" in the documentation.
+- On Android, the installed app is in the **Share** menu: files (PDF, photos, Word, Excel, PowerPoint, OpenDocument, zip, text), links and text shared to MaDo open a new thread with them attached.
+- 🔑 in the panel inside Home Assistant shows the API key to copy into the installed app.
+
 ## 0.8.3 — Charts and tables full screen
 
 - ⛶ on a chart or a table of a reply opens it full screen. Charts are redrawn at the size of the screen (tall on a phone held upright, wide on a computer, again when the phone turns) with text at its normal size; ✕, Échap or a tap outside closes it.
