@@ -20,6 +20,7 @@ import {
   MATCH_THRESHOLD,
 } from "../memory/fact-resolution.js";
 import type { Fact } from "../memory/types.js";
+import { extractionGateReason } from "../memory/extraction-gate.js";
 
 /**
  * Per-request context for tools that need conversation continuity (e.g. the
@@ -552,7 +553,26 @@ export async function extractAndStoreFacts(
    */
   forgetTargets?: string[]
 ): Promise<number> {
+  // Skip the extraction call only when the user's message provably taught
+  // nothing (pure command, pure question, bare acknowledgement) — see
+  // extraction-gate.ts, which is deliberately inclusion-shaped: markers
+  // ("remember...", "I prefer...") always extract and doubt extracts too.
+  // A turn that ran a forget_memory call bypasses the gate: the same message
+  // can carry the replacement fact ("forget my name is X — my name is now
+  // Y"), which extraction must see so the target can be filtered out and
+  // the replacement stored.
+  if (forgetTargets === undefined || forgetTargets.length === 0) {
+    const gateReason = extractionGateReason(userMessage);
+    if (gateReason !== null) {
+      console.debug(
+        `[memory] extraction skipped for ${userId}: ${gateReason} (${userMessage.slice(0, 80)})`
+      );
+      return 0;
+    }
+  }
+
   const existingFacts = await memory.getFacts(userId);
+
 
   const extractedFacts = await extractor.extract(
     userMessage,
