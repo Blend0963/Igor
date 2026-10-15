@@ -39,3 +39,13 @@ export function isSimpleRequest({ message, hasImages, hasDocuments }: RouteInput
   if (COMMAND_START.test(text)) return true;
   return text.length <= 90 && STATE_QUESTION.test(text);
 }
+
+/**
+ * An order to do something in the house ("éteins toutes les lumières"). A
+ * reply to one of these that calls no tool did nothing, whatever it says: the
+ * engine then asks again, on the main model, with a tool call required.
+ */
+export function isActionCommand(message: string): boolean {
+  const text = message.trim();
+  return Boolean(text) && text.length <= FAST_MAX_CHARS * 2 && COMMAND_START.test(text);
+}

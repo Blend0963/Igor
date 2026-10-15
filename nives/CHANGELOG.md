@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.4 — Orders are carried out, not just answered
+
+- A plain order ("éteins toutes les lumières") answered without calling any tool did nothing, whatever the reply said: the fast model sometimes just replied "la lumière est éteinte". Such a reply is now held back, never spoken, and the order is asked again on the main model with a tool call required. If the provider refuses that, the first answer is kept as before.
+
 ## 0.9.3 — Security fixes
 
 From a full security audit of the add-on. No backdoor was found; these close the weaknesses it did find.
