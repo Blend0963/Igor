@@ -17,10 +17,18 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import type { IChatEngine } from "../llm/interface.js";
 import type { IConversationStore } from "../memory/types.js";
 
+export type ConditionOp = "equals" | "not_equals" | "below" | "above";
+
 export type Schedule =
   | { type: "once"; at: string }
   | { type: "daily"; time: string }
-  | { type: "weekly"; days: number[]; time: string };
+  | { type: "weekly"; days: number[]; time: string }
+  /**
+   * "Préviens-moi quand la machine à laver a fini": fires once, the first
+   * time the entity's state meets the condition for `forMinutes` in a row,
+   * and is dropped unfired at `until`.
+   */
+  | { type: "when"; entityId: string; op: ConditionOp; value: string; forMinutes: number; until: string };
 
 export interface ScheduledTask {
   id: string;
@@ -34,6 +42,8 @@ export interface ScheduledTask {
   builtin?: boolean;
   lastRunAt?: string;
   lastError?: string;
+  /** "when" items: since when the condition has held. */
+  metSince?: string;
 }
 
 export const TASKS_THREAD = "mado-thread:scheduled-tasks";
@@ -109,11 +119,76 @@ export function parseWhen(when: string, tz: string): Date {
   return zonedTime(Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5]), tz);
 }
 
+/**
+ * "Dans 5 minutes", "demain à 15h", "dans 6 jours à 18h", "à 15h": the
+ * instant, computed here rather than by the model, which slips on month
+ * ends, weekdays and clock changes. Days move the local calendar date (so
+ * "dans 6 jours à 18h" is 18:00 local even across a DST change); minutes and
+ * hours are added as elapsed time. A time alone is today's, or tomorrow's
+ * once it has passed.
+ */
+export function relativeTime(
+  rel: { minutes?: number; hours?: number; days?: number; time?: string },
+  now: Date,
+  tz: string
+): Date {
+  const minutes = rel.minutes ?? 0;
+  const hours = rel.hours ?? 0;
+  const days = rel.days ?? 0;
+  for (const [name, v] of [["in_minutes", minutes], ["in_hours", hours], ["in_days", days]] as const) {
+    if (!Number.isFinite(v) || v < 0) throw new Error(`${name} must be a positive number.`);
+  }
+  if (minutes + hours * 60 + days * 1440 > 366 * 1440) throw new Error("That is more than a year away.");
+  const local = localParts(now, tz);
+  const wholeDays = Math.floor(days);
+  const extraMs = ((days - wholeDays) * 1440 + hours * 60 + minutes) * 60_000;
+  let base: Date;
+  if (rel.time) {
+    const { h, mi } = parseTime(rel.time);
+    const day = new Date(Date.UTC(local.y, local.m - 1, local.d + wholeDays));
+    base = zonedTime(day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(), h, mi, tz);
+    if (!days && !hours && !minutes && base.getTime() <= now.getTime()) {
+      const next = new Date(Date.UTC(local.y, local.m - 1, local.d + 1));
+      base = zonedTime(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate(), h, mi, tz);
+    }
+  } else if (wholeDays) {
+    const day = new Date(Date.UTC(local.y, local.m - 1, local.d + wholeDays));
+    base = zonedTime(day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(), local.h, local.mi, tz);
+    base = new Date(base.getTime() + (now.getTime() % 60_000));
+  } else {
+    base = now;
+  }
+  return new Date(base.getTime() + extraMs);
+}
+
+/** "mardi 21 octobre 2026 à 18:00": what the model reads back to the user. */
+export function formatLocal(date: Date, tz: string): string {
+  const day = date.toLocaleDateString("fr-FR", { timeZone: tz, weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const time = date.toLocaleTimeString("fr-FR", { timeZone: tz, hour: "2-digit", minute: "2-digit" });
+  return `${day} à ${time}`;
+}
+
+/** Whether an entity state meets a "when" condition. */
+export function conditionMet(state: string | undefined, op: ConditionOp, value: string): boolean {
+  if (state === undefined || state === "unavailable" || state === "unknown") return false;
+  if (op === "equals") return state.toLowerCase() === value.toLowerCase();
+  if (op === "not_equals") return state.toLowerCase() !== value.toLowerCase();
+  const n = Number(state);
+  const v = Number(value);
+  if (!Number.isFinite(n) || !Number.isFinite(v)) return false;
+  return op === "below" ? n < v : n > v;
+}
+
 /** The next run of a schedule strictly after `after`, or undefined when it is over. */
 export function nextRun(schedule: Schedule, after: Date, tz: string): Date | undefined {
   if (schedule.type === "once") {
     const at = new Date(schedule.at);
     return at.getTime() > after.getTime() ? at : undefined;
+  }
+  if (schedule.type === "when") {
+    // Its "next run" is the deadline; the condition decides when it fires.
+    const until = new Date(schedule.until);
+    return until.getTime() > after.getTime() ? until : undefined;
   }
   const { h, mi } = parseTime(schedule.time);
   const today = localParts(after, tz);
@@ -132,6 +207,11 @@ export function describeSchedule(s: Schedule, tz: string): string {
   if (s.type === "once") {
     return new Date(s.at).toLocaleString("fr-FR", { timeZone: tz, weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
   }
+  if (s.type === "when") {
+    const ops = { equals: "vaut", not_equals: "ne vaut plus", below: "passe sous", above: "passe au-dessus de" };
+    const held = s.forMinutes ? ` pendant ${s.forMinutes} min` : "";
+    return `quand ${s.entityId} ${ops[s.op]} ${s.value}${held} (jusqu'au ${formatLocal(new Date(s.until), tz)})`;
+  }
   if (s.type === "daily") return `tous les jours à ${s.time}`;
   return `chaque ${s.days.map((d) => names[d]).join(", ")} à ${s.time}`;
 }
@@ -143,6 +223,8 @@ export interface SchedulerDeps {
   conversations?: IConversationStore;
   notify: (title: string, message: string) => Promise<void>;
   timeZone: () => Promise<string>;
+  /** An entity's current state, for "when" items; without it they cannot be added. */
+  readState?: (entityId: string) => Promise<string | undefined>;
   /** JSON file the tasks live in; undefined keeps them in memory. */
   storePath?: string;
 }
@@ -274,9 +356,74 @@ export class Scheduler {
     return this.deps.timeZone();
   }
 
+  private sent: number[] = [];
+
+  /**
+   * A notification the model asked for (send_notification), on the same
+   * channel as reminders. At most 20 an hour, so a looping model cannot
+   * flood the phone.
+   */
+  async notifyNow(title: string, message: string): Promise<void> {
+    const now = Date.now();
+    this.sent = this.sent.filter((t) => now - t < 3_600_000);
+    if (this.sent.length >= 20) throw new Error("Too many notifications this hour; try again later.");
+    this.sent.push(now);
+    await this.deps.notify(title, message);
+  }
+
+  get canWatchStates(): boolean {
+    return Boolean(this.deps.readState);
+  }
+
+  /** "when" items: fire the ones whose condition has held long enough, drop the expired. */
+  private async checkConditions(now: Date): Promise<void> {
+    const watching = this.tasks.filter((t) => t.schedule.type === "when" && !this.running.has(t.id));
+    for (const task of watching) {
+      const s = task.schedule as Extract<Schedule, { type: "when" }>;
+      if (new Date(s.until).getTime() <= now.getTime()) {
+        console.log(`[scheduler] ${task.id} expired unfired`);
+        this.tasks = this.tasks.filter((t) => t !== task);
+        this.save();
+        continue;
+      }
+      let state: string | undefined;
+      try {
+        state = await this.deps.readState?.(s.entityId);
+      } catch (error) {
+        task.lastError = error instanceof Error ? error.message : String(error);
+        continue;
+      }
+      if (!conditionMet(state, s.op, s.value)) {
+        if (task.metSince) {
+          task.metSince = undefined;
+          this.save();
+        }
+        continue;
+      }
+      if (!task.metSince) {
+        task.metSince = now.toISOString();
+        this.save();
+      }
+      if (now.getTime() - new Date(task.metSince).getTime() < s.forMinutes * 60_000) continue;
+      this.running.add(task.id);
+      try {
+        await this.run(task);
+      } catch (error) {
+        console.warn(`[scheduler] ${task.id} failed: ${error instanceof Error ? error.message : error}`);
+      } finally {
+        this.running.delete(task.id);
+      }
+      this.tasks = this.tasks.filter((t) => t !== task);
+      this.save();
+    }
+  }
+
   /** Runs everything due now. Public for tests. */
   async tick(now = new Date()): Promise<void> {
-    const due = this.tasks.filter((t) => new Date(t.nextRunAt).getTime() <= now.getTime() && !this.running.has(t.id));
+    await this.checkConditions(now);
+    const due = this.tasks.filter(
+      (t) => t.schedule.type !== "when" && new Date(t.nextRunAt).getTime() <= now.getTime() && !this.running.has(t.id)
+    );
     for (const task of due) {
       this.running.add(task.id);
       try {

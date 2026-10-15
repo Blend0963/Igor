@@ -159,6 +159,34 @@ configuration:
       {"début-du-nom-du-modèle": [entrée, sortie]}, en dollars par million de
       tokens, par exemple {"mistral-large": [0.5, 1.5]}. S'ajoutent à la liste
       intégrée des modèles courants (et la remplacent pour ces modèles).
+  house_watch:
+    name: Veille de la maison
+    description: >-
+      MaDo vous prévient quand quelque chose cloche, par le service de
+      notification ci-dessus : fuite d'eau, fumée, fenêtre ouverte depuis une
+      demi-heure, batterie faible, appareil qui ne répond plus, automatisation
+      en échec, lumières allumées alors que tout le monde est sorti. Les
+      vérifications tournent toutes les 5 minutes, gratuitement ; seul ce qui
+      est nouveau est jugé par le modèle rapide, qui écrit la notification ou
+      décide que c'est normal. « on » surveille les entités exposées à Assist,
+      « all » toute la maison. Vide ou « off » = pas de veille.
+  watch_quiet_hours:
+    name: Heures calmes de la veille
+    description: >-
+      HH:MM-HH:MM, heure de la maison. Dans cette plage, seules les alertes de
+      sécurité partent ; le reste attend la fin. Vide = 22:00-07:00.
+  watch_max_per_day:
+    name: Notifications de veille par jour
+    description: >-
+      Nombre maximal de notifications de veille non urgentes par jour. Les
+      alertes de sécurité ne sont jamais limitées. Vide = 5.
+  watch_lively_time:
+    name: Heure du conseil du jour
+    description: >-
+      HH:MM. Une fois par jour à partir de cette heure, MaDo regarde la météo et
+      la maison et vous écrit seulement s'il y a quelque chose de vraiment
+      utile (« gel cette nuit et la fenêtre du garage est ouverte »). Une
+      requête bon marché par jour. Vide = jamais.
   max_output_tokens:
     name: Longueur maximale d'une réponse
     description: >-

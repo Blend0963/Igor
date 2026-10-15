@@ -23,6 +23,18 @@ export interface HistoryEntry {
   last_updated?: string;
 }
 
+export interface AutomationTrace {
+  domain?: string;
+  item_id: string;
+  run_id?: string;
+  state?: string;
+  script_execution?: string | null;
+  error?: string;
+  last_step?: string | null;
+  timestamp?: { start?: string; finish?: string | null };
+  trigger?: string | null;
+}
+
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
@@ -374,6 +386,15 @@ export class HomeAssistantClient {
     }
 
     return states;
+  }
+
+  /**
+   * The states the house watch reads: what the assistant may see, or with
+   * `all` the whole house (HOUSE_WATCH=all, the user's explicit choice; the
+   * watch only reports, it never acts).
+   */
+  async getStatesForWatch(all: boolean): Promise<EntityState[]> {
+    return all ? this.getAllStatesCached() : this.visibleStates();
   }
 
   /** Every state the assistant may see: all of them when the list has no opinion. */
@@ -884,8 +905,32 @@ export class HomeAssistantClient {
     });
   }
 
+  /**
+   * The stored runs of automations (the "traces" of the automation editor):
+   * which ran, when, and how each ended. Home Assistant keeps the last few
+   * per automation (5 by default), since its last restart.
+   */
+  async getAutomationTraces(itemId?: string): Promise<AutomationTrace[]> {
+    if (itemId !== undefined && !/^[A-Za-z0-9_-]+$/.test(itemId)) throw new Error(`"${itemId}" is not an automation id.`);
+    return wsCommand(this.baseUrl, this.token, { type: "trace/list", domain: "automation", ...(itemId ? { item_id: itemId } : {}) });
+  }
+
+  /**
+   * The stored config of a script or scene, as the UI editor keeps it
+   * (scripts.yaml by object id, scenes.yaml by their id attribute).
+   */
+  async getScriptOrSceneConfig(kind: "script" | "scene", id: string): Promise<Record<string, unknown>> {
+    if (!AUTOMATION_CONFIG_ID_PATTERN.test(id)) throw new Error(`"${id}" is not a valid ${kind} config id.`);
+    return this.fetch<Record<string, unknown>>(`/api/config/${kind}/config/${id}`);
+  }
+
+  /** Home Assistant's own check of its configuration (what "Check configuration" runs). */
+  async checkConfig(): Promise<{ result: string; errors: string | null; warnings?: string | null }> {
+    return this.fetch("/api/config/core/check_config", { method: "POST" });
+  }
+
   /** Home Assistant's own settings: the house's time zone, for schedules. */
-  async getConfig(): Promise<{ time_zone?: string; location_name?: string }> {
+  async getConfig(): Promise<{ time_zone?: string; location_name?: string; language?: string }> {
     return this.fetch("/api/config");
   }
 
