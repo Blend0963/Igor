@@ -1657,6 +1657,8 @@
   el("composer").addEventListener("submit", function (ev) {
     ev.preventDefault();
     if (el("btn-send").classList.contains("stop")) { stopCurrent(); return; }
+    // Sending while dictating: stop, transcribe, and send what was said.
+    if (rec) { stopRecording(true); return; }
     var input = el("input");
     var text = input.value.trim();
     var images = state.pending.slice();
@@ -1978,8 +1980,9 @@
   // service reads it, whatever the phone recorded in), and sends it to the
   // server's /api/stt. Where the browser cannot record (no MediaRecorder, or
   // the microphone is refused), the system recorder opens instead through a
-  // file input. The text goes into the box and is sent at once, unless
-  // something was already typed there, in which case it is only added.
+  // file input. ⏹ puts the text in the box (after anything already typed),
+  // to be read over and sent; the send button while recording stops,
+  // transcribes and sends in one go.
 
   var MAX_RECORD_MS = 120000;
   var rec = null;
@@ -2004,10 +2007,11 @@
       recorder.onstop = function () {
         stream.getTracks().forEach(function (t) { t.stop(); });
         clearInterval(rec.timer);
+        var sendAfter = rec.sendAfter;
         rec = null;
         micLabel("🎤", false);
         var blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
-        if (blob.size) transcribe(blob); else setStatus("Rien n'a été enregistré.", true);
+        if (blob.size) transcribe(blob, sendAfter); else setStatus("Rien n'a été enregistré.", true);
       };
       recorder.start();
       micLabel("⏹ 0:00", true);
@@ -2016,15 +2020,17 @@
         micLabel("⏹ " + Math.floor(secs / 60) + ":" + ("0" + (secs % 60)).slice(-2), true);
         if (Date.now() - started >= MAX_RECORD_MS) stopRecording();
       }, 250);
-      setStatus("J'écoute… touchez ⏹ pour terminer.");
+      setStatus("J'écoute… ⏹ pour relire le texte, ↑ pour l'envoyer directement.");
     }).catch(function () {
       setStatus("Micro indisponible ici : l'enregistreur du téléphone va s'ouvrir.", true);
       el("file-audio").click();
     });
   }
 
-  function stopRecording() {
-    if (rec && rec.recorder.state !== "inactive") rec.recorder.stop();
+  function stopRecording(sendAfter) {
+    if (!rec || rec.recorder.state === "inactive") return;
+    rec.sendAfter = Boolean(sendAfter);
+    rec.recorder.stop();
   }
 
   el("btn-mic").addEventListener("click", function () {
@@ -2071,7 +2077,7 @@
     });
   }
 
-  function transcribe(blob) {
+  function transcribe(blob, sendAfter) {
     var mic = el("btn-mic");
     mic.disabled = true;
     setStatus("Transcription…");
@@ -2094,13 +2100,13 @@
         if (!text) { setStatus("Je n'ai rien entendu.", true); return; }
         setStatus("");
         var input = el("input");
-        if (input.value.trim()) {
-          input.value = input.value.replace(/\s*$/, " ") + text;
-          autoGrow();
+        input.value = input.value.trim() ? input.value.replace(/\s*$/, " ") + text : text;
+        autoGrow();
+        if (sendAfter) el("composer").requestSubmit();
+        else {
           input.focus();
-        } else {
-          input.value = text;
-          el("composer").requestSubmit();
+          var end = input.value.length;
+          try { input.setSelectionRange(end, end); } catch (e) { /* not focusable */ }
         }
       })
       .catch(function (err) { setStatus("Transcription impossible : " + err.message, true); })
