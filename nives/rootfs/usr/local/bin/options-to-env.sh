@@ -39,6 +39,24 @@ if [ ! -f /data/.api_token ]; then
     openssl rand -hex 32 > /data/.api_token
     echo "[init] Generated a new API token for the MaDo server"
 fi
+
+# "Regenerate the API token" (option rotate_api_token): a new token once per
+# switch to true. The marker keeps a forgotten "true" from rotating at every
+# start; switching the option off clears it. The option itself is turned back
+# off further down, once the Supervisor token is known.
+ROTATED_MARKER=/data/.api_token_rotated
+ROTATE_TOKEN=false
+if [ "$(jq -r '.rotate_api_token // false' /data/options.json 2>/dev/null)" = "true" ]; then
+    if [ ! -f "$ROTATED_MARKER" ]; then
+        openssl rand -hex 32 > /data/.api_token
+        touch "$ROTATED_MARKER"
+        ROTATE_TOKEN=true
+        echo "[init] API token regenerated (rotate_api_token). Restart Home Assistant"
+        echo "[init]          once so the MaDo integration picks up the new one."
+    fi
+else
+    rm -f "$ROTATED_MARKER"
+fi
 chmod 600 /data/.api_token /data/.shodh_key 2>/dev/null || true
 
 API_TOKEN=$(cat /data/.api_token)
@@ -69,6 +87,7 @@ DAILY_BRIEFING_TIME=$(jq -r '.daily_briefing_time // ""' "$OPTIONS")
 DAILY_BRIEFING_PROMPT=$(jq -r '.daily_briefing_prompt // ""' "$OPTIONS")
 MODEL_PRICES=$(jq -r '.model_prices // ""' "$OPTIONS")
 HOUSE_WATCH=$(jq -r '.house_watch // ""' "$OPTIONS")
+CONFIG_EDITS=$(jq -r '.config_edits // ""' "$OPTIONS")
 WATCH_QUIET_HOURS=$(jq -r '.watch_quiet_hours // ""' "$OPTIONS")
 WATCH_MAX_PER_DAY=$(jq -r '.watch_max_per_day // ""' "$OPTIONS")
 WATCH_LIVELY_TIME=$(jq -r '.watch_lively_time // ""' "$OPTIONS")
@@ -154,7 +173,6 @@ fi
 if [ -z "$SUPERVISOR_TOKEN" ]; then
     echo "[init] WARNING: SUPERVISOR_TOKEN is empty — HA API calls will fail (401)"
     echo "[init] DEBUG: s6 env dir contents: $(ls ${S6_ENV_DIR}/ 2>/dev/null | tr '\n' ' ')"
-    echo "[init] DEBUG: env vars with SUPER: $(env | grep -i SUPER 2>/dev/null || echo 'none')"
 else
     echo "[init] SUPERVISOR_TOKEN found (${#SUPERVISOR_TOKEN} chars)"
 fi
@@ -178,42 +196,62 @@ write_env "SHODH_API_KEY" "$SHODH_KEY"
 # never re-runs — the entry never learned the token while the server had already
 # started rejecting it. A file has no such one-shot semantics.
 #
-# Requiring the token is gated on PROOF that the integration can read it, not on
-# the assumption that it can. The integration writes back the SHA-256 of the
-# token it loaded; we only switch enforcement on once that receipt matches.
+# The token is ALWAYS required, except from Home Assistant Core itself while
+# the integration has not yet proved it holds the token (API_AUTH_GRACE). The
+# integration writes back the SHA-256 of the token it loaded; until that
+# receipt matches, Core may call without it, so Assist keeps working through
+# an update or a token rotation. Every other caller (other add-ons on the
+# hassio network, a published port) needs the token from the first start:
+# before 0.9.3 the whole API was open during that window.
 #
-# So the first start after an update always leaves auth off: we hand the token
-# over, Home Assistant restarts into the new integration, and it leaves the
-# receipt. The next start of this add-on sees the receipt and starts requiring
-# the token. One extra restart in exchange for it being impossible to lock the
-# integration out — which is exactly what 2.4.0 did.
-#
-# Rotating the token invalidates the receipt, so auth falls back to off (not to
-# broken) until the integration confirms the new one.
+# A "v2:" receipt also says the integration keeps the token in its own config
+# entry; the file is then deleted, so the token no longer sits in plain sight
+# in the config folder (file editors, Samba shares, Git syncs). An older
+# receipt (bare hash) keeps the file: that integration still reads it.
 TOKEN_HANDOFF="/config/nives/.api_token"
 TOKEN_ACK="${TOKEN_HANDOFF}.ack"
 
-if mkdir -p "$(dirname "$TOKEN_HANDOFF")" 2>/dev/null &&
-    printf '%s' "$API_TOKEN" > "$TOKEN_HANDOFF" 2>/dev/null; then
-    chmod 600 "$TOKEN_HANDOFF" 2>/dev/null || true
+write_env "API_TOKEN" "$API_TOKEN"
+EXPECTED_ACK=$(printf '%s' "$API_TOKEN" | openssl dgst -sha256 -r 2>/dev/null | cut -d' ' -f1)
+ACTUAL_ACK=$({ tr -d '[:space:]' < "$TOKEN_ACK"; } 2>/dev/null || echo "")
 
-    EXPECTED_ACK=$(printf '%s' "$API_TOKEN" | openssl dgst -sha256 -r 2>/dev/null | cut -d' ' -f1)
-    ACTUAL_ACK=$(tr -d '[:space:]' < "$TOKEN_ACK" 2>/dev/null || echo "")
+hand_over_token() {
+    mkdir -p "$(dirname "$TOKEN_HANDOFF")" 2>/dev/null &&
+        printf '%s' "$API_TOKEN" > "$TOKEN_HANDOFF" 2>/dev/null &&
+        chmod 600 "$TOKEN_HANDOFF" 2>/dev/null
+}
 
-    if [ -n "$EXPECTED_ACK" ] && [ "$ACTUAL_ACK" = "$EXPECTED_ACK" ]; then
-        write_env "API_TOKEN" "$API_TOKEN"
-        echo "[init] API authentication enabled"
-    else
-        echo "[init] API authentication not enabled yet — waiting for the MaDo"
-        echo "[init]          integration to confirm it has the access token."
-        echo "[init]          This is normal right after an update; it takes effect"
-        echo "[init]          the next time the add-on starts."
-    fi
+if [ -n "$EXPECTED_ACK" ] && [ "$ACTUAL_ACK" = "v2:${EXPECTED_ACK}" ]; then
+    rm -f "$TOKEN_HANDOFF"
+    echo "[init] API authentication enabled (the integration keeps the token itself)"
+elif [ -n "$EXPECTED_ACK" ] && [ "$ACTUAL_ACK" = "$EXPECTED_ACK" ]; then
+    hand_over_token || true
+    echo "[init] API authentication enabled"
 else
-    echo "[init] WARNING: could not write ${TOKEN_HANDOFF}."
-    echo "[init]          Leaving the MaDo API unauthenticated so the integration"
-    echo "[init]          keeps working. Port 3100 is reachable by anything on the"
-    echo "[init]          same network."
+    write_env "API_AUTH_GRACE" "true"
+    if hand_over_token; then
+        echo "[init] API authentication enabled; Home Assistant Core may call without"
+        echo "[init]          the token until the MaDo integration confirms it has it"
+        echo "[init]          (normal right after an update or a token rotation)."
+    else
+        echo "[init] WARNING: could not write ${TOKEN_HANDOFF}. API authentication is"
+        echo "[init]          enabled; only Home Assistant Core may call without the token."
+    fi
+fi
+
+# Turn the rotation option back off, so the next start does not ask again.
+if [ "$ROTATE_TOKEN" = "true" ] && [ -n "$SUPERVISOR_TOKEN" ]; then
+    NEW_OPTIONS=$(jq -c '.rotate_api_token = false' /data/options.json 2>/dev/null || echo "")
+    if [ -n "$NEW_OPTIONS" ] && curl -sf -X POST \
+        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d "{\"options\": ${NEW_OPTIONS}}" \
+        http://supervisor/addons/self/options >/dev/null 2>&1; then
+        echo "[init] rotate_api_token switched back off"
+    else
+        echo "[init] Could not switch rotate_api_token back off; turn it off by hand"
+        echo "[init]          (it will not rotate again until it has been off once)."
+    fi
 fi
 
 # --- Mistral platform key ---
@@ -269,6 +307,7 @@ write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$DAILY_BRIEFING_PROMPT" ] && write_env "DAILY_BRIEFING_PROMPT" "$DAILY_BRIEFING_PROMPT"
 [ -n "$MODEL_PRICES" ] && write_env "MODEL_PRICES" "$MODEL_PRICES"
 [ -n "$HOUSE_WATCH" ] && write_env "HOUSE_WATCH" "$HOUSE_WATCH"
+[ -n "$CONFIG_EDITS" ] && write_env "CONFIG_EDITS" "$CONFIG_EDITS"
 [ -n "$WATCH_QUIET_HOURS" ] && write_env "WATCH_QUIET_HOURS" "$WATCH_QUIET_HOURS"
 [ -n "$WATCH_MAX_PER_DAY" ] && write_env "WATCH_MAX_PER_DAY" "$WATCH_MAX_PER_DAY"
 [ -n "$WATCH_LIVELY_TIME" ] && write_env "WATCH_LIVELY_TIME" "$WATCH_LIVELY_TIME"

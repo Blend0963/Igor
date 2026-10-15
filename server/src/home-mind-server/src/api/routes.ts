@@ -21,6 +21,7 @@ import type { WorkspaceStore } from "../memory/workspace-store.js";
 import { PROJECT_LIMITS } from "../memory/workspace-store.js";
 import type { Scheduler } from "../jobs/scheduler.js";
 import { describeSchedule } from "../jobs/scheduler.js";
+import { isIngressRequest } from "./auth.js";
 import type { RequestUsage } from "../llm/interface.js";
 import { createFile } from "../files/create.js";
 import type { DiagnosticResult } from "./diagnostics.js";
@@ -413,6 +414,9 @@ export function createRouter(
             ...request,
             isVoice: style.isVoice,
             customPrompt: withProject(style.customPrompt, request.userId, request.conversationId),
+            // No conversation (an AI Task request from Home Assistant, a bare
+            // API call): nobody can answer a confirmation.
+            unattended: !request.conversationId,
             ...(live ? { signal: live.signal } : {}),
           },
           live ? { onChunk: live.chunk, onTurn: live.newTurn, onStatus: live.status } : undefined
@@ -499,6 +503,9 @@ export function createRouter(
             ...request,
             isVoice: style.isVoice,
             customPrompt: withProject(style.customPrompt, request.userId, request.conversationId),
+            // No conversation (an AI Task request from Home Assistant, a bare
+            // API call): nobody can answer a confirmation.
+            unattended: !request.conversationId,
             ...(live ? { signal: live.signal } : {}),
           },
           {
@@ -649,7 +656,12 @@ export function createRouter(
    * GET /api/admin/conversations
    * Admin endpoint: lists all known users and their conversation summaries.
    */
-  router.get("/admin/conversations", async (_req: Request, res: Response) => {
+  router.get("/admin/conversations", async (req: Request, res: Response) => {
+    // Every user's threads at once: only for the panel inside Home Assistant,
+    // never for a token holder (other add-ons, the installed app).
+    if (!isIngressRequest(req)) {
+      return res.status(403).json({ error: "Only from the Home Assistant panel." });
+    }
     if (!conversations) {
       return res.status(501).json({ error: "Conversation store not available" });
     }
@@ -826,8 +838,12 @@ export function createRouter(
       return res.status(400).json({ error: "text is required" });
     }
 
+    // Speech is billed by the character: a reply read aloud, not a book.
+    const MAX_TTS_CHARS = 6000;
+    const spoken = text.length > MAX_TTS_CHARS ? `${text.slice(0, MAX_TTS_CHARS)}…` : text;
+
     try {
-      const audio = await tts.synthesize(text, language);
+      const audio = await tts.synthesize(spoken, typeof language === "string" ? language : undefined);
       res.setHeader("Content-Type", "audio/mpeg");
       res.send(audio);
     } catch (error) {

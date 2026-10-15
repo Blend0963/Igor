@@ -162,6 +162,27 @@ configuration:
       {"début-du-nom-du-modèle": [entrée, sortie]}, en dollars par million de
       tokens, par exemple {"mistral-large": [0.5, 1.5]}. S'ajoutent à la liste
       intégrée des modèles courants (et la remplacent pour ces modèles).
+  config_edits:
+    name: Modifications de la configuration
+    description: >-
+      Jusqu'où MaDo peut modifier la configuration de Home Assistant. « off » :
+      lecture seule (il lit automatisations, scripts et YAML et propose des
+      changements). « automations » (par défaut) : il crée, modifie et
+      supprime des automatisations, chaque fois avec aperçu et confirmation.
+      « yaml » : il modifie aussi les fichiers YAML (scripts.yaml,
+      configuration.yaml, packages…), avec aperçu, confirmation, vérification
+      par Home Assistant et retour arrière si elle échoue. Les commandes, les
+      actions du Supervisor et les réglages de connexion ne sont jamais
+      écrits, et une tâche programmée ne peut jamais confirmer une
+      modification.
+  rotate_api_token:
+    name: Régénérer le token API
+    description: >-
+      Activez puis redémarrez l'add-on pour remplacer le token API (si vous
+      pensez qu'il a fuité). L'option se désactive d'elle-même. Redémarrez
+      ensuite Home Assistant une fois pour que l'intégration MaDo prenne le
+      nouveau token, et recopiez la nouvelle clé (🔑 dans le panneau) dans
+      l'application installée si vous l'utilisez.
   house_watch:
     name: Veille de la maison
     description: >-

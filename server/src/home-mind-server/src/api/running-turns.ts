@@ -42,6 +42,9 @@ export class RunningTurns {
       at: Date.now(),
       controller: new AbortController(),
     };
+    // A newer request on the same thread supersedes the old one: stop it
+    // rather than leave it running where the stop button can no longer reach.
+    this.turns.get(key)?.controller.abort();
     this.turns.set(key, turn);
     let parts = 0;
     return {

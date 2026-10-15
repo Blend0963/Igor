@@ -218,10 +218,51 @@ export interface ExtractOptions {
   ocrRequests?: OcrRequest[];
   /** Archive nesting depth already reached. */
   depth?: number;
+  /**
+   * Inflated bytes still allowed for this file and everything inside it. An
+   * archive of 500 office files used to give each one its own 50 MB, so a
+   * small upload could make the server inflate gigabytes; the budget is now
+   * shared by the whole file.
+   */
+  budget?: { bytes: number };
+}
+
+/** Inflated bytes allowed for one attached file, archives and their contents together. */
+export const FILE_INFLATE_BUDGET = 60 * 1024 * 1024;
+
+/** A ZIP read within the file's shared budget, which it then spends. */
+function zipWithin(data: Buffer, opts: ExtractOptions, filter?: (name: string) => boolean): ZipEntry[] {
+  const budget = (opts.budget ??= { bytes: FILE_INFLATE_BUDGET });
+  if (budget.bytes <= 0) throw new Error("too much to unpack in this file");
+  const entries = readZip(data, { maxEntries: 500, maxTotalBytes: Math.min(budget.bytes, 50 * 1024 * 1024) }, filter);
+  budget.bytes -= entries.reduce((n, e) => n + e.data.length, 0);
+  return entries;
+}
+
+/** Files read at the same time at most: parsing is CPU work on the server's one thread. */
+const MAX_PARALLEL_EXTRACTIONS = 2;
+let activeExtractions = 0;
+const waiting: Array<() => void> = [];
+
+async function withExtractionSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (activeExtractions >= MAX_PARALLEL_EXTRACTIONS) await new Promise<void>((resolve) => waiting.push(resolve));
+  activeExtractions++;
+  try {
+    return await run();
+  } finally {
+    activeExtractions--;
+    waiting.shift()?.();
+  }
 }
 
 /** The readable text of one file, or a bracketed note saying why there is none. */
 export async function extractFileText(name: string, mime: string, data: Buffer, opts: ExtractOptions = {}): Promise<string> {
+  // An attached file takes a slot; what is inside an archive runs in its parent's.
+  if (!opts.depth) return withExtractionSlot(() => extractOne(name, mime, data, { ...opts, budget: { bytes: FILE_INFLATE_BUDGET } }));
+  return extractOne(name, mime, data, opts);
+}
+
+async function extractOne(name: string, mime: string, data: Buffer, opts: ExtractOptions): Promise<string> {
   const ext = extensionOf(name);
   const type = mime.toLowerCase();
   try {
@@ -229,10 +270,10 @@ export async function extractFileText(name: string, mime: string, data: Buffer, 
     if (LEGACY_OFFICE.has(ext)) {
       return `[old binary Office format (.${ext}) not readable: save it as .${ext}x and attach it again]`;
     }
-    if (["docx", "docm", "dotx"].includes(ext)) return cut(docxText(readZip(data, undefined, (n) => n === "word/document.xml")) || "[empty document]");
-    if (["xlsx", "xlsm", "xltx"].includes(ext)) return cut(xlsxText(readZip(data, undefined, (n) => n.startsWith("xl/"))) || "[empty workbook]");
-    if (["pptx", "ppsx"].includes(ext)) return cut(pptxText(readZip(data, undefined, (n) => n.startsWith("ppt/slides/slide"))) || "[no text in these slides]");
-    if (["odt", "ods", "odp"].includes(ext)) return cut(odfText(readZip(data, undefined, (n) => n === "content.xml")) || "[empty document]");
+    if (["docx", "docm", "dotx"].includes(ext)) return cut(docxText(zipWithin(data, opts, (n) => n === "word/document.xml")) || "[empty document]");
+    if (["xlsx", "xlsm", "xltx"].includes(ext)) return cut(xlsxText(zipWithin(data, opts, (n) => n.startsWith("xl/"))) || "[empty workbook]");
+    if (["pptx", "ppsx"].includes(ext)) return cut(pptxText(zipWithin(data, opts, (n) => n.startsWith("ppt/slides/slide"))) || "[no text in these slides]");
+    if (["odt", "ods", "odp"].includes(ext)) return cut(odfText(zipWithin(data, opts, (n) => n === "content.xml")) || "[empty document]");
     if (ext === "zip" || type === "application/zip" || type === "application/x-zip-compressed") {
       return cut(await zipText(data, opts.depth ?? 0, opts));
     }
@@ -251,7 +292,7 @@ export async function extractFileText(name: string, mime: string, data: Buffer, 
 
 /** An archive: its listing, then the text of each readable file in it. */
 async function zipText(data: Buffer, depth: number, opts: ExtractOptions): Promise<string> {
-  const entries = readZip(data);
+  const entries = zipWithin(data, opts);
   const listing = entries.map((e) => `- ${e.name} (${e.data.length} bytes)`).join("\n");
   if (depth >= 1) return `Archive contents:\n${listing}`;
   const parts = [`Archive contents (${entries.length} files):\n${listing}`];
@@ -261,7 +302,11 @@ async function zipText(data: Buffer, depth: number, opts: ExtractOptions): Promi
     const ext = extensionOf(entry.name);
     if (IMAGE_EXTENSIONS.has(ext) || entry.name.startsWith("__MACOSX/")) continue;
     // Never OCR inside an archive: a scanned PDF in it is only noted.
-    const text = await extractFileText(entry.name, "", entry.data, { depth: depth + 1 });
+    if (opts.budget && opts.budget.bytes <= 0) {
+      parts.push("[the remaining files were not read: too much to unpack in this archive]");
+      break;
+    }
+    const text = await extractFileText(entry.name, "", entry.data, { depth: depth + 1, budget: opts.budget });
     const block = `--- ${entry.name} ---\n${cut(text, Math.max(500, MAX_FILE_CHARS - used))}`;
     parts.push(block);
     used += block.length;

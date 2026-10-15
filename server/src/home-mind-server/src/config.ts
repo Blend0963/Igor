@@ -135,6 +135,15 @@ const ConfigSchema = z
     // App / API access
     corsOrigins: z.string().optional(), // Comma-separated origins, e.g. "http://localhost:5173,https://app.example.com"
     apiToken: z.string().optional(), // Bearer token for API auth (when unset, no auth enforced)
+    // The token handoff to the companion integration is not confirmed yet:
+    // Home Assistant Core alone may call without the token meanwhile.
+    apiAuthGrace: z
+      .string()
+      .transform((v) => v === "true" || v === "1")
+      .prefault("false"),
+    // How far MaDo may change the configuration: off (read only), automations
+    // (the automation tools, the default) or yaml (also write_config_file).
+    configEdits: z.enum(["off", "automations", "yaml"]).default("automations"),
 
     // Speech-to-text (for HomeMind App)
     // "mistral" transcribes with Voxtral on Mistral's own API, keyed by
@@ -238,6 +247,8 @@ export function loadConfig(): Config {
     toolsFromExposed: emptyToUndefined(process.env.TOOLS_FROM_EXPOSED),
     corsOrigins: emptyToUndefined(process.env.CORS_ORIGINS),
     apiToken: emptyToUndefined(process.env.API_TOKEN),
+    apiAuthGrace: emptyToUndefined(process.env.API_AUTH_GRACE),
+    configEdits: emptyToUndefined(process.env.CONFIG_EDITS),
     sttProvider: emptyToUndefined(process.env.STT_PROVIDER),
     sttApiKey: emptyToUndefined(process.env.STT_API_KEY),
     sttBaseUrl: emptyToUndefined(process.env.STT_BASE_URL),

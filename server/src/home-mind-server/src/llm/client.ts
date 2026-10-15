@@ -8,6 +8,7 @@ import { DeviceScanner } from "../ha/device-scanner.js";
 import { TopologyScanner } from "../ha/topology-scanner.js";
 import { buildSystemPrompt, type CachedSystemPrompt } from "./prompts.js";
 import { HA_TOOLS } from "./tools.js";
+import { filterTools } from "./tool-policy.js";
 import { randomUUID } from "node:crypto";
 import { handleToolCall, extractAndStoreFacts, type ToolContext } from "./tool-handler.js";
 import { describeLongBatch } from "./long-task.js";
@@ -91,7 +92,7 @@ export class LLMClient implements IChatEngine {
     const turnId = randomUUID(); // nonce for this turn — powers the automation confirmation gate
     // ONE shared context for the whole turn — forget_memory writes
     // suppressExtraction back onto it, so per-call literals would drop the flag.
-    const toolCtx: ToolContext = { conversationId: effectiveConversationId, turnId, userId: scope.factBucket, memory: this.memory, ownerId: userId, isThread: scope.isThread };
+    const toolCtx: ToolContext = { conversationId: effectiveConversationId, turnId, userId: scope.factBucket, memory: this.memory, ownerId: userId, isThread: scope.isThread, unattended: request.unattended === true };
 
     // 1. Load user's memory (pass current message as context for Shodh's proactive retrieval)
     const facts = await this.memory.getFactsWithinTokenLimit(
@@ -175,11 +176,14 @@ export class LLMClient implements IChatEngine {
     }
 
     events.onTurn?.();
+    const tools = filterTools(HA_TOOLS, { unattended: request.unattended === true });
     let response = await this.streamMessage(
       systemPrompt,
       messages,
       isVoice,
-      onChunk
+      onChunk,
+      false,
+      tools
     );
 
     // 4. Handle tool calls in a loop
@@ -245,7 +249,8 @@ export class LLMClient implements IChatEngine {
         messages,
         isVoice,
         onChunk,
-        forceAnswer
+        forceAnswer,
+        tools
       );
       if (forceAnswer) break;
     }
@@ -333,7 +338,8 @@ export class LLMClient implements IChatEngine {
     messages: Anthropic.MessageParam[],
     isVoice: boolean,
     onChunk?: StreamCallback,
-    disableTools = false
+    disableTools = false,
+    tools: Anthropic.Tool[] = HA_TOOLS
   ): Promise<Anthropic.Message> {
     const cap = this.maxOutputTokens(isVoice);
     const startedAt = Date.now();
@@ -341,7 +347,7 @@ export class LLMClient implements IChatEngine {
       model: this.config.llmModel,
       max_tokens: cap,
       system: systemPrompt,
-      tools: HA_TOOLS,
+      tools,
       // Keep the tool list (history references it) but stop further calls.
       ...(disableTools ? { tool_choice: { type: "none" as const } } : {}),
       messages,

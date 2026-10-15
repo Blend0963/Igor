@@ -26,6 +26,7 @@ interface PendingPreview {
 }
 
 const TTL_MS = 15 * 60 * 1000; // 15 minutes
+const REARM_TTL_MS = 2 * 60 * 1000;
 
 /**
  * Keyed by conversation + tool + identity, so SEVERAL changes can be pending at
@@ -166,7 +167,10 @@ export function isConfirmed(
   const key = slotKey(conversationId, toolName, input, identityOverride);
   const entry = pending.get(key);
   if (entry) {
-    if (Date.now() - entry.createdAt > TTL_MS) {
+    // A re-armed slot (a confirmed change whose apply failed) is only for the
+    // immediate corrected retry, not for any turn within the quarter hour.
+    const ttl = entry.turnId === "" ? REARM_TTL_MS : TTL_MS;
+    if (Date.now() - entry.createdAt > ttl) {
       pending.delete(key);
       return false;
     }

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { handleToolCall, type ToolContext } from "./tool-handler.js";
 import { setConfigDir } from "./home-tools.js";
+import { setConfigEdits } from "./tool-policy.js";
 import { lineDiff, restoreMasked } from "../ha/config-files.js";
 import type { HomeAssistantClient } from "../ha/client.js";
 
@@ -22,11 +23,13 @@ beforeEach(() => {
   writeFileSync(path.join(base, "scripts.yaml"), ORIGINAL);
   writeFileSync(path.join(base, "secrets.yaml"), "x: 1\n");
   setConfigDir(base);
+  setConfigEdits("yaml");
 });
 
 afterEach(() => {
   rmSync(base, { recursive: true, force: true });
   setConfigDir("/config");
+  setConfigEdits("automations");
 });
 
 describe("write_config_file", () => {

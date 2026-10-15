@@ -1,5 +1,5 @@
 name: "MaDo"
-version: "0.9.2"
+version: "0.9.3"
 slug: "mado"
 description: "MaDo — assistant IA pour Home Assistant avec mémoire persistante"
 url: "https://github.com/Blend0963/MaDo"
@@ -13,7 +13,6 @@ init: false
 homeassistant: "2024.4.0"
 homeassistant_api: true
 hassio_api: true
-auth_api: true
 discovery:
   - nives
 map:
@@ -102,6 +101,11 @@ schema:
   # whole house). Plain checks every 5 minutes; the cheap model only judges
   # what they flag. Quiet hours hold back all but safety alarms.
   house_watch: "list(off|on|all)?"
+  # How far MaDo may change the configuration: off (read only), automations
+  # (default) or yaml (also scripts.yaml, configuration.yaml, packages…).
+  config_edits: "list(off|automations|yaml)?"
+  # Set to true once to regenerate the API token (switched back off by itself).
+  rotate_api_token: "bool?"
   watch_quiet_hours: "match(^\\d{1,2}:\\d{2}-\\d{1,2}:\\d{2}$)?"
   watch_max_per_day: "int(1,50)?"
   # Daily "anything useful to say?" check (HH:MM). Unset = never.

@@ -10,38 +10,48 @@ if [ ! -d /config ]; then
     exit 0
 fi
 
-# Check if files need updating by comparing manifest versions
+# The installed copy is compared with what ships by content, not by the
+# manifest version: a fix that did not bump the version used to never reach
+# users, and a file changed or planted in the installed copy (a symlink
+# included) used to stay forever.
+content_hash() {
+    [ -d "$1" ] || { echo none; return; }
+    (cd "$1" && { find . -maxdepth 1 -type f \( -name '*.py' -o -name '*.json' \) -print0 \
+        | sort -z | xargs -0 -r sha256sum; \
+        [ -d brand ] && find brand -type f -print0 | sort -z | xargs -0 -r sha256sum; \
+        [ -d translations ] && find translations -type f -print0 | sort -z | xargs -0 -r sha256sum; \
+        find . -type l | sed 's/^/link /'; true; }) | sha256sum | cut -d' ' -f1
+}
+WANT_HASH=$(content_hash "$SOURCE")
+
 NEEDS_UPDATE=false
 FRESH_INSTALL=false
 if [ ! -d "$TARGET" ]; then
     NEEDS_UPDATE=true
     FRESH_INSTALL=true
     echo "[integration] Installing Nives integration..."
-elif [ -f "$SOURCE/manifest.json" ] && [ -f "$TARGET/manifest.json" ]; then
-    SOURCE_VER=$(jq -r '.version' "$SOURCE/manifest.json" 2>/dev/null || echo "")
-    TARGET_VER=$(jq -r '.version' "$TARGET/manifest.json" 2>/dev/null || echo "")
-    if [ "$SOURCE_VER" != "$TARGET_VER" ]; then
-        NEEDS_UPDATE=true
-        echo "[integration] Updating Nives integration (${TARGET_VER} → ${SOURCE_VER})..."
-    fi
+elif [ "$(content_hash "$TARGET")" != "$WANT_HASH" ]; then
+    NEEDS_UPDATE=true
+    echo "[integration] Updating Nives integration..."
 fi
 
 if [ "$NEEDS_UPDATE" = "true" ]; then
+    # The folder is managed by the add-on: it is replaced wholesale, so files
+    # an older version left behind (or anything planted there, symlinks
+    # included) do not survive.
+    rm -rf "$TARGET"
     mkdir -p "$TARGET"
     cp -f "$SOURCE"/*.py "$TARGET/"
     cp -f "$SOURCE"/*.json "$TARGET/"
     # Brand images: HA 2026.3+ serves icon/logo from the integration's brand/
-    # folder (local images take priority over the brands CDN). Replace wholesale
-    # so stale assets don't linger across updates.
+    # folder (local images take priority over the brands CDN).
     if [ -d "$SOURCE/brand" ]; then
-        rm -rf "$TARGET/brand"
         cp -rf "$SOURCE/brand" "$TARGET/"
     fi
     # Translations: custom integrations load UI text (config flow, repair
     # issues) from translations/<lang>.json at runtime — strings.json alone
-    # is only the dev-time source. Replace wholesale, same as brand/.
+    # is only the dev-time source.
     if [ -d "$SOURCE/translations" ]; then
-        rm -rf "$TARGET/translations"
         cp -rf "$SOURCE/translations" "$TARGET/"
     fi
     echo "[integration] Nives integration installed at $TARGET"
@@ -54,8 +64,8 @@ if [ "$NEEDS_UPDATE" = "true" ]; then
     # persistent notification once the add-on is up, and the user restarts at
     # a moment of their choosing. Until then Home Assistant keeps running the
     # previous integration version, which the server stays compatible with;
-    # the token-receipt auth handshake simply waits for that restart too (no
-    # receipt → auth stays off, nothing breaks).
+    # the token-receipt handshake simply waits for that restart too (until the
+    # receipt, Home Assistant Core alone may call without the token).
     if [ "$FRESH_INSTALL" = "true" ]; then
         echo "install" > /data/.ha_restart_needed
     else

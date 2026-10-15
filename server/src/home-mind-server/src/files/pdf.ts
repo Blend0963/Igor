@@ -9,6 +9,8 @@
 
 /** Pages read at most. */
 export const MAX_PDF_PAGES = 500;
+/** Time spent reading one PDF at most; the pages read by then are kept. */
+export const MAX_PDF_MS = 20_000;
 /** A page with fewer visible characters than this is taken for a picture. */
 const MIN_PAGE_CHARS = 25;
 
@@ -24,7 +26,8 @@ export interface PdfText {
 type PdfJs = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
 let pdfjs: Promise<PdfJs> | undefined;
 
-export async function readPdfText(data: Buffer, maxChars: number): Promise<PdfText> {
+export async function readPdfText(data: Buffer, maxChars: number, maxMs = MAX_PDF_MS): Promise<PdfText> {
+  const deadline = Date.now() + maxMs;
   pdfjs ??= import("pdfjs-dist/legacy/build/pdf.mjs");
   const { getDocument } = await pdfjs;
   // Text only: no fonts loaded, nothing rendered.
@@ -41,7 +44,12 @@ export async function readPdfText(data: Buffer, maxChars: number): Promise<PdfTe
     const parts: string[] = [];
     let used = 0;
     let imagePages = 0;
+    let read = 0;
     for (let i = 1; i <= Math.min(pages, MAX_PDF_PAGES); i++) {
+      // A PDF crafted to be slow (huge streams, thousands of pages) gets the
+      // pages read in time, not the server's whole attention.
+      if (Date.now() > deadline) break;
+      read = i;
       const page = await doc.getPage(i);
       const content = await page.getTextContent();
       const text = content.items
@@ -56,7 +64,6 @@ export async function readPdfText(data: Buffer, maxChars: number): Promise<PdfTe
         used += text.length;
       }
     }
-    const read = Math.min(pages, MAX_PDF_PAGES);
     return {
       pages,
       imagePages,

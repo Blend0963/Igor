@@ -77,10 +77,12 @@ def _read_token_file(path: str) -> str | None:
 
 
 def _write_token_ack(path: str, token: str) -> None:
-    """Tell the add-on we read its token. Blocking — call in an executor."""
+    """Tell the add-on we read its token, and keep it ourselves (the "v2:"
+    prefix): the add-on then removes the token file, so the token no longer
+    sits in plain sight in the config folder. Blocking — call in an executor."""
     try:
         with open(path, "w", encoding="utf-8") as handle:
-            handle.write(hashlib.sha256(token.encode()).hexdigest())
+            handle.write("v2:" + hashlib.sha256(token.encode()).hexdigest())
     except OSError as err:
         # Not fatal: the add-on simply keeps auth switched off.
         _LOGGER.warning("Could not confirm the MaDo API token at %s: %s", path, err)
@@ -100,6 +102,12 @@ async def _async_resolve_token(
         _read_token_file, hass.config.path(TOKEN_FILE_RELPATH)
     )
     if token:
+        # Kept in the entry first, receipt second: the add-on deletes the file
+        # once it sees the receipt, and from then on the entry is the source.
+        if entry.data.get(CONF_API_TOKEN) != token:
+            hass.config_entries.async_update_entry(
+                entry, data={**entry.data, CONF_API_TOKEN: token}
+            )
         await hass.async_add_executor_job(
             _write_token_ack, hass.config.path(TOKEN_ACK_RELPATH), token
         )

@@ -457,6 +457,8 @@ export class Scheduler {
       message: task.builtin ? task.text : `[Tâche programmée] ${task.text}`,
       userId: task.userId,
       conversationId: thread,
+      // Nobody is there: no tool that needs a person's confirmation.
+      unattended: true,
     });
     await this.ensureTitle(thread, task.userId, task.builtin ? "Résumé du matin" : "Rappels et tâches");
     if (response.response.trim()) {
