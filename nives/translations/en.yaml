@@ -160,6 +160,33 @@ configuration:
       {"model-prefix": [input, output]} in USD per million tokens, e.g.
       {"mistral-large": [0.5, 1.5]}. Added to (and overriding) the built-in
       list of common models.
+  house_watch:
+    name: House Watch
+    description: >-
+      Lets MaDo speak up when something is wrong, through the notification
+      service above: a water leak, smoke, a window open for half an hour, a
+      low battery, a device that stopped answering, an automation that failed,
+      lights left on with everyone out. Plain checks run every 5 minutes for
+      free; only something new is judged by the cheap model, which writes the
+      notification or decides it is normal. "on" watches the entities exposed
+      to Assist, "all" the whole house. Empty or "off" = no watch.
+  watch_quiet_hours:
+    name: Watch Quiet Hours
+    description: >-
+      HH:MM-HH:MM, house time. Only safety alarms are sent in this range; the
+      rest waits until it ends. Empty = 22:00-07:00.
+  watch_max_per_day:
+    name: Watch Notifications Per Day
+    description: >-
+      Most non-urgent watch notifications a day. Safety alarms are never
+      capped. Empty = 5.
+  watch_lively_time:
+    name: Daily Useful Tip Time
+    description: >-
+      HH:MM. Once a day from this time, MaDo looks at the weather and the house
+      and tells you only if there is something genuinely useful ("frost
+      tonight and the garage window is open"). One cheap request a day. Empty
+      = never.
   max_output_tokens:
     name: Maximum Answer Length
     description: >-

@@ -36,6 +36,19 @@ Keep only the entities you intend the assistant to control exposed to Assist, an
 
 MaDo works as a Home Assistant Assist conversation agent. Speech-to-text and text-to-speech are configured through your Home Assistant pipeline or separately configured voice providers. Supported voice features depend on the chosen provider and model.
 
+## Reminders, alerts and the house watch
+
+Reminders and alerts go to the **Notification Service** option (for example `mobile_app_my_phone`), or appear as a notification inside Home Assistant when it is empty. The ⏰ button of the panel lists them and cancels them.
+
+- **Reminders**: "remind me in 5 minutes", "tomorrow at 3 pm", "in 6 days at 6 pm", "every Tuesday at 7 pm". MaDo passes what you said and the add-on computes the date itself (time zone and daylight saving included), then repeats the exact date with its weekday. Reminders cost nothing when they fire.
+- **When something happens**: "tell me when the washing machine is done" (its power below 5 W for 3 minutes), "tell me when someone gets home". Checked every 30 seconds, for free; dropped after 24 hours (up to a week) if it never happens.
+- **House watch** (option **House Watch**, off by default): every 5 minutes plain checks look for water leaks, smoke, gas, a triggered alarm, doors and windows open for half an hour, a jammed lock, low batteries, devices that stopped answering, extreme temperatures, failed automations, and lights left on while everyone is out. Only something new is shown to the cheap model, which writes a short notification or decides it is normal (a freezer is cold). Safety alarms are always sent, even during the quiet hours; the rest waits for the end of the quiet hours and is capped per day. Alerts are also written into the "Veille de la maison" thread, where you can answer them. "on" watches the entities exposed to Assist; "all" the whole house (the watch only reports, it never acts).
+- **Daily useful tip** (option **Daily Useful Tip Time**): once a day MaDo looks at the weather forecast and the house, and writes only when something is worth it, such as frost tonight with a window open.
+
+## Reviewing your automations and configuration
+
+In the panel or in written Assist, MaDo can read the full configuration of an automation, script or scene, the recent runs of your automations (which fail, which never run, which run too often), and the YAML files of your configuration folder (`configuration.yaml`, `packages/`, blueprints…). Ask "review my automations and tell me what could be improved". Reading is read-only: `secrets.yaml` is never read and values under keys such as `password`, `token` or `api_key` are masked. Changes go through the automation tools, which show a preview and wait for your confirmation; MaDo can also run Home Assistant's configuration check.
+
 ## Installed app (PWA) and sharing from the phone
 
 The chat panel can also be installed as an app on a phone or a computer, outside Home Assistant. Installed, MaDo appears in Android's **Share** menu: a PDF, a photo, a Word or Excel file, a link or a piece of text shared to MaDo opens a new thread with it already attached, ready to send with a question.

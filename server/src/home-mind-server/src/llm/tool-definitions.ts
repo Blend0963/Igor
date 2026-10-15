@@ -392,19 +392,63 @@ export const HOME_EXTRA_TOOLS: ToolDefinition[] = [
       "Schedule a reminder or a task. kind 'reminder': the text is sent as a phone notification at that time " +
       "(\"rappelle-moi de sortir les poubelles mardi à 19h\"); free. kind 'task': at that time MaDo runs the text as a request " +
       "and sends the answer (\"chaque dimanche à 18h, fais le bilan énergie de la semaine\"); each run costs a request, " +
-      "so for a repeating task say how often it will run before scheduling it. Times are the house's local time. " +
-      "Give 'when' for a single time, or 'repeat' with 'time' (and 'days' for weekly).",
+      "so for a repeating task say how often it will run before scheduling it. Times are the house's local time.\n" +
+      "For a single time, do NOT compute the date yourself: pass what the user said and the server computes it exactly. " +
+      "\"dans 5 minutes\" → in_minutes: 5; \"dans 2 heures\" → in_hours: 2; \"demain à 15h\" → in_days: 1, time: \"15:00\"; " +
+      "\"dans 6 jours à 18h\" → in_days: 6, time: \"18:00\"; \"à 15h\" → time: \"15:00\"; \"après-demain\" → in_days: 2. " +
+      "Use 'when' only for a calendar date the user named (\"le 3 novembre à 9h\"). For a repeating item give 'repeat' with 'time' " +
+      "(and 'days' for weekly). The result's 'when' is the exact date: tell it to the user as written, weekday included.",
     parameters: {
       type: "object",
       properties: {
         kind: { type: "string", enum: ["reminder", "task"] },
         text: { type: "string", description: "The reminder text, or the request to run." },
-        when: { type: "string", description: "Single time, local: YYYY-MM-DDTHH:MM." },
+        in_minutes: { type: "number", description: "Single time: this many minutes from now." },
+        in_hours: { type: "number", description: "Single time: this many hours from now." },
+        in_days: { type: "number", description: "Single time: this many days from today (1 = tomorrow); with 'time', at that time of that day." },
+        time: { type: "string", description: "HH:MM. With in_days: the time on that day. Alone: today at that time (tomorrow if already past). For a repeating item: its time." },
+        when: { type: "string", description: "Single time on a named calendar date, local: YYYY-MM-DDTHH:MM." },
         repeat: { type: "string", enum: ["none", "daily", "weekly"] },
-        time: { type: "string", description: "HH:MM for a repeating item." },
         days: { type: "array", items: { type: "string", enum: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] }, description: "Weekly: the days." },
       },
       required: ["kind", "text"],
+    },
+  },
+  {
+    name: "notify_when",
+    description:
+      "Notify the user once, the first time an entity reaches a state: \"préviens-moi quand la machine à laver a fini\" " +
+      "(its power sensor below 5 W for 3 minutes), \"dis-moi quand la température du salon passe au-dessus de 21\", " +
+      "\"préviens-moi quand quelqu'un rentre\" (person.x equals home). Checked every 30 seconds, free; dropped unfired after " +
+      "within_hours (default 24, at most 168). Find the right entity first (search_entities / get_state). kind 'task' runs the " +
+      "text as a request at that moment instead of sending it as it is.",
+    parameters: {
+      type: "object",
+      properties: {
+        entity_id: { type: "string" },
+        condition: { type: "string", enum: ["equals", "not_equals", "below", "above"] },
+        value: { type: "string", description: "The state to compare with: \"off\", \"home\", or a number for below/above." },
+        for_minutes: { type: "number", description: "How long the condition must hold before notifying (0 = at once). Use a few minutes for power sensors." },
+        text: { type: "string", description: "The notification text (or the request, for kind 'task')." },
+        kind: { type: "string", enum: ["reminder", "task"] },
+        within_hours: { type: "number" },
+      },
+      required: ["entity_id", "condition", "value", "text"],
+    },
+  },
+  {
+    name: "send_notification",
+    description:
+      "Send a notification to the user's phone now (the same channel as reminders). Only when the user asks for it " +
+      "(\"envoie-moi ça sur mon téléphone\") or a scheduled task says to warn them about something it found. Never to confirm " +
+      "an ordinary answer.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        message: { type: "string" },
+      },
+      required: ["message"],
     },
   },
   {
@@ -455,6 +499,45 @@ export const CREATE_FILE_TOOL: ToolDefinition = {
   },
 };
 
+/**
+ * Reading the house's own configuration, to review and improve it: an
+ * automation's, script's or scene's full config, the automations' recent runs
+ * (traces), the YAML files, and Home Assistant's configuration check.
+ * Threads and written Assist only: nothing to say about them out loud.
+ */
+export const CONFIG_TOOLS: ToolDefinition[] = [
+  {
+    name: "get_config_item",
+    description:
+      "Read the full configuration (triggers, conditions, actions, mode) of an automation, script or scene, by its entity_id. " +
+      "Use it before reviewing, explaining or improving one; list_automations gives the entity_ids. When it is not stored by " +
+      "the UI editor (automations written in YAML packages), read its file with read_config_file instead.",
+    parameters: { type: "object", properties: { entity_id: { type: "string" } }, required: ["entity_id"] },
+  },
+  {
+    name: "get_automation_traces",
+    description:
+      "The recent runs of automations (Home Assistant keeps the last 5 per automation since its last restart): when each " +
+      "ran, what triggered it, how it ended, and errors. Without entity_id: a summary of every automation that ran (find the " +
+      "ones that fail or run too often). With entity_id: that automation's runs in detail.",
+    parameters: { type: "object", properties: { entity_id: { type: "string" } }, required: [] },
+  },
+  {
+    name: "read_config_file",
+    description:
+      "Read a YAML file of the Home Assistant configuration folder (configuration.yaml, automations.yaml, scripts.yaml, " +
+      "packages/…, blueprints/…), or list the YAML files when path is empty or a folder. Read-only; secrets.yaml is never " +
+      "read and secret-looking values come back masked. To change an automation, propose the change and use update_automation " +
+      "or create_automation (they preview and ask for confirmation); for other YAML, show the user the exact lines to change.",
+    parameters: { type: "object", properties: { path: { type: "string", description: "Relative to the configuration folder, e.g. \"packages/chauffage.yaml\"." } }, required: [] },
+  },
+  {
+    name: "check_ha_config",
+    description: "Run Home Assistant's configuration check (the same as Developer tools → Check configuration) and return its errors and warnings.",
+    parameters: { type: "object", properties: {}, required: [] },
+  },
+];
+
 export interface PlatformToolOptions {
   /** A Mistral key is configured. */
   enabled: boolean;
@@ -467,7 +550,11 @@ export interface PlatformToolOptions {
 /** The tools of one conversation style. */
 export function toolsForMode(mode: "voice" | "text" | "thread", platform: PlatformToolOptions): ToolDefinition[] {
   // Files are built on the add-on itself: no Mistral key needed.
-  const extra: ToolDefinition[] = [...HOME_EXTRA_TOOLS, ...(mode === "thread" ? [CREATE_FILE_TOOL] : [])];
+  const extra: ToolDefinition[] = [
+    ...HOME_EXTRA_TOOLS,
+    ...(mode === "voice" ? [] : CONFIG_TOOLS),
+    ...(mode === "thread" ? [CREATE_FILE_TOOL] : []),
+  ];
   if (!platform.enabled) return [...TOOL_DEFINITIONS, ...extra];
   if (mode === "thread") extra.push(RUN_CODE_TOOL, GENERATE_IMAGE_TOOL);
   if (platform.libraryIds.length) extra.push(SEARCH_DOCUMENTS_TOOL);

@@ -28,6 +28,9 @@ import { createTitleGenerator } from "./llm/thread-title.js";
 import { WorkspaceStore } from "./memory/workspace-store.js";
 import { configureVision, createVisionDescriber } from "./llm/vision.js";
 import { Scheduler, setScheduler } from "./jobs/scheduler.js";
+import { HouseWatch, houseContext } from "./jobs/house-watch.js";
+import { createOneShot } from "./llm/one-shot.js";
+import { setConfigDir } from "./llm/home-tools.js";
 import { createDiagnostics } from "./api/diagnostics.js";
 import { createModelLister } from "./llm/model-list.js";
 import { MemoryCleanupJob } from "./jobs/memory-cleanup.js";
@@ -199,6 +202,7 @@ const scheduler = new Scheduler({
     }
     return houseTimeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
   },
+  readState: async (entityId) => (await ha.getState(entityId)).state,
   storePath: dataDir ? path.join(dataDir, "scheduled-tasks.json") : undefined,
 });
 setScheduler(scheduler);
@@ -206,6 +210,42 @@ scheduler.start();
 scheduler
   .configureBriefing({ userId: config.briefingUserId, time: config.dailyBriefingTime, prompt: config.dailyBriefingPrompt })
   .catch((err) => console.warn("[scheduler] briefing not configured:", err instanceof Error ? err.message : err));
+
+// read_config_file reads Home Assistant's YAML here (the add-on's /config).
+setConfigDir(config.haConfigDir);
+
+// The house watch: plain checks every few minutes, the cheap model only when
+// something new is flagged, notifications on the reminders' channel.
+let houseLanguage: string | undefined;
+const houseWatch = new HouseWatch(
+  {
+    readStates: (all) => ha.getStatesForWatch(all),
+    readTraces: () => ha.getAutomationTraces(),
+    context: (states) =>
+      houseContext(states, async (entityId) => {
+        const res = await ha.callService("weather", "get_forecasts", entityId, { type: "daily" });
+        return Array.isArray(res) ? undefined : res.service_response;
+      }),
+    judge: createOneShot(config, "watch"),
+    notify: (title, message) => ha.notify(config.notifyService, title, message),
+    conversations,
+    userId: config.briefingUserId,
+    timeZone: () => scheduler.timeZone(),
+    language: async () => {
+      if (!houseLanguage) houseLanguage = await ha.getConfig().then((c) => c.language).catch(() => undefined);
+      return houseLanguage ?? "fr";
+    },
+    storePath: dataDir ? path.join(dataDir, "house-watch.json") : undefined,
+  },
+  {
+    mode: config.houseWatch,
+    quietHours: config.watchQuietHours,
+    maxPerDay: config.watchMaxPerDay,
+    livelyTime: config.watchLivelyTime,
+    intervalMinutes: 5,
+  }
+);
+houseWatch.start();
 
 const diagnostics = createDiagnostics({ config, ha, memory, tts: tts ?? undefined, stt: stt ?? undefined });
 

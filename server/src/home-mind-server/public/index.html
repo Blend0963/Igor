@@ -2619,7 +2619,7 @@
             grow.textContent = (t.kind === "reminder" ? "⏰ " : "🤖 ") + t.text;
             var sub = document.createElement("div");
             sub.className = "sub";
-            sub.textContent = t.description + " · prochaine : " + new Date(t.nextRunAt).toLocaleString() +
+            sub.textContent = t.description + (t.schedule && t.schedule.type === "when" ? "" : " · prochaine : " + new Date(t.nextRunAt).toLocaleString()) +
               (t.builtin ? " · réglé dans les options de l'add-on" : "") + (t.lastError ? " · dernière erreur : " + t.lastError : "");
             grow.appendChild(sub);
             item.appendChild(grow);

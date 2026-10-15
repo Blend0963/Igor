@@ -1,5 +1,5 @@
 name: "MaDo"
-version: "0.8.4"
+version: "0.9.0"
 slug: "mado"
 description: "MaDo — assistant IA pour Home Assistant avec mémoire persistante"
 url: "https://github.com/Blend0963/MaDo"
@@ -98,6 +98,14 @@ schema:
   # Prices for the cost counter, JSON {"model-prefix": [input, output]} in
   # USD per million tokens, added to the built-in list.
   model_prices: "str?"
+  # House watch: off (unset), on (entities exposed to Assist) or all (the
+  # whole house). Plain checks every 5 minutes; the cheap model only judges
+  # what they flag. Quiet hours hold back all but safety alarms.
+  house_watch: "list(off|on|all)?"
+  watch_quiet_hours: "match(^\\d{1,2}:\\d{2}-\\d{1,2}:\\d{2}$)?"
+  watch_max_per_day: "int(1,50)?"
+  # Daily "anything useful to say?" check (HH:MM). Unset = never.
+  watch_lively_time: "match(^\\d{1,2}:\\d{2}$)?"
   # Cheaper model for the background memory-extraction pass. Unset = the
   # main chat model. Absent from `options:` above, like the rest: an
   # empty value means "same model as the chat model".

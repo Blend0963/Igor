@@ -68,6 +68,10 @@ NOTIFY_SERVICE=$(jq -r '.notify_service // ""' "$OPTIONS")
 DAILY_BRIEFING_TIME=$(jq -r '.daily_briefing_time // ""' "$OPTIONS")
 DAILY_BRIEFING_PROMPT=$(jq -r '.daily_briefing_prompt // ""' "$OPTIONS")
 MODEL_PRICES=$(jq -r '.model_prices // ""' "$OPTIONS")
+HOUSE_WATCH=$(jq -r '.house_watch // ""' "$OPTIONS")
+WATCH_QUIET_HOURS=$(jq -r '.watch_quiet_hours // ""' "$OPTIONS")
+WATCH_MAX_PER_DAY=$(jq -r '.watch_max_per_day // ""' "$OPTIONS")
+WATCH_LIVELY_TIME=$(jq -r '.watch_lively_time // ""' "$OPTIONS")
 EXTRACTION_MODEL=$(jq -r '.extraction_model // ""' "$OPTIONS")
 # `// ""` would turn an explicit "off" into "", so test for null instead.
 EXTRACTION_GATE=$(jq -r 'if .extraction_gate == null then "" else .extraction_gate end' "$OPTIONS")
@@ -264,6 +268,10 @@ write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$DAILY_BRIEFING_TIME" ] && write_env "DAILY_BRIEFING_TIME" "$DAILY_BRIEFING_TIME"
 [ -n "$DAILY_BRIEFING_PROMPT" ] && write_env "DAILY_BRIEFING_PROMPT" "$DAILY_BRIEFING_PROMPT"
 [ -n "$MODEL_PRICES" ] && write_env "MODEL_PRICES" "$MODEL_PRICES"
+[ -n "$HOUSE_WATCH" ] && write_env "HOUSE_WATCH" "$HOUSE_WATCH"
+[ -n "$WATCH_QUIET_HOURS" ] && write_env "WATCH_QUIET_HOURS" "$WATCH_QUIET_HOURS"
+[ -n "$WATCH_MAX_PER_DAY" ] && write_env "WATCH_MAX_PER_DAY" "$WATCH_MAX_PER_DAY"
+[ -n "$WATCH_LIVELY_TIME" ] && write_env "WATCH_LIVELY_TIME" "$WATCH_LIVELY_TIME"
 [ -n "$EXTRACTION_MODEL" ] && write_env "EXTRACTION_MODEL" "$EXTRACTION_MODEL"
 [ -n "$EXTRACTION_GATE" ] && write_env "EXTRACTION_GATE" "$EXTRACTION_GATE"
 [ -n "$LAYOUT_FROM_EXPOSED" ] && write_env "LAYOUT_FROM_EXPOSED" "$LAYOUT_FROM_EXPOSED"

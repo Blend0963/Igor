@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { Scheduler, nextRun, parseWhen, parseDays, notificationText, zonedTime, TASKS_THREAD } from "./scheduler.js";
+import { Scheduler, nextRun, parseWhen, parseDays, notificationText, zonedTime, relativeTime, formatLocal, conditionMet, TASKS_THREAD } from "./scheduler.js";
 import { InMemoryConversationStore } from "../memory/conversation-memory.js";
 import type { IChatEngine } from "../llm/interface.js";
 
@@ -72,5 +72,85 @@ describe("Scheduler", () => {
     const { scheduler } = setup();
     await expect(scheduler.add({ userId: "u", kind: "reminder", text: "x", schedule: { type: "once", at: "2020-01-01T00:00:00Z" } })).rejects.toThrow(/past/);
     await expect(scheduler.add({ userId: "u", kind: "reminder", text: " ", schedule: { type: "daily", time: "08:00" } })).rejects.toThrow();
+  });
+});
+
+describe("relative times (computed by the server, not the model)", () => {
+  // Wednesday 14 October 2026, 20:30 in Paris (summer time, UTC+2).
+  const now = new Date("2026-10-14T18:30:20Z");
+
+  it("adds minutes and hours as elapsed time", () => {
+    expect(relativeTime({ minutes: 5 }, now, TZ).toISOString()).toBe("2026-10-14T18:35:20.000Z");
+    expect(relativeTime({ hours: 2 }, now, TZ).toISOString()).toBe("2026-10-14T20:30:20.000Z");
+  });
+
+  it("moves the local date for days, at the given time", () => {
+    expect(relativeTime({ days: 1, time: "15:00" }, now, TZ).toISOString()).toBe("2026-10-15T13:00:00.000Z");
+    // Six days later is still summer time; fourteen days later is past the switch (25 October), UTC+1.
+    expect(relativeTime({ days: 6, time: "18:00" }, now, TZ).toISOString()).toBe("2026-10-20T16:00:00.000Z");
+    expect(relativeTime({ days: 14, time: "18:00" }, now, TZ).toISOString()).toBe("2026-10-28T17:00:00.000Z");
+    expect(relativeTime({ days: 2 }, now, TZ).toISOString()).toBe("2026-10-16T18:30:20.000Z");
+  });
+
+  it("reads a time alone as today, or tomorrow once past", () => {
+    expect(relativeTime({ time: "21:15" }, now, TZ).toISOString()).toBe("2026-10-14T19:15:00.000Z");
+    expect(relativeTime({ time: "15:00" }, now, TZ).toISOString()).toBe("2026-10-15T13:00:00.000Z");
+  });
+
+  it("refuses negative and absurd offsets", () => {
+    expect(() => relativeTime({ minutes: -5 }, now, TZ)).toThrow();
+    expect(() => relativeTime({ days: 400 }, now, TZ)).toThrow();
+  });
+
+  it("writes the date back with its weekday", () => {
+    expect(formatLocal(new Date("2026-10-20T16:00:00Z"), TZ)).toBe("mardi 20 octobre 2026 à 18:00");
+  });
+});
+
+describe("notify_when conditions", () => {
+  it("compares states and numbers", () => {
+    expect(conditionMet("home", "equals", "Home")).toBe(true);
+    expect(conditionMet("2.5", "below", "5")).toBe(true);
+    expect(conditionMet("12", "below", "5")).toBe(false);
+    expect(conditionMet("unavailable", "not_equals", "on")).toBe(false);
+    expect(conditionMet("abc", "above", "5")).toBe(false);
+  });
+
+  it("fires once the condition has held long enough, then forgets the item", async () => {
+    const notify = vi.fn().mockResolvedValue(undefined);
+    let power = "800";
+    const scheduler = new Scheduler({
+      llm: { chat: vi.fn() } as unknown as IChatEngine,
+      notify,
+      timeZone: async () => TZ,
+      readState: async () => power,
+    });
+    const until = new Date(Date.now() + 3_600_000).toISOString();
+    await scheduler.add({ userId: "u", kind: "reminder", text: "La machine a fini", schedule: { type: "when", entityId: "sensor.lave_linge_power", op: "below", value: "5", forMinutes: 3, until } });
+    const t0 = Date.now();
+    await scheduler.tick(new Date(t0));
+    power = "1.2";
+    await scheduler.tick(new Date(t0 + 30_000));
+    await scheduler.tick(new Date(t0 + 120_000));
+    expect(notify).not.toHaveBeenCalled();
+    await scheduler.tick(new Date(t0 + 30_000 + 180_000));
+    expect(notify).toHaveBeenCalledWith("⏰ Rappel", "La machine a fini");
+    expect(scheduler.list("u")).toHaveLength(0);
+  });
+
+  it("drops an item unfired at its deadline", async () => {
+    const notify = vi.fn().mockResolvedValue(undefined);
+    const scheduler = new Scheduler({ llm: { chat: vi.fn() } as unknown as IChatEngine, notify, timeZone: async () => TZ, readState: async () => "on" });
+    await scheduler.add({ userId: "u", kind: "reminder", text: "x", schedule: { type: "when", entityId: "light.a", op: "equals", value: "off", forMinutes: 0, until: new Date(Date.now() + 60_000).toISOString() } });
+    await scheduler.tick(new Date(Date.now() + 120_000));
+    expect(notify).not.toHaveBeenCalled();
+    expect(scheduler.list("u")).toHaveLength(0);
+  });
+
+  it("caps notifications the model sends", async () => {
+    const notify = vi.fn().mockResolvedValue(undefined);
+    const scheduler = new Scheduler({ llm: { chat: vi.fn() } as unknown as IChatEngine, notify, timeZone: async () => TZ });
+    for (let i = 0; i < 20; i++) await scheduler.notifyNow("MaDo", "m" + i);
+    await expect(scheduler.notifyNow("MaDo", "trop")).rejects.toThrow(/Too many/);
   });
 });

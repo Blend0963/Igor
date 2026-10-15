@@ -51,4 +51,52 @@ describe("home tools", () => {
     expect(await handleHomeTool(ha, "cancel_scheduled_task", { id: made.id }, { ownerId: "other" })).toHaveProperty("error");
     expect(await handleHomeTool(ha, "cancel_scheduled_task", { id: made.id }, { ownerId: "u" })).toEqual({ success: true });
   });
+
+  it("computes 'dans 5 minutes' itself and reads the date back", async () => {
+    const scheduler = new Scheduler({ llm: {} as IChatEngine, notify: vi.fn(), timeZone: async () => "Europe/Paris" });
+    setScheduler(scheduler);
+    const before = Date.now();
+    const made = (await handleHomeTool({} as HomeAssistantClient, "schedule_task", { kind: "reminder", text: "linge", in_minutes: 5 }, { ownerId: "u" })) as { when: string };
+    const at = new Date(scheduler.list("u")[0].nextRunAt).getTime();
+    expect(at - before).toBeGreaterThanOrEqual(5 * 60_000);
+    expect(at - before).toBeLessThan(5 * 60_000 + 5_000);
+    expect(made.when).toMatch(/^\w+ \d+ \w+ \d{4} à \d{2}:\d{2}$/u);
+  });
+
+  it("watches an entity for notify_when, refusing what MaDo may not see", async () => {
+    const scheduler = new Scheduler({ llm: {} as IChatEngine, notify: vi.fn(), timeZone: async () => "Europe/Paris", readState: async () => "900" });
+    setScheduler(scheduler);
+    const ha = { getState: vi.fn().mockResolvedValue({ state: "900" }) } as unknown as HomeAssistantClient;
+    const made = (await handleHomeTool(ha, "notify_when", { entity_id: "sensor.lave_linge_power", condition: "below", value: 5, for_minutes: 3, text: "Le linge est prêt" }, { ownerId: "u" })) as { watching: string };
+    expect(made.watching).toMatch(/^quand sensor\.lave_linge_power passe sous 5 pendant 3 min/);
+    const hidden = { getState: vi.fn().mockRejectedValue(new Error("not exposed")) } as unknown as HomeAssistantClient;
+    await expect(handleHomeTool(hidden, "notify_when", { entity_id: "sensor.x", condition: "equals", value: "on", text: "x" }, { ownerId: "u" })).rejects.toThrow();
+    expect(scheduler.list("u")).toHaveLength(1);
+  });
+
+  it("summarises automation traces, failing ones first", async () => {
+    const ha = {
+      listAutomations: vi.fn().mockResolvedValue([
+        { entity_id: "automation.volets", state: "on", attributes: { id: "1", friendly_name: "Volets" } },
+        { entity_id: "automation.lumiere", state: "on", attributes: { id: "2", friendly_name: "Lumière" } },
+        { entity_id: "automation.jamais", state: "on", attributes: { id: "3" } },
+      ]),
+      getAutomationTraces: vi.fn().mockResolvedValue([
+        { item_id: "2", script_execution: "finished", timestamp: { start: "2026-10-14T10:00:00Z" } },
+        { item_id: "1", script_execution: "error", error: "light.x not found", timestamp: { start: "2026-10-14T09:00:00Z" } },
+      ]),
+    } as unknown as HomeAssistantClient;
+    const out = (await handleHomeTool(ha, "get_automation_traces", {})) as { automations_that_ran: Array<{ name: string; errors: number }>; no_run_since_restart: string[] };
+    expect(out.automations_that_ran[0]).toMatchObject({ name: "Volets", errors: 1, last_error: "light.x not found" });
+    expect(out.no_run_since_restart).toEqual(["automation.jamais"]);
+  });
+
+  it("reads an automation's config by its entity_id", async () => {
+    const ha = {
+      getStatesForWatch: vi.fn().mockResolvedValue([{ entity_id: "automation.volets", state: "on", attributes: { id: "1" } }]),
+      getAutomationConfig: vi.fn().mockResolvedValue({ alias: "Volets", triggers: [] }),
+    } as unknown as HomeAssistantClient;
+    expect(await handleHomeTool(ha, "get_config_item", { entity_id: "automation.volets" })).toEqual({ entity_id: "automation.volets", config: { alias: "Volets", triggers: [] } });
+    expect(await handleHomeTool(ha, "get_config_item", { entity_id: "light.x" })).toHaveProperty("error");
+  });
 });
