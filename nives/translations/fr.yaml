@@ -135,10 +135,13 @@ configuration:
   notify_service:
     name: Service de notification
     description: >-
-      Où envoyer les rappels, les tâches programmées et le résumé du matin :
-      un service notify de Home Assistant, par exemple mobile_app_mon_telephone
-      pour l'application sur votre téléphone. Vide = une notification dans
-      Home Assistant.
+      Où envoyer les rappels, les tâches programmées, la veille et le résumé du
+      matin : un service notify de Home Assistant (mobile_app_mon_telephone
+      pour l'application du téléphone, telegram pour un notify Telegram en
+      YAML), une entité notify (notify.telegram_bot_123_456 pour un bot
+      Telegram configuré depuis l'interface), ou telegram_bot
+      (telegram_bot:<id du chat> pour un chat précis). Vide = une notification
+      dans Home Assistant.
   daily_briefing_time:
     name: Heure du résumé du matin
     description: >-

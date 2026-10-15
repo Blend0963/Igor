@@ -805,3 +805,49 @@ describe("HomeAssistantClient keeps model input inside the HA API", () => {
     expect(calls).toEqual([]);
   });
 });
+
+describe("HomeAssistantClient.notify channels", () => {
+  let posts: { url: string; body: unknown }[];
+  const services = [{ domain: "notify", services: { mobile_app_pixel: {}, telegram: {}, send_message: {} } }];
+  const states = [{ entity_id: "notify.telegram_bot_123_456", state: "unknown", attributes: {}, last_changed: "", last_updated: "" }];
+
+  beforeEach(() => {
+    posts = [];
+    global.fetch = vi.fn(async (input: unknown, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "POST") posts.push({ url, body: JSON.parse(String(init.body)) });
+      const json = url.endsWith("/api/services") ? services : url.endsWith("/api/states") ? states : [];
+      return new Response(JSON.stringify(json), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as unknown as typeof fetch;
+  });
+
+  it("calls a legacy notify service (a Telegram notify platform, the companion app)", async () => {
+    await new HomeAssistantClient(baseConfig).notify("notify.telegram", "⏰ Rappel", "Poubelles");
+    expect(posts).toEqual([{ url: expect.stringMatching(/\/api\/services\/notify\/telegram$/), body: { title: "⏰ Rappel", message: "Poubelles" } }]);
+  });
+
+  it("sends to a notify entity (the Telegram bot set up from the UI)", async () => {
+    await new HomeAssistantClient(baseConfig).notify("notify.telegram_bot_123_456", "⏰ Rappel", "Poubelles");
+    expect(posts).toEqual([
+      { url: expect.stringMatching(/\/api\/services\/notify\/send_message$/), body: { entity_id: "notify.telegram_bot_123_456", title: "⏰ Rappel", message: "Poubelles" } },
+    ]);
+  });
+
+  it("calls telegram_bot.send_message, to a chat when one is given", async () => {
+    const client = new HomeAssistantClient(baseConfig);
+    await client.notify("telegram_bot", "T", "M");
+    await client.notify("telegram_bot:-100123", "T", "M");
+    expect(posts.map((p) => p.body)).toEqual([{ title: "T", message: "M" }, { title: "T", message: "M", target: [-100123] }]);
+    expect(posts[0].url).toMatch(/\/api\/services\/telegram_bot\/send_message$/);
+  });
+
+  it("says so when the name is neither a service nor an entity", async () => {
+    await expect(new HomeAssistantClient(baseConfig).notify("telegarm", "T", "M")).rejects.toThrow(/no notify service or notify entity/);
+    expect(posts).toEqual([]);
+  });
+
+  it("falls back to a persistent notification without a service", async () => {
+    await new HomeAssistantClient(baseConfig).notify(undefined, "T", "M");
+    expect(posts[0].url).toMatch(/persistent_notification\/create$/);
+  });
+});

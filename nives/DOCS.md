@@ -38,7 +38,7 @@ MaDo works as a Home Assistant Assist conversation agent. Speech-to-text and tex
 
 ## Reminders, alerts and the house watch
 
-Reminders and alerts go to the **Notification Service** option (for example `mobile_app_my_phone`), or appear as a notification inside Home Assistant when it is empty. The ⏰ button of the panel lists them and cancels them.
+Reminders and alerts go to the **Notification Service** option: a notify service (`mobile_app_my_phone`, or `telegram` for a YAML Telegram notifier), a notify entity (`notify.telegram_bot_123_456` for a Telegram bot set up from the UI), or `telegram_bot` / `telegram_bot:<chat id>`. They appear as a notification inside Home Assistant when it is empty. The ⏰ button of the panel lists them and cancels them.
 
 - **Reminders**: "remind me in 5 minutes", "tomorrow at 3 pm", "in 6 days at 6 pm", "every Tuesday at 7 pm". MaDo passes what you said and the add-on computes the date itself (time zone and daylight saving included), then repeats the exact date with its weekday. Reminders cost nothing when they fire.
 - **When something happens**: "tell me when the washing machine is done" (its power below 5 W for 3 minutes), "tell me when someone gets home". Checked every 30 seconds, for free; dropped after 24 hours (up to a week) if it never happens.

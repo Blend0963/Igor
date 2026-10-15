@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1 — Notifications through Telegram
+
+- The notification service option also takes a notify entity (`notify.telegram_bot_…`, what a Telegram bot set up from the UI creates) and `telegram_bot` / `telegram_bot:<chat id>`, besides notify services (`mobile_app_…`, `telegram`). A name that is neither a service nor an entity is reported instead of failing silently.
+
 ## 0.9.0 — Reminders on time, the house watch, reviewing automations
 
 - Reminders: "dans 5 minutes", "demain à 15h", "dans 6 jours à 18h" are computed by the add-on (time zone and clock changes included), not by the model, and MaDo repeats the exact date with its weekday.

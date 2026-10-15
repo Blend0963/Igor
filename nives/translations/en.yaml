@@ -139,8 +139,10 @@ configuration:
     description: >-
       Where reminders, scheduled tasks and the morning briefing are sent: a
       notify service of Home Assistant, e.g. mobile_app_pixel_8 for the
-      companion app on your phone. Leave empty for a notification inside
-      Home Assistant.
+      companion app on your phone; a notify entity, e.g.
+      notify.telegram_bot_123_456 for a Telegram bot set up from the UI;
+      a Telegram notify service (telegram); or telegram_bot (telegram_bot:<chat
+      id> for one chat). Leave empty for a notification inside Home Assistant.
   daily_briefing_time:
     name: Morning Briefing Time
     description: >-

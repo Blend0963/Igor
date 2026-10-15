@@ -935,14 +935,50 @@ export class HomeAssistantClient {
   }
 
   /**
-   * A notification: through a notify service ("mobile_app_pixel") when one
-   * is configured, else as a persistent notification in Home Assistant.
+   * A notification, on the channel NOTIFY_SERVICE names:
+   * - a notify service, legacy style ("mobile_app_pixel", "telegram" from a
+   *   `notify: - platform: telegram` block): notify.<name> {title, message};
+   * - a notify entity (the Telegram bot set up from the UI creates one per
+   *   chat, "notify.telegram_bot_123_456"): notify.send_message on it;
+   * - "telegram_bot" or "telegram_bot:<chat_id>": telegram_bot.send_message,
+   *   to the bot's default chat or that one;
+   * - nothing: a persistent notification inside Home Assistant.
    */
   async notify(service: string | undefined, title: string, message: string): Promise<void> {
-    if (service) {
-      const name = service.replace(/^notify\./, "");
+    const target = service?.trim();
+    if (target) {
+      const telegram = /^telegram_bot(?:\.send_message)?(?::(-?\d+))?$/.exec(target);
+      if (telegram) {
+        await this.fetch("/api/services/telegram_bot/send_message", {
+          method: "POST",
+          body: JSON.stringify({ title, message, ...(telegram[1] ? { target: [Number(telegram[1])] } : {}) }),
+        });
+        return;
+      }
+      const name = target.replace(/^notify\./, "");
       if (!SERVICE_PART_PATTERN.test(name)) throw new Error(`"${service}" is not a notify service name.`);
-      await this.fetch(`/api/services/notify/${name}`, { method: "POST", body: JSON.stringify({ title, message }) });
+      let isService = true;
+      try {
+        const known = await this.getKnownServiceIds();
+        if (!known.has(`notify.${name}`)) {
+          const states = await this.getAllStatesCached();
+          if (!states.some((s) => s.entity_id === `notify.${name}`)) {
+            throw new Error(`There is no notify service or notify entity "${name}" in Home Assistant.`);
+          }
+          isService = false;
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith("There is no notify")) throw error;
+        // Catalog unreadable: try it as a service, as before.
+      }
+      if (isService) {
+        await this.fetch(`/api/services/notify/${name}`, { method: "POST", body: JSON.stringify({ title, message }) });
+      } else {
+        await this.fetch("/api/services/notify/send_message", {
+          method: "POST",
+          body: JSON.stringify({ entity_id: `notify.${name}`, title, message }),
+        });
+      }
       return;
     }
     await this.fetch("/api/services/persistent_notification/create", {
