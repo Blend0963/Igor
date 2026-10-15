@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isActionCommand, isSimpleRequest } from "./model-router.js";
+import { isActionCommand, isSimpleRequest, mayBeOrder } from "./model-router.js";
 
 describe("isSimpleRequest", () => {
   it.each([
@@ -57,5 +57,13 @@ describe("isActionCommand", () => {
     expect(isActionCommand("Pourquoi la lumière s'est allumée hier ?")).toBe(false);
     expect(isActionCommand("Crée une automatisation qui éteint tout à minuit et allume l'entrée")).toBe(false);
     expect(isActionCommand("")).toBe(false);
+  });
+});
+
+describe("mayBeOrder", () => {
+  it("takes short plain messages, not explanations, builds or long texts", () => {
+    expect(mayBeOrder("Plonge la maison dans le noir")).toBe(true);
+    expect(mayBeOrder("Pourquoi le salon est allumé ?")).toBe(false);
+    expect(mayBeOrder("x".repeat(400))).toBe(false);
   });
 });

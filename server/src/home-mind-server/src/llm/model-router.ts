@@ -59,3 +59,15 @@ export function isActionCommand(message: string): boolean {
   // something ("comment créer une automatisation qui allume…"): leave those.
   return !COMPLEX.test(text) && ACTION_VERB.test(text);
 }
+
+/**
+ * A message that may be an order in words the verb list does not know
+ * ("plonge la maison dans le noir"). Short, plain and not a question about
+ * how or why: when its first answer calls no tool, a model is asked whether
+ * it was an order (llm/order-check.ts).
+ */
+export function mayBeOrder(message: string): boolean {
+  const text = message.trim();
+  if (!text || text.length > FAST_MAX_CHARS * 2 || text.includes("<document")) return false;
+  return !COMPLEX.test(text);
+}
