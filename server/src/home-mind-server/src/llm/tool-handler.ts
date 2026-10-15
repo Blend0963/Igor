@@ -25,7 +25,8 @@ import type { Fact } from "../memory/types.js";
 import { extractionGateReason } from "../memory/extraction-gate.js";
 import { handlePlatformTool, PLATFORM_TOOL_NAMES } from "./platform-tools.js";
 import { createFile, type FileSpec } from "../files/create.js";
-import { handleHomeTool, HOME_TOOL_NAMES } from "./home-tools.js";
+import { getConfigDir, handleHomeTool, HOME_TOOL_NAMES } from "./home-tools.js";
+import { applyConfigWrite, prepareConfigWrite, revertConfigWrite } from "../ha/config-files.js";
 import { getMediaStore, mediaLink } from "./media-store.js";
 
 /**
@@ -173,6 +174,12 @@ export async function handleToolCall(
         result = { error: error instanceof Error ? error.message.slice(0, 400) : "unknown error" };
       }
       console.log(`[tool] ${toolName} completed in ${Date.now() - start}ms`);
+      return result;
+    }
+
+    if (toolName === "write_config_file") {
+      result = await writeConfigFile(ha, input, ctx);
+      console.log(`[tool] write_config_file completed in ${Date.now() - start}ms`);
       return result;
     }
 
@@ -692,4 +699,74 @@ export async function extractAndStoreFacts(
   }
 
   return ids.length;
+}
+
+
+/** Which reload makes a written file take effect without a restart. */
+const RELOAD_FOR_FILE: Record<string, string> = {
+  "scripts.yaml": "script",
+  "automations.yaml": "automation",
+  "scenes.yaml": "scene",
+};
+
+/**
+ * write_config_file: preview in one turn, write in a later one (after the
+ * user's yes), with Home Assistant's configuration check after the write and
+ * the old content put back when it fails. Never runs without a conversation:
+ * nobody could be asked.
+ */
+async function writeConfigFile(ha: HomeAssistantClient, input: Record<string, unknown>, ctx?: ToolContext): Promise<unknown> {
+  const conversationId = ctx?.conversationId;
+  const turnId = ctx?.turnId;
+  if (!conversationId || !turnId) {
+    return { error: "This request is not part of a conversation, so the user cannot confirm a file change. NOTHING was written." };
+  }
+  const rel = typeof input.path === "string" ? input.path : "";
+  try {
+    if (input.confirm !== true) {
+      const preview = prepareConfigWrite(getConfigDir(), rel, typeof input.content === "string" ? input.content : "", conversationId, turnId);
+      return {
+        ...preview,
+        message:
+          "PREVIEW — nothing was written. Show the user these changes (the lines starting with - are removed, + added), ask them to confirm, " +
+          "and ask whether they want a backup copy of the current file (optional). Then STOP. When they say yes in their NEXT message, call " +
+          "write_config_file again with this path, confirm: true and backup: true or false as they chose, without the content.",
+      };
+    }
+    const applied = applyConfigWrite(getConfigDir(), rel, conversationId, turnId, input.backup === true);
+    let check: { result: string; errors: string | null } | undefined;
+    try {
+      check = await ha.checkConfig();
+    } catch (error) {
+      console.warn("[config] check after write failed to run:", error instanceof Error ? error.message : error);
+    }
+    if (check && check.result !== "valid") {
+      revertConfigWrite(applied);
+      return {
+        error: "Home Assistant's configuration check FAILED with the new content, so the previous content was put back. Nothing changed.",
+        check_errors: check.errors,
+      };
+    }
+    const domain = RELOAD_FOR_FILE[applied.path];
+    let reloaded: string | undefined;
+    if (domain) {
+      try {
+        await ha.callService(domain, "reload");
+        reloaded = `${domain}.reload`;
+      } catch (error) {
+        console.warn(`[config] ${domain}.reload failed:`, error instanceof Error ? error.message : error);
+      }
+    }
+    return {
+      success: true,
+      path: applied.path,
+      ...(applied.backup ? { backup: applied.backup } : { backup: "none (the user did not ask for one)" }),
+      configuration_check: check ? "valid" : "could not run; tell the user to check the configuration before restarting",
+      ...(reloaded
+        ? { reloaded }
+        : { note: "Not reloaded automatically: tell the user which reload applies (Developer tools → YAML) or that a restart is needed." }),
+    };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
 }
