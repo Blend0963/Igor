@@ -107,6 +107,9 @@ export function createAuthMiddleware(
     }
 
     const peer = peerAddress(req);
+    // During the handoff Home Assistant Core passes whatever it sends: right
+    // after a rotation it still holds the previous token until it restarts.
+    if (peer !== undefined && gracePeers.includes(peer)) return next();
     const rec = peer ? failures.get(peer) : undefined;
     if (rec && rec.blockedUntil > Date.now()) {
       return res.status(429).json({ error: "Too many failed attempts; try again later." });
@@ -114,7 +117,6 @@ export function createAuthMiddleware(
 
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      if (peer !== undefined && gracePeers.includes(peer)) return next();
       fail(peer);
       return res.status(401).json({ error: "Missing or invalid Authorization header" });
     }

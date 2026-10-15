@@ -223,6 +223,9 @@ describe("createAuthMiddleware (0.9.3)", () => {
     mw(req("172.30.33.7"), res, next);
     expect(res.statusCode).toBe(401);
     expect(next).toHaveBeenCalledTimes(1);
+    // Right after a rotation Core still sends the previous token.
+    mw(req("172.30.32.1", "Bearer old-token"), mockRes(), next);
+    expect(next).toHaveBeenCalledTimes(2);
   });
 
   it("requires the token from Core too once the handoff is done", () => {

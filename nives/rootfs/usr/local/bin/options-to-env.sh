@@ -39,6 +39,24 @@ if [ ! -f /data/.api_token ]; then
     openssl rand -hex 32 > /data/.api_token
     echo "[init] Generated a new API token for the MaDo server"
 fi
+
+# "Regenerate the API token" (option rotate_api_token): a new token once per
+# switch to true. The marker keeps a forgotten "true" from rotating at every
+# start; switching the option off clears it. The option itself is turned back
+# off further down, once the Supervisor token is known.
+ROTATED_MARKER=/data/.api_token_rotated
+ROTATE_TOKEN=false
+if [ "$(jq -r '.rotate_api_token // false' /data/options.json 2>/dev/null)" = "true" ]; then
+    if [ ! -f "$ROTATED_MARKER" ]; then
+        openssl rand -hex 32 > /data/.api_token
+        touch "$ROTATED_MARKER"
+        ROTATE_TOKEN=true
+        echo "[init] API token regenerated (rotate_api_token). Restart Home Assistant"
+        echo "[init]          once so the MaDo integration picks up the new one."
+    fi
+else
+    rm -f "$ROTATED_MARKER"
+fi
 chmod 600 /data/.api_token /data/.shodh_key 2>/dev/null || true
 
 API_TOKEN=$(cat /data/.api_token)
@@ -185,29 +203,55 @@ write_env "SHODH_API_KEY" "$SHODH_KEY"
 # an update or a token rotation. Every other caller (other add-ons on the
 # hassio network, a published port) needs the token from the first start:
 # before 0.9.3 the whole API was open during that window.
+#
+# A "v2:" receipt also says the integration keeps the token in its own config
+# entry; the file is then deleted, so the token no longer sits in plain sight
+# in the config folder (file editors, Samba shares, Git syncs). An older
+# receipt (bare hash) keeps the file: that integration still reads it.
 TOKEN_HANDOFF="/config/nives/.api_token"
 TOKEN_ACK="${TOKEN_HANDOFF}.ack"
 
 write_env "API_TOKEN" "$API_TOKEN"
-if mkdir -p "$(dirname "$TOKEN_HANDOFF")" 2>/dev/null &&
-    printf '%s' "$API_TOKEN" > "$TOKEN_HANDOFF" 2>/dev/null; then
-    chmod 600 "$TOKEN_HANDOFF" 2>/dev/null || true
+EXPECTED_ACK=$(printf '%s' "$API_TOKEN" | openssl dgst -sha256 -r 2>/dev/null | cut -d' ' -f1)
+ACTUAL_ACK=$({ tr -d '[:space:]' < "$TOKEN_ACK"; } 2>/dev/null || echo "")
 
-    EXPECTED_ACK=$(printf '%s' "$API_TOKEN" | openssl dgst -sha256 -r 2>/dev/null | cut -d' ' -f1)
-    ACTUAL_ACK=$(tr -d '[:space:]' < "$TOKEN_ACK" 2>/dev/null || echo "")
+hand_over_token() {
+    mkdir -p "$(dirname "$TOKEN_HANDOFF")" 2>/dev/null &&
+        printf '%s' "$API_TOKEN" > "$TOKEN_HANDOFF" 2>/dev/null &&
+        chmod 600 "$TOKEN_HANDOFF" 2>/dev/null
+}
 
-    if [ -n "$EXPECTED_ACK" ] && [ "$ACTUAL_ACK" = "$EXPECTED_ACK" ]; then
-        echo "[init] API authentication enabled"
-    else
-        write_env "API_AUTH_GRACE" "true"
-        echo "[init] API authentication enabled; Home Assistant Core may call without"
-        echo "[init]          the token until the MaDo integration confirms it has it"
-        echo "[init]          (normal right after an update; it ends at the next start)."
-    fi
+if [ -n "$EXPECTED_ACK" ] && [ "$ACTUAL_ACK" = "v2:${EXPECTED_ACK}" ]; then
+    rm -f "$TOKEN_HANDOFF"
+    echo "[init] API authentication enabled (the integration keeps the token itself)"
+elif [ -n "$EXPECTED_ACK" ] && [ "$ACTUAL_ACK" = "$EXPECTED_ACK" ]; then
+    hand_over_token || true
+    echo "[init] API authentication enabled"
 else
     write_env "API_AUTH_GRACE" "true"
-    echo "[init] WARNING: could not write ${TOKEN_HANDOFF}. API authentication is"
-    echo "[init]          enabled; only Home Assistant Core may call without the token."
+    if hand_over_token; then
+        echo "[init] API authentication enabled; Home Assistant Core may call without"
+        echo "[init]          the token until the MaDo integration confirms it has it"
+        echo "[init]          (normal right after an update or a token rotation)."
+    else
+        echo "[init] WARNING: could not write ${TOKEN_HANDOFF}. API authentication is"
+        echo "[init]          enabled; only Home Assistant Core may call without the token."
+    fi
+fi
+
+# Turn the rotation option back off, so the next start does not ask again.
+if [ "$ROTATE_TOKEN" = "true" ] && [ -n "$SUPERVISOR_TOKEN" ]; then
+    NEW_OPTIONS=$(jq -c '.rotate_api_token = false' /data/options.json 2>/dev/null || echo "")
+    if [ -n "$NEW_OPTIONS" ] && curl -sf -X POST \
+        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d "{\"options\": ${NEW_OPTIONS}}" \
+        http://supervisor/addons/self/options >/dev/null 2>&1; then
+        echo "[init] rotate_api_token switched back off"
+    else
+        echo "[init] Could not switch rotate_api_token back off; turn it off by hand"
+        echo "[init]          (it will not rotate again until it has been off once)."
+    fi
 fi
 
 # --- Mistral platform key ---

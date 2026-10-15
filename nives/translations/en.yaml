@@ -173,6 +173,13 @@ configuration:
       checked by Home Assistant and put back if the check fails. Commands,
       Supervisor actions and login settings are never written, and scheduled
       tasks can never confirm a change.
+  rotate_api_token:
+    name: Regenerate the API token
+    description: >-
+      Turn on and restart the add-on to replace the API token (if you think it
+      leaked). The option switches itself back off. Restart Home Assistant
+      once afterwards so the MaDo integration picks up the new token, and
+      paste the new key (🔑 in the panel) into the installed app if you use it.
   house_watch:
     name: House Watch
     description: >-

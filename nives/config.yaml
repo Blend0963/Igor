@@ -104,6 +104,8 @@ schema:
   # How far MaDo may change the configuration: off (read only), automations
   # (default) or yaml (also scripts.yaml, configuration.yaml, packages…).
   config_edits: "list(off|automations|yaml)?"
+  # Set to true once to regenerate the API token (switched back off by itself).
+  rotate_api_token: "bool?"
   watch_quiet_hours: "match(^\\d{1,2}:\\d{2}-\\d{1,2}:\\d{2}$)?"
   watch_max_per_day: "int(1,50)?"
   # Daily "anything useful to say?" check (HH:MM). Unset = never.

@@ -175,6 +175,14 @@ configuration:
       actions du Supervisor et les réglages de connexion ne sont jamais
       écrits, et une tâche programmée ne peut jamais confirmer une
       modification.
+  rotate_api_token:
+    name: Régénérer le token API
+    description: >-
+      Activez puis redémarrez l'add-on pour remplacer le token API (si vous
+      pensez qu'il a fuité). L'option se désactive d'elle-même. Redémarrez
+      ensuite Home Assistant une fois pour que l'intégration MaDo prenne le
+      nouveau token, et recopiez la nouvelle clé (🔑 dans le panneau) dans
+      l'application installée si vous l'utilisez.
   house_watch:
     name: Veille de la maison
     description: >-
