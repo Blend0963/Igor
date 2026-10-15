@@ -3,6 +3,7 @@
 ## 0.9.1 — Notifications through Telegram
 
 - The notification service option also takes a notify entity (`notify.telegram_bot_…`, what a Telegram bot set up from the UI creates) and `telegram_bot` / `telegram_bot:<chat id>`, besides notify services (`mobile_app_…`, `telegram`). A name that is neither a service nor an entity is reported instead of failing silently.
+- Requests for reminders, timers and alerts ("mets-moi un rappel…", "lance un minuteur…") always go to the main model, never to the fast model, so the reminder is actually scheduled.
 
 ## 0.9.0 — Reminders on time, the house watch, reviewing automations
 

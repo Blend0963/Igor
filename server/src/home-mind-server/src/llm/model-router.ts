@@ -22,7 +22,7 @@ const STATE_QUESTION =
   /\b(?:temp[ée]rature|humidit[ée]|allum[ée]e?s?|[ée]teinte?s?|ouverte?s?|ferm[ée]e?s?|verrouill[ée]e?s?|[ée]tat|batterie|niveau|il fait combien|quelle heure|is .* (?:on|off|open|closed)|temperature|humidity)\b/i;
 
 const COMPLEX =
-  /\b(?:pourquoi|explique|expliquer|comment (?:faire|je|on|fonctionne)|compare|comparer|analyse|analyser|graph|graphique|courbe|historique|statistique|consommation|automatisation|automation|sc[ée]nario|script|cr[ée]e|cr[ée]er|[ée]cris|r[ée]dige|r[ée]sume|r[ée]sumer|document|fichier|tableau|code|plan|conseil|recette|traduis|why|explain|compare|analy[sz]e|history|write|create|summari[sz]e|plan)\b/i;
+  /\b(?:pourquoi|explique|expliquer|comment (?:faire|je|on|fonctionne)|compare|comparer|analyse|analyser|graph|graphique|courbe|historique|statistique|consommation|automatisation|automation|sc[ée]nario|script|cr[ée]e|cr[ée]er|[ée]cris|r[ée]dige|r[ée]sume|r[ée]sumer|document|fichier|tableau|code|plan|conseil|recette|traduis|rappel|rappelle|rappeler|pr[ée]viens|pr[ée]venir|minuteur|notifie|remind|reminder|timer|notify|why|explain|compare|analy[sz]e|history|write|create|summari[sz]e|plan)\b/i;
 
 export interface RouteInput {
   message: string;

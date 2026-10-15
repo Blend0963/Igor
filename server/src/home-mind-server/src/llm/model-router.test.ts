@@ -26,6 +26,12 @@ describe("isSimpleRequest", () => {
     expect(isSimpleRequest({ message })).toBe(false);
   });
 
+  it("keeps reminders and alerts on the main model, which computes the time and calls the tool", () => {
+    expect(isSimpleRequest({ message: "mets-moi un rappel dans 1 minute pour les courses" })).toBe(false);
+    expect(isSimpleRequest({ message: "lance un minuteur de 10 minutes" })).toBe(false);
+    expect(isSimpleRequest({ message: "préviens-moi quand la machine a fini" })).toBe(false);
+  });
+
   it("never routes a request with an image or a file", () => {
     expect(isSimpleRequest({ message: "allume la lampe", hasImages: true })).toBe(false);
     expect(isSimpleRequest({ message: "allume la lampe", hasDocuments: true })).toBe(false);
