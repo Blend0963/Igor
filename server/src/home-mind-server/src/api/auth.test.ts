@@ -209,3 +209,38 @@ describe("isIngressRequest", () => {
     expect(isIngressRequest(fromPeer("172.30.32.2", {}))).toBe(false);
   });
 });
+
+describe("createAuthMiddleware (0.9.3)", () => {
+  const req = (address: string, auth?: string) =>
+    mockReq({ headers: auth ? { authorization: auth } : {}, socket: { remoteAddress: address } } as unknown as Partial<Request>);
+
+  it("lets Home Assistant Core alone through without a token during the handoff", () => {
+    const mw = createAuthMiddleware(TOKEN, { gracePeers: ["172.30.32.1"] });
+    const next = vi.fn();
+    mw(req("172.30.32.1"), mockRes(), next);
+    expect(next).toHaveBeenCalledTimes(1);
+    const res = mockRes();
+    mw(req("172.30.33.7"), res, next);
+    expect(res.statusCode).toBe(401);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires the token from Core too once the handoff is done", () => {
+    const res = mockRes();
+    createAuthMiddleware(TOKEN, {})(req("172.30.32.1"), res, vi.fn());
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("shuts out an address that keeps failing, even with the right token afterwards", () => {
+    const mw = createAuthMiddleware(TOKEN, { maxFailures: 3 });
+    for (let i = 0; i < 3; i++) mw(req("10.0.0.9", "Bearer wrong"), mockRes(), vi.fn());
+    const res = mockRes();
+    const next = vi.fn();
+    mw(req("10.0.0.9", `Bearer ${TOKEN}`), res, next);
+    expect(res.statusCode).toBe(429);
+    expect(next).not.toHaveBeenCalled();
+    const other = vi.fn();
+    mw(req("10.0.0.10", `Bearer ${TOKEN}`), mockRes(), other);
+    expect(other).toHaveBeenCalled();
+  });
+});

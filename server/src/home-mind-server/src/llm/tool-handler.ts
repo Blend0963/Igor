@@ -26,6 +26,7 @@ import { extractionGateReason } from "../memory/extraction-gate.js";
 import { handlePlatformTool, PLATFORM_TOOL_NAMES } from "./platform-tools.js";
 import { createFile, type FileSpec } from "../files/create.js";
 import { getConfigDir, handleHomeTool, HOME_TOOL_NAMES } from "./home-tools.js";
+import { toolRefusal } from "./tool-policy.js";
 import { applyConfigWrite, prepareConfigWrite, revertConfigWrite } from "../ha/config-files.js";
 import { getMediaStore, mediaLink } from "./media-store.js";
 
@@ -63,6 +64,8 @@ export interface ToolContext {
   ownerId?: string;
   /** The request comes from a chat-panel thread. */
   isThread?: boolean;
+  /** Nobody is there to confirm (llm/tool-policy.ts). */
+  unattended?: boolean;
 }
 
 /**
@@ -165,6 +168,12 @@ export async function handleToolCall(
 
   try {
     let result: unknown;
+
+    const refusal = toolRefusal(toolName, { unattended: ctx?.unattended });
+    if (refusal) {
+      console.log(`[tool] ${toolName} refused: ${refusal}`);
+      return { error: refusal };
+    }
 
     if (HOME_TOOL_NAMES.has(toolName)) {
       if (ctx) ctx.attachments ??= [];
@@ -281,7 +290,15 @@ export async function handleToolCall(
         result = compactStateList(await ha.searchEntities(input.query as string));
         break;
 
-      case "call_service":
+      case "call_service": {
+        const sensitive = sensitiveServiceIdentity(input);
+        if (sensitive) {
+          const gate = gateSensitiveService(ctx, sensitive, input);
+          if (!gate.proceed) {
+            result = gate.response;
+            break;
+          }
+        }
         result = compactServiceResult(
           await ha.callService(
             input.domain as string,
@@ -291,6 +308,7 @@ export async function handleToolCall(
           )
         );
         break;
+      }
 
       case "get_history": {
         const startTime = normalizeTimestamp(input.start_time as string | undefined);
@@ -769,4 +787,62 @@ async function writeConfigFile(ha: HomeAssistantClient, input: Record<string, un
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+
+/**
+ * Services that open the house, disarm it, take Home Assistant down or run
+ * commands. Each needs the same preview-and-confirm as an automation change
+ * (identity: the service and its target), and is refused outright when nobody
+ * is there to confirm. Domains listed alone cover every service in them.
+ */
+const SENSITIVE_SERVICES = new Set([
+  "lock.unlock",
+  "lock.open",
+  "alarm_control_panel.alarm_disarm",
+  "homeassistant.restart",
+  "homeassistant.stop",
+  "androidtv.adb_command",
+  "recorder.purge",
+  "recorder.purge_entities",
+]);
+const SENSITIVE_DOMAINS = new Set(["shell_command", "python_script", "pyscript", "rest_command", "command_line", "hassio"]);
+
+/** "lock.unlock:lock.front_door" for a sensitive call, else undefined. */
+export function sensitiveServiceIdentity(input: Record<string, unknown>): string | undefined {
+  const domain = String(input.domain ?? "").trim().toLowerCase();
+  const service = String(input.service ?? "").trim().toLowerCase();
+  if (!SENSITIVE_DOMAINS.has(domain) && !SENSITIVE_SERVICES.has(`${domain}.${service}`)) return undefined;
+  const data = (input.data ?? {}) as Record<string, unknown>;
+  const target = (data.target ?? {}) as Record<string, unknown>;
+  const entity = input.entity_id ?? data.entity_id ?? target.entity_id ?? "";
+  return `${domain}.${service}:${Array.isArray(entity) ? entity.join(",") : String(entity)}`;
+}
+
+function gateSensitiveService(
+  ctx: ToolContext | undefined,
+  identity: string,
+  input: Record<string, unknown>
+): { proceed: boolean; response?: unknown } {
+  const conversationId = ctx?.conversationId;
+  const turnId = ctx?.turnId;
+  if (!conversationId || !turnId || ctx?.unattended) {
+    return {
+      proceed: false,
+      response: {
+        error: `${identity.split(":")[0]} needs the user's confirmation, and nobody can confirm in this run. NOTHING was done. Tell the user it must be asked for in a conversation.`,
+      },
+    };
+  }
+  if (isConfirmed(conversationId, "call_service", input, turnId, identity)) return { proceed: true };
+  recordPreview(conversationId, "call_service", input, turnId, identity);
+  return {
+    proceed: false,
+    response: {
+      confirmation_required: true,
+      action: identity,
+      message:
+        "This action is sensitive (it opens, disarms, restarts or runs a command), so NOTHING was done yet. Tell the user exactly what you are about to do and ask them to confirm. Then STOP. When they say yes in their NEXT message, call call_service again with the same domain, service and target.",
+    },
+  };
 }

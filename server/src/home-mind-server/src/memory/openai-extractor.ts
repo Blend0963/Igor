@@ -37,11 +37,8 @@ export class OpenAIFactExtractor implements IFactExtractor {
     this.client = new OpenAI({
       apiKey,
       baseURL: baseUrl,
-      defaultHeaders: {
-        "HTTP-Referer": "https://nives.house",
-        "X-OpenRouter-Title": "Nives",
-        "X-OpenRouter-Categories": "personal-agent",
-      },
+      // No attribution headers: the upstream project's site and name were
+      // sent to every provider; nothing identifying needs to leave.
     });
     this.model = model;
     this.responseFormat = responseFormat;

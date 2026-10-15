@@ -162,6 +162,17 @@ configuration:
       {"model-prefix": [input, output]} in USD per million tokens, e.g.
       {"mistral-large": [0.5, 1.5]}. Added to (and overriding) the built-in
       list of common models.
+  config_edits:
+    name: Configuration Changes
+    description: >-
+      How far MaDo may change your Home Assistant configuration. "off": read
+      only (it can still read automations, scripts and YAML and suggest
+      changes). "automations" (default): it can create, change and delete
+      automations, each previewed and confirmed. "yaml": also edit YAML files
+      (scripts.yaml, configuration.yaml, packages…), previewed, confirmed,
+      checked by Home Assistant and put back if the check fails. Commands,
+      Supervisor actions and login settings are never written, and scheduled
+      tasks can never confirm a change.
   house_watch:
     name: House Watch
     description: >-

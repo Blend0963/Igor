@@ -1,3 +1,4 @@
+import { filterTools, type TurnPolicy } from "./tool-policy.js";
 import OpenAI from "openai";
 import type { Config } from "../config.js";
 import type { IMemoryStore } from "../memory/interface.js";
@@ -43,13 +44,16 @@ import type {
 type FunctionToolCall = OpenAI.ChatCompletionMessageFunctionToolCall;
 
 /** The tools of one conversation style, read once per request (env can change in tests). */
-function openAIToolsFor(mode: "voice" | "text" | "thread"): OpenAI.ChatCompletionTool[] {
+function openAIToolsFor(mode: "voice" | "text" | "thread", turn: TurnPolicy = {}): OpenAI.ChatCompletionTool[] {
   return toOpenAITools(
-    toolsForMode(mode, {
-      enabled: Boolean(mistralKey()),
-      libraryIds: listFromEnv(process.env.MISTRAL_LIBRARY_IDS),
-      connectors: listFromEnv(process.env.MISTRAL_CONNECTORS),
-    })
+    filterTools(
+      toolsForMode(mode, {
+        enabled: Boolean(mistralKey()),
+        libraryIds: listFromEnv(process.env.MISTRAL_LIBRARY_IDS),
+        connectors: listFromEnv(process.env.MISTRAL_CONNECTORS),
+      }),
+      turn
+    )
   );
 }
 
@@ -178,6 +182,7 @@ export class OpenAIChatEngine implements IChatEngine {
       memory: this.memory,
       ownerId: userId,
       isThread: scope.isThread,
+      unattended: request.unattended === true,
     };
 
     // 1. Load user's memory
@@ -311,7 +316,7 @@ export class OpenAIChatEngine implements IChatEngine {
     const promptMode = scope.isThread ? "thread" : isVoice ? "voice" : "text";
     const cacheKey = `mado:${promptMode}:${scope.factBucket}`;
     const turnUsage = new UsageTally();
-    const tools = openAIToolsFor(promptMode);
+    const tools = openAIToolsFor(promptMode, { unattended: request.unattended === true });
     // A thread reasons first (Mistral Large 4's hybrid mode, THREAD_REASONING);
     // spoken answers never do: thinking only adds silence and output tokens.
     // A plain command or a quick state question goes to FAST_MODEL when one

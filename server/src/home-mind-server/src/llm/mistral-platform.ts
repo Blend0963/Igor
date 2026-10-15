@@ -184,7 +184,10 @@ export interface AttachedDocument {
 /** The marker a stored message carries for each file, read back by the panel. */
 export function documentBlock(name: string, text: string): string {
   const safeName = name.replace(/["<>\n\r]/g, "").slice(0, 200) || "document";
-  return `<document name="${safeName}">\n${text}\n</document>`;
+  // The file's own text cannot close the block early and pass for the user's
+  // words: any </document> inside it is defused.
+  const body = text.replace(/<\/?document\b/gi, (tag) => tag.replace("<", "‹"));
+  return `<document name="${safeName}">\n${body}\n</document>`;
 }
 
 /** The media type and bytes of a data URL. */

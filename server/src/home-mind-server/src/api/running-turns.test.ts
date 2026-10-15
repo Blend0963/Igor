@@ -37,4 +37,11 @@ describe("cleanTitle", () => {
     expect(cleanTitle("   ")).toBeUndefined();
     expect(cleanTitle("x".repeat(80))?.length).toBe(60);
   });
+
+  it("stops a reply that a newer request on the same thread supersedes", () => {
+    const turns = new RunningTurns();
+    const first = turns.start("u", "mado-thread:a");
+    turns.start("u", "mado-thread:a");
+    expect(first.signal.aborted).toBe(true);
+  });
 });

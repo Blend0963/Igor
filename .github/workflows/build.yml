@@ -87,19 +87,32 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # A published version is never overwritten: users who pulled it keep
+      # exactly that image. A push to master without a version bump builds
+      # (as a check) but does not publish.
+      - name: Check whether this version is already published
+        id: published
+        if: github.event_name != 'pull_request'
+        run: |
+          if docker buildx imagetools inspect "ghcr.io/blend0963/mado-${{ matrix.arch }}:${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::mado-${{ matrix.arch }}:${{ steps.version.outputs.version }} is already published; not overwriting it."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push
         uses: docker/build-push-action@v7.4.0
         with:
           context: .
           file: ./nives/Dockerfile
           platforms: ${{ matrix.platform }}
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ github.event_name != 'pull_request' && steps.published.outputs.exists != 'true' }}
           tags: |
             ghcr.io/blend0963/mado-${{ matrix.arch }}:${{ steps.version.outputs.version }}
             ghcr.io/blend0963/mado-${{ matrix.arch }}:latest
           build-args: |
             S6_OVERLAY_VERSION=3.2.0.2
             SHODH_VERSION=v0.2.0
-            NODE_MAJOR=22
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}

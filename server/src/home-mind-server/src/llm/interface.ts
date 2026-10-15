@@ -27,6 +27,12 @@ export interface ChatRequest {
   reasoning?: "none" | "low" | "medium" | "high";
   /** Aborts the reply (the panel's stop button); what was written is kept. */
   signal?: AbortSignal;
+  /**
+   * Nobody is there to answer: a scheduled task, the morning briefing, an AI
+   * Task request. Tools that need a person's confirmation are withheld
+   * (llm/tool-policy.ts).
+   */
+  unattended?: boolean;
 }
 
 /** The tokens one request spent, for the cost counter. */

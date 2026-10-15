@@ -6,7 +6,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
-import { createAuthMiddleware, isIngressRequest } from "./api/auth.js";
+import { createAuthMiddleware, HA_CORE_ADDRESSES, isIngressRequest } from "./api/auth.js";
 
 // Read version from package.json
 const require = createRequire(import.meta.url);
@@ -31,6 +31,7 @@ import { Scheduler, setScheduler } from "./jobs/scheduler.js";
 import { HouseWatch, houseContext } from "./jobs/house-watch.js";
 import { createOneShot } from "./llm/one-shot.js";
 import { setConfigDir } from "./llm/home-tools.js";
+import { setConfigEdits } from "./llm/tool-policy.js";
 import { createDiagnostics } from "./api/diagnostics.js";
 import { createModelLister } from "./llm/model-list.js";
 import { MemoryCleanupJob } from "./jobs/memory-cleanup.js";
@@ -135,9 +136,22 @@ app.disable("x-powered-by");
 // The panel is framed by Home Assistant's ingress, so no frame-ancestors ban;
 // these two are free and close MIME sniffing and referrer leaks of the
 // ingress token path.
-app.use((_req, res, next) => {
+app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
+  // The panel page: everything from this origin only, nothing framed but by
+  // Home Assistant itself (ingress is same-origin), no plugins, no <base>.
+  // The inline script and styles are the page's own; no HTML is ever built
+  // from replies, and this keeps a file opened from a reply from loading
+  // anything foreign.
+  if (!req.path.startsWith("/api/")) {
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+        "img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; " +
+        "manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'"
+    );
+  }
   next();
 });
 
@@ -148,13 +162,25 @@ if (config.corsOrigins) {
   console.log(`  CORS: ${origins.join(", ")}`);
 }
 
-// Room for what /api/chat may carry in base64: up to 10 images and 5 attached
-// files of 10 MB each (CHAT_LIMITS in api/routes.ts).
-app.use(express.json({ limit: "80mb" }));
-
-// API token auth (only when API_TOKEN is configured)
-const authMiddleware = createAuthMiddleware(config.apiToken);
+// API token auth, before any body is read: an unauthenticated caller cannot
+// make the server parse anything. While the integration has not confirmed it
+// holds the token (API_AUTH_GRACE), Home Assistant Core alone may call without
+// it; nothing else on the network may.
+if (!config.apiToken) {
+  console.warn("  WARNING: no API_TOKEN: the API is open to anything that can reach this port.");
+} else if (config.apiAuthGrace) {
+  console.warn("  API auth: token required, except from Home Assistant Core until the integration confirms the token.");
+}
+const authMiddleware = createAuthMiddleware(config.apiToken, {
+  gracePeers: config.apiAuthGrace ? HA_CORE_ADDRESSES : [],
+});
 app.use("/api", authMiddleware);
+
+// Room for what /api/chat may carry in base64: up to 10 images and 5 attached
+// files of 10 MB each (CHAT_LIMITS in api/routes.ts); every other route gets
+// small bodies only.
+app.use("/api/chat", express.json({ limit: "80mb" }));
+app.use("/api", express.json({ limit: "1mb" }));
 
 // The installed app (the panel opened outside Home Assistant, through the
 // user's own reverse proxy) has no HA login in front of it, so it needs the
@@ -213,6 +239,9 @@ scheduler
 
 // read_config_file reads Home Assistant's YAML here (the add-on's /config).
 setConfigDir(config.haConfigDir);
+// How far MaDo may change the configuration (CONFIG_EDITS).
+setConfigEdits(config.configEdits);
+console.log(`  Configuration changes: ${config.configEdits}`);
 
 // The house watch: plain checks every few minutes, the cheap model only when
 // something new is flagged, notifications on the reminders' channel.
@@ -308,6 +337,16 @@ app.get("/", (_req, res) => {
       health: "GET /api/health",
     },
   });
+});
+
+// Errors that reach Express (a malformed or oversized body): a short JSON
+// answer, never a stack trace.
+app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (res.headersSent) return next(err);
+  const e = err as { status?: number; type?: string };
+  const status = typeof e.status === "number" && e.status >= 400 && e.status < 600 ? e.status : 500;
+  if (status >= 500) console.error("[http] unhandled error:", err instanceof Error ? err.message : err);
+  res.status(status).json({ error: e.type === "entity.too.large" ? "Request too large" : status >= 500 ? "Internal error" : "Bad request" });
 });
 
 // Start server

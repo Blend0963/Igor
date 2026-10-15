@@ -36,12 +36,60 @@ export function isIngressRequest(
   return req.headers[INGRESS_USER_HEADER] !== undefined && peer !== undefined && ingressProxies.includes(peer);
 }
 
+/**
+ * Home Assistant Core's own address on the hassio network. While the
+ * companion integration has not yet confirmed it holds the token (first start,
+ * after an update or a rotation), requests from Core alone may go without it,
+ * so Assist keeps working; everything else (other add-ons, a published port)
+ * still needs the token. This replaces "no auth at all until confirmed".
+ */
+export const HA_CORE_ADDRESSES = ["172.30.32.1"] as const;
+
+export interface AuthOptions {
+  ingressProxies?: readonly string[];
+  /** Peers allowed without a token: HA Core during the token handoff. */
+  gracePeers?: readonly string[];
+  /** Failed attempts per address before it is shut out, and for how long. */
+  maxFailures?: number;
+  failureWindowMs?: number;
+  blockMs?: number;
+}
+
+interface FailureRecord {
+  count: number;
+  first: number;
+  blockedUntil: number;
+}
+
 export function createAuthMiddleware(
   token: string | undefined,
-  ingressProxies: readonly string[] = INGRESS_PROXY_ADDRESSES
+  options: AuthOptions | readonly string[] = {}
 ): (req: Request, res: Response, next: NextFunction) => void {
+  const opts: AuthOptions = Array.isArray(options) ? { ingressProxies: options as readonly string[] } : (options as AuthOptions);
+  const ingressProxies = opts.ingressProxies ?? INGRESS_PROXY_ADDRESSES;
+  const gracePeers = opts.gracePeers ?? [];
+  const maxFailures = opts.maxFailures ?? 20;
+  const windowMs = opts.failureWindowMs ?? 10 * 60_000;
+  const blockMs = opts.blockMs ?? 15 * 60_000;
+  // Guessing the token is hopeless (256 bits), but a flood of wrong ones still
+  // costs work and fills logs: an address that keeps failing is shut out.
+  const failures = new Map<string, FailureRecord>();
+  const fail = (peer: string | undefined) => {
+    if (!peer) return;
+    const now = Date.now();
+    if (failures.size > 10_000) failures.clear();
+    const rec = failures.get(peer);
+    if (!rec || now - rec.first > windowMs) {
+      failures.set(peer, { count: 1, first: now, blockedUntil: 0 });
+      return;
+    }
+    rec.count++;
+    if (rec.count >= maxFailures) rec.blockedUntil = now + blockMs;
+  };
+
   return (req: Request, res: Response, next: NextFunction) => {
-    // No token configured = no auth enforced
+    // No token configured = no auth enforced (standalone development only:
+    // the add-on always sets one).
     if (!token) {
       return next();
     }
@@ -58,8 +106,16 @@ export function createAuthMiddleware(
       return next();
     }
 
+    const peer = peerAddress(req);
+    const rec = peer ? failures.get(peer) : undefined;
+    if (rec && rec.blockedUntil > Date.now()) {
+      return res.status(429).json({ error: "Too many failed attempts; try again later." });
+    }
+
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      if (peer !== undefined && gracePeers.includes(peer)) return next();
+      fail(peer);
       return res.status(401).json({ error: "Missing or invalid Authorization header" });
     }
 
@@ -68,6 +124,7 @@ export function createAuthMiddleware(
     const tokenBuf = Buffer.from(token);
 
     if (providedBuf.length !== tokenBuf.length || !timingSafeEqual(providedBuf, tokenBuf)) {
+      fail(peer);
       return res.status(403).json({ error: "Invalid API token" });
     }
 

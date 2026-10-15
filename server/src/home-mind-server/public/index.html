@@ -988,26 +988,46 @@
   // Tool files are fetched with the panel's own auth and shown as blob URLs;
   // a reply is re-rendered on every streamed chunk, so each is fetched once.
   var mediaCache = {};
-  function mediaUrl(src) {
+  function mediaBlob(src) {
     if (!mediaCache[src]) {
       mediaCache[src] = fetch(src, { headers: authHeaders() }).then(function (res) {
         if (!res.ok) throw new Error("HTTP " + res.status);
         return res.blob();
-      }).then(function (blob) { return URL.createObjectURL(blob); });
+      });
       mediaCache[src].catch(function () { delete mediaCache[src]; });
     }
     return mediaCache[src];
   }
+  // Downloads only: the blob is re-typed as opaque bytes, so even a browser
+  // that would render it cannot run it.
+  function mediaUrl(src) {
+    return mediaBlob(src).then(function (blob) {
+      return URL.createObjectURL(new Blob([blob], { type: "application/octet-stream" }));
+    });
+  }
 
+  // Only real raster images are shown or opened. A blob opened in a tab runs
+  // with this page's origin (Home Assistant's, under ingress), so a file of
+  // any other type (HTML, SVG, XML) made by a tool must never be opened or
+  // even used as an image: it becomes a plain download link instead.
+  var RASTER_TYPES = /^image\/(png|jpeg|gif|webp|avif|bmp)$/;
   function mediaImage(src, alt) {
     var img = document.createElement("img");
     img.className = "md-img";
     img.alt = alt || "image";
-    mediaUrl(src).then(function (url) {
+    var holder = document.createElement("span");
+    holder.appendChild(img);
+    mediaBlob(src).then(function (blob) {
+      if (!RASTER_TYPES.test(blob.type)) {
+        holder.textContent = "";
+        holder.appendChild(link(src, "📎 " + (alt || "fichier")));
+        return;
+      }
+      var url = URL.createObjectURL(blob);
       img.src = url;
-      img.addEventListener("click", function () { window.open(url, "_blank"); });
+      img.addEventListener("click", function () { window.open(url, "_blank", "noopener"); });
     }, function () { img.alt = "Image indisponible"; img.className = "md-img broken"; });
-    return img;
+    return holder;
   }
 
   // ----- charts -----

@@ -357,9 +357,10 @@ describe("handleToolCall", () => {
       new Error(notExposedMessage("lock.front_door"))
     );
 
+    // lock.lock: not a sensitive service, so it goes straight to Home Assistant.
     const result = await handleToolCall(ha, "call_service", {
       domain: "lock",
-      service: "unlock",
+      service: "lock",
       entity_id: "lock.front_door",
     });
 

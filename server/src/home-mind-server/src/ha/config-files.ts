@@ -23,17 +23,48 @@ const MAX_CHARS = 60_000;
 const SECRET_KEY = /(password|passwd|token|api_?key|secret|private_?key|access_?key|webhook_id|credentials?)/i;
 const SECRET_EXACT = new Set(["code", "pin", "passcode"]);
 
-/** Masks the value of every key that names a secret, except `!secret` references. */
+const isSecretKey = (key: string) => SECRET_KEY.test(key) || SECRET_EXACT.has(key.toLowerCase());
+const MASK_TEXT = "«masqué»";
+
+/**
+ * Masks secret values, keeping one output line per input line (restoreMasked
+ * relies on it):
+ * - `password: hunter2` and `- token: abc` → the value is masked;
+ * - `password: |` or `api_keys:` followed by more-indented lines → every line
+ *   of that block is masked (multi-line values, lists of keys);
+ * - flow mappings `{password: x, user: y}` → the secret entries are masked;
+ * - `!secret name` references are kept: they reveal nothing.
+ */
 export function maskSecrets(yaml: string): string {
-  return yaml
-    .split("\n")
+  const lines = yaml.split("\n");
+  let blockIndent = -1;
+  return lines
     .map((line) => {
-      const m = /^(\s*(?:-\s+)?)([A-Za-z0-9_.-]+)(\s*:\s*)(\S.*)$/.exec(line);
-      if (!m) return line;
-      const [, indent, key, sep, value] = m;
-      if (!(SECRET_KEY.test(key) || SECRET_EXACT.has(key.toLowerCase()))) return line;
-      if (/^!secret\b/.test(value) || /^[|>]/.test(value)) return line;
-      return `${indent}${key}${sep}«masqué»`;
+      const indent = line.length - line.trimStart().length;
+      if (blockIndent >= 0) {
+        if (line.trim() === "" || indent > blockIndent) {
+          if (line.trim() === "" || /!secret\b/.test(line)) return line;
+          const lead = /^(\s*(?:-\s+)?)/.exec(line)?.[1] ?? "";
+          return `${lead}${MASK_TEXT}`;
+        }
+        blockIndent = -1;
+      }
+      let out = line;
+      const m = /^(\s*(?:-\s+)?)([A-Za-z0-9_.-]+)(\s*:\s*)(.*)$/.exec(line);
+      if (m && isSecretKey(m[2])) {
+        const value = m[4].trim();
+        if (value === "" || /^[|>][-+0-9]*$/.test(value)) {
+          blockIndent = indent;
+          return line;
+        }
+        if (!/^!secret\b/.test(value)) out = `${m[1]}${m[2]}${m[3]}${MASK_TEXT}`;
+      }
+      if (out.includes("{")) {
+        out = out.replace(/([{,]\s*)([A-Za-z0-9_.-]+)(\s*:\s*)([^,}]+)/g, (all, pre, key, sep, value) =>
+          isSecretKey(key) && !/^\s*!secret\b/.test(value) ? `${pre}${key}${sep}${MASK_TEXT}` : all
+        );
+      }
+      return out;
     })
     .join("\n");
 }
@@ -83,7 +114,17 @@ function resolveInside(base: string, rel: string): string {
   if (clean.split(/[\\/]/).includes("..")) throw new Error("Paths must stay inside the Home Assistant configuration folder.");
   const full = path.resolve(base, clean);
   const realBase = realpathSync(base);
-  const real = existsSync(full) ? realpathSync(full) : full;
+  // A path that does not exist yet is judged by its nearest existing folder,
+  // resolved through any symlink: "x/new.yaml" with x → / must not pass.
+  let existing = full;
+  const rest: string[] = [];
+  while (!existsSync(existing)) {
+    rest.unshift(path.basename(existing));
+    const parent = path.dirname(existing);
+    if (parent === existing) break;
+    existing = parent;
+  }
+  const real = path.join(realpathSync(existing), ...rest);
   if (real !== realBase && !real.startsWith(realBase + path.sep)) throw new Error("Paths must stay inside the Home Assistant configuration folder.");
   return real;
 }
@@ -145,11 +186,12 @@ const sha = (s: string | null) => (s === null ? "" : createHash("sha256").update
  */
 export function restoreMasked(next: string, original: string | null): string {
   if (!next.includes(MASK)) return next;
+  const originalLines = (original ?? "").split("\n");
+  const maskedLines = maskSecrets(original ?? "").split("\n");
   const byMasked = new Map<string, string[]>();
-  for (const line of (original ?? "").split("\n")) {
-    const masked = maskSecrets(line);
-    if (masked !== line) byMasked.set(masked, [...(byMasked.get(masked) ?? []), line]);
-  }
+  maskedLines.forEach((masked, i) => {
+    if (masked !== originalLines[i]) byMasked.set(masked, [...(byMasked.get(masked) ?? []), originalLines[i]]);
+  });
   const out = next.split("\n").map((line) => {
     if (!line.includes(MASK)) return line;
     const candidates = byMasked.get(line);
@@ -160,6 +202,32 @@ export function restoreMasked(next: string, original: string | null): string {
     throw new Error(`The new content still contains ${MASK} where a secret value was hidden. Keep such lines exactly as they were read, or replace the value with a !secret reference.`);
   }
   return result;
+}
+
+/**
+ * What MaDo may never add to the configuration, whatever the user confirms:
+ * ways to run commands or code on the host, to call out to arbitrary URLs, to
+ * reach the Supervisor, or to loosen Home Assistant's own login. Lines that
+ * were already there are left alone (editing a file that has a shell_command
+ * elsewhere is fine); only new occurrences are refused.
+ */
+const FORBIDDEN_ADDITIONS: Array<[RegExp, string]> = [
+  [/^\s*(shell_command|command_line|python_script|pyscript|rest_command)\s*:/gm, "a shell_command, command_line, python_script, pyscript or rest_command block"],
+  [/\bplatform\s*:\s*(command_line|shell_command|rest|pyscript)\b/g, "a command_line, rest or pyscript platform"],
+  [/\b(shell_command|python_script|pyscript|rest_command|command_line)\.[a-z0-9_]+/g, "a call to shell_command, python_script, pyscript, rest_command or command_line"],
+  [/\bhassio\.[a-z0-9_]+/g, "a hassio (Supervisor) action"],
+  [/\bhomeassistant\.stop\b/g, "homeassistant.stop"],
+  [/\b(auth_providers|trusted_networks|trusted_proxies|allow_bypass_login|use_x_forwarded_for|allowlist_external_dirs|allowlist_external_urls)\b/g, "a change to Home Assistant's login, proxy or file access settings"],
+];
+
+/** What the new content adds that MaDo may not write, as phrases; empty when none. */
+export function forbiddenAdditions(next: string, original: string | null): string[] {
+  const found: string[] = [];
+  for (const [pattern, label] of FORBIDDEN_ADDITIONS) {
+    const count = (text: string) => (text.match(pattern) ?? []).length;
+    if (count(next) > count(original ?? "")) found.push(label);
+  }
+  return found;
 }
 
 /** The changed lines with a little context, as "- old" / "+ new". */
@@ -229,6 +297,12 @@ export function prepareConfigWrite(base: string, rel: string, content: string, c
   const original = existsSync(full) ? readFileSync(full, "utf8") : null;
   const restored = restoreMasked(content.endsWith("\n") ? content : `${content}\n`, original);
   if (original !== null && restored === original) throw new Error("The new content is identical to the file: nothing to change.");
+  const forbidden = forbiddenAdditions(restored, original);
+  if (forbidden.length) {
+    throw new Error(
+      `MaDo may not add ${forbidden.join("; ")} to the configuration. NOTHING was prepared. Tell the user this part must be written by hand if they really want it.`
+    );
+  }
   pendingWrites.set(`${conversationId}\u0000${name}`, { path: name, full, content: restored, original, turnId, at: Date.now() });
   return {
     confirmation_required: true,

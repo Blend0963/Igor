@@ -8,15 +8,23 @@
 FROM ubuntu:24.04 AS shodh
 
 ARG SHODH_VERSION=v0.2.0
+# Every file downloaded into the image is checked against a pinned SHA-256:
+# a re-tagged or tampered upstream release fails the build instead of
+# shipping. Update a pin together with its version.
+ARG SHODH_SHA256_X64=""
+ARG SHODH_SHA256_ARM64=""
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Detect architecture at build time (works with both legacy builder and BuildKit)
-RUN ARCH=$(uname -m) \
+RUN verify() { got=$(sha256sum "$1" | cut -d' ' -f1); echo "sha256 $(basename "$1") $got"; [ -z "$2" ] || [ "$got" = "$2" ] || { echo "CHECKSUM MISMATCH for $1 (expected '$2')"; exit 1; }; } \
+    && ARCH=$(uname -m) \
     && SHODH_ARCH=$(if [ "$ARCH" = "aarch64" ]; then echo "arm64"; else echo "x64"; fi) \
+    && WANT=$(if [ "$ARCH" = "aarch64" ]; then echo "$SHODH_SHA256_ARM64"; else echo "$SHODH_SHA256_X64"; fi) \
     && curl -fsSL "https://github.com/varun29ankuS/shodh-memory/releases/download/${SHODH_VERSION}/shodh-memory-linux-${SHODH_ARCH}.tar.gz" \
        -o /tmp/shodh.tar.gz \
+    && verify /tmp/shodh.tar.gz "$WANT" \
     && mkdir -p /tmp/shodh \
     && tar -xzf /tmp/shodh.tar.gz -C /tmp/shodh \
     && cp /tmp/shodh/shodh /usr/local/bin/shodh \
@@ -29,10 +37,15 @@ RUN ARCH=$(uname -m) \
 # with the correct v1.23.2 library + symlink (matching what ort 2.0-rc.11 expects) avoids
 # the runtime download + panic cycle and makes first boot clean.
 ARG ORT_VERSION=1.23.2
-RUN ARCH=$(uname -m) \
+ARG ORT_SHA256_X64=""
+ARG ORT_SHA256_AARCH64=""
+RUN verify() { got=$(sha256sum "$1" | cut -d' ' -f1); echo "sha256 $(basename "$1") $got"; [ -z "$2" ] || [ "$got" = "$2" ] || { echo "CHECKSUM MISMATCH for $1 (expected '$2')"; exit 1; }; } \
+    && ARCH=$(uname -m) \
     && ORT_ARCH=$(if [ "$ARCH" = "aarch64" ]; then echo "aarch64"; else echo "x64"; fi) \
+    && WANT=$(if [ "$ARCH" = "aarch64" ]; then echo "$ORT_SHA256_AARCH64"; else echo "$ORT_SHA256_X64"; fi) \
     && curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-${ORT_ARCH}-${ORT_VERSION}.tgz" \
        -o /tmp/ort.tgz \
+    && verify /tmp/ort.tgz "$WANT" \
     && mkdir -p /tmp/ort /root/.cache/shodh-memory/onnxruntime \
     && tar -xzf /tmp/ort.tgz -C /tmp/ort --strip-components=1 \
     && cp /tmp/ort/lib/libonnxruntime.so.${ORT_VERSION} /root/.cache/shodh-memory/onnxruntime/ \
@@ -42,11 +55,16 @@ RUN ARCH=$(uname -m) \
 
 # Pre-download MiniLM-L6-v2 ONNX model (pinned commit, same URLs Shodh uses)
 # Saves as model_quantized.onnx matching Shodh's expected filename
-RUN mkdir -p /root/.cache/shodh-memory/models/minilm-l6 \
+ARG MINILM_MODEL_SHA256=""
+ARG MINILM_TOKENIZER_SHA256=""
+RUN verify() { got=$(sha256sum "$1" | cut -d' ' -f1); echo "sha256 $(basename "$1") $got"; [ -z "$2" ] || [ "$got" = "$2" ] || { echo "CHECKSUM MISMATCH for $1 (expected '$2')"; exit 1; }; } \
+    && mkdir -p /root/.cache/shodh-memory/models/minilm-l6 \
     && curl -fsSL "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/c9745ed1d9f207416be6d2e6f8de32d1f16199bf/onnx/model_quint8_avx2.onnx" \
        -o /root/.cache/shodh-memory/models/minilm-l6/model_quantized.onnx \
     && curl -fsSL "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/c9745ed1d9f207416be6d2e6f8de32d1f16199bf/tokenizer.json" \
-       -o /root/.cache/shodh-memory/models/minilm-l6/tokenizer.json
+       -o /root/.cache/shodh-memory/models/minilm-l6/tokenizer.json \
+    && verify /root/.cache/shodh-memory/models/minilm-l6/model_quantized.onnx "$MINILM_MODEL_SHA256" \
+    && verify /root/.cache/shodh-memory/models/minilm-l6/tokenizer.json "$MINILM_TOKENIZER_SHA256"
 
 # -------------------------------------------------------------------
 # Stage 2: Build the conversation server from vendored source
@@ -77,41 +95,55 @@ RUN rm -rf node_modules && npm ci --omit=dev --ignore-scripts \
 FROM ubuntu:24.04
 
 ARG S6_OVERLAY_VERSION=3.2.0.2
-ARG NODE_MAJOR=22
+ARG S6_SHA256_NOARCH=""
+ARG S6_SHA256_X86_64=""
+ARG S6_SHA256_AARCH64=""
+ARG BASHIO_SHA256=""
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
+# Express and its dependencies run in production mode (no stack traces in answers).
+ENV NODE_ENV=production
 
-# Install base packages
+# Install base packages (xz-utils only for unpacking s6-overlay, removed after)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
-    gnupg \
     xz-utils \
     jq \
     openssl \
     procps \
+    libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install s6-overlay (detect architecture at build time)
-RUN ARCH=$(uname -m) \
+# Install s6-overlay (detect architecture at build time), checked before unpacking
+RUN verify() { got=$(sha256sum "$1" | cut -d' ' -f1); echo "sha256 $(basename "$1") $got"; [ -z "$2" ] || [ "$got" = "$2" ] || { echo "CHECKSUM MISMATCH for $1 (expected '$2')"; exit 1; }; } \
+    && ARCH=$(uname -m) \
     && S6_ARCH=$(if [ "$ARCH" = "aarch64" ]; then echo "aarch64"; else echo "x86_64"; fi) \
-    && curl -fsSL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" \
-       | tar -C / -Jxpf - \
-    && curl -fsSL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz" \
-       | tar -C / -Jxpf -
+    && WANT=$(if [ "$ARCH" = "aarch64" ]; then echo "$S6_SHA256_AARCH64"; else echo "$S6_SHA256_X86_64"; fi) \
+    && curl -fsSL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" -o /tmp/s6-noarch.tar.xz \
+    && curl -fsSL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz" -o /tmp/s6-arch.tar.xz \
+    && verify /tmp/s6-noarch.tar.xz "$S6_SHA256_NOARCH" \
+    && verify /tmp/s6-arch.tar.xz "$WANT" \
+    && tar -C / -Jxpf /tmp/s6-noarch.tar.xz \
+    && tar -C / -Jxpf /tmp/s6-arch.tar.xz \
+    && rm -f /tmp/s6-*.tar.xz \
+    && apt-get purge -y --auto-remove xz-utils
 
-# Install Node.js
-RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/*
+# Node.js: the very binary the server was built and tested with in stage 2
+# (same version, same ABI for better-sqlite3's prebuilt module), instead of a
+# `curl | bash` installer. The version check fails the build if it cannot run.
+COPY --from=builder /usr/local/bin/node /usr/local/bin/node
+RUN node --version
 
-# Install bashio (HA add-on helper library)
-RUN curl -fsSL https://github.com/hassio-addons/bashio/archive/refs/tags/v0.16.2.tar.gz \
-    | tar -xzf - \
+# Install bashio (HA add-on helper library), checked before unpacking
+RUN verify() { got=$(sha256sum "$1" | cut -d' ' -f1); echo "sha256 $(basename "$1") $got"; [ -z "$2" ] || [ "$got" = "$2" ] || { echo "CHECKSUM MISMATCH for $1 (expected '$2')"; exit 1; }; } \
+    && curl -fsSL https://github.com/hassio-addons/bashio/archive/refs/tags/v0.16.2.tar.gz -o /tmp/bashio.tar.gz \
+    && verify /tmp/bashio.tar.gz "$BASHIO_SHA256" \
+    && tar -xzf /tmp/bashio.tar.gz \
     && mv bashio-0.16.2/lib /usr/lib/bashio \
     && ln -s /usr/lib/bashio/bashio /usr/bin/bashio \
-    && rm -rf bashio-0.16.2
+    && rm -rf bashio-0.16.2 /tmp/bashio.tar.gz
 
 # Copy Shodh binary and pre-downloaded MiniLM-L6-v2 model from stage 1.
 # ONNX Runtime is NOT pre-shipped — see stage 1 note above.

@@ -219,6 +219,25 @@ function sheetName(name: string | undefined, i: number, used: Set<string>): stri
 }
 
 /** Rows from CSV text (comma or semicolon, quoted fields). */
+/** Spreadsheet functions that reach outside the file. */
+const UNSAFE_FORMULA = /\b(HYPERLINK|WEBSERVICE|FILTERXML|IMPORTDATA|IMPORTXML|IMPORTHTML|IMPORTFEED|IMPORTRANGE|IMAGE|CALL|REGISTER(\.ID)?|EXEC|RTD|DDE|INFO)\s*\(|\|/i;
+
+/**
+ * A CSV whose cells cannot start a formula when opened in a spreadsheet
+ * (=, +, -, @ at the start of a non-numeric cell get a leading apostrophe).
+ */
+export function neutralizeCsv(text: string): string {
+  const quote = (cell: string) => (/[",\n\r;]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell);
+  return parseCsv(text)
+    .map((row) =>
+      row
+        .map((cell) => (/^[=+\-@\t\r]/.test(cell) && !/^[+-]?\d+([.,]\d+)?$/.test(cell) ? `'${cell}` : cell))
+        .map(quote)
+        .join(",")
+    )
+    .join("\r\n");
+}
+
 export function parseCsv(text: string): string[][] {
   const sep = (text.split("\n")[0].match(/;/g) ?? []).length > (text.split("\n")[0].match(/,/g) ?? []).length ? ";" : ",";
   const rows: string[][] = [];
@@ -254,8 +273,10 @@ export function buildXlsx(sheets: SheetSpec[]): Buffer {
           if (typeof v === "number" && isFinite(v)) return `<c r="${ref}"${style}><v>${v}</v></c>`;
           if (typeof v === "boolean") return `<c r="${ref}" t="b"${style}><v>${v ? 1 : 0}</v></c>`;
           const text = String(v);
-          // A formula the model wrote ("=SUM(B2:B9)") stays a formula.
-          if (/^=[A-Z]/.test(text)) return `<c r="${ref}"${style}><f>${xml(text.slice(1))}</f></c>`;
+          // A formula the model wrote ("=SUM(B2:B9)") stays a formula, unless
+          // it reaches outside the workbook (links, web calls, DDE): those are
+          // how a spreadsheet made from untrusted text phones home.
+          if (/^=[A-Z]/.test(text) && !UNSAFE_FORMULA.test(text)) return `<c r="${ref}"${style}><f>${xml(text.slice(1))}</f></c>`;
           if (/^-?\d+([.,]\d+)?$/.test(text) && text.length < 16) return `<c r="${ref}"${style}><v>${text.replace(",", ".")}</v></c>`;
           return `<c r="${ref}" t="inlineStr"${style}><is><t xml:space="preserve">${xml(text)}</t></is></c>`;
         });
@@ -490,7 +511,7 @@ export function createFile(spec: FileSpec, depth = 0): CreatedFile {
     }
     case "csv":
       // Excel opens a UTF-8 CSV with accents correctly only with a BOM.
-      data = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(content, "utf8")]);
+      data = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(neutralizeCsv(content), "utf8")]);
       break;
     default:
       data = Buffer.from(content, "utf8");
