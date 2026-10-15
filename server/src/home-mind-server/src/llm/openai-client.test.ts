@@ -42,7 +42,12 @@ vi.mock("./tool-handler.js", () => ({
   extractAndStoreFacts: vi.fn().mockResolvedValue(1),
 }));
 
+vi.mock("./order-check.js", () => ({
+  askIsOrder: vi.fn().mockResolvedValue({ order: false }),
+}));
+
 import { OpenAIChatEngine } from "./openai-client.js";
+import { askIsOrder } from "./order-check.js";
 import { resetTokenCapCache } from "./token-cap.js";
 import { resetReasoningEffortCache } from "./reasoning-effort.js";
 import { handleToolCall, extractAndStoreFacts } from "./tool-handler.js";
@@ -64,6 +69,7 @@ describe("OpenAIChatEngine", () => {
 
     vi.mocked(handleToolCall).mockResolvedValue({ state: "on" });
     vi.mocked(extractAndStoreFacts).mockResolvedValue(1);
+    vi.mocked(askIsOrder).mockReset().mockResolvedValue({ order: false });
 
     memory = {
       getFactsWithinTokenLimit: vi.fn().mockResolvedValue([]),
@@ -79,7 +85,7 @@ describe("OpenAIChatEngine", () => {
 
     extractor = {} as IFactExtractor;
 
-    ha = {} as HomeAssistantClient;
+    ha = { getEntities: vi.fn().mockResolvedValue([]) } as unknown as HomeAssistantClient;
 
     config = {
       llmProvider: "openai",
@@ -615,6 +621,53 @@ describe("OpenAIChatEngine", () => {
       expect(r.response).toBe("C'est éteint.");
       // The false "it's off" was never streamed to the speaker.
       expect(chunks.join("")).not.toContain("La lumière est éteinte");
+    });
+
+    it("asks a model whether an unusual wording was an order, and acts when it was", async () => {
+      vi.mocked(askIsOrder).mockResolvedValue({ order: true });
+      const chunks: string[] = [];
+      mockCreate
+        .mockResolvedValueOnce(reply("C'est déjà fait."))
+        .mockResolvedValueOnce(
+          makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "call_service", arguments: '{"domain":"light","service":"turn_off","entity_id":"all"}' } }] }, finish_reason: "tool_calls" }] }])
+        )
+        .mockResolvedValueOnce(reply("Voilà, tout est éteint."));
+      const r = await engine.chat({ message: "Plonge la maison dans le noir", userId: "u" }, { onChunk: (c) => chunks.push(c) });
+      expect(askIsOrder).toHaveBeenCalledWith(expect.anything(), "gpt-4o-mini", "Plonge la maison dans le noir", undefined, undefined);
+      expect(mockCreate.mock.calls[1][0]).toMatchObject({ tool_choice: "required" });
+      expect(r.toolsUsed).toEqual(["call_service"]);
+      expect(chunks.join("")).not.toContain("déjà fait");
+    });
+
+    it("lets the answer through when the model says it was no order", async () => {
+      const chunks: string[] = [];
+      mockCreate.mockResolvedValue(reply("Bonsoir !"));
+      const r = await engine.chat({ message: "bonsoir MaDo", userId: "u" }, { onChunk: (c) => chunks.push(c) });
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+      expect(r.response).toBe("Bonsoir !");
+      expect(chunks.join("")).toBe("Bonsoir !");
+    });
+
+    it("keeps the answer when the order check fails", async () => {
+      vi.mocked(askIsOrder).mockRejectedValue(new Error("boom"));
+      mockCreate.mockResolvedValue(reply("Bonsoir !"));
+      const r = await engine.chat({ message: "bonsoir", userId: "u" });
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+      expect(r.response).toBe("Bonsoir !");
+    });
+
+    it("shows the model what is on right now, after the history", async () => {
+      vi.mocked(ha.getEntities).mockResolvedValue([
+        { entity_id: "light.salon", state: "on", attributes: { friendly_name: "Salon" }, last_changed: "", last_updated: "" },
+        { entity_id: "light.cuisine", state: "off", attributes: {}, last_changed: "", last_updated: "" },
+      ]);
+      mockCreate.mockResolvedValue(reply("ok"));
+      await engine.chat({ message: "salut", userId: "u" });
+      const sent = mockCreate.mock.calls[0][0].messages as Array<{ role: string; content: string }>;
+      const live = sent.find((m) => m.role === "system" && String(m.content).includes("Live state of the home"));
+      expect(live?.content).toContain("Salon — light.salon");
+      expect(live?.content).not.toContain("light.cuisine");
+      expect(sent[0].content).not.toContain("Live state");
     });
 
     it("does not second-guess an answer to a question", async () => {

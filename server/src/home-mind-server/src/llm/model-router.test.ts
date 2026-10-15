@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isSimpleRequest } from "./model-router.js";
+import { isActionCommand, isSimpleRequest, mayBeOrder } from "./model-router.js";
 
 describe("isSimpleRequest", () => {
   it.each([
@@ -35,5 +35,35 @@ describe("isSimpleRequest", () => {
   it("never routes a request with an image or a file", () => {
     expect(isSimpleRequest({ message: "allume la lampe", hasImages: true })).toBe(false);
     expect(isSimpleRequest({ message: "allume la lampe", hasDocuments: true })).toBe(false);
+  });
+});
+
+describe("isActionCommand", () => {
+  it("knows an order that opens with its verb", () => {
+    expect(isActionCommand("éteins toutes les lumières")).toBe(true);
+    expect(isActionCommand("Peux-tu allumer le salon ?")).toBe(true);
+    expect(isActionCommand("coupe la lumière de la cuisine")).toBe(true);
+  });
+
+  it("knows an order whose verb comes later", () => {
+    expect(isActionCommand("Non, je te demandais d'éteindre les lumières de la maison.")).toBe(true);
+    expect(isActionCommand("les volets du salon, ferme-les")).toBe(true);
+    expect(isActionCommand("Il faudrait allumer la terrasse")).toBe(true);
+  });
+
+  it("leaves questions, states and requests to build something", () => {
+    expect(isActionCommand("La lumière est-elle éteinte ?")).toBe(false);
+    expect(isActionCommand("la porte est fermée ?")).toBe(false);
+    expect(isActionCommand("Pourquoi la lumière s'est allumée hier ?")).toBe(false);
+    expect(isActionCommand("Crée une automatisation qui éteint tout à minuit et allume l'entrée")).toBe(false);
+    expect(isActionCommand("")).toBe(false);
+  });
+});
+
+describe("mayBeOrder", () => {
+  it("takes short plain messages, not explanations, builds or long texts", () => {
+    expect(mayBeOrder("Plonge la maison dans le noir")).toBe(true);
+    expect(mayBeOrder("Pourquoi le salon est allumé ?")).toBe(false);
+    expect(mayBeOrder("x".repeat(400))).toBe(false);
   });
 });

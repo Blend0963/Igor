@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.5 — Orders recognised whatever the wording, and the real state in view
+
+- **The live state of the house goes with every message.** Before each turn MaDo reads Home Assistant and hands the model the list of what is on, open or running right now (lights, switches, fans, covers, unlocked locks, media players, climate, vacuums). The model no longer takes its own earlier reply for the truth: "elles sont déjà éteintes" while the salon is lit is gone. The list is told to change nothing by itself: acting still takes a tool call. About a hundred tokens per message, placed after the history so the prompt cache is kept.
+- **Orders are recognised by meaning, not by a word list.** 0.9.4 caught only orders opening with their verb ("éteins…"). Now an order verb anywhere counts ("je te demandais d'éteindre…", "ferme-les", "coupe la lumière"), and any other short message whose answer called no tool is checked by the fast model (or the main one): "was this a request to change something in the home?". If yes, the answer is held back and the order asked again on the main model with a tool call required, so "plonge la maison dans le noir" is carried out too. The check runs alongside the answer, so it adds no wait when the answer acted anyway, and a "no" releases the answer as soon as it is known.
+
 ## 0.9.4 — Orders are carried out, not just answered
 
 - A plain order ("éteins toutes les lumières") answered without calling any tool did nothing, whatever the reply said: the fast model sometimes just replied "la lumière est éteinte". Such a reply is now held back, never spoken, and the order is asked again on the main model with a tool call required. If the provider refuses that, the first answer is kept as before.

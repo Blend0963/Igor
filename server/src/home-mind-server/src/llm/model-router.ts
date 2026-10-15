@@ -16,7 +16,13 @@
 export const FAST_MAX_CHARS = 140;
 
 const COMMAND_START =
-  /^(?:(?:mado|hey mado|ok mado)[,\s]+)?(?:(?:peux[- ]tu|pourrais[- ]tu|tu peux|est[- ]ce que tu peux|merci de|stp|s'il te pla[iî]t|please|can you|could you)\s+)?(?:allume|allumer|[ée]teins|[ée]teindre|ouvre|ouvrir|ferme|fermer|monte|monter|baisse|baisser|mets|mettre|r[èe]gle|r[ée]gler|lance|lancer|arr[êe]te|arr[êe]ter|active|activer|d[ée]sactive|d[ée]sactiver|d[ée]marre|d[ée]marrer|stoppe|pause|reprends|augmente|diminue|passe|tamise|verrouille|d[ée]verrouille|turn on|turn off|switch on|switch off|open|close|set|start|stop|lock|unlock|dim|raise|lower)\b/i;
+  /^(?:(?:mado|hey mado|ok mado)[,\s]+)?(?:(?:peux[- ]tu|pourrais[- ]tu|tu peux|est[- ]ce que tu peux|merci de|stp|s'il te pla[iî]t|please|can you|could you)\s+)?(?:allume|allumer|[ée]teins|[ée]teindre|coupe|couper|ouvre|ouvrir|ferme|fermer|monte|monter|baisse|baisser|mets|mettre|r[èe]gle|r[ée]gler|lance|lancer|arr[êe]te|arr[êe]ter|active|activer|d[ée]sactive|d[ée]sactiver|d[ée]marre|d[ée]marrer|stoppe|pause|reprends|augmente|diminue|passe|tamise|verrouille|d[ée]verrouille|turn on|turn off|switch on|switch off|open|close|set|start|stop|lock|unlock|dim|raise|lower)\b/i;
+
+// An order verb anywhere in the sentence, for orders that do not open with
+// it ("non, je te demandais d'éteindre les lumières", "les volets, ferme-les").
+// Letters, not \b, bound it: \b does not see "é" as part of a word.
+const ACTION_VERB =
+  /(?<!\p{L})(?:allume|allumes|allumer|[ée]teins|[ée]teindre|coupe|couper|ouvre|ouvrir|ferme|fermer|monte|monter|baisse|baisser|tamise|tamiser|verrouille|verrouiller|d[ée]verrouille|d[ée]verrouiller|active|activer|d[ée]sactive|d[ée]sactiver|d[ée]marre|d[ée]marrer|lance|lancer|arr[êe]te|arr[êe]ter|turn on|turn off|switch on|switch off)(?!\p{L})/iu;
 
 const STATE_QUESTION =
   /\b(?:temp[ée]rature|humidit[ée]|allum[ée]e?s?|[ée]teinte?s?|ouverte?s?|ferm[ée]e?s?|verrouill[ée]e?s?|[ée]tat|batterie|niveau|il fait combien|quelle heure|is .* (?:on|off|open|closed)|temperature|humidity)\b/i;
@@ -47,5 +53,21 @@ export function isSimpleRequest({ message, hasImages, hasDocuments }: RouteInput
  */
 export function isActionCommand(message: string): boolean {
   const text = message.trim();
-  return Boolean(text) && text.length <= FAST_MAX_CHARS * 2 && COMMAND_START.test(text);
+  if (!text || text.length > FAST_MAX_CHARS * 2) return false;
+  if (COMMAND_START.test(text)) return true;
+  // Further in, the verb may be part of a question or a request to build
+  // something ("comment créer une automatisation qui allume…"): leave those.
+  return !COMPLEX.test(text) && ACTION_VERB.test(text);
+}
+
+/**
+ * A message that may be an order in words the verb list does not know
+ * ("plonge la maison dans le noir"). Short, plain and not a question about
+ * how or why: when its first answer calls no tool, a model is asked whether
+ * it was an order (llm/order-check.ts).
+ */
+export function mayBeOrder(message: string): boolean {
+  const text = message.trim();
+  if (!text || text.length > FAST_MAX_CHARS * 2 || text.includes("<document")) return false;
+  return !COMPLEX.test(text);
 }

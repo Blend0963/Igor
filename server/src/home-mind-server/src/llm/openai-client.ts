@@ -9,7 +9,9 @@ import { TopologyScanner } from "../ha/topology-scanner.js";
 import { buildSystemPromptText } from "./prompts.js";
 import { toolsForMode, toOpenAITools } from "./tool-definitions.js";
 import { listFromEnv, mistralKey } from "./mistral-platform.js";
-import { isActionCommand, isSimpleRequest } from "./model-router.js";
+import { isActionCommand, isSimpleRequest, mayBeOrder } from "./model-router.js";
+import { formatLiveState } from "./live-state.js";
+import { askIsOrder } from "./order-check.js";
 import { RECENT_FILE_MESSAGES, shortenAttachedFiles } from "../files/extract.js";
 import { randomUUID } from "node:crypto";
 import { handleToolCall, extractAndStoreFacts, type ToolContext } from "./tool-handler.js";
@@ -281,6 +283,15 @@ export class OpenAIChatEngine implements IChatEngine {
         : semanticContext;
     }
 
+    // What is on or open right now, read from Home Assistant (llm/live-state.ts).
+    // Volatile, so it joins the message after the history.
+    try {
+      const live = formatLiveState(await this.ha.getEntities());
+      if (live) volatileSystemPrompt = volatileSystemPrompt ? `${volatileSystemPrompt}\n\n${live}` : live;
+    } catch (error) {
+      console.warn(`[live-state] could not read the states: ${error instanceof Error ? error.message : error}`);
+    }
+
     // The volatile context goes after the history, right before the current
     // user message: everything before it is stable or append-only, so the
     // provider can cache it. Mid-conversation system messages are valid on
@@ -343,8 +354,30 @@ export class OpenAIChatEngine implements IChatEngine {
     // An order's first answer is held back until it is known to have acted:
     // one that claims "c'est éteint" without calling a tool is thrown away
     // and asked again (below), and must not have been spoken already.
-    let holding = isActionCommand(message);
+    // An order in words the verb list does not know is recognised by a model,
+    // asked in parallel with the first answer so that it adds no wait when
+    // the answer called a tool anyway (llm/order-check.ts).
+    const knownOrder = isActionCommand(message);
+    const lastReply = [...history].reverse().find((msg) => msg.role === "assistant")?.content;
+    const orderCheck =
+      !knownOrder && !request.images?.length && mayBeOrder(message)
+        ? askIsOrder(this.client, this.config.fastModel ?? this.config.llmModel, message, lastReply, signal).catch((error) => {
+            if (!signal?.aborted) console.warn(`[route] order check failed (${error instanceof Error ? error.message : error})`);
+            return { order: false, usage: undefined };
+          })
+        : undefined;
+    let holding = knownOrder || orderCheck !== undefined;
     let held = "";
+    // A "no" that comes in while the answer is still streaming lets it through
+    // at once: only orders are held back.
+    void orderCheck?.then((verdict) => {
+      turnUsage.add(verdict.usage);
+      if (!verdict.order && holding && !knownOrder) {
+        holding = false;
+        if (held) onChunk?.(held);
+        held = "";
+      }
+    });
     const sink = (chunk: string) => {
       turnText += chunk;
       if (holding) held += chunk;
@@ -386,7 +419,11 @@ export class OpenAIChatEngine implements IChatEngine {
       turnUsage.add(result.usage);
       if (holding) {
         holding = false;
-        if (result.toolCalls.length === 0) {
+        let order = knownOrder;
+        if (result.toolCalls.length === 0 && !order && orderCheck) {
+          order = (await orderCheck).order;
+        }
+        if (result.toolCalls.length === 0 && order) {
           // "C'est fait" without doing it: small models do this on plain
           // commands. Ask again on the main model, which must call a tool.
           console.warn(`[route] ${model} answered a command without acting; asking ${this.config.llmModel} with a required tool call`);
