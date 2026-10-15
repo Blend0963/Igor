@@ -38,6 +38,14 @@ updates:
     commit-message:
       prefix: "ci(deps)"
 
+  # Base images of the add-on (pinned by digest in nives/Dockerfile).
+  - package-ecosystem: "docker"
+    directory: "/nives"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(docker)"
+
   # Note: the bundled HA integration's only Python dep (aiohttp) is declared in
   # HA's manifest.json, which Dependabot's pip ecosystem can't parse — so there
   # is intentionally no pip entry. Add one here if a requirements.txt/pyproject
