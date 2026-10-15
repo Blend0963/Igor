@@ -9,7 +9,7 @@ import { TopologyScanner } from "../ha/topology-scanner.js";
 import { buildSystemPromptText } from "./prompts.js";
 import { toolsForMode, toOpenAITools } from "./tool-definitions.js";
 import { listFromEnv, mistralKey } from "./mistral-platform.js";
-import { isSimpleRequest } from "./model-router.js";
+import { isActionCommand, isSimpleRequest } from "./model-router.js";
 import { RECENT_FILE_MESSAGES, shortenAttachedFiles } from "../files/extract.js";
 import { randomUUID } from "node:crypto";
 import { handleToolCall, extractAndStoreFacts, type ToolContext } from "./tool-handler.js";
@@ -340,11 +340,17 @@ export class OpenAIChatEngine implements IChatEngine {
     // what was already written stays in the thread.
     let turnText = "";
     const signal = request.signal;
+    // An order's first answer is held back until it is known to have acted:
+    // one that claims "c'est éteint" without calling a tool is thrown away
+    // and asked again (below), and must not have been spoken already.
+    let holding = isActionCommand(message);
+    let held = "";
     const sink = (chunk: string) => {
       turnText += chunk;
-      onChunk?.(chunk);
+      if (holding) held += chunk;
+      else onChunk?.(chunk);
     };
-    const call = async (forceAnswer: boolean) => {
+    const call = async (forceAnswer: boolean, toolChoice?: "required") => {
       turnText = "";
       const once = () =>
         this.streamCompletion(messages, isVoice, sink, forceAnswer, conversationId || effectiveConversationId, cacheKey, {
@@ -352,6 +358,7 @@ export class OpenAIChatEngine implements IChatEngine {
           effort,
           model,
           signal,
+          toolChoice,
           isThread: scope.isThread,
           onThinking: () => {
             if (thinkingShown) return;
@@ -377,6 +384,31 @@ export class OpenAIChatEngine implements IChatEngine {
     try {
       result = await call(false);
       turnUsage.add(result.usage);
+      if (holding) {
+        holding = false;
+        if (result.toolCalls.length === 0) {
+          // "C'est fait" without doing it: small models do this on plain
+          // commands. Ask again on the main model, which must call a tool.
+          console.warn(`[route] ${model} answered a command without acting; asking ${this.config.llmModel} with a required tool call`);
+          const firstModel = model;
+          const first = result;
+          model = this.config.llmModel;
+          try {
+            result = await call(false, "required");
+            turnUsage.add(result.usage);
+          } catch (error) {
+            if (signal?.aborted) throw error;
+            // An endpoint that refuses tool_choice "required": keep the first answer.
+            console.warn(`[route] retry failed (${error instanceof Error ? error.message : error}); keeping the first answer`);
+            model = firstModel;
+            result = first;
+            if (held) onChunk?.(held);
+          }
+        } else if (held) {
+          onChunk?.(held);
+        }
+        held = "";
+      }
 
       let iterations = 0;
       // Run whatever tool calls arrived, whatever the finish_reason says: some
@@ -608,6 +640,8 @@ export class OpenAIChatEngine implements IChatEngine {
       signal?: AbortSignal;
       isThread?: boolean;
       onThinking?: () => void;
+      /** "required": the model must call a tool on this call. */
+      toolChoice?: "required";
     } = {}
   ): Promise<{
     text: string;
@@ -638,7 +672,7 @@ export class OpenAIChatEngine implements IChatEngine {
             tools,
             // Keep the tool list in the request (history already references it) but
             // stop the model from issuing more calls.
-            ...(disableTools ? { tool_choice: "none" as const } : {}),
+            ...(disableTools ? { tool_choice: "none" as const } : opts.toolChoice ? { tool_choice: opts.toolChoice } : {}),
             stream: true,
             // Ask for the token breakdown. Without this a streamed call reports no
             // usage at all, which is why a cap being spent entirely on reasoning

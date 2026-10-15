@@ -570,13 +570,17 @@ describe("OpenAIChatEngine", () => {
     it("sends a plain command to FAST_MODEL without reasoning, the rest to the main model", async () => {
       config.fastModel = "ministral-8b-latest";
       config.threadReasoning = "high";
-      mockCreate.mockResolvedValue(reply());
+      mockCreate
+        .mockResolvedValueOnce(
+          makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "call_service", arguments: '{"domain":"light","service":"turn_on","entity_id":"light.salon"}' } }] }, finish_reason: "tool_calls" }] }])
+        )
+        .mockResolvedValueOnce(reply());
       const r1 = await engine.chat({ message: "allume la lumière du salon", userId: "u" });
       expect(mockCreate.mock.calls[0][0]).toMatchObject({ model: "ministral-8b-latest", reasoning_effort: "none" });
       expect(r1.usage?.model).toBe("ministral-8b-latest");
       mockCreate.mockResolvedValue(reply());
       await engine.chat({ message: "pourquoi la chambre est froide le matin ?", userId: "u" });
-      expect(mockCreate.mock.calls[1][0].model).toBe("gpt-4o-mini");
+      expect(mockCreate.mock.calls[2][0].model).toBe("gpt-4o-mini");
     });
 
     it("uses the model and thinking picked in the panel, over the fast model", async () => {
@@ -592,6 +596,32 @@ describe("OpenAIChatEngine", () => {
       const r = await engine.chat({ message: "éteins la cuisine", userId: "u" });
       expect(r.response).toBe("fait");
       expect(mockCreate.mock.calls[1][0].model).toBe("gpt-4o-mini");
+    });
+
+    it("asks again, on the main model with a required tool call, when a command was answered without acting", async () => {
+      config.fastModel = "ministral-8b-latest";
+      const chunks: string[] = [];
+      mockCreate
+        .mockResolvedValueOnce(reply("La lumière est éteinte."))
+        .mockResolvedValueOnce(
+          makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "call_service", arguments: '{"domain":"light","service":"turn_off","entity_id":"light.salon"}' } }] }, finish_reason: "tool_calls" }] }])
+        )
+        .mockResolvedValueOnce(reply("C'est éteint."));
+      const r = await engine.chat({ message: "Éteins toutes les lumières de la maison.", userId: "u" }, { onChunk: (c) => chunks.push(c) });
+      expect(mockCreate.mock.calls[0][0].model).toBe("ministral-8b-latest");
+      expect(mockCreate.mock.calls[1][0]).toMatchObject({ model: "gpt-4o-mini", tool_choice: "required" });
+      expect(mockCreate.mock.calls[2][0].tool_choice).toBeUndefined();
+      expect(r.toolsUsed).toEqual(["call_service"]);
+      expect(r.response).toBe("C'est éteint.");
+      // The false "it's off" was never streamed to the speaker.
+      expect(chunks.join("")).not.toContain("La lumière est éteinte");
+    });
+
+    it("does not second-guess an answer to a question", async () => {
+      config.fastModel = "ministral-8b-latest";
+      mockCreate.mockResolvedValue(reply("21 degrés."));
+      await engine.chat({ message: "quelle température dans le salon ?", userId: "u" });
+      expect(mockCreate).toHaveBeenCalledTimes(1);
     });
 
     it("keeps what was written when the user stops the reply", async () => {
