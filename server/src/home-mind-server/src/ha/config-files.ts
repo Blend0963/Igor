@@ -9,11 +9,12 @@
  * key that names a password, token or key is masked, so a hard-coded secret
  * does not reach the model or its provider; `!secret name` references stay
  * as they are, they reveal nothing. Folders of code, caches and backups are
- * left out of listings. Writing is not offered: changes go through the
- * automation tools and their preview-and-confirm step.
+ * left out of listings. Writing (write_config_file, below) is previewed,
+ * confirmed by the user in a later turn, and checked by Home Assistant.
  */
 
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 const SKIP_DIRS = new Set([".storage", "custom_components", "deps", "www", "tts", "backups", "node_modules", ".cloud", ".git", "image", "nives", "__pycache__"]);
@@ -107,4 +108,183 @@ export function readConfigFile(base: string, rel: string): ConfigFileResult {
   if (!isYaml(name)) return { error: "Only YAML files (.yaml, .yml) can be read." };
   const text = maskSecrets(readFileSync(full, "utf8"));
   return text.length > MAX_CHARS ? { path: name, content: text.slice(0, MAX_CHARS), truncated: true } : { path: name, content: text };
+}
+
+// ----- writing (write_config_file) -----
+//
+// A change is two calls in two turns. The first hands the full new content;
+// nothing is written, the server keeps it and returns the lines that change
+// (computed on the masked texts, so no secret reaches the model). The user
+// answers; the second call only says "confirm", and what is written is the
+// content that was shown, never a re-generated one. Before writing: an
+// optional backup copy (the user chooses), and refusal if the file changed in
+// between. After writing, the caller runs Home Assistant's configuration check
+// and puts the old content back if it fails.
+
+const MAX_WRITE_CHARS = 300_000;
+const PENDING_TTL_MS = 15 * 60_000;
+const MASK = "«masqué»";
+
+interface PendingWrite {
+  path: string;
+  full: string;
+  content: string;
+  original: string | null;
+  turnId: string;
+  at: number;
+}
+
+const pendingWrites = new Map<string, PendingWrite>();
+
+const sha = (s: string | null) => (s === null ? "" : createHash("sha256").update(s).digest("hex"));
+
+/**
+ * The model only ever saw masked values; a line it kept as it read it
+ * ("password: «masqué»") gets its real value back from the file. Any mask
+ * left after that (a masked line the model moved or edited) is refused.
+ */
+export function restoreMasked(next: string, original: string | null): string {
+  if (!next.includes(MASK)) return next;
+  const byMasked = new Map<string, string[]>();
+  for (const line of (original ?? "").split("\n")) {
+    const masked = maskSecrets(line);
+    if (masked !== line) byMasked.set(masked, [...(byMasked.get(masked) ?? []), line]);
+  }
+  const out = next.split("\n").map((line) => {
+    if (!line.includes(MASK)) return line;
+    const candidates = byMasked.get(line);
+    return candidates?.length ? (candidates.shift() as string) : line;
+  });
+  const result = out.join("\n");
+  if (result.includes(MASK)) {
+    throw new Error(`The new content still contains ${MASK} where a secret value was hidden. Keep such lines exactly as they were read, or replace the value with a !secret reference.`);
+  }
+  return result;
+}
+
+/** The changed lines with a little context, as "- old" / "+ new". */
+export function lineDiff(a: string, b: string, context = 2, maxChars = 8000): string {
+  const x = a.split("\n");
+  const y = b.split("\n");
+  if (x.length * y.length > 9_000_000) return `(${x.length} → ${y.length} lines; too long to compare line by line)`;
+  const n = x.length;
+  const m = y.length;
+  const lcs = new Uint32Array((n + 1) * (m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      lcs[i * (m + 1) + j] = x[i] === y[j] ? lcs[(i + 1) * (m + 1) + j + 1] + 1 : Math.max(lcs[(i + 1) * (m + 1) + j], lcs[i * (m + 1) + j + 1]);
+    }
+  }
+  const ops: Array<{ t: " " | "-" | "+"; s: string; line: number }> = [];
+  let i = 0;
+  let j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && x[i] === y[j]) ops.push({ t: " ", s: x[i++], line: j++ + 1 });
+    else if (i < n && (j >= m || lcs[(i + 1) * (m + 1) + j] >= lcs[i * (m + 1) + j + 1])) ops.push({ t: "-", s: x[i++], line: j + 1 });
+    else ops.push({ t: "+", s: y[j], line: ++j });
+  }
+  const keep = new Set<number>();
+  ops.forEach((op, k) => {
+    if (op.t !== " ") for (let c = Math.max(0, k - context); c <= Math.min(ops.length - 1, k + context); c++) keep.add(c);
+  });
+  if (!keep.size) return "(no change)";
+  const lines: string[] = [];
+  let last = -2;
+  for (const k of [...keep].sort((p, q) => p - q)) {
+    if (k !== last + 1) lines.push(`@@ around line ${ops[k].line}`);
+    lines.push(`${ops[k].t} ${ops[k].s}`);
+    last = k;
+  }
+  const text = lines.join("\n");
+  return text.length > maxChars ? `${text.slice(0, maxChars)}\n… (diff cut)` : text;
+}
+
+function writableTarget(base: string, rel: string): { full: string; name: string } {
+  if (!existsSync(base)) throw new Error("The Home Assistant configuration folder is not available to MaDo.");
+  const target = (rel ?? "").trim();
+  if (!target) throw new Error("write_config_file needs a path.");
+  const full = resolveInside(base, target);
+  const name = path.relative(realpathSync(base), full);
+  if (isSecrets(name)) throw new Error("secrets.yaml is never written.");
+  if (!isYaml(name)) throw new Error("Only YAML files (.yaml, .yml) can be written.");
+  if (name.split(path.sep).some((part) => SKIP_DIRS.has(part) || part.startsWith("."))) {
+    throw new Error("That folder is not part of the YAML configuration MaDo may change.");
+  }
+  if (existsSync(full) && statSync(full).isDirectory()) throw new Error(`${name} is a folder.`);
+  return { full, name };
+}
+
+export interface WritePreview {
+  confirmation_required: true;
+  path: string;
+  new_file: boolean;
+  changes: string;
+}
+
+/** First call: keeps the content and returns what would change. Writes nothing. */
+export function prepareConfigWrite(base: string, rel: string, content: string, conversationId: string, turnId: string): WritePreview {
+  if (typeof content !== "string" || !content.trim()) throw new Error("write_config_file needs the full new content of the file.");
+  if (content.length > MAX_WRITE_CHARS) throw new Error("That content is too long.");
+  const { full, name } = writableTarget(base, rel);
+  const original = existsSync(full) ? readFileSync(full, "utf8") : null;
+  const restored = restoreMasked(content.endsWith("\n") ? content : `${content}\n`, original);
+  if (original !== null && restored === original) throw new Error("The new content is identical to the file: nothing to change.");
+  pendingWrites.set(`${conversationId}\u0000${name}`, { path: name, full, content: restored, original, turnId, at: Date.now() });
+  return {
+    confirmation_required: true,
+    path: name,
+    new_file: original === null,
+    changes: lineDiff(maskSecrets(original ?? ""), maskSecrets(restored)),
+  };
+}
+
+export interface AppliedWrite {
+  path: string;
+  full: string;
+  backup?: string;
+  original: string | null;
+}
+
+/** Second call, in a later turn: writes what was previewed (and a backup if asked). */
+export function applyConfigWrite(base: string, rel: string, conversationId: string, turnId: string, backup: boolean, now = new Date()): AppliedWrite {
+  const { name } = writableTarget(base, rel);
+  const key = `${conversationId}\u0000${name}`;
+  const pending = pendingWrites.get(key);
+  if (!pending || Date.now() - pending.at > PENDING_TTL_MS) {
+    pendingWrites.delete(key);
+    throw new Error("There is no previewed change for this file (or it is older than 15 minutes). Call write_config_file with the full content first to preview it.");
+  }
+  if (pending.turnId === turnId) {
+    throw new Error("The user has not answered the preview yet. Show them the changes, ask, and wait for their reply.");
+  }
+  const current = existsSync(pending.full) ? readFileSync(pending.full, "utf8") : null;
+  if (sha(current) !== sha(pending.original)) {
+    pendingWrites.delete(key);
+    throw new Error("The file changed since the preview. Read it again and preview the change again.");
+  }
+  pendingWrites.delete(key);
+  let backupPath: string | undefined;
+  if (backup && pending.original !== null) {
+    const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-");
+    backupPath = `${pending.full}.mado-${stamp}.bak`;
+    writeFileSync(backupPath, pending.original);
+  }
+  mkdirSync(path.dirname(pending.full), { recursive: true });
+  const tmp = `${pending.full}.mado-tmp`;
+  writeFileSync(tmp, pending.content);
+  renameSync(tmp, pending.full);
+  return { path: pending.path, full: pending.full, original: pending.original, ...(backupPath ? { backup: path.relative(realpathSync(base), backupPath) } : {}) };
+}
+
+/** Puts the previous content back (or removes a file that did not exist). */
+export function revertConfigWrite(applied: AppliedWrite): void {
+  if (applied.original === null) {
+    try {
+      unlinkSync(applied.full);
+    } catch {
+      // Best effort: the check already failed and is reported.
+    }
+    return;
+  }
+  writeFileSync(applied.full, applied.original);
 }

@@ -527,9 +527,30 @@ export const CONFIG_TOOLS: ToolDefinition[] = [
     description:
       "Read a YAML file of the Home Assistant configuration folder (configuration.yaml, automations.yaml, scripts.yaml, " +
       "packages/…, blueprints/…), or list the YAML files when path is empty or a folder. Read-only; secrets.yaml is never " +
-      "read and secret-looking values come back masked. To change an automation, propose the change and use update_automation " +
-      "or create_automation (they preview and ask for confirmation); for other YAML, show the user the exact lines to change.",
+      "read and secret-looking values come back masked («masqué»). To change a file, use write_config_file.",
     parameters: { type: "object", properties: { path: { type: "string", description: "Relative to the configuration folder, e.g. \"packages/chauffage.yaml\"." } }, required: [] },
+  },
+  {
+    name: "write_config_file",
+    description:
+      "Change a YAML file of the configuration folder (scripts.yaml, configuration.yaml, packages/…), or create one. Two steps " +
+      "in two turns. 1) Read the file first, then call with 'path' and the FULL new 'content' of the file (keep every line you " +
+      "do not change exactly as read, «masqué» values included: they are restored from the file). Nothing is written: you get " +
+      "the changed lines. Show them to the user, ask them to confirm, and ask whether they want a backup copy of the current " +
+      "file (optional, their choice). STOP. 2) When they say yes in their NEXT message, call again with 'path', confirm: true and " +
+      "backup: true or false as they chose; do not resend the content. The file is then written, Home Assistant checks the " +
+      "configuration, and if the check fails the old content is put back automatically. Scripts, automations and scenes files " +
+      "are reloaded; for other files, tell the user what to reload or that a restart is needed. secrets.yaml is never written.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Relative to the configuration folder, e.g. \"scripts.yaml\"." },
+        content: { type: "string", description: "Step 1 only: the full new content of the file." },
+        confirm: { type: "boolean", description: "Step 2 only: true, after the user said yes." },
+        backup: { type: "boolean", description: "Step 2 only: keep a copy of the current file next to it (.bak), if the user wants one." },
+      },
+      required: ["path"],
+    },
   },
   {
     name: "check_ha_config",

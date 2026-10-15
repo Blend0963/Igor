@@ -38,6 +38,9 @@ let configDir = "/config";
 export function setConfigDir(dir: string): void {
   configDir = dir;
 }
+export function getConfigDir(): string {
+  return configDir;
+}
 
 export interface HomeToolContext {
   /** The real user (not a thread's fact bucket): tasks belong to them. */

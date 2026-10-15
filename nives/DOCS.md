@@ -47,7 +47,9 @@ Reminders and alerts go to the **Notification Service** option: a notify service
 
 ## Reviewing your automations and configuration
 
-In the panel or in written Assist, MaDo can read the full configuration of an automation, script or scene, the recent runs of your automations (which fail, which never run, which run too often), and the YAML files of your configuration folder (`configuration.yaml`, `packages/`, blueprints…). Ask "review my automations and tell me what could be improved". Reading is read-only: `secrets.yaml` is never read and values under keys such as `password`, `token` or `api_key` are masked. Changes go through the automation tools, which show a preview and wait for your confirmation; MaDo can also run Home Assistant's configuration check.
+In the panel or in written Assist, MaDo can read the full configuration of an automation, script or scene, the recent runs of your automations (which fail, which never run, which run too often), and the YAML files of your configuration folder (`configuration.yaml`, `packages/`, blueprints…). Ask "review my automations and tell me what could be improved". `secrets.yaml` is never read and values under keys such as `password`, `token` or `api_key` are masked.
+
+MaDo can also **change** these YAML files (scripts.yaml, configuration.yaml, packages…, never `secrets.yaml`), always in two steps: it first shows the exact lines it will remove and add, and asks whether you want a backup copy of the current file (optional: a `.bak` file next to it). Only after your yes is the file written; Home Assistant's configuration check runs right after, and if it fails the previous content is put back automatically. Scripts, automations and scenes are reloaded; for other files MaDo tells you which reload applies or that a restart is needed. Hidden secret values stay as they are in the file.
 
 ## Installed app (PWA) and sharing from the phone
 
