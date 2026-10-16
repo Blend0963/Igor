@@ -23,7 +23,7 @@ ports:
 ports_description:
   3100/tcp: MaDo app (PWA), only behind your own HTTPS reverse proxy
 memory: 768
-panel_icon: "mdi:home-automation"
+panel_icon: "mdi:brain"
 
 # Thread panel served by the bundled server. Ingress puts it behind the
 # Home Assistant login and into the sidebar (panel_title above the icon);
