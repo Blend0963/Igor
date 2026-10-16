@@ -1869,6 +1869,8 @@
       try { payload = JSON.parse(data); } catch (e) { return; }
       if (eventName === "chunk") {
         acc += payload.text || "";
+        // MaDo writes: whatever it was busy with ("Réflexion…") is over.
+        if (el("statusline").querySelector(".st-bow")) setStatus("");
         // The person opened another thread meanwhile: this one is followed
         // again from the server if they come back to it.
         if (state.liveFor === threadId) paint();
@@ -1948,11 +1950,15 @@
           }
           if (Array.isArray(finalResponse.toolsUsed) && finalResponse.toolsUsed.length) {
             setStatus("Outils : " + summarizeTools(finalResponse.toolsUsed));
+          } else if (!finalResponse.error) {
+            setStatus("");
           }
         } else if (!acc) {
           acc = streamError ? "Erreur : " + streamError : "Aucune réponse du serveur.";
           paint();
         }
+        // Nothing is going on any more: no busy bow tie may outlive the answer.
+        if (el("statusline").querySelector(".st-bow")) setStatus("");
         // A last turn that wrote nothing (tools only, then silence) leaves
         // an empty bubble behind; it says nothing, so it goes.
         if (!acc && bubble.parentNode) bubble.parentNode.removeChild(bubble);

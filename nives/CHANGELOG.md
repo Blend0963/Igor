@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.3 — The bow tie rests
+
+- "Réflexion…" and its flapping bow tie stayed under the conversation after an answer that used no tool. The status now clears as soon as MaDo starts writing, and at the end only the tools line (when there is one) is left, without animation.
+
 ## 0.10.2 — The bow tie at work
 
 - **Tools line on one line**: after an answer, the tools it used are grouped and named in French ("Outils : liste d'entités ×50 · action ×2 · rappel") instead of one name per call; fifty `get_entities` calls no longer cover the screen. The status line never wraps.
