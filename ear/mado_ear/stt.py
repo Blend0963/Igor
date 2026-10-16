@@ -7,12 +7,36 @@ the default is the "small" model in float32 on the GPU (about 1 GB of its
 from __future__ import annotations
 
 import logging
+import subprocess
+import sys
 import time
 from dataclasses import dataclass
 
 import numpy as np
 
 log = logging.getLogger("mado-ear")
+
+# Loads the model on the GPU and runs it once, in a separate process: a GPU
+# library problem can kill a process outright (segmentation fault), and
+# that must not be the service's own.
+PROBE = (
+    "import sys, numpy as np; from faster_whisper import WhisperModel; "
+    "m = WhisperModel(sys.argv[1], device='cuda', compute_type='float32'); "
+    "s, _ = m.transcribe(np.zeros(16000, dtype=np.float32), language='fr'); list(s)"
+)
+
+
+def gpu_works(model: str, timeout: float = 600) -> tuple[bool, str]:
+    try:
+        r = subprocess.run([sys.executable, "-c", PROBE, model], capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return False, "timed out"
+    if r.returncode == 0:
+        return True, ""
+    reason = (r.stderr.strip().splitlines() or [f"exit code {r.returncode}"])[-1]
+    if r.returncode < 0:
+        reason = f"crashed (signal {-r.returncode}); {reason}"
+    return False, reason
 
 
 @dataclass
@@ -33,6 +57,12 @@ class Transcriber:
         ]
         last: Exception | None = None
         for dev, compute in attempts:
+            if dev == "cuda":
+                works, reason = gpu_works(model)
+                if not works:
+                    log.warning("GPU unusable, skipped: %s", reason)
+                    last = RuntimeError(reason)
+                    continue
             try:
                 self._model = WhisperModel(model, device=dev, compute_type=compute, cpu_threads=cpu_threads)
                 # A first, silent run loads every library now rather than on the first sentence.

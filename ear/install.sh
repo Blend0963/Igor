@@ -46,6 +46,9 @@ if [ "$STACK" = maxwell ]; then
     # glibc 2.41 (Debian 13) will not load a library asking for an executable
     # stack, which libctranslate2 3.24 does without needing it.
     "$APP/venv/bin/python" "$HERE/clear_execstack.py" "$APP"/venv/lib/python3.12/site-packages/ctranslate2.libs/*.so*
+    # Its wheel bundles only cuDNN's 8.1 core; take all of cuDNN from pip in
+    # one version instead, or the first GPU computation crashes.
+    "$APP/venv/bin/python" "$HERE/use_pip_cudnn.py" "$APP"/venv/lib/python3.12/site-packages/ctranslate2.libs/libctranslate2-*.so*
 else
     [ -x "$APP/venv/bin/python" ] || python3 -m venv "$APP/venv"
     "$APP/venv/bin/pip" install --quiet --upgrade pip
