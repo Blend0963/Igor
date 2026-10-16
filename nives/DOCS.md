@@ -70,6 +70,6 @@ Sharing files to MaDo works on Android (Chrome, Edge, Samsung Internet). iOS doe
 - **Device controls do not work:** check that the selected model supports tool calling and that the target entities are exposed to Assist.
 - **The assistant does not appear in Assist:** follow any restart-required notification or repair in Home Assistant.
 
-## License and upstream notices
+## License
 
-MaDo is distributed under **GNU AGPL-3.0**. See [LICENSE](../LICENSE) for the full license and retained upstream copyright and attribution notices.
+MaDo is free software under the **GNU AGPL-3.0**. See [LICENSE](../LICENSE).

@@ -585,7 +585,7 @@ describe("filterExtractedFacts", () => {
 
   it("does not false-positive on legitimate facts containing similar words", () => {
     const facts: ExtractedFact[] = [
-      { content: "User's name is Jure and he supports open source projects", category: "identity", confidence: 0.9 },
+      { content: "User's name is Alex and he supports open source projects", category: "identity", confidence: 0.9 },
       { content: "User prefers warm white color temperature for evenings", category: "preference", confidence: 0.85 },
       { content: "User calls the kitchen LED strip Big Bertha", category: "device", confidence: 0.9 },
     ];
@@ -596,14 +596,14 @@ describe("filterExtractedFacts", () => {
 
   it("applies all filters and returns mixed results", () => {
     const facts: ExtractedFact[] = [
-      { content: "User's name is Jure", category: "identity", confidence: 1.0 },
+      { content: "User's name is Alex", category: "identity", confidence: 1.0 },
       { content: "short", category: "preference", confidence: 0.9 },
       { content: "Light is currently red in the kitchen", category: "device", confidence: 0.8 },
       { content: "Maybe the user likes blue lights", category: "preference", confidence: 0.1 },
     ];
     const { kept, skipped } = filterExtractedFacts(facts);
     expect(kept).toHaveLength(1);
-    expect(kept[0].content).toBe("User's name is Jure");
+    expect(kept[0].content).toBe("User's name is Alex");
     expect(skipped).toHaveLength(3);
   });
 });
@@ -1070,16 +1070,16 @@ describe("extractAndStoreFacts forget filtering", () => {
   it("drops a fact that re-learns the memory just forgotten, keeps the replacement", async () => {
     // The exact issue #54 shape: forget the old identity, set a new one, same breath.
     extractor = extracted([
-      { content: "User's name is Jure", category: "identity", confidence: 1 },
+      { content: "User's name is Alex", category: "identity", confidence: 1 },
       { content: "User's name is HAL 9000", category: "identity", confidence: 1 },
     ]);
     const n = await extractAndStoreFacts(
       memory,
       extractor,
       "user-1",
-      "forget that my name is Jure, my name is now HAL 9000",
+      "forget that my name is Alex, my name is now HAL 9000",
       "Forgotten. I'll call you HAL 9000.",
-      ["User's name is Jure"]
+      ["User's name is Alex"]
     );
     expect(n).toBe(1);
     const stored = (memory.addFacts as ReturnType<typeof vi.fn>).mock.calls[0][1];
@@ -1089,7 +1089,7 @@ describe("extractAndStoreFacts forget filtering", () => {
 
   it("drops a REWORDED re-learn of the forgotten memory", async () => {
     extractor = extracted([
-      { content: "The user's name is Jure", category: "identity", confidence: 1 },
+      { content: "The user's name is Alex", category: "identity", confidence: 1 },
     ]);
     const n = await extractAndStoreFacts(
       memory,
@@ -1097,7 +1097,7 @@ describe("extractAndStoreFacts forget filtering", () => {
       "user-1",
       "forget my name",
       "Forgotten.",
-      ["User's name is Jure"]
+      ["User's name is Alex"]
     );
     expect(n).toBe(0);
     expect(memory.addFacts).not.toHaveBeenCalled();
@@ -1141,7 +1141,7 @@ describe("handleToolCall forget_memory — previewed memory vanishes before conf
   beforeEach(() => {
     clearConfirmation(CONV);
     memory = {
-      getFacts: vi.fn().mockResolvedValue([fact("f-old", "User's name is Jure")]),
+      getFacts: vi.fn().mockResolvedValue([fact("f-old", "User's name is Alex")]),
       deleteFact: vi.fn().mockResolvedValue(true),
     } as unknown as IMemoryStore;
   });
@@ -1149,7 +1149,7 @@ describe("handleToolCall forget_memory — previewed memory vanishes before conf
   afterEach(() => vi.clearAllMocks());
 
   it("reports already_gone instead of targeting the replacement fact", async () => {
-    const preview = (await handleToolCall(ha, "forget_memory", { query: "User's name is Jure" }, ctx("t1"))) as {
+    const preview = (await handleToolCall(ha, "forget_memory", { query: "User's name is Alex" }, ctx("t1"))) as {
       confirmation_required?: boolean;
     };
     expect(preview.confirmation_required).toBe(true);
@@ -1157,7 +1157,7 @@ describe("handleToolCall forget_memory — previewed memory vanishes before conf
     // Extractor replaced the fact in between: old gone, new name stored.
     memory.getFacts = vi.fn().mockResolvedValue([fact("f-new", "User's name is HAL 9000")]);
 
-    const confirm = (await handleToolCall(ha, "forget_memory", { query: "User's name is Jure" }, ctx("t2"))) as {
+    const confirm = (await handleToolCall(ha, "forget_memory", { query: "User's name is Alex" }, ctx("t2"))) as {
       already_gone?: boolean;
       confirmation_required?: boolean;
       memory_to_forget?: string;
@@ -1169,7 +1169,7 @@ describe("handleToolCall forget_memory — previewed memory vanishes before conf
   });
 
   it("does not hijack an unrelated forget while another preview is stale", async () => {
-    await handleToolCall(ha, "forget_memory", { query: "User's name is Jure" }, ctx("t1"));
+    await handleToolCall(ha, "forget_memory", { query: "User's name is Alex" }, ctx("t1"));
     memory.getFacts = vi.fn().mockResolvedValue([
       fact("f-canary", "User's test canary word is bumblebee"),
     ]);
@@ -1182,8 +1182,8 @@ describe("handleToolCall forget_memory — previewed memory vanishes before conf
   });
 
   it("still commits normally when the previewed memory is still there", async () => {
-    await handleToolCall(ha, "forget_memory", { query: "User's name is Jure" }, ctx("t1"));
-    const confirm = (await handleToolCall(ha, "forget_memory", { query: "User's name is Jure" }, ctx("t2"))) as {
+    await handleToolCall(ha, "forget_memory", { query: "User's name is Alex" }, ctx("t1"));
+    const confirm = (await handleToolCall(ha, "forget_memory", { query: "User's name is Alex" }, ctx("t2"))) as {
       success?: boolean;
     };
     expect(confirm.success).toBe(true);

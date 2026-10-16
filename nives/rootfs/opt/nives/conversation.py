@@ -49,6 +49,13 @@ from .stream import DeltaBuilder, SseParser
 _LOGGER = logging.getLogger(__name__)
 
 
+def _out_of_credit_speech(language: str | None) -> str:
+    """What MaDo says when the AI provider has no credit left."""
+    if (language or "").lower().startswith("fr"):
+        return "Mon fournisseur d'IA n'a plus de crédit. Recharge le compte et je reprends tout de suite."
+    return "My AI provider has run out of credit. Add credit to its account and I'll pick right back up."
+
+
 class UsageLimitError(Exception):
     """Raised when the MaDo server returns HTTP 402 (usage limit reached)."""
 
@@ -302,20 +309,18 @@ class MaDoConversationAgent(ConversationEntity):
             "persistent_notification",
             "create",
             {
-                "title": "MaDo — Out of balance",
+                "title": "MaDo — AI provider out of credit",
                 "message": (
-                    "MaDo has used up its available balance. "
-                    "Top up at nives.house — or, if you bring your own "
-                    "key, add credit with your provider — and MaDo "
-                    "picks right back up."
+                    "Your AI provider reports that its credit is used up. "
+                    "Add credit to that account (Mistral, OpenAI, "
+                    "Anthropic…) and MaDo picks right back up."
                 ),
                 "notification_id": "nives_usage_limit",
             },
         )
         intent_response = intent.IntentResponse(language=user_input.language)
         intent_response.async_set_speech(
-            "I'm out of balance. "
-            "Please top up at nives.house and I'll pick right back up."
+            _out_of_credit_speech(user_input.language)
         )
         return ConversationResult(response=intent_response, conversation_id=conversation_id)
 
@@ -377,20 +382,18 @@ class MaDoConversationAgent(ConversationEntity):
                 "persistent_notification",
                 "create",
                 {
-                    "title": "MaDo — Out of balance",
+                    "title": "MaDo — AI provider out of credit",
                     "message": (
-                        "MaDo has used up its available balance. "
-                        "Top up at nives.house — or, if you bring your own "
-                        "key, add credit with your provider — and MaDo "
-                        "picks right back up."
+                        "Your AI provider reports that its credit is used up. "
+                        "Add credit to that account (Mistral, OpenAI, "
+                        "Anthropic…) and MaDo picks right back up."
                     ),
                     "notification_id": "nives_usage_limit",
                 },
             )
             intent_response = intent.IntentResponse(language=user_input.language)
             intent_response.async_set_speech(
-                "I'm out of balance. "
-                "Please top up at nives.house and I'll pick right back up."
+                _out_of_credit_speech(user_input.language)
             )
             return ConversationResult(
                 response=intent_response,

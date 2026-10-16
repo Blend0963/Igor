@@ -24,10 +24,10 @@ export const MAX_CANDIDATES = 4;
  * re-learning a memory the user just forgot, and drops it.
  *
  * Deliberately much stricter than MATCH_THRESHOLD. A REPLACEMENT keeps the
- * frame and changes the value — "User's name is Jure" → "User's name is HAL
- * 9000" scores 0.73 — and must survive, because "forget I'm Jure, I'm HAL now"
+ * frame and changes the value — "User's name is Alex" → "User's name is HAL
+ * 9000" scores 0.73 — and must survive, because "forget I'm Alex, I'm HAL now"
  * is the single most likely way this feature gets used (it is literally issue
- * #54). A RE-LEARN restates the same claim — "The user's name is Jure" scores
+ * #54). A RE-LEARN restates the same claim — "The user's name is Alex" scores
  * 0.91 — and must not. 0.85 separates those two populations; it is a heuristic,
  * not a guarantee, and the real safety net stays the confirm gate.
  */

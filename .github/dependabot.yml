@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Bundled conversation server (hard fork of home-mind) — the package that
+  # The MaDo server — the package that
   # carried the uuid/qs/express advisories. This is the high-value target.
   - package-ecosystem: "npm"
     directory: "/server/src/home-mind-server"

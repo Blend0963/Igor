@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.6 — MaDo's own look
+
+- **New icon and logo**: a house with a small neural network inside, in Home Assistant blue, with "MaDo" in white italics. In the add-on store, the integration, the sidebar panel and the installed app.
+- **Messages from the previous project removed**: when the AI provider has no credit left, MaDo now says so plainly (in French when you speak French) instead of pointing to a top-up site that has nothing to do with MaDo.
+- New README and license header. The inherited code keeps its original copyright notice, as the AGPL requires.
+
 ## 0.9.5 — Orders recognised whatever the wording, and the real state in view
 
 - **The live state of the house goes with every message.** Before each turn MaDo reads Home Assistant and hands the model the list of what is on, open or running right now (lights, switches, fans, covers, unlocked locks, media players, climate, vacuums). The model no longer takes its own earlier reply for the truth: "elles sont déjà éteintes" while the salon is lit is gone. The list is told to change nothing by itself: acting still takes a tool call. About a hundred tokens per message, placed after the history so the prompt cache is kept.

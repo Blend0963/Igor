@@ -415,7 +415,7 @@ export function formatDateTimeWithOffset(): {
  * How to write a reply a voice has to read out loud, plus which grammatical gender to
  * speak about itself in.
  *
- * The writing rules are not guesses. Jure listened to each form on the Slovene voice
+ * The writing rules are not guesses. Each form was listened to on the Slovene voice
  * (2026-09-09) and these were the failures — all of them faults of the TEXT, not the voice:
  *
  *   "19 stopinj C"  -> "devetnajstih stopinj ce"   (letter read aloud, number miscased)
@@ -437,7 +437,7 @@ export function formatDateTimeWithOffset(): {
  *
  * Initialisms (VOC, CO2, PM2,5) and whole numbers are NOT the model's job: the reply is
  * also what Home Assistant shows in the chat log, and "Pe em dve celi pet" is unreadable
- * there (Jure, 2026-10-10). Both are spelled out in code on the way to the voice, in
+ * there (2026-10-10). Both are spelled out in code on the way to the voice, in
  * `tts/initialisms.ts` and `tts/number-words.ts`, so the model writes them as they are.
  *
  * Only ever added when a voice is configured, because the voice is what makes a
