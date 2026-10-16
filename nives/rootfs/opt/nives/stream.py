@@ -145,6 +145,11 @@ class DeltaBuilder:
         self._current = final
 
     @property
+    def current_text(self) -> str:
+        """Text of the message being written (the one that will be spoken)."""
+        return self._current
+
+    @property
     def wrote_anything(self) -> bool:
         """Whether at least one assistant message has content."""
         return self._any_text

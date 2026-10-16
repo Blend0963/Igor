@@ -36,6 +36,15 @@ Keep only the entities you intend the assistant to control exposed to Assist, an
 
 MaDo works as a Home Assistant Assist conversation agent. Speech-to-text and text-to-speech are configured through your Home Assistant pipeline or separately configured voice providers. Supported voice features depend on the chosen provider and model.
 
+## Wall tablet
+
+A tablet that shows Home Assistant all day (Fully Kiosk Browser, the companion app or any browser) can show each voice request full screen while it happens: the bow tie and "Je vous écoute…" as soon as the satellite hears the wake word, your words once transcribed, MaDo's butler phrases with the time spent, the answer as it is written and the action chips. It fades back to the dashboard a few seconds after the satellite stops talking; a tap closes it.
+
+1. Restart Home Assistant once after updating, so it loads the new integration files.
+2. On the tablet, open Home Assistant once with `?mado_tablet=1` at the end of the address, for example `http://homeassistant.local:8123/lovelace/0?mado_tablet=1`. In Fully Kiosk Browser, put it in the Start URL. With several satellites, `?mado_tablet=assist_satellite.living_room` follows that one only. `?mado_tablet=0` switches it off. The choice is kept by that browser only; other devices are not affected.
+
+It reads the satellite's state and the **MaDo Assist** sensor, which follows each voice request. The texts are not kept in the history and are cleared three minutes after the answer, but any Home Assistant account can read the latest exchange while it is there. To turn the sensor and the display off: Settings → Devices & services → MaDo → Configure → Wall-tablet display.
+
 ## Reminders, alerts and the house watch
 
 Reminders and alerts go to the **Notification Service** option: a notify service (`mobile_app_my_phone`, or `telegram` for a YAML Telegram notifier), a notify entity (`notify.telegram_bot_123_456` for a Telegram bot set up from the UI), or `telegram_bot` / `telegram_bot:<chat id>`. They appear as a notification inside Home Assistant when it is empty. The ⏰ button of the panel lists them and cancels them.

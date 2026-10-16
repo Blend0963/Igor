@@ -20,6 +20,7 @@ content_hash() {
         | sort -z | xargs -0 -r sha256sum; \
         [ -d brand ] && find brand -type f -print0 | sort -z | xargs -0 -r sha256sum; \
         [ -d translations ] && find translations -type f -print0 | sort -z | xargs -0 -r sha256sum; \
+        [ -d frontend ] && find frontend -type f -print0 | sort -z | xargs -0 -r sha256sum; \
         find . -type l | sed 's/^/link /'; true; }) | sha256sum | cut -d' ' -f1
 }
 WANT_HASH=$(content_hash "$SOURCE")
@@ -53,6 +54,10 @@ if [ "$NEEDS_UPDATE" = "true" ]; then
     # is only the dev-time source.
     if [ -d "$SOURCE/translations" ]; then
         cp -rf "$SOURCE/translations" "$TARGET/"
+    fi
+    # The wall-tablet script Home Assistant serves to its pages (sensor.py).
+    if [ -d "$SOURCE/frontend" ]; then
+        cp -rf "$SOURCE/frontend" "$TARGET/"
     fi
     echo "[integration] Nives integration installed at $TARGET"
 
