@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.1 — Centred welcome
+
+- On the welcome screen, "— Majordome domotique —" sat off to the right under the logo: it kept the band's alignment. It is centred now.
+
 ## 0.10.0 — MaDo, Majordome Domotique
 
 - **New identity.** MaDo stands for *Majordome Domotique*, and its symbol is the butler's bow tie: a white bow tie with folds and a light-blue knot on Home Assistant blue, framed by a double fine line (solid, then dotted), with a small sparkle. It is used in the add-on store, the integration, the panel and the installed app, and the sidebar shows the matching built-in icon `mdi:bow-tie`.
