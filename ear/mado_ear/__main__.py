@@ -69,6 +69,8 @@ def run(settings: Settings) -> None:
     log.info("mado-ear %s, %s mode, source %s", __version__, mode, settings.source)
     prune(settings)
     connected = bool(settings.ha_url and settings.ha_token)
+    if connected and settings.presence_entity and settings.presence_entity.startswith("assist_satellite."):
+        log.warning("presence_entity is a satellite (%s): did you mean [home_assistant] satellite?", settings.presence_entity)
     if settings.act and not (connected and settings.satellite):
         raise SystemExit("Act mode needs [home_assistant] url, token and satellite in the settings")
 
@@ -97,7 +99,10 @@ def run(settings: Settings) -> None:
         if watcher is None or not settings.presence_entity:
             return True
         state = watcher.state(settings.presence_entity)
-        return state is None or state.lower() in {s.lower() for s in settings.home_states}
+        # Unknown or unavailable says nothing about the house: keep listening.
+        if state is None or state.lower() in {"unknown", "unavailable", ""}:
+            return True
+        return state.lower() in {s.lower() for s in settings.home_states}
 
     device_id = None
     if settings.act:
