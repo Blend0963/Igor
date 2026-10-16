@@ -10,5 +10,5 @@
 <rect x="-42" y="-48" width="84" height="96" rx="22" fill="url(#k)" stroke="#fff" stroke-width="6"/>
 <path d="M-26 -30 Q0 -40 26 -30" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none" opacity=".8"/></g><path d="M398 118 L404 136 L422 142 L404 148 L398 166 L392 148 L374 142 L392 136 Z" fill="#fff" opacity=".9"/><circle cx="430" cy="178" r="5" fill="#fff" opacity=".6"/></g></svg></g>
 <text x="560" y="292" style="font-family:Caladea;font-weight:700;font-size:240px;letter-spacing:6px" fill="#0288D1">MaDo</text>
-<g transform="translate(566 330)"><line x1="0" y1="0" x2="250" y2="0" stroke="#03A9F4" stroke-width="4" stroke-linecap="round"/><path d="M270 -9 L279 0 L270 9 L261 0 Z" fill="#03A9F4"/><line x1="298" y1="0" x2="548" y2="0" stroke="#03A9F4" stroke-width="4" stroke-linecap="round"/></g>
+<g><line x1="567" y1="330" x2="857.5" y2="330" stroke="#03A9F4" stroke-width="4" stroke-linecap="round"/><path d="M877.5 321 L886.5 330 L877.5 339 L868.5 330 Z" fill="#03A9F4"/><line x1="897.5" y1="330" x2="1188" y2="330" stroke="#03A9F4" stroke-width="4" stroke-linecap="round"/></g>
 <text x="566" y="398" style="font-family:Inter;font-weight:600;font-size:40px;letter-spacing:9px" fill="#727272">MAJORDOME DOMOTIQUE</text></svg>
