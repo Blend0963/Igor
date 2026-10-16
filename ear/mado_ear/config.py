@@ -17,6 +17,7 @@ class Settings:
     device: str = "auto"
     language: str = "fr"
     cpu_threads: int = 2
+    hotwords: str = "MaDo"
     extra_targets: list[str] = field(default_factory=list)
     act: bool = False
     followup: bool = True
@@ -46,6 +47,7 @@ def load(path: Path = CONFIG) -> Settings:
     s.device = str(stt.get("device", s.device))
     s.language = str(stt.get("language", s.language))
     s.cpu_threads = int(stt.get("cpu_threads", s.cpu_threads))
+    s.hotwords = str(stt.get("hotwords", s.hotwords))
     s.extra_targets = [str(t) for t in addressing.get("extra_targets", [])]
     s.act = bool(mode.get("act", s.act))
     s.followup = bool(mode.get("followup", s.followup))

@@ -17,10 +17,11 @@ source = "alsa_input.usb-Generalplus_Usb_Audio_Device-00.mono-fallback"
 [stt]
 # Local transcription, used only to hear the name; MaDo gets the audio
 # itself, transcribed by the Assist pipeline (Voxtral).
-model = "small"      # small fits the GTX 960's 2 GB in float32
+model = "base"       # on a CPU: base (tiny hears too little; small is slow)
 device = "auto"      # auto (GPU, else CPU), cuda or cpu
 language = "fr"
 cpu_threads = 2      # used only on the CPU fallback
+hotwords = "MaDo"    # words Whisper should expect: it then writes the name right
 
 [home_assistant]
 # Needed for act mode; also used in observation mode to stay quiet while
