@@ -116,7 +116,7 @@ export class SqliteConversationStore implements IConversationStore {
        VALUES (?, ?, ?, ?, ?, ?)`
     ).run(id, conversationId, userId, role, content, now);
 
-    // Keep a longer durable history for MaDo's shared cross-device conversation.
+    // Keep a longer durable history for Igor's shared cross-device conversation.
     // Threads keep their own longer cap; other transient conversations roll at 20.
     if (!conversationId.startsWith("mado-user:")) this.db.prepare(
       `DELETE FROM messages WHERE id IN (

@@ -311,7 +311,7 @@ export class LLMClient implements IChatEngine {
       return {
         code: "MAX_TOKENS_TRUNCATED",
         hint:
-          "MaDo ran out of room before it could finish the answer. A shorter " +
+          "Igor ran out of room before it could finish the answer. A shorter " +
           "time range, or fewer sensors in one question, will usually get it " +
           "through.",
       };

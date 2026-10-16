@@ -148,7 +148,7 @@ export class OpenAIChatEngine implements IChatEngine {
       baseURL: config.openaiBaseUrl,
       defaultHeaders: {
         "HTTP-Referer": "https://github.com/Blend0963/MaDo",
-        "X-OpenRouter-Title": "MaDo",
+        "X-OpenRouter-Title": "Igor",
         "X-OpenRouter-Categories": "personal-agent",
       },
     });
@@ -326,7 +326,7 @@ export class OpenAIChatEngine implements IChatEngine {
     // One prompt-cache key per conversation style and memory bucket: those
     // decide the opening of the prompt, which is what the cache stores.
     const promptMode = scope.isThread ? "thread" : isVoice ? "voice" : "text";
-    const cacheKey = `mado:${promptMode}:${scope.factBucket}`;
+    const cacheKey = `igor:${promptMode}:${scope.factBucket}`;
     const turnUsage = new UsageTally();
     const tools = openAIToolsFor(promptMode, { unattended: request.unattended === true });
     // A thread reasons first (Mistral Large 4's hybrid mode, THREAD_REASONING);
@@ -607,11 +607,11 @@ export class OpenAIChatEngine implements IChatEngine {
       // decided by which spelling of the cap parameter the model accepted, which
       // told us nothing on providers that accept both.
       const hint = spentBudgetOnReasoning(usage)
-        ? "MaDo ran out of room before it could write the answer. The model " +
+        ? "Igor ran out of room before it could write the answer. The model " +
           "spent this turn's budget working the problem out and had none left " +
           "for the reply. A shorter time range, or fewer sensors in one " +
           "question, will usually get it through."
-        : "MaDo ran out of room before it could finish the answer. A shorter " +
+        : "Igor ran out of room before it could finish the answer. A shorter " +
           "time range, or fewer sensors in one question, will usually get it " +
           "through.";
       return { code: "MAX_TOKENS_TRUNCATED", hint };

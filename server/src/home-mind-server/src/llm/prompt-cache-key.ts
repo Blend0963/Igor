@@ -3,7 +3,7 @@
  *
  * Mistral bills cached input tokens at a tenth of the normal rate, but only
  * caches a prefix when the request carries a stable `prompt_cache_key`. Every
- * MaDo call starts with the same ~10k tokens (persona, instructions, tools,
+ * Igor call starts with the same ~10k tokens (persona, instructions, tools,
  * home layout), so without the key that prefix is paid in full on every call
  * of every tool loop.
  *

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { handleToolCall, extractAndStoreFacts, filterExtractedFacts, normalizeTimestamp, type ToolContext } from "./tool-handler.js";
+import { handleToolCall, extractAndStoreFacts, filterExtractedFacts, normalizeTimestamp, withIgorPrefix, type ToolContext } from "./tool-handler.js";
 import { clearConfirmation } from "./automation-confirmations.js";
 import type { HomeAssistantClient } from "../ha/client.js";
 import { notExposedMessage } from "../ha/exposure.js";
@@ -19,7 +19,7 @@ describe("handleToolCall", () => {
       getHistory: vi.fn().mockResolvedValue([{ state: "22" }]),
       createAutomation: vi.fn().mockResolvedValue({
         id: "1700000000000",
-        alias: "MaDo: Kitchen lights at 20:00",
+        alias: "Igor: Kitchen lights at 20:00",
         entity_id: "automation.kitchen_lights_at_20_00",
       }),
       listAutomations: vi.fn().mockResolvedValue([
@@ -28,14 +28,14 @@ describe("handleToolCall", () => {
           state: "on",
           attributes: {
             id: "1700000000000",
-            friendly_name: "MaDo: Living room light off at 23:00",
+            friendly_name: "Igor: Living room light off at 23:00",
           },
         },
       ]),
       deleteAutomation: vi.fn().mockResolvedValue(undefined),
       updateAutomation: vi.fn().mockResolvedValue({
         id: "1700000000000",
-        alias: "MaDo: Living room light off at 22:00",
+        alias: "Igor: Living room light off at 22:00",
         entity_id: "automation.living_room_light_off_at_23_00",
       }),
       listServices: vi.fn().mockResolvedValue({
@@ -152,7 +152,7 @@ describe("handleToolCall", () => {
     });
   });
 
-  it("dispatches create_automation to ha.createAutomation with a MaDo: prefix", async () => {
+  it("dispatches create_automation to ha.createAutomation with an Igor: prefix", async () => {
     const result = await handleToolCall(ha, "create_automation", {
       alias: "Kitchen lights at 20:00",
       trigger: { platform: "time", at: "20:00:00" },
@@ -160,7 +160,7 @@ describe("handleToolCall", () => {
     });
 
     expect(ha.createAutomation).toHaveBeenCalledWith({
-      alias: "MaDo: Kitchen lights at 20:00",
+      alias: "Igor: Kitchen lights at 20:00",
       trigger: { platform: "time", at: "20:00:00" },
       condition: undefined,
       action: { service: "light.turn_on", target: { entity_id: "light.kitchen" } },
@@ -169,19 +169,19 @@ describe("handleToolCall", () => {
     expect(result).toMatchObject({
       success: true,
       entity_id: "automation.kitchen_lights_at_20_00",
-      alias: "MaDo: Kitchen lights at 20:00",
+      alias: "Igor: Kitchen lights at 20:00",
     });
   });
 
-  it("does not double-prefix an alias that already starts with MaDo:", async () => {
+  it("does not double-prefix an alias that already starts with Igor:", async () => {
     await handleToolCall(ha, "create_automation", {
-      alias: "MaDo: Porch at sunset",
+      alias: "Igor: Porch at sunset",
       trigger: { platform: "sun", event: "sunset" },
       action: { service: "light.turn_on", target: { entity_id: "light.porch" } },
     });
 
     const call = (ha.createAutomation as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(call.alias).toBe("MaDo: Porch at sunset");
+    expect(call.alias).toBe("Igor: Porch at sunset");
   });
 
   it("returns an error when create_automation is missing a trigger", async () => {
@@ -225,7 +225,7 @@ describe("handleToolCall", () => {
     expect(result).toEqual([
       {
         entity_id: "automation.living_room_light_off_at_23_00",
-        name: "MaDo: Living room light off at 23:00",
+        name: "Igor: Living room light off at 23:00",
         state: "on",
         id: "1700000000000",
       },
@@ -241,7 +241,7 @@ describe("handleToolCall", () => {
     expect(result).toMatchObject({
       success: true,
       entity_id: "automation.living_room_light_off_at_23_00",
-      name: "MaDo: Living room light off at 23:00",
+      name: "Igor: Living room light off at 23:00",
     });
   });
 
@@ -263,7 +263,7 @@ describe("handleToolCall", () => {
     });
   });
 
-  it("dispatches update_automation: resolves entity_id, passes only provided fields with MaDo: prefix", async () => {
+  it("dispatches update_automation: resolves entity_id, passes only provided fields with Igor: prefix", async () => {
     const result = await handleToolCall(ha, "update_automation", {
       entity_id: "automation.living_room_light_off_at_23_00",
       alias: "Living room light off at 22:00",
@@ -271,7 +271,7 @@ describe("handleToolCall", () => {
     });
 
     expect(ha.updateAutomation).toHaveBeenCalledWith("1700000000000", {
-      alias: "MaDo: Living room light off at 22:00",
+      alias: "Igor: Living room light off at 22:00",
       trigger: { platform: "time", at: "22:00:00" },
     });
     expect(result).toMatchObject({
@@ -383,11 +383,11 @@ describe("handleToolCall confirmation gate", () => {
     ha = {
       createAutomation: vi.fn().mockResolvedValue({
         id: "1",
-        alias: "MaDo: Kitchen lights at 20:00",
+        alias: "Igor: Kitchen lights at 20:00",
         entity_id: "automation.kitchen_lights_at_20_00",
       }),
       listAutomations: vi.fn().mockResolvedValue([
-        { entity_id: "automation.x", state: "on", attributes: { id: "9", friendly_name: "MaDo: X" } },
+        { entity_id: "automation.x", state: "on", attributes: { id: "9", friendly_name: "Igor: X" } },
       ]),
       deleteAutomation: vi.fn().mockResolvedValue(undefined),
     } as unknown as HomeAssistantClient;
@@ -465,7 +465,7 @@ describe("handleToolCall confirmation gate", () => {
       ha,
       "create_automation",
       {
-        alias: "MaDo: Kitchen lights at 20:00",
+        alias: "Igor: Kitchen lights at 20:00",
         trigger: { at: "20:00:00", platform: "time" },
         action: { service: "light.turn_on", target: { entity_id: "light.kitchen" } },
       },
@@ -1020,7 +1020,7 @@ describe("handleToolCall forget_memory", () => {
 
   it("coexists with a pending automation preview without cross-firing", async () => {
     const gateHa = {
-      createAutomation: vi.fn().mockResolvedValue({ id: "1", alias: "MaDo: X", entity_id: "automation.x" }),
+      createAutomation: vi.fn().mockResolvedValue({ id: "1", alias: "Igor: X", entity_id: "automation.x" }),
     } as unknown as HomeAssistantClient;
     const auto = { alias: "X", trigger: { platform: "time", at: "12:00" }, action: { service: "notify.foo" } };
 
@@ -1235,5 +1235,14 @@ describe("create_file", () => {
   it("reports a request it cannot build", async () => {
     const { handleToolCall } = await import("./tool-handler.js");
     expect(await handleToolCall({} as never, "create_file", { filename: "x", format: "zip", files: [] }, {})).toHaveProperty("error");
+  });
+});
+
+describe("withIgorPrefix", () => {
+  it("adds the prefix once and replaces the one from before the rename", () => {
+    expect(withIgorPrefix("Porch light")).toBe("Igor: Porch light");
+    expect(withIgorPrefix("Igor: Porch light")).toBe("Igor: Porch light");
+    expect(withIgorPrefix("MaDo: Porch light")).toBe("Igor: Porch light");
+    expect(withIgorPrefix("mado:Porch light")).toBe("Igor: Porch light");
   });
 });

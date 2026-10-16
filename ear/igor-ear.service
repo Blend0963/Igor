@@ -1,10 +1,10 @@
 [Unit]
-Description=MaDo listening without a wake word (observation mode)
+Description=Igor listening without a wake word (observation mode)
 After=pipewire-pulse.service
 Wants=pipewire-pulse.service
 
 [Service]
-ExecStart=%h/.local/share/mado-ear/run.sh run
+ExecStart=%h/.local/share/igor-ear/run.sh run
 Restart=always
 RestartSec=10
 # The VM is also the house's audio hub: sound and Bluetooth come first.

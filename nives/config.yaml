@@ -1,7 +1,7 @@
-name: "MaDo"
-version: "0.10.6"
+name: "Igor"
+version: "0.11.0"
 slug: "mado"
-description: "MaDo, Majordome Domotique : l'assistant IA de la maison, avec sa mémoire"
+description: "In Igor we trust. L'assistant IA de la maison, avec sa mémoire"
 url: "https://github.com/Blend0963/MaDo"
 image: ghcr.io/blend0963/mado-{arch}
 arch:
@@ -21,7 +21,7 @@ map:
 ports:
   3100/tcp: null
 ports_description:
-  3100/tcp: MaDo app (PWA), only behind your own HTTPS reverse proxy
+  3100/tcp: Igor app (PWA), only behind your own HTTPS reverse proxy
 memory: 768
 panel_icon: "mdi:bow-tie"
 
@@ -30,7 +30,7 @@ panel_icon: "mdi:bow-tie"
 # the raw 3100 port stays unexposed by default.
 ingress: true
 ingress_port: 3100
-panel_title: "MaDo"
+panel_title: "Igor"
 options:
   byok:
     provider: "anthropic"
@@ -65,7 +65,7 @@ schema:
   # API). Unset = on whenever a Mistral key is available (the web-search key,
   # or the chat key when the provider is Mistral); "off" disables it.
   speech_to_text: "list(auto|off)?"
-  # Ceiling on one written reply. Left unset, MaDo picks its own. Deliberately
+  # Ceiling on one written reply. Left unset, Igor picks its own. Deliberately
   # absent from `options:` above so that "unset" stays a real state rather than
   # a magic number, and so the built-in default can be improved without every
   # existing install being pinned to whatever today's value happens to be.
@@ -101,7 +101,7 @@ schema:
   # whole house). Plain checks every 5 minutes; the cheap model only judges
   # what they flag. Quiet hours hold back all but safety alarms.
   house_watch: "list(off|on|all)?"
-  # How far MaDo may change the configuration: off (read only), automations
+  # How far Igor may change the configuration: off (read only), automations
   # (default) or yaml (also scripts.yaml, configuration.yaml, packages…).
   config_edits: "list(off|automations|yaml)?"
   # Set to true once to regenerate the API token (switched back off by itself).
@@ -121,7 +121,7 @@ schema:
   # Remembered facts sent with each request, in tokens. Unset = 1500.
   memory_token_limit: "int(200,8000)?"
   # All three absent from `options:` for the same reason as max_output_tokens:
-  # unset means "MaDo decides", which today is the list of entities exposed to
+  # unset means "Igor decides", which today is the list of entities exposed to
   # Assist, for the room map and for what the assistant can reach.
   layout_from_exposed: "bool?"
   tools_from_exposed: "bool?"

@@ -1,5 +1,5 @@
 #!/command/with-contenv bash
-# Tell the user when Home Assistant needs a restart to load updated MaDo
+# Tell the user when Home Assistant needs a restart to load updated Igor
 # integration files — and only tell them. The add-on never restarts Home
 # Assistant on its own.
 #
@@ -9,7 +9,7 @@
 # down before it can answer — so the proxy returns 504 and a restart that HAD
 # been accepted was logged as refused. The retry loop then fired again once
 # Core was back up, restarting it a second time. From the user's side: Home
-# Assistant rebooting repeatedly, unannounced, right after installing MaDo.
+# Assistant rebooting repeatedly, unannounced, right after installing Igor.
 # That reads as a crash, and the report said exactly that. An add-on asking
 # for a restart is ordinary (HACS does the same); an add-on rebooting the
 # house unasked is not.
@@ -61,19 +61,19 @@ fi
 
 MODE=$(cat "$FLAG" 2>/dev/null)
 if [ "$MODE" = "install" ]; then
-    MESSAGE="MaDo is installed! Restart Home Assistant once (Settings → System → Restart) to activate the integration."
+    MESSAGE="Igor is installed! Restart Home Assistant once (Settings → System → Restart) to activate the integration."
 else
-    MESSAGE="MaDo was updated. Restart Home Assistant at a moment that suits you (Settings → System → Restart) to finish the update. MaDo keeps working in the meantime."
+    MESSAGE="Igor was updated. Restart Home Assistant at a moment that suits you (Settings → System → Restart) to finish the update. Igor keeps working in the meantime."
 fi
 
-if notify create "{\"notification_id\": \"${NOTIFY_ID}\", \"title\": \"MaDo\", \"message\": \"${MESSAGE}\"}"; then
-    echo "[ha-restart] Home Assistant needs a restart to load the updated MaDo integration."
+if notify create "{\"notification_id\": \"${NOTIFY_ID}\", \"title\": \"Igor\", \"message\": \"${MESSAGE}\"}"; then
+    echo "[ha-restart] Home Assistant needs a restart to load the updated Igor integration."
     echo "[ha-restart] A notification has been posted in Home Assistant — restart whenever"
-    echo "[ha-restart] it suits you. MaDo keeps working in the meantime."
+    echo "[ha-restart] it suits you. Igor keeps working in the meantime."
 else
-    echo "[ha-restart] Home Assistant needs a restart to load the updated MaDo integration."
+    echo "[ha-restart] Home Assistant needs a restart to load the updated Igor integration."
     echo "[ha-restart] Restart it whenever it suits you (Settings → System → Restart)."
-    echo "[ha-restart] MaDo keeps working in the meantime."
+    echo "[ha-restart] Igor keeps working in the meantime."
 fi
 
 # The flag stays set so the reminder is re-posted on the next add-on start if

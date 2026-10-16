@@ -14,7 +14,7 @@ describe("buildSystemPrompt (Anthropic)", () => {
       type: "text",
       cache_control: { type: "ephemeral" },
     });
-    expect(blocks[0].text).toContain("You are MaDo, a helpful smart home assistant");
+    expect(blocks[0].text).toContain("You are Igor, a helpful smart home assistant");
     expect(blocks[0].text).toContain("## WHEN TO USE TOOLS");
     // Dynamic block has no cache_control
     expect(blocks[1]).toMatchObject({ type: "text" });
@@ -29,7 +29,7 @@ describe("buildSystemPrompt (Anthropic)", () => {
     // Custom prompt is the identity, followed by instructions
     expect(blocks[0].text).toMatch(/^You are Ava\./);
     expect(blocks[0].text).toContain("## WHEN TO USE TOOLS");
-    expect(blocks[0].text).not.toContain("You are MaDo, a helpful smart home assistant");
+    expect(blocks[0].text).not.toContain("You are Igor, a helpful smart home assistant");
     expect(blocks[0]).toHaveProperty("cache_control", { type: "ephemeral" });
     // Dynamic block
     expect(blocks[1].text).toContain("fact1");
@@ -38,7 +38,7 @@ describe("buildSystemPrompt (Anthropic)", () => {
   it("uses voice instructions when isVoice is true", () => {
     const blocks = buildSystemPrompt([], true) as TextBlock[];
 
-    expect(blocks[0].text).toContain("You are MaDo, a helpful smart home voice assistant");
+    expect(blocks[0].text).toContain("You are Igor, a helpful smart home voice assistant");
     expect(blocks[0].text).toContain("Keep responses under 2-3 sentences");
   });
 
@@ -47,7 +47,7 @@ describe("buildSystemPrompt (Anthropic)", () => {
 
     expect(blocks[0].text).toMatch(/^You are Ava\./);
     expect(blocks[0].text).toContain("Keep responses under 2-3 sentences");
-    expect(blocks[0].text).not.toContain("You are MaDo, a helpful smart home voice assistant");
+    expect(blocks[0].text).not.toContain("You are Igor, a helpful smart home voice assistant");
   });
 
   it("shows 'No memories yet.' when facts are empty", () => {
@@ -62,7 +62,7 @@ describe("buildSystemPromptText (OpenAI)", () => {
   it("returns text with default identity when no custom prompt", () => {
     const text = buildSystemPromptText(["my fact"]);
 
-    expect(text).toContain("You are MaDo, a helpful smart home assistant");
+    expect(text).toContain("You are Igor, a helpful smart home assistant");
     expect(text).toContain("## WHEN TO USE TOOLS");
     expect(text).toContain("my fact");
   });
@@ -71,7 +71,7 @@ describe("buildSystemPromptText (OpenAI)", () => {
     const text = buildSystemPromptText(["my fact"], false, "You are Ava, sarcastic and sharp.");
 
     expect(text).toMatch(/^You are Ava, sarcastic and sharp\./);
-    expect(text).not.toContain("You are MaDo, a helpful smart home assistant");
+    expect(text).not.toContain("You are Igor, a helpful smart home assistant");
     expect(text).toContain("## WHEN TO USE TOOLS");
     expect(text).toContain("my fact");
 
@@ -87,7 +87,7 @@ describe("buildSystemPromptText (OpenAI)", () => {
   it("uses voice identity and instructions when isVoice is true", () => {
     const text = buildSystemPromptText([], true);
 
-    expect(text).toContain("You are MaDo, a helpful smart home voice assistant");
+    expect(text).toContain("You are Igor, a helpful smart home voice assistant");
     expect(text).toContain("Keep responses under 2-3 sentences");
   });
 
@@ -142,18 +142,18 @@ describe("FORGETTING MEMORIES section", () => {
 });
 
 describe("assistant identity", () => {
-  // mado#54: the name was never stated, so a model asked "what is your name?"
-  // inferred it from the "MaDo: " automation prefix — and a custom persona had
+  // igor#54: the name was never stated, so a model asked "what is your name?"
+  // inferred it from the "Igor: " automation prefix — and a custom persona had
   // to out-shout that convention instead of replacing a stated name.
-  it("names MaDo explicitly in both default variants", () => {
-    expect(buildSystemPromptText([])).toMatch(/^You are MaDo, a helpful smart home assistant/);
-    expect(buildSystemPromptText([], true)).toMatch(/^You are MaDo, a helpful smart home voice assistant/);
+  it("names Igor explicitly in both default variants", () => {
+    expect(buildSystemPromptText([])).toMatch(/^You are Igor, a helpful smart home assistant/);
+    expect(buildSystemPromptText([], true)).toMatch(/^You are Igor, a helpful smart home voice assistant/);
   });
 
-  it("a custom prompt replaces the name entirely — no stated MaDo identity survives", () => {
+  it("a custom prompt replaces the name entirely — no stated Igor identity survives", () => {
     const text = buildSystemPromptText([], false, "You are HAL 9000, calm and precise.");
     expect(text).toMatch(/^You are HAL 9000, calm and precise\./);
-    expect(text).not.toContain("You are MaDo");
+    expect(text).not.toContain("You are Igor");
   });
 
   it("tells the model the automation prefix is a label, not its name", () => {
@@ -173,7 +173,7 @@ describe("assistant identity", () => {
 });
 
 describe("identity-change requests point at the config field, not forget_memory", () => {
-  // mado#54: two users in a row tried to rename the assistant by talking to
+  // igor#54: two users in a row tried to rename the assistant by talking to
   // it. forget_memory correctly found nothing (its name is in the prompt, not
   // in memory), but the assistant had no idea where its name comes from, so it
   // couldn't redirect them and the thread ran for days. Since 2.4.23 there is
@@ -252,7 +252,7 @@ describe("cache-friendly ordering (#66)", () => {
       ["fact1"], false, undefined, DEVICES, LAYOUT, "en"
     );
     for (const marker of [
-      "You are MaDo",
+      "You are Igor",
       "Home Layout",
       "Device Capabilities",
       "## Current Context:",

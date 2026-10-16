@@ -1,10 +1,10 @@
-"""The "MaDo Assist" sensor: each voice request, live, for a wall tablet.
+"""The "Igor Assist" sensor: each voice request, live, for a wall tablet.
 
 A voice satellite (an ESPHome or Linux voice assistant) speaks the answer but
 shows nothing. This sensor carries what the tablet needs to show it: what
-MaDo is doing, the question as transcribed, the answer as it is written, the
+Igor is doing, the question as transcribed, the answer as it is written, the
 action chips and the satellite it came from. The frontend script
-(frontend/mado-tablet.js) reads it from the states every Home Assistant page
+(frontend/igor-tablet.js) reads it from the states every Home Assistant page
 already has, so it works for a non-admin account and needs no extra
 connection.
 
@@ -24,7 +24,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 
-from . import MaDoConfigEntry
+from . import IgorConfigEntry
 from .const import VOICE_SENSOR_MARKER
 
 # A reply is written a few words at a time; the tablet needs no more than a
@@ -44,11 +44,11 @@ TEXT_ATTRIBUTES = frozenset(
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: MaDoConfigEntry,
+    config_entry: IgorConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the sensor and hand it to the conversation agent."""
-    sensor = MaDoVoiceSensor(config_entry)
+    sensor = IgorVoiceSensor(config_entry)
     config_entry.runtime_data.voice_sensor = sensor
     async_add_entities([sensor])
 
@@ -57,8 +57,8 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-class MaDoVoiceSensor(SensorEntity):
-    """What MaDo is doing with the current voice request."""
+class IgorVoiceSensor(SensorEntity):
+    """What Igor is doing with the current voice request."""
 
     _attr_has_entity_name = True
     _attr_translation_key = "assist"
@@ -68,7 +68,7 @@ class MaDoVoiceSensor(SensorEntity):
     _attr_icon = "mdi:bow-tie"
     _unrecorded_attributes = TEXT_ATTRIBUTES
 
-    def __init__(self, entry: MaDoConfigEntry) -> None:
+    def __init__(self, entry: IgorConfigEntry) -> None:
         self._attr_unique_id = f"{entry.entry_id}_assist"
         self._attr_device_info = dr.DeviceInfo(identifiers={(entry.domain, entry.entry_id)})
         self._attr_native_value = "idle"
@@ -121,7 +121,7 @@ class MaDoVoiceSensor(SensorEntity):
 
     @callback
     def begin(self, question: str, satellite: str | None) -> None:
-        """A voice request reached MaDo."""
+        """A voice request reached Igor."""
         self._cancel_timers()
         self._turn += 1
         self._question = (question or "")[:MAX_TEXT]

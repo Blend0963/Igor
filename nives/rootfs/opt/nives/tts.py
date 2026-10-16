@@ -1,8 +1,8 @@
-"""Text-to-speech platform for MaDo.
+"""Text-to-speech platform for Igor.
 
-Registers MaDo as a Text-to-speech option in the Assist pipeline, so the
+Registers Igor as a Text-to-speech option in the Assist pipeline, so the
 add-on can do the speaking as well as the thinking and the listening. Text is
-posted to the MaDo server's synthesis endpoint, which returns MP3.
+posted to the Igor server's synthesis endpoint, which returns MP3.
 
 The entity exists only when the server reports synthesis is switched on (see
 async_setup_entry in __init__.py) — an entity that answered every request with
@@ -27,7 +27,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import MaDoConfigEntry
+from . import IgorConfigEntry
 from .const import (
     API_TTS_ENDPOINT,
     TTS_DEFAULT_LANGUAGE,
@@ -41,20 +41,20 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: MaDoConfigEntry,
+    config_entry: IgorConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the MaDo text-to-speech entity from a config entry."""
-    async_add_entities([MaDoTtsEntity(hass, config_entry)])
+    """Set up the Igor text-to-speech entity from a config entry."""
+    async_add_entities([IgorTtsEntity(hass, config_entry)])
 
 
-class MaDoTtsEntity(tts.TextToSpeechEntity):
-    """MaDo text-to-speech provider."""
+class IgorTtsEntity(tts.TextToSpeechEntity):
+    """Igor text-to-speech provider."""
 
     _attr_has_entity_name = True
     _attr_name = "Text-to-speech"
 
-    def __init__(self, hass: HomeAssistant, entry: MaDoConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: IgorConfigEntry) -> None:
         """Initialize the text-to-speech entity."""
         self.hass = hass
         self.entry = entry
@@ -63,8 +63,8 @@ class MaDoTtsEntity(tts.TextToSpeechEntity):
         self._attr_unique_id = f"{entry.entry_id}_tts"
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(entry.domain, entry.entry_id)},
-            name="MaDo",
-            manufacturer="MaDo",
+            name="Igor",
+            manufacturer="Igor",
             model="AI Assistant",
             entry_type=dr.DeviceEntryType.SERVICE,
         )
@@ -128,14 +128,14 @@ class MaDoTtsEntity(tts.TextToSpeechEntity):
                 if response.status != 200:
                     body = await response.text()
                     _LOGGER.error(
-                        "MaDo synthesis failed: HTTP %s — %s",
+                        "Igor synthesis failed: HTTP %s — %s",
                         response.status,
                         body[:200],
                     )
                     return None, None
                 audio = await response.read()
         except (aiohttp.ClientError, TimeoutError) as err:
-            _LOGGER.error("Couldn't reach the MaDo server to speak: %s", err)
+            _LOGGER.error("Couldn't reach the Igor server to speak: %s", err)
             return None, None
 
         if not audio:

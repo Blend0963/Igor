@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start mado-ear from its virtual environment, with the CUDA libraries that
+# Start igor-ear from its virtual environment, with the CUDA libraries that
 # pip installed on the library path (CTranslate2 looks for them there).
 APP=$(cd "$(dirname "$0")" && pwd)
 PY="$APP/venv/bin/python"
@@ -15,4 +15,4 @@ for name in ("nvidia.cublas.lib", "nvidia.cudnn.lib"):
 print(":".join(dirs))
 ' 2>/dev/null)
 [ -n "$LIBS" ] && export LD_LIBRARY_PATH="$LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-cd "$APP" && exec "$PY" -m mado_ear "$@"
+cd "$APP" && exec "$PY" -m igor_ear "$@"

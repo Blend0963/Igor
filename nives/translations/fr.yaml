@@ -2,8 +2,8 @@ configuration:
   byok:
     name: "Votre propre clé (BYOK)"
     description: >-
-      Le fournisseur d'IA et la clé API que MaDo utilise. Le modèle doit savoir
-      appeler des outils (function calling) : c'est ainsi que MaDo pilote la
+      Le fournisseur d'IA et la clé API qu'Igor utilise. Le modèle doit savoir
+      appeler des outils (function calling) : c'est ainsi qu'Igor pilote la
       maison.
     fields:
       provider:
@@ -38,7 +38,7 @@ configuration:
     name: Personnalité (prompt commun)
     description: >-
       La personnalité de l'assistant, valable partout. Ce texte remplace la
-      présentation par défaut de MaDo : une phrase qui dit qui il est suffit.
+      présentation par défaut d'Igor : une phrase qui dit qui il est suffit.
       Pris en compte au redémarrage de l'add-on. Les deux champs suivants
       s'ajoutent à celui-ci pour un seul type de conversation.
   custom_prompt_voice:
@@ -51,13 +51,13 @@ configuration:
   custom_prompt_thread:
     name: Personnalité — fils de discussion
     description: >-
-      Ajouté après le prompt commun, seulement dans les fils du panneau MaDo,
+      Ajouté après le prompt commun, seulement dans les fils du panneau Igor,
       lus à l'écran : Markdown, blocs de code et réponses plus longues y sont
       bienvenus.
   assist_mode:
     name: Mode Assist
     description: >-
-      Comment MaDo traite les demandes Assist. « auto » (par défaut) : seules
+      Comment Igor traite les demandes Assist. « auto » (par défaut) : seules
       les enceintes vocales comptent comme parlées, car Home Assistant ne dit
       pas si vous avez parlé dans l'application du téléphone. « voice » : toute
       demande Assist est traitée comme parlée (le bon choix si vous parlez à
@@ -66,9 +66,9 @@ configuration:
   memory_token_limit:
     name: Budget mémoire (tokens)
     description: >-
-      Quelle part de ce que MaDo sait sur vous est envoyée avec chaque demande,
+      Quelle part de ce qu'Igor sait sur vous est envoyée avec chaque demande,
       les souvenirs les plus utiles d'abord. Chaque demande la paie : plus bas
-      = moins cher, mais MaDo se souvient de moins de choses à la fois. Vide =
+      = moins cher, mais Igor se souvient de moins de choses à la fois. Vide =
       1500, soit quelques dizaines de souvenirs.
   thread_memory:
     name: Mémoire des fils
@@ -82,7 +82,7 @@ configuration:
     description: >-
       Transcription du bouton 🎤 du panneau, par Voxtral de Mistral. « auto »
       (par défaut) : actif dès qu'une clé Mistral existe. « off » : pas de
-      micro. Actif, MaDo est aussi proposé comme moteur de reconnaissance
+      micro. Actif, Igor est aussi proposé comme moteur de reconnaissance
       vocale dans les assistants vocaux de Home Assistant.
   thread_reasoning:
     name: Réflexion dans les fils
@@ -94,8 +94,8 @@ configuration:
   text_to_speech:
     name: Voix (Voxtral)
     description: >-
-      « mistral » donne une voix à MaDo avec Voxtral de Mistral (clé Mistral
-      nécessaire) : un bouton 🔊 sous chaque réponse du panneau, et MaDo
+      « mistral » donne une voix à Igor avec Voxtral de Mistral (clé Mistral
+      nécessaire) : un bouton 🔊 sous chaque réponse du panneau, et Igor
       proposé comme voix dans les assistants vocaux de Home Assistant. Vide
       ou « off » : pas de voix.
   tts_voice:
@@ -107,7 +107,7 @@ configuration:
     name: Bibliothèques de documents Mistral
     description: >-
       Identifiants, séparés par des virgules, des bibliothèques de documents
-      Mistral (Le Chat → Bibliothèques) que MaDo peut consulter : notices,
+      Mistral (Le Chat → Bibliothèques) qu'Igor peut consulter : notices,
       factures, contrats. Active l'outil search_documents, dans Assist et dans
       les fils.
   mistral_connectors:
@@ -115,7 +115,7 @@ configuration:
     description: >-
       Noms ou identifiants, séparés par des virgules, des connecteurs
       configurés dans votre compte Mistral (Gmail, agenda, GitHub, Notion…).
-      Active l'outil use_connector dans les fils. MaDo demande confirmation
+      Active l'outil use_connector dans les fils. Igor demande confirmation
       avant tout ce qui envoie, réserve ou supprime.
   ocr_price_per_1000_pages:
     name: Prix de l'OCR (pour 1000 pages)
@@ -146,7 +146,7 @@ configuration:
     name: Heure du résumé du matin
     description: >-
       HH:MM, heure de la maison (par exemple 07:30). Chaque jour à cette heure,
-      MaDo écrit un court résumé (météo, températures intérieures,
+      Igor écrit un court résumé (météo, températures intérieures,
       consommation de la veille, ce qui sort de l'ordinaire), l'envoie en
       notification et le garde dans le fil « Résumé du matin ». Chaque résumé
       coûte une requête. Vide = pas de résumé.
@@ -154,7 +154,7 @@ configuration:
     name: Contenu du résumé du matin
     description: >-
       Ce que doit contenir le résumé du matin, écrit comme vous le demanderiez
-      à MaDo. Vide = le résumé par défaut.
+      à Igor. Vide = le résumé par défaut.
   model_prices:
     name: Prix des modèles (compteur de coûts)
     description: >-
@@ -165,7 +165,7 @@ configuration:
   config_edits:
     name: Modifications de la configuration
     description: >-
-      Jusqu'où MaDo peut modifier la configuration de Home Assistant. « off » :
+      Jusqu'où Igor peut modifier la configuration de Home Assistant. « off » :
       lecture seule (il lit automatisations, scripts et YAML et propose des
       changements). « automations » (par défaut) : il crée, modifie et
       supprime des automatisations, chaque fois avec aperçu et confirmation.
@@ -180,13 +180,13 @@ configuration:
     description: >-
       Activez puis redémarrez l'add-on pour remplacer le token API (si vous
       pensez qu'il a fuité). L'option se désactive d'elle-même. Redémarrez
-      ensuite Home Assistant une fois pour que l'intégration MaDo prenne le
+      ensuite Home Assistant une fois pour que l'intégration Igor prenne le
       nouveau token, et recopiez la nouvelle clé (🔑 dans le panneau) dans
       l'application installée si vous l'utilisez.
   house_watch:
     name: Veille de la maison
     description: >-
-      MaDo vous prévient quand quelque chose cloche, par le service de
+      Igor vous prévient quand quelque chose cloche, par le service de
       notification ci-dessus : fuite d'eau, fumée, fenêtre ouverte depuis une
       demi-heure, batterie faible, appareil qui ne répond plus, automatisation
       en échec, lumières allumées alors que tout le monde est sorti. Les
@@ -207,14 +207,14 @@ configuration:
   watch_lively_time:
     name: Heure du conseil du jour
     description: >-
-      HH:MM. Une fois par jour à partir de cette heure, MaDo regarde la météo et
+      HH:MM. Une fois par jour à partir de cette heure, Igor regarde la météo et
       la maison et vous écrit seulement s'il y a quelque chose de vraiment
       utile (« gel cette nuit et la fenêtre du garage est ouverte »). Une
       requête bon marché par jour. Vide = jamais.
   max_output_tokens:
     name: Longueur maximale d'une réponse
     description: >-
-      La place d'une réponse écrite, en tokens. Vide = MaDo choisit. À
+      La place d'une réponse écrite, en tokens. Vide = Igor choisit. À
       augmenter si de longues réponses s'arrêtent avant la fin. Les réponses
       parlées ne sont pas concernées.
   reasoning_effort:
@@ -235,7 +235,7 @@ configuration:
   extraction_gate:
     name: Éviter les relectures mémoire inutiles
     description: >-
-      Actif par défaut. Après chaque échange, MaDo vérifie si votre message
+      Actif par défaut. Après chaque échange, Igor vérifie si votre message
       pouvait lui apprendre quelque chose. Un ordre seul (« éteins la
       cuisine »), une simple question ou un « oui » / « merci » n'apprennent
       rien : la relecture mémoire est sautée et cet appel n'est pas payé. Tout
@@ -245,17 +245,17 @@ configuration:
   layout_from_exposed:
     name: Plan de la maison depuis les entités exposées
     description: >-
-      Actif par défaut. Le plan de la maison que MaDo garde en tête liste les
+      Actif par défaut. Le plan de la maison qu'Igor garde en tête liste les
       entités exposées à Assist (Paramètres → Assistants vocaux → Exposer),
       comme l'assistant de Home Assistant. Désactivé, les entités sont choisies
       par type.
   tools_from_exposed:
-    name: Limiter MaDo aux entités exposées
+    name: Limiter Igor aux entités exposées
     description: >-
-      Actif par défaut. MaDo ne peut lire et piloter que les entités exposées
+      Actif par défaut. Igor ne peut lire et piloter que les entités exposées
       à Assist, comme l'assistant de Home Assistant. Une entité exposée
-      pendant que MaDo tourne est prise en compte sous 30 minutes, ou tout de
-      suite après un redémarrage. Désactivé, MaDo peut atteindre toute la
+      pendant qu'Igor tourne est prise en compte sous 30 minutes, ou tout de
+      suite après un redémarrage. Désactivé, Igor peut atteindre toute la
       maison.
   layout_domains:
     name: Types d'entités du plan
@@ -269,4 +269,4 @@ configuration:
     description: >-
       Détail du journal de l'add-on. « debug » pour chercher un problème.
 network:
-  3100/tcp: "Application MaDo (PWA) : à ouvrir seulement pour servir l'application derrière votre propre proxy HTTPS"
+  3100/tcp: "Application Igor (PWA) : à ouvrir seulement pour servir l'application derrière votre propre proxy HTTPS"

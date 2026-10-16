@@ -37,7 +37,7 @@ SHODH_KEY=$(cat /data/.shodh_key)
 # there is nothing for the user to copy or configure.
 if [ ! -f /data/.api_token ]; then
     openssl rand -hex 32 > /data/.api_token
-    echo "[init] Generated a new API token for the MaDo server"
+    echo "[init] Generated a new API token for the Igor server"
 fi
 
 # "Regenerate the API token" (option rotate_api_token): a new token once per
@@ -52,7 +52,7 @@ if [ "$(jq -r '.rotate_api_token // false' /data/options.json 2>/dev/null)" = "t
         touch "$ROTATED_MARKER"
         ROTATE_TOKEN=true
         echo "[init] API token regenerated (rotate_api_token). Restart Home Assistant"
-        echo "[init]          once so the MaDo integration picks up the new one."
+        echo "[init]          once so the Igor integration picks up the new one."
     fi
 else
     rm -f "$ROTATED_MARKER"
@@ -231,7 +231,7 @@ else
     write_env "API_AUTH_GRACE" "true"
     if hand_over_token; then
         echo "[init] API authentication enabled; Home Assistant Core may call without"
-        echo "[init]          the token until the MaDo integration confirms it has it"
+        echo "[init]          the token until the Igor integration confirms it has it"
         echo "[init]          (normal right after an update or a token rotation)."
     else
         echo "[init] WARNING: could not write ${TOKEN_HANDOFF}. API authentication is"

@@ -1,4 +1,4 @@
-"""MaDo integration for Home Assistant."""
+"""Igor integration for Home Assistant."""
 from __future__ import annotations
 
 import asyncio
@@ -77,7 +77,7 @@ def _read_token_file(path: str) -> str | None:
     except FileNotFoundError:
         return None
     except OSError as err:
-        _LOGGER.warning("Could not read the MaDo API token at %s: %s", path, err)
+        _LOGGER.warning("Could not read the Igor API token at %s: %s", path, err)
         return None
 
 
@@ -90,7 +90,7 @@ def _write_token_ack(path: str, token: str) -> None:
             handle.write("v2:" + hashlib.sha256(token.encode()).hexdigest())
     except OSError as err:
         # Not fatal: the add-on simply keeps auth switched off.
-        _LOGGER.warning("Could not confirm the MaDo API token at %s: %s", path, err)
+        _LOGGER.warning("Could not confirm the Igor API token at %s: %s", path, err)
 
 
 async def _async_resolve_token(
@@ -100,7 +100,7 @@ async def _async_resolve_token(
 
     The file the add-on writes wins over anything stored in the entry, so
     rotating the token only takes a restart. The entry value remains the
-    fallback for setups where the integration talks to a MaDo server it does
+    fallback for setups where the integration talks to an Igor server it does
     not share a filesystem with (manual install against a remote add-on).
     """
     token = await hass.async_add_executor_job(
@@ -116,7 +116,7 @@ async def _async_resolve_token(
         await hass.async_add_executor_job(
             _write_token_ack, hass.config.path(TOKEN_ACK_RELPATH), token
         )
-        _LOGGER.info("Using the MaDo API token handed over by the add-on")
+        _LOGGER.info("Using the Igor API token handed over by the add-on")
         return token
 
     entry_token = entry.data.get(CONF_API_TOKEN, "").strip() or None
@@ -182,7 +182,7 @@ async def _async_setup_update_watch(hass: HomeAssistant, entry: ConfigEntry) -> 
 
 
 async def _async_setup_capability_watch(
-    hass: HomeAssistant, entry: MaDoConfigEntry
+    hass: HomeAssistant, entry: IgorConfigEntry
 ) -> None:
     """Reload the entry when the server's listening or speaking settings change.
 
@@ -206,7 +206,7 @@ async def _async_setup_capability_watch(
             and caps["tts_language"] == data.tts_language
         ):
             return
-        _LOGGER.info("MaDo voice capabilities changed; reloading")
+        _LOGGER.info("Igor voice capabilities changed; reloading")
         hass.config_entries.async_schedule_reload(entry.entry_id)
 
     entry.async_on_unload(
@@ -245,7 +245,7 @@ async def _async_setup_frontend(hass: HomeAssistant) -> str | None:
     """Serve the wall-tablet script and add it to every Home Assistant page.
 
     It is loaded everywhere but does nothing until switched on for a device
-    (frontend/mado-tablet.js). The version in the URL makes each update load
+    (frontend/igor-tablet.js). The version in the URL makes each update load
     fresh instead of from the browser cache. Served once per Core run: a
     static path cannot be registered twice, while the page script is added
     and removed with the entry. Returns the script's URL, or None when the
@@ -302,10 +302,10 @@ async def _async_server_capabilities(hass: HomeAssistant, api_url: str) -> dict:
     }
 
 
-async def _async_merge_memory(hass: HomeAssistant, entry: MaDoConfigEntry) -> None:
+async def _async_merge_memory(hass: HomeAssistant, entry: IgorConfigEntry) -> None:
     """Copy facts older versions wrote into per-user memories into the shared one.
 
-    Before 2.7.0 every Home Assistant user who spoke to MaDo from the
+    Before 2.7.0 every Home Assistant user who spoke to Igor from the
     dashboard or the app got a memory of their own, separate from the one
     voice satellites used (nives#65). Switching everyone to one memory without
     this would make those facts look forgotten, which is the very failure
@@ -326,7 +326,7 @@ async def _async_merge_memory(hass: HomeAssistant, entry: MaDoConfigEntry) -> No
                 if response.status != 200:
                     _LOGGER.warning(
                         "Could not merge older memories into the shared memory: "
-                        "the MaDo server answered HTTP %s: %s",
+                        "the Igor server answered HTTP %s: %s",
                         response.status,
                         (await response.text())[:300],
                     )
@@ -334,7 +334,7 @@ async def _async_merge_memory(hass: HomeAssistant, entry: MaDoConfigEntry) -> No
                 result = await response.json()
         except (aiohttp.ClientError, TimeoutError) as err:
             _LOGGER.debug(
-                "Memory merge attempt %s/%s could not reach the MaDo server: %s",
+                "Memory merge attempt %s/%s could not reach the Igor server: %s",
                 attempt, MERGE_ATTEMPTS, err,
             )
             if attempt < MERGE_ATTEMPTS:
@@ -347,8 +347,8 @@ async def _async_merge_memory(hass: HomeAssistant, entry: MaDoConfigEntry) -> No
             )
         return
     _LOGGER.warning(
-        "Could not reach the MaDo server to merge older memories into the shared "
-        "memory. MaDo will try again the next time it is loaded."
+        "Could not reach the Igor server to merge older memories into the shared "
+        "memory. Igor will try again the next time it is loaded."
     )
 
 
@@ -359,8 +359,8 @@ def _base_language(language: str) -> str | None:
 
 
 @dataclass
-class MaDoData:
-    """Runtime data for a MaDo config entry."""
+class IgorData:
+    """Runtime data for an Igor config entry."""
 
     api_url: str
     api_token: str | None
@@ -382,11 +382,11 @@ class MaDoData:
     frontend_url: str | None = None
 
 
-type MaDoConfigEntry = ConfigEntry[MaDoData]
+type IgorConfigEntry = ConfigEntry[IgorData]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: MaDoConfigEntry) -> bool:
-    """Set up MaDo from a config entry."""
+async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool:
+    """Set up Igor from a config entry."""
     api_url = entry.data.get(CONF_API_URL, "").rstrip("/")
     caps = await _async_server_capabilities(hass, api_url)
     # The options flow writes entry.options; entry.data holds what the entry
@@ -394,7 +394,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MaDoConfigEntry) -> bool
     settings = {**entry.data, **entry.options}
     voice_display = bool(settings.get(CONF_VOICE_DISPLAY, DEFAULT_VOICE_DISPLAY))
     platforms = _get_platforms(caps["stt"], caps["tts"], voice_display)
-    entry.runtime_data = MaDoData(
+    entry.runtime_data = IgorData(
         api_url=api_url,
         api_token=await _async_resolve_token(hass, entry),
         user_id=str(settings.get(CONF_USER_ID) or "").strip() or DEFAULT_USER_ID,
@@ -416,13 +416,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: MaDoConfigEntry) -> bool
     return True
 
 
-async def _async_update_listener(hass: HomeAssistant, entry: MaDoConfigEntry) -> None:
+async def _async_update_listener(hass: HomeAssistant, entry: IgorConfigEntry) -> None:
     """Reload the config entry when options change, so a changed memory
     setting applies at once (and runs the merge when shared memory is on)."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: MaDoConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool:
     """Unload a config entry."""
     platforms = getattr(entry.runtime_data, "platforms", None) or _get_platforms()
     url = getattr(entry.runtime_data, "frontend_url", None)

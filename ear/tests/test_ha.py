@@ -9,7 +9,7 @@ import pytest
 websockets = pytest.importorskip("websockets")
 from websockets.sync.server import serve  # noqa: E402
 
-from mado_ear import ha  # noqa: E402
+from igor_ear import ha  # noqa: E402
 
 TOKEN = "secret"
 received = {"audio": b"", "run": None, "announce": None}
@@ -29,7 +29,7 @@ def handler(ws):
             if len(raw) == 1:  # end of audio
                 for event in [
                     {"type": "stt-start", "data": {}},
-                    {"type": "stt-end", "data": {"stt_output": {"text": "Madou éteins la lumière"}}},
+                    {"type": "stt-end", "data": {"stt_output": {"text": "Igor éteins la lumière"}}},
                     {"type": "intent-end", "data": {"intent_output": {
                         "conversation_id": "conv-9", "continue_conversation": True,
                         "response": {"speech": {"plain": {"speech": "C'est fait. Autre chose ?"}}}}}},
@@ -95,7 +95,7 @@ def test_pipeline_sends_audio_and_reads_answer(server):
     assert run["start_stage"] == "stt" and run["end_stage"] == "intent"
     assert run["input"] == {"sample_rate": 16000, "no_vad": True}
     assert run["device_id"] == "dev-42" and run["pipeline"] == "p1" and run["conversation_id"] == "c0"
-    assert r.heard == "Madou éteins la lumière"
+    assert r.heard == "Igor éteins la lumière"
     assert r.speech == "C'est fait. Autre chose ?"
     assert r.conversation_id == "conv-9" and r.continue_conversation and not r.error
 

@@ -55,7 +55,7 @@ describe("Scheduler", () => {
     await scheduler.add({ userId: "u", kind: "task", text: "bilan énergie", schedule: { type: "daily", time: "18:00" } });
     await scheduler.tick(new Date(Date.now() + 2 * 864e5));
     expect(llm.chat).toHaveBeenCalledWith(expect.objectContaining({ message: "[Tâche programmée] bilan énergie", conversationId: TASKS_THREAD }));
-    expect(notify).toHaveBeenCalledWith("MaDo", "Il fait beau.");
+    expect(notify).toHaveBeenCalledWith("Igor", "Il fait beau.");
     expect(scheduler.list("u")).toHaveLength(1);
   });
 
@@ -150,7 +150,7 @@ describe("notify_when conditions", () => {
   it("caps notifications the model sends", async () => {
     const notify = vi.fn().mockResolvedValue(undefined);
     const scheduler = new Scheduler({ llm: { chat: vi.fn() } as unknown as IChatEngine, notify, timeZone: async () => TZ });
-    for (let i = 0; i < 20; i++) await scheduler.notifyNow("MaDo", "m" + i);
-    await expect(scheduler.notifyNow("MaDo", "trop")).rejects.toThrow(/Too many/);
+    for (let i = 0; i < 20; i++) await scheduler.notifyNow("Igor", "m" + i);
+    await expect(scheduler.notifyNow("Igor", "trop")).rejects.toThrow(/Too many/);
   });
 });

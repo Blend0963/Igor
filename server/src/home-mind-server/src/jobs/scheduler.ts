@@ -5,7 +5,7 @@
  *
  * - A reminder is a fixed text: at its time it is sent as a notification and
  *   written into the "Rappels et tâches" thread. No model call, no cost.
- * - A task is a request MaDo runs at its time, like a message typed in a
+ * - A task is a request Igor runs at its time, like a message typed in a
  *   thread; its answer goes to that thread and, shortened, to the phone.
  *
  * Times are the house's local time (Home Assistant's time zone). Kept in a
@@ -462,7 +462,7 @@ export class Scheduler {
     });
     await this.ensureTitle(thread, task.userId, task.builtin ? "Résumé du matin" : "Rappels et tâches");
     if (response.response.trim()) {
-      await this.deps.notify(task.builtin ? "☀️ Résumé du matin" : "MaDo", notificationText(response.response));
+      await this.deps.notify(task.builtin ? "☀️ Résumé du matin" : "Igor", notificationText(response.response));
     }
   }
 

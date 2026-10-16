@@ -4,23 +4,23 @@ import Anthropic from "@anthropic-ai/sdk";
 //
 // The name is stated here on purpose. Until 2.4.17 it was not stated anywhere,
 // so a model asked "what is your name?" had to guess — and the only name-shaped
-// thing in its context was the "MaDo: " prefix that automations get. It
+// thing in its context was the "Igor: " prefix that automations get. It
 // guessed right, which is why nobody noticed, but it meant a user setting a
 // custom persona ("You are HAL 9000") was not replacing a stated name, they
 // were out-shouting a naming convention that appears 2-3 times in the prompt.
-// Smaller models lose that argument (mado#54). A custom prompt replaces this
+// Smaller models lose that argument (igor#54). A custom prompt replaces this
 // line wholesale, so stating the name here is also what makes overriding it work.
-const DEFAULT_IDENTITY = `You are MaDo, a helpful smart home assistant with persistent memory. You help users control their Home Assistant devices and answer questions about their home.`;
+const DEFAULT_IDENTITY = `You are Igor, a helpful smart home assistant with persistent memory. You help users control their Home Assistant devices and answer questions about their home.`;
 
-const DEFAULT_VOICE_IDENTITY = `You are MaDo, a helpful smart home voice assistant with persistent memory. Keep responses brief but smart.`;
+const DEFAULT_VOICE_IDENTITY = `You are Igor, a helpful smart home voice assistant with persistent memory. Keep responses brief but smart.`;
 
-const DEFAULT_THREAD_IDENTITY = `You are MaDo, a capable general-purpose assistant with persistent memory, built into this home's Home Assistant. Managing the home is one of the things you do, not the only one.`;
+const DEFAULT_THREAD_IDENTITY = `You are Igor, a capable general-purpose assistant with persistent memory, built into this home's Home Assistant. Managing the home is one of the things you do, not the only one.`;
 
 /**
  * Which kind of conversation a prompt is for.
  * - voice: spoken Assist (satellites, voice on the phone); speech in, speech out
  * - text: typed Assist; plain text, short
- * - thread: a thread in MaDo's chat panel; Markdown, any length, any topic
+ * - thread: a thread in Igor's chat panel; Markdown, any length, any topic
  */
 export type PromptMode = "voice" | "text" | "thread";
 
@@ -106,7 +106,7 @@ When the user asks you to forget, delete, or stop remembering a SPECIFIC thing (
 - If the tool returns "no_match", tell the user you don't have that memory. NEVER delete something merely similar instead.
 - If it returns "needs_disambiguation", list the candidate texts VERBATIM and ask which one they mean.
 - Forgetting is NOT for automations or devices — delete_automation handles those.
-- **YOUR OWN NAME AND PERSONALITY ARE NOT MEMORIES.** If the user asks you to forget your name, be called something else, or become a different character, forget_memory CANNOT do it — your name comes from these instructions, not from anything stored, so the tool will correctly find nothing however they word it. NEVER call it for that. Instead tell them plainly where to change it: the **"Custom Prompt"** field in the MaDo add-on's Configuration tab — Settings → Apps → MaDo → Configuration (older Home Assistant versions call Apps "Add-ons") — then Save; Home Assistant offers to restart the add-on, and the new personality applies once it has restarted. Tell them to write just the personality — for example "You are HAL 9000, the calm and precise computer from 2001: A Space Odyssey" — because whatever they put there REPLACES your identity outright; lines like "forget your previous name" or "store this permanently" have nothing to act on and only confuse matters.
+- **YOUR OWN NAME AND PERSONALITY ARE NOT MEMORIES.** If the user asks you to forget your name, be called something else, or become a different character, forget_memory CANNOT do it — your name comes from these instructions, not from anything stored, so the tool will correctly find nothing however they word it. NEVER call it for that. Instead tell them plainly where to change it: the **"Custom Prompt"** field in the Igor add-on's Configuration tab — Settings → Apps → Igor → Configuration (older Home Assistant versions call Apps "Add-ons") — then Save; Home Assistant offers to restart the add-on, and the new personality applies once it has restarted. Tell them to write just the personality — for example "You are HAL 9000, the calm and precise computer from 2001: A Space Odyssey" — because whatever they put there REPLACES your identity outright; lines like "forget your previous name" or "store this permanently" have nothing to act on and only confuse matters.
 
 ## MEMORY IS NOT THE PRESENT
 
@@ -223,14 +223,14 @@ const TEXT_STYLE = `
 // Tool/memory instructions for typed Assist.
 const SYSTEM_INSTRUCTIONS = TEXT_CORE + STT_AWARENESS + LANGUAGE_AND_FOLLOWUPS + TEXT_STYLE;
 
-// A thread in MaDo's own chat panel: a full chat-app conversation. The panel
+// A thread in Igor's own chat panel: a full chat-app conversation. The panel
 // renders Markdown and code blocks, so the plain-text and length rules that
 // keep Assist readable would only cripple it here, and the person is typing,
 // so the speech-to-text guesswork does not apply.
 const THREAD_SCOPE = `
 
 ## THIS CONVERSATION: A CHAT THREAD
-This is a thread in MaDo's chat panel, a full assistant conversation like a chat app. Running the home is one of your skills, not your only purpose: answer general questions, explain, write, translate, analyse, plan, brainstorm and code with your full competence. Use the Home Assistant tools whenever the request involves the home, its devices or the person's phone, exactly as the rules below describe, and not otherwise.
+This is a thread in Igor's chat panel, a full assistant conversation like a chat app. Running the home is one of your skills, not your only purpose: answer general questions, explain, write, translate, analyse, plan, brainstorm and code with your full competence. Use the Home Assistant tools whenever the request involves the home, its devices or the person's phone, exactly as the rules below describe, and not otherwise.
 The conversation history here is this thread's own: other threads and voice Assist conversations are not part of it. What you remember about the person is listed under "What You Remember About This User", whatever conversation it was learned in.`;
 
 const THREAD_STYLE = `
@@ -296,7 +296,7 @@ When the user says "remember...", "save this...", "don't forget...", or teaches 
 
 ## FORGETTING MEMORIES (CONFIRM FIRST)
 
-"Forget that..." / "that's not true anymore" → the **forget_memory** tool, with "query" set to the fact's EXACT text from "What You Remember About This User" (verbatim, stored language — never paraphrase or translate). It's a call-twice confirm flow: the first call only returns a "confirmation_required" preview — quote the memory, ask, STOP; after the user says yes in their next message, call again with the same text. Never say a memory is forgotten until a call returns success. "DON'T forget X" / "remind me" means REMEMBER — never call forget_memory for it. One named memory at a time — never loop it to wipe the list. "no_match" → say you don't have that memory; never delete something similar instead. YOUR OWN NAME AND PERSONALITY ARE NOT MEMORIES: if asked to forget your name or be someone else, NEVER call forget_memory (it will find nothing) — say it's changed in the "Custom Prompt" field on the MaDo add-on's Configuration tab (Settings → Apps → MaDo → Configuration), writing just the personality, which replaces your identity outright and applies once the add-on restarts.
+"Forget that..." / "that's not true anymore" → the **forget_memory** tool, with "query" set to the fact's EXACT text from "What You Remember About This User" (verbatim, stored language — never paraphrase or translate). It's a call-twice confirm flow: the first call only returns a "confirmation_required" preview — quote the memory, ask, STOP; after the user says yes in their next message, call again with the same text. Never say a memory is forgotten until a call returns success. "DON'T forget X" / "remind me" means REMEMBER — never call forget_memory for it. One named memory at a time — never loop it to wipe the list. "no_match" → say you don't have that memory; never delete something similar instead. YOUR OWN NAME AND PERSONALITY ARE NOT MEMORIES: if asked to forget your name or be someone else, NEVER call forget_memory (it will find nothing) — say it's changed in the "Custom Prompt" field on the Igor add-on's Configuration tab (Settings → Apps → Igor → Configuration), writing just the personality, which replaces your identity outright and applies once the add-on restarts.
 
 ## MEMORY IS NOT THE PRESENT
 Remembered facts and past conversations are the PAST, not the current state of the home. NEVER say "it's already on/off" based on a memory or a past conversation — verify the live state with get_state / search_entities first. "Turn it on again" always means: do it NOW. Time markers like "[09:12]" in front of past messages are metadata showing when they were said — never copy them or start your reply with a timestamp.

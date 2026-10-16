@@ -16,7 +16,7 @@
 export const FAST_MAX_CHARS = 140;
 
 const COMMAND_START =
-  /^(?:(?:mado|hey mado|ok mado)[,\s]+)?(?:(?:peux[- ]tu|pourrais[- ]tu|tu peux|est[- ]ce que tu peux|merci de|stp|s'il te pla[iî]t|please|can you|could you)\s+)?(?:allume|allumer|[ée]teins|[ée]teindre|coupe|couper|ouvre|ouvrir|ferme|fermer|monte|monter|baisse|baisser|mets|mettre|r[èe]gle|r[ée]gler|lance|lancer|arr[êe]te|arr[êe]ter|active|activer|d[ée]sactive|d[ée]sactiver|d[ée]marre|d[ée]marrer|stoppe|pause|reprends|augmente|diminue|passe|tamise|verrouille|d[ée]verrouille|turn on|turn off|switch on|switch off|open|close|set|start|stop|lock|unlock|dim|raise|lower)\b/i;
+  /^(?:(?:igor|hey igor|ok igor)[,\s]+)?(?:(?:peux[- ]tu|pourrais[- ]tu|tu peux|est[- ]ce que tu peux|merci de|stp|s'il te pla[iî]t|please|can you|could you)\s+)?(?:allume|allumer|[ée]teins|[ée]teindre|coupe|couper|ouvre|ouvrir|ferme|fermer|monte|monter|baisse|baisser|mets|mettre|r[èe]gle|r[ée]gler|lance|lancer|arr[êe]te|arr[êe]ter|active|activer|d[ée]sactive|d[ée]sactiver|d[ée]marre|d[ée]marrer|stoppe|pause|reprends|augmente|diminue|passe|tamise|verrouille|d[ée]verrouille|turn on|turn off|switch on|switch off|open|close|set|start|stop|lock|unlock|dim|raise|lower)\b/i;
 
 // An order verb anywhere in the sentence, for orders that do not open with
 // it ("non, je te demandais d'éteindre les lumières", "les volets, ferme-les").

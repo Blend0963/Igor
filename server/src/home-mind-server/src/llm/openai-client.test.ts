@@ -642,7 +642,7 @@ describe("OpenAIChatEngine", () => {
     it("lets the answer through when the model says it was no order", async () => {
       const chunks: string[] = [];
       mockCreate.mockResolvedValue(reply("Bonsoir !"));
-      const r = await engine.chat({ message: "bonsoir MaDo", userId: "u" }, { onChunk: (c) => chunks.push(c) });
+      const r = await engine.chat({ message: "bonsoir Igor", userId: "u" }, { onChunk: (c) => chunks.push(c) });
       expect(mockCreate).toHaveBeenCalledTimes(1);
       expect(r.response).toBe("Bonsoir !");
       expect(chunks.join("")).toBe("Bonsoir !");
@@ -1149,7 +1149,7 @@ describe("OpenAIChatEngine", () => {
     const systemMsg = createCall.messages[0];
     expect(systemMsg.role).toBe("system");
     expect(systemMsg.content).toMatch(/^You are Ava, a sarcastic AI\./);
-    expect(systemMsg.content).not.toContain("You are MaDo, a helpful smart home assistant");
+    expect(systemMsg.content).not.toContain("You are Igor, a helpful smart home assistant");
   });
 
   it("uses default identity when customPrompt absent", async () => {
@@ -1164,7 +1164,7 @@ describe("OpenAIChatEngine", () => {
 
     const createCall = mockCreate.mock.calls[0][0];
     const systemMsg = createCall.messages[0];
-    expect(systemMsg.content).toContain("You are MaDo, a helpful smart home assistant");
+    expect(systemMsg.content).toContain("You are Igor, a helpful smart home assistant");
   });
 
   it("returns factsLearned as 0", async () => {

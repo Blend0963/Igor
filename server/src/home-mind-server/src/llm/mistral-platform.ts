@@ -1,6 +1,6 @@
 /**
  * Mistral's built-in tools, reached the way web_search already is: one
- * `/v1/conversations` call that carries the tool, separate from MaDo's own
+ * `/v1/conversations` call that carries the tool, separate from Igor's own
  * chat loop, so the Home Assistant tools and the conversation stay ours.
  *
  * - code_interpreter: Python in Mistral's sandbox (exact maths, data

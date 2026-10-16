@@ -47,7 +47,7 @@ describe("describePersonaSource", () => {
 });
 
 describe("resolveChatStyle", () => {
-  const COMMON = "Tu es Mado.";
+  const COMMON = "Tu es Igor.";
   const personas = { voice: "Style vocal.", thread: "Style écrit." };
 
   it("runs a chat-panel thread in thread mode with the common + thread persona", () => {
@@ -56,17 +56,17 @@ describe("resolveChatStyle", () => {
       COMMON,
       { ...personas, assistMode: "voice" }
     );
-    expect(style).toEqual({ isVoice: false, mode: "thread", customPrompt: "Tu es Mado.\n\nStyle écrit." });
+    expect(style).toEqual({ isVoice: false, mode: "thread", customPrompt: "Tu es Igor.\n\nStyle écrit." });
   });
 
   it("trusts the integration in auto mode", () => {
     expect(resolveChatStyle({ isVoice: true }, COMMON, personas)).toMatchObject({
       mode: "voice",
-      customPrompt: "Tu es Mado.\n\nStyle vocal.",
+      customPrompt: "Tu es Igor.\n\nStyle vocal.",
     });
     expect(resolveChatStyle({ isVoice: false }, COMMON, personas)).toMatchObject({
       mode: "text",
-      customPrompt: "Tu es Mado.",
+      customPrompt: "Tu es Igor.",
     });
   });
 

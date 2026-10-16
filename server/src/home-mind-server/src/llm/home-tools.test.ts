@@ -63,7 +63,7 @@ describe("home tools", () => {
     expect(made.when).toMatch(/^\w+ \d+ \w+ \d{4} à \d{2}:\d{2}$/u);
   });
 
-  it("watches an entity for notify_when, refusing what MaDo may not see", async () => {
+  it("watches an entity for notify_when, refusing what Igor may not see", async () => {
     const scheduler = new Scheduler({ llm: {} as IChatEngine, notify: vi.fn(), timeZone: async () => "Europe/Paris", readState: async () => "900" });
     setScheduler(scheduler);
     const ha = { getState: vi.fn().mockResolvedValue({ state: "900" }) } as unknown as HomeAssistantClient;

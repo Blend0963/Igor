@@ -1,6 +1,6 @@
 {
   "domain": "nives",
-  "name": "MaDo",
+  "name": "Igor",
   "codeowners": [
     "@Blend0963"
   ],
@@ -22,5 +22,5 @@
   "requirements": [
     "aiohttp>=3.8.0"
   ],
-  "version": "0.1.7"
+  "version": "0.1.9"
 }

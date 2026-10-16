@@ -8,8 +8,8 @@ describe("withPromptCacheKey", () => {
 
   it("sends the key to Mistral", async () => {
     const send = vi.fn().mockResolvedValue("ok");
-    await withPromptCacheKey("mistral-large-latest", "mado:voice:default", send, MISTRAL);
-    expect(send).toHaveBeenCalledWith({ prompt_cache_key: "mado:voice:default" });
+    await withPromptCacheKey("mistral-large-latest", "igor:voice:default", send, MISTRAL);
+    expect(send).toHaveBeenCalledWith({ prompt_cache_key: "igor:voice:default" });
   });
 
   it("never sends it anywhere else, or without a key", async () => {

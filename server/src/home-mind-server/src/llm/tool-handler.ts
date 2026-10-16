@@ -40,6 +40,12 @@ import { getMediaStore, mediaLink } from "./media-store.js";
  * writes `suppressExtraction` back onto it, and a fresh literal per call would
  * silently drop the flag.
  */
+
+/** "Igor: " in front of an automation's name, once. Automations made before
+ *  the rename carry "MaDo: ", which is replaced rather than kept beside it. */
+export function withIgorPrefix(alias: string): string {
+  return `Igor: ${alias.replace(/^\s*(?:igor|mado)\s*:\s*/i, "")}`;
+}
 export interface ToolContext {
   conversationId?: string;
   /** A nonce unique to this assistant turn (one per chat() call). */
@@ -230,7 +236,7 @@ export async function handleToolCall(
       case "web_search": {
         const apiKey = process.env.MISTRAL_API_KEY;
         if (!apiKey) {
-          result = { error: "Mistral web search is not configured. Add a Mistral API key in the MaDo add-on configuration." };
+          result = { error: "Mistral web search is not configured. Add a Mistral API key in the Igor add-on configuration." };
           break;
         }
         const query = typeof input.query === "string" ? input.query.trim().slice(0, 500) : "";
@@ -241,7 +247,7 @@ export async function handleToolCall(
         try {
           // Mistral's built-in web_search is available through Conversations,
           // not Chat Completions. Use a dedicated search call so the existing
-          // MaDo model/tool loop and Home Assistant tools remain intact.
+          // Igor model/tool loop and Home Assistant tools remain intact.
           const response = await fetch("https://api.mistral.ai/v1/conversations", {
             method: "POST",
             headers: {
@@ -360,8 +366,8 @@ export async function handleToolCall(
           break;
         }
 
-        // Enforce the "MaDo: " alias prefix idempotently (don't double-prefix).
-        const prefixedAlias = /^mado:\s*/i.test(alias) ? alias : `MaDo: ${alias}`;
+        // Enforce the "Igor: " alias prefix idempotently (don't double-prefix).
+        const prefixedAlias = withIgorPrefix(alias);
         const created = await ha.createAutomation({
           alias: prefixedAlias,
           trigger: input.trigger,
@@ -453,7 +459,7 @@ export async function handleToolCall(
         const changes: Partial<AutomationConfig> = {};
         if (input.alias !== undefined) {
           const a = (input.alias as string).trim();
-          changes.alias = /^mado:\s*/i.test(a) ? a : `MaDo: ${a}`;
+          changes.alias = withIgorPrefix(a);
         }
         if (input.trigger !== undefined) changes.trigger = input.trigger;
         if (input.condition !== undefined) changes.condition = input.condition;
@@ -506,7 +512,7 @@ export async function handleToolCall(
             no_match: true,
             suggestions: resolution.suggestions,
             message:
-              "No remembered fact matches that. NOTHING was deleted. Do NOT retry with reworded guesses. If the user was trying to change YOUR name or personality, stop using this tool entirely — that is not a stored memory and never will be; tell them to set the \"Custom Prompt\" field on the MaDo add-on's Configuration tab (Settings → Apps → MaDo → Configuration), writing just the personality they want, which applies once the add-on restarts. If you already previewed this exact memory earlier in this conversation, it is simply GONE ALREADY — tell the user it is no longer stored, which is what they asked for; do NOT report a failure or say you couldn't find it. Otherwise: if exactly one of 'suggestions' is clearly the memory the user means, call forget_memory once more with that suggestion's exact text (it will still only preview); if none is, tell the user you don't have that memory — never delete something merely similar.",
+              "No remembered fact matches that. NOTHING was deleted. Do NOT retry with reworded guesses. If the user was trying to change YOUR name or personality, stop using this tool entirely — that is not a stored memory and never will be; tell them to set the \"Custom Prompt\" field on the Igor add-on's Configuration tab (Settings → Apps → Igor → Configuration), writing just the personality they want, which applies once the add-on restarts. If you already previewed this exact memory earlier in this conversation, it is simply GONE ALREADY — tell the user it is no longer stored, which is what they asked for; do NOT report a failure or say you couldn't find it. Otherwise: if exactly one of 'suggestions' is clearly the memory the user means, call forget_memory once more with that suggestion's exact text (it will still only preview); if none is, tell the user you don't have that memory — never delete something merely similar.",
           };
           break;
         }
@@ -535,7 +541,7 @@ export async function handleToolCall(
         // originally copied them. That is tolerable there because a wrongly
         // created or edited automation is recoverable; a deleted memory is not.
         // And the path is reachable: the AI Task entity posts to /api/chat with
-        // no conversationId by design (rootfs/opt/mado/ai_task.py — "Stateless"),
+        // no conversationId by design (rootfs/opt/igor/ai_task.py — "Stateless"),
         // while still being handed the full tool set. Without this branch, one
         // ai_task.generate_data run — including the camera-image path, where the
         // prompt is not necessarily the user's own words — could permanently

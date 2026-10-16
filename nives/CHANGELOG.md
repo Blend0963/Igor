@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.0 — MaDo becomes Igor
+
+- **MaDo is now called Igor**, with the tagline *In Igor we trust*. The name changes everywhere it shows: the add-on and its panel, the chat app, the integration and its entities' device, the default persona ("You are Igor"; a Custom Prompt you wrote yourself is left as it is), the notifications, the wall tablet, the logo, and the listener in `ear/`, now **igor-ear**, which answers to "Igor". The bow tie and the colours stay.
+- What you built is kept. The add-on keeps its identifier and image, so it updates in place with its memory, threads and settings. Existing entity ids (such as `sensor.mado_assist`) stay; Home Assistant shows the new names. A wall tablet switched on with `?mado_tablet=1` keeps its display (the new switch is `?igor_tablet=1`). Automations made before carry "MaDo: " in their name; when Igor renames one, "Igor: " takes the old prefix's place.
+- **igor-ear**: running `bash ~/MaDo/ear/install.sh` moves mado-ear's program, settings and notes over (nothing is downloaded again) and starts igor-ear in its place if mado-ear was running. A settings file that still says `hotwords = "MaDo"` is read as "Igor". Whisper now uses beam search on a GPU, which keeps the name it listens for (`[stt] beam_size`).
+- Some voice satellites report "listening" all the time (for instance when the wake word is handled by Home Assistant, which keeps the audio streaming). The wall tablet then showed "Je vous écoute…" for good, and the listener, which stays quiet while the satellite is busy, never heard anything again. A state held longer than any real exchange (listening 30 s, processing 90 s, responding 3 min) is now taken as stuck and ignored, on the tablet and in igor-ear; a real new exchange is followed as before.
+- Home Assistant needs one restart after this update to load the new integration files. The integration's entry keeps the title it was given ("MaDo"); rename it under Settings → Devices & services if you like.
+
 ## 0.10.6 — Requests in a satellite's name
 
 - A request that reaches MaDo through the Assist pipeline with a voice satellite's device (as mado-ear does when it hears "MaDo" without the wake word, see `ear/`) is now treated like the satellite's own: MaDo answers in its spoken style, and the wall tablet shows the exchange. A phone, which also sends its device, keeps the written style.

@@ -4,19 +4,19 @@ Kept apart from the microphone and from Home Assistant so it can be tested
 with fakes. For each utterance:
 
 1. linux-voice-assistant busy (listening after its wake word, thinking,
-   speaking)? Ignored: it is handling the request, or it is MaDo's own voice.
+   speaking)? Ignored: it is handling the request, or it is Igor's own voice.
 2. Local transcription (Whisper small), only to find the name.
-3. "MaDo" anywhere in the sentence: taken. "MaDo" alone ("MaDo ?"): the
+3. "Igor" anywhere in the sentence: taken. "Igor" alone ("Igor ?"): the
    next sentence, within a few seconds, is the order, and both are sent
-   together. Right after MaDo asked a question, the answer is taken without
+   together. Right after Igor asked a question, the answer is taken without
    the name (follow-up).
 4. Taken, in act mode: if the speaker goes on after a short pause, the rest
    is joined first (`more`). Then the recorded audio (not Whisper's words)
    goes to the Assist pipeline, so Voxtral hears all of it properly, and the
-   satellite says MaDo's answer. In observation mode it is only noted.
+   satellite says Igor's answer. In observation mode it is only noted.
 
 A long sentence is not transcribed in full just to find the name: its first
-8 and last 6 seconds are, where "MaDo" is said in practice.
+8 and last 6 seconds are, where "Igor" is said in practice.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ import numpy as np
 from .addressing import NAME, Addressing, name_only, normalize
 
 RATE = 16000
-GAP = np.zeros(RATE // 5, dtype=np.float32)  # 0.2 s between "MaDo" and the order
+GAP = np.zeros(RATE // 5, dtype=np.float32)  # 0.2 s between "Igor" and the order
 
 # Longer than this, only the head and the tail are transcribed for the name.
 LONG_S = 16.0
@@ -44,7 +44,7 @@ MIN_LOGPROB = -1.0
 
 @dataclass
 class Outcome:
-    """What MaDo did with a sentence sent to it."""
+    """What Igor did with a sentence sent to it."""
 
     heard: str = ""
     speech: str = ""
@@ -101,7 +101,7 @@ class Listener:
         entry["stt_s"] = round(heard.seconds, 2)
         # Silence or noise is dropped. A doubtful transcription (low log
         # probability, common with the small models) is dropped too, unless
-        # it carries the name: that is all that matters here, MaDo gets the
+        # it carries the name: that is all that matters here, Igor gets the
         # audio itself.
         noise = not heard.text or heard.no_speech > MAX_NO_SPEECH or (
             heard.logprob < MIN_LOGPROB and not NAME.search(normalize(heard.text))
@@ -116,7 +116,7 @@ class Listener:
             accepted, reason = True, "after_name"
             send = np.concatenate([self._armed, GAP, audio])
         else:
-            decision = self.rules.decide(heard.text, since_mado_spoke=0.0 if followup_open else None)
+            decision = self.rules.decide(heard.text, since_igor_spoke=0.0 if followup_open else None)
             accepted, reason = decision.accepted, decision.reason
             if accepted and reason == "name" and name_only(heard.text):
                 self._armed, self._armed_until = audio, now + self.name_wait
@@ -140,7 +140,7 @@ class Listener:
             entry["joined"] = joined
         entry["sent_s"] = round(len(send) / RATE, 2)
 
-        # Act: the audio itself goes to MaDo through the Assist pipeline.
+        # Act: the audio itself goes to Igor through the Assist pipeline.
         conversation = self._conversation if reason == "followup" else None
         outcome = self.act(send, conversation)
         entry.update(sent=True, voxtral=outcome.heard, answer=outcome.speech)

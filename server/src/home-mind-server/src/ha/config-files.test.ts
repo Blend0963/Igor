@@ -8,8 +8,8 @@ let base: string;
 let outside: string;
 
 beforeAll(() => {
-  base = mkdtempSync(path.join(tmpdir(), "mado-config-"));
-  outside = mkdtempSync(path.join(tmpdir(), "mado-outside-"));
+  base = mkdtempSync(path.join(tmpdir(), "igor-config-"));
+  outside = mkdtempSync(path.join(tmpdir(), "igor-outside-"));
   writeFileSync(path.join(base, "configuration.yaml"), "homeassistant:\n  name: Maison\nhttp:\n  api_password: hunter2\nmqtt:\n  password: !secret mqtt_pw\n");
   writeFileSync(path.join(base, "secrets.yaml"), "mqtt_pw: hunter2\n");
   mkdirSync(path.join(base, "packages"));

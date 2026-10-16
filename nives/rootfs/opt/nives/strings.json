@@ -2,38 +2,38 @@
   "config": {
     "step": {
       "user": {
-        "title": "Configure MaDo",
-        "description": "Enter the URL of your self-hosted MaDo API server.",
+        "title": "Configure Igor",
+        "description": "Enter the URL of your self-hosted Igor API server.",
         "data": {
           "api_url": "API URL",
           "api_token": "API Token (optional)",
           "user_id": "Memory name (optional)"
         },
         "data_description": {
-          "api_token": "Required when the MaDo server has API authentication enabled.",
-          "user_id": "The name of the memory MaDo keeps for your household. Leave it as 'default'. You can change it later, and choose whether everyone shares one memory, under Configure."
+          "api_token": "Required when the Igor server has API authentication enabled.",
+          "user_id": "The name of the memory Igor keeps for your household. Leave it as 'default'. You can change it later, and choose whether everyone shares one memory, under Configure."
         }
       },
       "hassio_confirm": {
-        "title": "MaDo Detected",
-        "description": "The MaDo add-on has been detected. Would you like to set it up?"
+        "title": "Igor Detected",
+        "description": "The Igor add-on has been detected. Would you like to set it up?"
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to the MaDo API. Make sure it's running and accessible.",
-      "invalid_auth": "Invalid API token. Check your token on the MaDo dashboard.",
+      "cannot_connect": "Failed to connect to the Igor API. Make sure it's running and accessible.",
+      "invalid_auth": "Invalid API token. Check your token on the Igor dashboard.",
       "unknown": "Unexpected error occurred."
     },
     "abort": {
-      "already_configured": "MaDo is already configured.",
-      "cannot_connect": "Could not connect to the MaDo add-on. Make sure it's running."
+      "already_configured": "Igor is already configured.",
+      "cannot_connect": "Could not connect to the Igor add-on. Make sure it's running."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "MaDo",
-        "description": "Choose whether everyone in your home shares one memory with MaDo, and whether voice requests can be shown on a wall tablet.",
+        "title": "Igor",
+        "description": "Choose whether everyone in your home shares one memory with Igor, and whether voice requests can be shown on a wall tablet.",
         "data": {
           "shared_memory": "Shared memory",
           "user_id": "Memory name",
@@ -41,8 +41,8 @@
         },
         "data_description": {
           "shared_memory": "On (recommended): everyone shares one memory, so something you tell a voice satellite is also known in the app and on the dashboard, and the other way round. Off: each Home Assistant user gets a memory of their own, and voice satellites and automations use the memory named below.",
-          "user_id": "The memory MaDo uses for the whole household, or, with shared memory off, for voice satellites and automations. Leave it as 'default' unless you have a reason to change it.",
-          "voice_display": "On: the 'MaDo Assist' sensor follows each voice-satellite request (question, answer, actions), and devices you switch on show it full screen, by opening Home Assistant once with ?mado_tablet=1 at the end of the address. The texts are not kept in the history. Off: no sensor, nothing is shown."
+          "user_id": "The memory Igor uses for the whole household, or, with shared memory off, for voice satellites and automations. Leave it as 'default' unless you have a reason to change it.",
+          "voice_display": "On: the 'Igor Assist' sensor follows each voice-satellite request (question, answer, actions), and devices you switch on show it full screen, by opening Home Assistant once with ?igor_tablet=1 at the end of the address. The texts are not kept in the history. Off: no sensor, nothing is shown."
         }
       }
     }
@@ -50,7 +50,7 @@
   "entity": {
     "conversation": {
       "nives": {
-        "name": "MaDo"
+        "name": "Igor"
       }
     },
     "sensor": {
@@ -73,7 +73,7 @@
         "step": {
           "confirm": {
             "title": "Restart required",
-            "description": "Home Assistant needs a restart to finish updating MaDo ({running_version} → {installed_version}). Click Submit to restart Home Assistant now — or close this and restart later, at a moment that suits you. MaDo keeps working in the meantime."
+            "description": "Home Assistant needs a restart to finish updating Igor ({running_version} → {installed_version}). Click Submit to restart Home Assistant now — or close this and restart later, at a moment that suits you. Igor keeps working in the meantime."
           }
         }
       }

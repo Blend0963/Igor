@@ -1,24 +1,37 @@
-// MaDo on a wall tablet: what the voice satellite hears and answers, full
-// screen, in MaDo's style.
+// Igor on a wall tablet: what the voice satellite hears and answers, full
+// screen, in Igor's style.
 //
 // Home Assistant loads this on every page (frontend.add_extra_js_url); it
 // does nothing until switched on for the device, by opening Home Assistant
-// once with ?mado_tablet=1 (any satellite) or ?mado_tablet=assist_satellite.x
-// (that one only); ?mado_tablet=0 switches it off. The choice is kept in this
+// once with ?igor_tablet=1 (any satellite) or ?igor_tablet=assist_satellite.x
+// (that one only); ?igor_tablet=0 switches it off. The choice is kept in this
 // browser only.
 //
 // Everything comes from the states this page already has: the satellite's
-// own state (listening, processing, responding, idle) and the "MaDo Assist"
-// sensor the integration fills while MaDo answers (question, answer, chips).
+// own state (listening, processing, responding, idle) and the "Igor Assist"
+// sensor the integration fills while Igor answers (question, answer, chips).
 (function () {
   "use strict";
-  if (window.__madoTablet) return;
-  window.__madoTablet = true;
+  if (window.__igorTablet) return;
+  window.__igorTablet = true;
 
-  var KEY = "mado-tablet";
+  var KEY = "igor-tablet";
+  // Before the rename to Igor the switch was ?mado_tablet and "mado-tablet":
+  // both still work, so a tablet set up then keeps its display.
+  var OLD_KEY = "mado-tablet";
   function readSetting() {
     var param = null;
-    try { param = new URLSearchParams(window.location.search).get("mado_tablet"); } catch (e) { param = null; }
+    try {
+      var query = new URLSearchParams(window.location.search);
+      param = query.get("igor_tablet") || query.get("mado_tablet");
+    } catch (e) { param = null; }
+    try {
+      var old = window.localStorage.getItem(OLD_KEY);
+      if (old !== null) {
+        if (window.localStorage.getItem(KEY) === null) window.localStorage.setItem(KEY, old);
+        window.localStorage.removeItem(OLD_KEY);
+      }
+    } catch (e) { /* storage blocked: the URL alone decides */ }
     try {
       if (param === "0" || param === "off") { window.localStorage.removeItem(KEY); return null; }
       if (param) { window.localStorage.setItem(KEY, param); return param; }
@@ -31,7 +44,7 @@
   if (!setting) return;
   var onlySatellite = /^assist_satellite\./.test(setting) ? setting : null;
 
-  // ----- phrases while MaDo works (as in the MaDo panel) -----
+  // ----- phrases while Igor works (as in the Igor panel) -----
   var PHRASES = {
     act: ["Je m'en occupe…", "Je fais le nécessaire…", "Je passe dans la pièce…", "J'actionne cela pour vous…"],
     look: ["Je fais le tour des pièces…", "Je consulte la maison…", "Je vérifie pour vous…"],
@@ -110,7 +123,7 @@
 
   var host, veil, labelEl, talk, qEl, aEl, chipsEl;
   function build() {
-    host = document.createElement("mado-tablet");
+    host = document.createElement("igor-tablet");
     var root = host.attachShadow({ mode: "open" });
     var style = document.createElement("style");
     style.textContent = CSS;
@@ -244,17 +257,31 @@
   function findSensor(states) {
     if (view.sensorId && states[view.sensorId]) return states[view.sensorId];
     for (var id in states) {
-      if (id.indexOf("sensor.") === 0 && states[id].attributes && states[id].attributes.mado_voice) { view.sensorId = id; return states[id]; }
+      if (id.indexOf("sensor.") === 0 && states[id].attributes && states[id].attributes.igor_voice) { view.sensorId = id; return states[id]; }
     }
     return null;
   }
+  // A state held far longer than any real exchange is a stuck satellite, or
+  // one that reports "listening" all the time (wake word handled in Home
+  // Assistant): ignored, or the overlay would never leave the screen.
+  var STALE_MS = { listening: 30000, processing: 90000, responding: 180000 };
+  var seen = {};
+  function fresh(id, state) {
+    var now = Date.now();
+    if (!seen[id] || seen[id].state !== state) seen[id] = { state: state, since: now };
+    return !(STALE_MS[state] && now - seen[id].since > STALE_MS[state]);
+  }
   function satelliteState(states, wanted) {
-    if (wanted) return states[wanted] ? states[wanted].state : "";
+    if (wanted) {
+      var w = states[wanted] ? states[wanted].state : "";
+      return w && fresh(wanted, w) ? w : "";
+    }
     // Any satellite busy counts: listening first, then the others.
     var best = "";
     for (var id in states) {
       if (id.indexOf("assist_satellite.") !== 0) continue;
       var s = states[id].state;
+      if (!fresh(id, s)) continue;
       if (s === "listening") return s;
       if (s === "processing" || s === "responding") best = s;
     }
@@ -276,7 +303,7 @@
     if (sat === "listening") {
       if (view.phase !== "listening") {
         dismissed = null;
-        // A follow-up (the mic reopening right after MaDo's question) keeps the
+        // A follow-up (the mic reopening right after Igor's question) keeps the
         // exchange in view; a new request starts clean.
         if (view.phase !== "done") clearTalk();
         view.phase = "listening";
@@ -335,7 +362,7 @@
       setLabel("", false);
     }
     if (sat === "processing" && view.phase !== "thinking" && view.phase !== "answering" && view.phase !== "done") {
-      // Transcribing: MaDo has not got the words yet.
+      // Transcribing: Igor has not got the words yet.
       view.phase = "transcribing";
       show();
       veil.dataset.phase = "thinking";

@@ -1,13 +1,13 @@
-# mado-ear settings. Copied to ~/.config/mado-ear/config.toml by install.sh;
-# edit that copy, then: systemctl --user restart mado-ear
+# igor-ear settings. Copied to ~/.config/igor-ear/config.toml by install.sh;
+# edit that copy, then: systemctl --user restart igor-ear
 
 [mode]
-# false: observation only, nothing is sent (notes in ~/.local/state/mado-ear).
-# true: sentences that name MaDo go to MaDo and the satellite answers.
+# false: observation only, nothing is sent (notes in ~/.local/state/igor-ear).
+# true: sentences that name Igor go to Igor and the satellite answers.
 act = false
-# Right after MaDo asks a question, take the answer without the name.
+# Right after Igor asks a question, take the answer without the name.
 followup = true
-# After "MaDo" said alone, how long to wait for the order (seconds).
+# After "Igor" said alone, how long to wait for the order (seconds).
 name_wait = 6
 
 [audio]
@@ -15,13 +15,14 @@ name_wait = 6
 source = "alsa_input.usb-Generalplus_Usb_Audio_Device-00.mono-fallback"
 
 [stt]
-# Local transcription, used only to hear the name; MaDo gets the audio
+# Local transcription, used only to hear the name; Igor gets the audio
 # itself, transcribed by the Assist pipeline (Voxtral).
 model = "base"       # on a CPU: base (tiny hears too little; small is slow)
 device = "auto"      # auto (GPU, else CPU), cuda or cpu
 language = "fr"
 cpu_threads = 2      # used only on the CPU fallback
-hotwords = "MaDo"    # words Whisper should expect: it then writes the name right
+hotwords = "Igor"    # words Whisper should expect: it then writes the name right
+beam_size = 0        # 0: 5 on a GPU (hears the name better), 1 on a CPU
 
 [home_assistant]
 # Needed for act mode; also used in observation mode to stay quiet while
@@ -34,8 +35,8 @@ presence_entity = ""           # e.g. "binary_sensor.presence"; empty: always li
 home_states = ["on", "home"]
 
 [log]
-# Notes kept in ~/.local/state/mado-ear/observations.jsonl, on this machine only.
+# Notes kept in ~/.local/state/igor-ear/observations.jsonl, on this machine only.
 keep_days = 7
-# Also note the text of sentences that were NOT for MaDo. Turn off once
+# Also note the text of sentences that were NOT for Igor. Turn off once
 # the name detection is judged.
 rejected_text = true

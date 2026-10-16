@@ -5,7 +5,7 @@ describe("isSimpleRequest", () => {
   it.each([
     "Allume la lumière du salon",
     "éteins tout au rez-de-chaussée",
-    "MaDo, ferme les volets de la chambre",
+    "Igor, ferme les volets de la chambre",
     "peux-tu baisser le chauffage à 19",
     "Quelle est la température dans le salon ?",
     "est-ce que la porte du garage est fermée ?",

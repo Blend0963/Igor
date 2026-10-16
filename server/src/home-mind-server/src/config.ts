@@ -53,7 +53,7 @@ const ConfigSchema = z
     dailyBriefingPrompt: z.string().optional(),
     // Whose briefing it is: the user id the panel and Assist use.
     briefingUserId: z.string().default("default"),
-    // The house watch (jobs/house-watch.ts): off, on (the entities MaDo may
+    // The house watch (jobs/house-watch.ts): off, on (the entities Igor may
     // see) or all (the whole house); quiet hours, a daily cap on non-urgent
     // notifications, and the optional daily "anything useful to say?" time.
     houseWatch: z.enum(["off", "on", "all"]).default("off"),
@@ -63,7 +63,7 @@ const ConfigSchema = z
       .default("22:00-07:00"),
     watchMaxPerDay: z.coerce.number().int().min(1).max(50).default(5),
     watchLivelyTime: z.string().regex(/^\d{1,2}:\d{2}$/, "WATCH_LIVELY_TIME must be HH:MM").optional(),
-    // Where MaDo may read Home Assistant's YAML (read_config_file); the
+    // Where Igor may read Home Assistant's YAML (read_config_file); the
     // add-on maps the configuration folder here. Absent = no file access.
     haConfigDir: z.string().default("/config"),
 
@@ -141,7 +141,7 @@ const ConfigSchema = z
       .string()
       .transform((v) => v === "true" || v === "1")
       .prefault("false"),
-    // How far MaDo may change the configuration: off (read only), automations
+    // How far Igor may change the configuration: off (read only), automations
     // (the automation tools, the default) or yaml (also write_config_file).
     configEdits: z.enum(["off", "automations", "yaml"]).default("automations"),
 

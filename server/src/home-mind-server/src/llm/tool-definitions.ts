@@ -143,14 +143,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "create_automation",
     description:
-      "Create a new Home Assistant automation (a scheduled or event-triggered routine, e.g. 'turn the porch light on at sunset every day'). Call this AS SOON AS you have the details — do NOT ask the user for permission first. The FIRST call NEVER creates anything: it returns a 'confirmation_required' preview, and relaying that preview in plain language IS how you ask. Only after the user agrees in their NEXT message do you call this again with the same arguments to actually create it. Asking in text before the first call just makes the user confirm twice. The automation is created ENABLED and its alias is automatically prefixed with 'MaDo: ' so the user can find and remove it in Settings → Automations. Provide trigger and action using Home Assistant's automation schema (the same shape as automations.yaml).",
+      "Create a new Home Assistant automation (a scheduled or event-triggered routine, e.g. 'turn the porch light on at sunset every day'). Call this AS SOON AS you have the details — do NOT ask the user for permission first. The FIRST call NEVER creates anything: it returns a 'confirmation_required' preview, and relaying that preview in plain language IS how you ask. Only after the user agrees in their NEXT message do you call this again with the same arguments to actually create it. Asking in text before the first call just makes the user confirm twice. The automation is created ENABLED and its alias is automatically prefixed with 'Igor: ' so the user can find and remove it in Settings → Automations. Provide trigger and action using Home Assistant's automation schema (the same shape as automations.yaml).",
     parameters: {
       type: "object",
       properties: {
         alias: {
           type: "string",
           description:
-            "Human-readable name for the automation (e.g. 'Porch light at sunset'). A 'MaDo: ' prefix is added automatically — do not include it yourself.",
+            "Human-readable name for the automation (e.g. 'Porch light at sunset'). An 'Igor: ' prefix is added automatically — do not include it yourself.",
         },
         trigger: {
           type: "object",
@@ -179,7 +179,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "list_automations",
     description:
-      "List the Home Assistant automations (entity_id, name, and on/off enabled state). Automations MaDo created are named with a 'MaDo: ' prefix. Use this to answer 'what automations do I have / did you make', or to find an automation's entity_id before deleting it.",
+      "List the Home Assistant automations (entity_id, name, and on/off enabled state). Automations Igor created are named with an 'Igor: ' prefix. Use this to answer 'what automations do I have / did you make', or to find an automation's entity_id before deleting it.",
     parameters: {
       type: "object",
       properties: {},
@@ -217,7 +217,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         alias: {
           type: "string",
           description:
-            "Optional new name. A 'MaDo: ' prefix is kept/added automatically — do not include it.",
+            "Optional new name. An 'Igor: ' prefix is kept/added automatically — do not include it.",
         },
         trigger: {
           type: "object",
@@ -390,7 +390,7 @@ export const HOME_EXTRA_TOOLS: ToolDefinition[] = [
     name: "schedule_task",
     description:
       "Schedule a reminder or a task. kind 'reminder': the text is sent as a phone notification at that time " +
-      "(\"rappelle-moi de sortir les poubelles mardi à 19h\"); free. kind 'task': at that time MaDo runs the text as a request " +
+      "(\"rappelle-moi de sortir les poubelles mardi à 19h\"); free. kind 'task': at that time Igor runs the text as a request " +
       "and sends the answer (\"chaque dimanche à 18h, fais le bilan énergie de la semaine\"); each run costs a request, " +
       "so for a repeating task say how often it will run before scheduling it. Times are the house's local time.\n" +
       "For a single time, do NOT compute the date yourself: pass what the user said and the server computes it exactly. " +

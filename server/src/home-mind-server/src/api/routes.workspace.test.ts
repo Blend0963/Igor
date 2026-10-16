@@ -73,7 +73,7 @@ describe("workspace routes", () => {
       expect(docx.headers.get("content-type")).toContain("wordprocessingml");
       expect(readZip(Buffer.from(await docx.arrayBuffer())).some((e) => e.name === "word/document.xml")).toBe(true);
       const md = await (await fetch(`${base}/conversations/default/mado-thread%3Ab/export?format=md`)).text();
-      expect(md).toContain("## MaDo");
+      expect(md).toContain("## Igor");
 
       expect((await fetch(`${base}/conversations/default/mado-thread%3Ab/truncate`, json({ messageId: first }))).status).toBe(200);
       expect(conversations.getConversationHistory("mado-thread:b", 10)).toHaveLength(0);

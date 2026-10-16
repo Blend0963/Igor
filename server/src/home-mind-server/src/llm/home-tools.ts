@@ -170,7 +170,7 @@ export async function handleHomeTool(
       const value = str("value") || (typeof input.value === "number" ? String(input.value) : "");
       if (!value) return { error: "notify_when needs a value." };
       if ((op === "below" || op === "above") && !Number.isFinite(Number(value))) return { error: "below/above need a number." };
-      // Reading it now checks the entity exists and is one MaDo may see.
+      // Reading it now checks the entity exists and is one Igor may see.
       const current = await ha.getState(entityId);
       const forMinutes = Math.min(720, Math.max(0, Number(input.for_minutes) || 0));
       const hours = Math.min(168, Math.max(0.1, Number(input.within_hours) || 24));
@@ -196,7 +196,7 @@ export async function handleHomeTool(
       if (!scheduler) return { error: "Notifications are not available." };
       const message = notificationText(str("message"));
       if (!message) return { error: "send_notification needs a message." };
-      await scheduler.notifyNow(str("title").slice(0, 80) || "MaDo", message);
+      await scheduler.notifyNow(str("title").slice(0, 80) || "Igor", message);
       return { success: true, sent: true };
     }
 

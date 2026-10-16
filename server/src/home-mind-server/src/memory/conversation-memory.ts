@@ -72,7 +72,7 @@ export class InMemoryConversationStore implements IConversationStore {
       createdAt: new Date(),
     });
 
-    // Keep a longer durable history for MaDo's shared cross-device conversation.
+    // Keep a longer durable history for Igor's shared cross-device conversation.
     const cap = isThreadId(conversationId) ? THREAD_MESSAGE_CAP : DEFAULT_MESSAGE_CAP;
     if (!conversationId.startsWith("mado-user:") && messages.length > cap) {
       messages.shift();

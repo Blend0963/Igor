@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-log = logging.getLogger("mado-ear")
+log = logging.getLogger("igor-ear")
 
 # Loads the model on the GPU and runs it once, in a separate process: a GPU
 # library problem can kill a process outright (segmentation fault), and
@@ -54,14 +54,18 @@ class Transcriber:
         device: str = "auto",
         language: str = "fr",
         cpu_threads: int = 2,
-        hotwords: str = "MaDo",
+        hotwords: str = "Igor",
+        beam_size: int = 0,
     ) -> None:
         from faster_whisper import WhisperModel
 
         self.language = language
-        # "MaDo" is no French word: told to expect it, Whisper writes it
-        # instead of "ma doux" or "Madame".
+        # "Igor" is no French word: told to expect it, Whisper writes it the
+        # same way every time.
         self.hotwords = hotwords or None
+        # Greedy decoding drops rare words like the name; several beams keep
+        # it, at little cost on a GPU. 0 means: 5 on a GPU, 1 on a CPU.
+        self.beam_size = 1
         attempts = [("cuda", "float32"), ("cpu", "int8")] if device == "auto" else [
             (device, "float32" if device == "cuda" else "int8")
         ]
@@ -75,10 +79,11 @@ class Transcriber:
                     continue
             try:
                 self._model = WhisperModel(model, device=dev, compute_type=compute, cpu_threads=cpu_threads)
+                self.beam_size = beam_size or (5 if dev == "cuda" else 1)
                 # A first, silent run loads every library now rather than on the first sentence.
                 self._run(np.zeros(16000, dtype=np.float32))
                 self.device = f"{dev}/{compute}"
-                log.info("Transcription: model %s on %s", model, self.device)
+                log.info("Transcription: model %s on %s, beam %d", model, self.device, self.beam_size)
                 return
             except Exception as err:  # noqa: BLE001 - try the next device
                 last = err
@@ -90,7 +95,7 @@ class Transcriber:
             audio,
             language=self.language,
             hotwords=self.hotwords,
-            beam_size=1,
+            beam_size=self.beam_size,
             best_of=1,
             temperature=0.0,
             condition_on_previous_text=False,

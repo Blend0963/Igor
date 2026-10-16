@@ -1,13 +1,13 @@
-"""mado-ear: listen without a wake word, observation mode.
+"""igor-ear: listen without a wake word, observation mode.
 
-  python -m mado_ear run      listen; note (or, in act mode, send) what is for MaDo
-  python -m mado_ear bench    record a few seconds and time the transcription
-  python -m mado_ear report   summary of what was noted
-  python -m mado_ear check "éteins le salon"   test the rules on a sentence
+  python -m igor_ear run      listen; note (or, in act mode, send) what is for Igor
+  python -m igor_ear bench    record a few seconds and time the transcription
+  python -m igor_ear report   summary of what was noted
+  python -m igor_ear check "éteins le salon"   test the rules on a sentence
 
 Observation mode (the default) never sends anything anywhere: it writes, on
 this machine only, what it heard and what it would have done. Act mode
-([mode] act = true) sends the sentences that name MaDo to Home Assistant's
+([mode] act = true) sends the sentences that name Igor to Home Assistant's
 Assist pipeline, in the satellite's name, and the satellite says the answer.
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ from . import __version__
 from .addressing import Addressing
 from .config import CONFIG, Settings, load
 
-log = logging.getLogger("mado-ear")
+log = logging.getLogger("igor-ear")
 
 def prune(settings: Settings) -> None:
     """Drop notes older than keep_days."""
@@ -52,9 +52,7 @@ def note(settings: Settings, entry: dict) -> None:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-BUSY = {"listening", "processing", "responding"}
-BUSY_TAIL = 1.5  # seconds after the satellite stops: the end of its own voice
-JOIN_GAP = 1.5   # a pause shorter than this does not end a sentence for MaDo
+JOIN_GAP = 1.5   # a pause shorter than this does not end a sentence for Igor
 
 
 def run(settings: Settings) -> None:
@@ -68,17 +66,21 @@ def run(settings: Settings) -> None:
     from .vad import Vad
 
     mode = "act" if settings.act else "observation"
-    log.info("mado-ear %s, %s mode, source %s", __version__, mode, settings.source)
+    log.info("igor-ear %s, %s mode, source %s", __version__, mode, settings.source)
     prune(settings)
     connected = bool(settings.ha_url and settings.ha_token)
+    if connected and settings.presence_entity and settings.presence_entity.startswith("assist_satellite."):
+        log.warning("presence_entity is a satellite (%s): did you mean [home_assistant] satellite?", settings.presence_entity)
     if settings.act and not (connected and settings.satellite):
         raise SystemExit("Act mode needs [home_assistant] url, token and satellite in the settings")
 
-    last_busy = [float("-inf")]
+    from .gate import SatelliteGate
+
+    gate = SatelliteGate()
 
     def changed(entity: str, state: str) -> None:
-        if entity == settings.satellite and state in BUSY:
-            last_busy[0] = time.monotonic()
+        if entity == settings.satellite:
+            gate.update(state)
         elif entity == settings.presence_entity:
             log.info("Presence: %s", state)
 
@@ -90,23 +92,24 @@ def run(settings: Settings) -> None:
     def busy() -> bool:
         if watcher is None or not settings.satellite:
             return False
-        if watcher.state(settings.satellite) in BUSY:
-            last_busy[0] = time.monotonic()
-            return True
-        return time.monotonic() - last_busy[0] < BUSY_TAIL
+        gate.update(watcher.state(settings.satellite))
+        return gate.busy()
 
     def home() -> bool:
         if watcher is None or not settings.presence_entity:
             return True
         state = watcher.state(settings.presence_entity)
-        return state is None or state.lower() in {s.lower() for s in settings.home_states}
+        # Unknown or unavailable says nothing about the house: keep listening.
+        if state is None or state.lower() in {"unknown", "unavailable", ""}:
+            return True
+        return state.lower() in {s.lower() for s in settings.home_states}
 
     device_id = None
     if settings.act:
         try:
             device_id = ha.device_of(settings.ha_url, settings.ha_token, settings.satellite)
         except Exception as err:  # noqa: BLE001
-            log.warning("Satellite device not found (%s); MaDo will answer in its written style", err)
+            log.warning("Satellite device not found (%s); Igor will answer in its written style", err)
         log.info("Acting for %s (device %s)", settings.satellite, device_id or "unknown")
 
     def act(audio: np.ndarray, conversation: str | None) -> Outcome:
@@ -124,7 +127,8 @@ def run(settings: Settings) -> None:
         return Outcome(r.heard, r.speech, r.conversation_id, r.continue_conversation, r.error)
 
     vad, segmenter = Vad(), Segmenter()
-    stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords)
+    stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords,
+                      settings.beam_size)
     listener = Listener(
         stt,
         Addressing(extra_targets=settings.extra_targets),
@@ -198,8 +202,9 @@ def bench(settings: Settings, seconds: float) -> None:
 
     print(f"Loading the model ({settings.model}, {settings.device})…", flush=True)
     t0 = time.monotonic()
-    stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords)
-    print(f"Ready on {stt.device} in {time.monotonic() - t0:.1f}s")
+    stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords,
+                      settings.beam_size)
+    print(f"Ready on {stt.device} (beam {stt.beam_size}) in {time.monotonic() - t0:.1f}s")
     print(f"Speak now: recording {seconds:.0f}s from {settings.source}…", flush=True)
     vad, chunks, probs = Vad(), [], []
     for frame in frames(settings.source):
@@ -225,7 +230,7 @@ def report(settings: Settings) -> None:
     print(f"{len(entries)} sentences since {entries[0]['time']}; transcription {np.mean(stt):.2f}s on average, {max(stt):.2f}s at worst")
     for reason, count in reasons.most_common():
         print(f"  {reason:14} {count}")
-    print("\nFor MaDo:")
+    print("\nFor Igor:")
     for e in entries:
         if e["accepted"]:
             sent = f"  -> heard {e.get('voxtral', '')!r}, answered {e.get('answer') or e.get('error', '')!r}" if e.get("sent") else ""
@@ -233,7 +238,7 @@ def report(settings: Settings) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="mado-ear", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(prog="igor-ear", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("run")
     b = sub.add_parser("bench")
@@ -247,7 +252,12 @@ def main(argv: list[str] | None = None) -> int:
     # faster-whisper announces every clip it processes; only its problems matter here.
     logging.getLogger("faster_whisper").setLevel(logging.WARNING)
     logging.getLogger("websockets").setLevel(logging.WARNING)
-    settings = load()
+    try:
+        settings = load()
+    except ValueError as err:  # tomllib.TOMLDecodeError
+        print(f"Error in {CONFIG}: {err}\n"
+              "Check that every value is on one line, between double quotes, and closed.", file=sys.stderr)
+        return 2
     if args.command == "run":
         if not CONFIG.exists():
             log.warning("No %s; using defaults", CONFIG)
