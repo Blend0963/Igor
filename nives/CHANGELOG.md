@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.6 — Requests in a satellite's name
+
+- A request that reaches MaDo through the Assist pipeline with a voice satellite's device (as mado-ear does when it hears "MaDo" without the wake word, see `ear/`) is now treated like the satellite's own: MaDo answers in its spoken style, and the wall tablet shows the exchange. A phone, which also sends its device, keeps the written style.
+- Home Assistant needs one restart after this update to load the new integration files.
+
 ## 0.10.5 — MaDo on the wall tablet
 
 - **Voice requests on a wall tablet**: on a tablet that shows Home Assistant (Fully Kiosk Browser, the app or a browser), each request to a voice satellite is shown full screen, in MaDo's style. The screen dims and the bow tie flaps with "Je vous écoute…" at the wake word. Your words appear once transcribed, then the butler phrases and timer while MaDo works, then the answer word by word with its action chips. It fades back to the dashboard after the answer; a tap closes it. A question from MaDo keeps the exchange on screen while the satellite listens for your answer.

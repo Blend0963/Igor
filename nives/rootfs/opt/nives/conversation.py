@@ -25,7 +25,7 @@ except ImportError:  # pragma: no cover - older cores
     STREAMING_SUPPORTED = False
 from homeassistant.const import MATCH_ALL
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr, intent
+from homeassistant.helpers import device_registry as dr, entity_registry as er, intent
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -124,9 +124,30 @@ class MaDoConversationAgent(ConversationEntity):
         # _async_handle_message with them.
         return await super().async_process(user_input)
 
+    def _satellite(self, user_input: ConversationInput) -> str | None:
+        """The voice satellite a request comes from, if any.
+
+        Home Assistant sets satellite_id for the satellite's own runs. A run
+        started elsewhere in a satellite's name (mado-ear, which hears "MaDo"
+        without the wake word and sends the audio through the Assist pipeline
+        with the satellite's device_id) carries only the device: it is the
+        satellite's when that device has an assist_satellite entity. A phone
+        passes its own device_id too, but has no such entity.
+        """
+        satellite = getattr(user_input, "satellite_id", None)
+        if satellite:
+            return satellite
+        device_id = getattr(user_input, "device_id", None)
+        if not device_id:
+            return None
+        for entry in er.async_entries_for_device(er.async_get(self.hass), device_id):
+            if entry.domain == "assist_satellite":
+                return entry.entity_id
+        return None
+
     def _voice_sensor(self, user_input: ConversationInput):
         """The wall-tablet sensor when this is a voice satellite's request."""
-        satellite = getattr(user_input, "satellite_id", None)
+        satellite = self._satellite(user_input)
         sensor = getattr(self.entry.runtime_data, "voice_sensor", None)
         if satellite is None or sensor is None or sensor.hass is None:
             return None
@@ -179,7 +200,7 @@ class MaDoConversationAgent(ConversationEntity):
         data = self.entry.runtime_data
         user_id = self._memory_user_id(user_input)
         conversation_id = chat_log.conversation_id
-        is_voice = getattr(user_input, "satellite_id", None) is not None
+        is_voice = self._satellite(user_input) is not None
 
         try:
             async for _content in chat_log.async_add_delta_content_stream(
@@ -423,7 +444,7 @@ class MaDoConversationAgent(ConversationEntity):
         # written, so a long spoken answer is read out in full rather than cut
         # off, which is how Home Assistant's own conversation integrations
         # behave. (getattr: satellite_id does not exist on older Cores.)
-        is_voice = getattr(user_input, "satellite_id", None) is not None
+        is_voice = self._satellite(user_input) is not None
 
         try:
             response_text = await self._call_api(

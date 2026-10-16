@@ -18,8 +18,13 @@ class Settings:
     language: str = "fr"
     cpu_threads: int = 2
     extra_targets: list[str] = field(default_factory=list)
+    act: bool = False
+    followup: bool = True
+    name_wait: float = 6.0
     ha_url: str = ""
     ha_token: str = ""
+    satellite: str = ""
+    pipeline: str = ""
     presence_entity: str = ""
     home_states: list[str] = field(default_factory=lambda: ["on", "home"])
     keep_days: int = 7
@@ -34,6 +39,7 @@ def load(path: Path = CONFIG) -> Settings:
     data = tomllib.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     audio, stt = data.get("audio", {}), data.get("stt", {})
     addressing, ha, log = data.get("addressing", {}), data.get("home_assistant", {}), data.get("log", {})
+    mode = data.get("mode", {})
     s = Settings()
     s.source = str(audio.get("source", s.source))
     s.model = str(stt.get("model", s.model))
@@ -41,6 +47,11 @@ def load(path: Path = CONFIG) -> Settings:
     s.language = str(stt.get("language", s.language))
     s.cpu_threads = int(stt.get("cpu_threads", s.cpu_threads))
     s.extra_targets = [str(t) for t in addressing.get("extra_targets", [])]
+    s.act = bool(mode.get("act", s.act))
+    s.followup = bool(mode.get("followup", s.followup))
+    s.name_wait = float(mode.get("name_wait", s.name_wait))
+    s.satellite = str(ha.get("satellite", ""))
+    s.pipeline = str(ha.get("pipeline", ""))
     s.ha_url = str(ha.get("url", ""))
     s.ha_token = str(ha.get("token", ""))
     s.presence_entity = str(ha.get("presence_entity", ""))

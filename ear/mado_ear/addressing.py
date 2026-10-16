@@ -1,13 +1,13 @@
 """Is this sentence meant for MaDo?
 
 Rules only, all local and instant. A sentence is for MaDo when:
-- it names MaDo anywhere ("éteins le salon, MaDo"), or
-- it is an order about the house: an action verb and something the house
-  has (a room, a light, the heating…), or
-- it comes right after MaDo spoke (a follow-up), when that is known.
+- it names MaDo anywhere ("MaDo, éteins la lumière", "éteins la lumière
+  MaDo"), or
+- it answers a question MaDo has just asked (the follow-up window).
 
-Everything else is not for MaDo. Questions without the name are not taken:
-"est-ce que la lumière est allumée ?" is as likely said to someone else.
+Orders without the name ("éteins la cuisine") are only taken when
+`accept_commands` is on: with a television or a conversation in the room
+they trigger far too often, so the name is the rule.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ import unicodedata
 from dataclasses import dataclass, field
 
 # Whisper hears "MaDo" in many ways.
-NAME = re.compile(r"\b(ma ?d+o+[hstx]?|ma ?deaux?|ma ?daux?|ma ?d'?eau)\b")
+NAME = re.compile(r"\b(ma ?d+o+u?[hstx]?|ma ?deaux?|ma ?daux?|ma ?d'?eau)\b")
 
 VERBS = (
     "allume", "allumer", "eteins", "eteint", "eteindre", "ferme", "fermer", "ouvre", "ouvrir",
@@ -70,6 +70,7 @@ class Addressing:
     """The rules, with the house's own words added from the configuration."""
 
     extra_targets: list[str] = field(default_factory=list)
+    accept_commands: bool = False
     followup_seconds: float = 30.0
     max_command_words: int = 14
 
@@ -92,9 +93,17 @@ class Addressing:
             return Decision(True, "followup")
         command = OPENERS.sub("", norm)
         if (
-            self._verbs.match(command)
+            self.accept_commands
+            and self._verbs.match(command)
             and self._targets.search(command)
             and len(command.split()) <= self.max_command_words
         ):
             return Decision(True, "command")
         return Decision(False, "not_addressed")
+
+
+def name_only(text: str) -> bool:
+    """Just the name, or nearly ("MaDo ?", "euh MaDo"): the order comes next."""
+    rest = NAME.sub(" ", normalize(text))
+    rest = OPENERS.sub("", rest.strip() + " ").strip()
+    return len([w for w in rest.split() if w not in {"euh", "he", "hey", "dis", "oh", "bon"}]) == 0

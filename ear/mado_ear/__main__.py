@@ -1,13 +1,14 @@
 """mado-ear: listen without a wake word, observation mode.
 
-  python -m mado_ear run      listen and note what would have gone to MaDo
+  python -m mado_ear run      listen; note (or, in act mode, send) what is for MaDo
   python -m mado_ear bench    record a few seconds and time the transcription
   python -m mado_ear report   summary of what was noted
   python -m mado_ear check "éteins le salon"   test the rules on a sentence
 
-Observation mode never sends anything anywhere: it writes, on this machine
-only, what it heard and what it would have done, so the rules can be judged
-before MaDo acts on them.
+Observation mode (the default) never sends anything anywhere: it writes, on
+this machine only, what it heard and what it would have done. Act mode
+([mode] act = true) sends the sentences that name MaDo to Home Assistant's
+Assist pipeline, in the satellite's name, and the satellite says the answer.
 """
 from __future__ import annotations
 
@@ -28,11 +29,6 @@ from .addressing import Addressing
 from .config import CONFIG, Settings, load
 
 log = logging.getLogger("mado-ear")
-
-# Below these, Whisper is guessing words into noise.
-MAX_NO_SPEECH = 0.6
-MIN_LOGPROB = -1.0
-
 
 def prune(settings: Settings) -> None:
     """Drop notes older than keep_days."""
@@ -56,44 +52,120 @@ def note(settings: Settings, entry: dict) -> None:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
+BUSY = {"listening", "processing", "responding"}
+BUSY_TAIL = 1.5  # seconds after the satellite stops: the end of its own voice
+JOIN_GAP = 1.5   # a pause shorter than this does not end a sentence for MaDo
+
+
 def run(settings: Settings) -> None:
+    from . import ha
     from .audio import frames
-    from .presence import Presence
-    from .segmenter import RATE, Segmenter
+    from .listener import Listener, Outcome
+    from collections import deque
+
+    from .segmenter import Segmenter, Utterance
     from .stt import Transcriber
     from .vad import Vad
 
-    log.info("mado-ear %s, observation mode, source %s", __version__, settings.source)
+    mode = "act" if settings.act else "observation"
+    log.info("mado-ear %s, %s mode, source %s", __version__, mode, settings.source)
     prune(settings)
-    rules = Addressing(extra_targets=settings.extra_targets)
-    presence = Presence(settings.ha_url, settings.ha_token, settings.presence_entity, settings.home_states)
+    connected = bool(settings.ha_url and settings.ha_token)
+    if settings.act and not (connected and settings.satellite):
+        raise SystemExit("Act mode needs [home_assistant] url, token and satellite in the settings")
+
+    last_busy = [float("-inf")]
+
+    def changed(entity: str, state: str) -> None:
+        if entity == settings.satellite and state in BUSY:
+            last_busy[0] = time.monotonic()
+        elif entity == settings.presence_entity:
+            log.info("Presence: %s", state)
+
+    watcher = None
+    if connected:
+        watcher = ha.Watcher(settings.ha_url, settings.ha_token, [settings.satellite, settings.presence_entity], changed)
+        watcher.start()
+
+    def busy() -> bool:
+        if watcher is None or not settings.satellite:
+            return False
+        if watcher.state(settings.satellite) in BUSY:
+            last_busy[0] = time.monotonic()
+            return True
+        return time.monotonic() - last_busy[0] < BUSY_TAIL
+
+    def home() -> bool:
+        if watcher is None or not settings.presence_entity:
+            return True
+        state = watcher.state(settings.presence_entity)
+        return state is None or state.lower() in {s.lower() for s in settings.home_states}
+
+    device_id = None
+    if settings.act:
+        try:
+            device_id = ha.device_of(settings.ha_url, settings.ha_token, settings.satellite)
+        except Exception as err:  # noqa: BLE001
+            log.warning("Satellite device not found (%s); MaDo will answer in its written style", err)
+        log.info("Acting for %s (device %s)", settings.satellite, device_id or "unknown")
+
+    def act(audio: np.ndarray, conversation: str | None) -> Outcome:
+        pcm = (np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes()
+        try:
+            r = ha.run_pipeline(settings.ha_url, settings.ha_token, pcm, settings.pipeline or None,
+                                conversation, device_id)
+        except Exception as err:  # noqa: BLE001
+            return Outcome(error=str(err))
+        if r.speech:
+            try:
+                ha.announce(settings.ha_url, settings.ha_token, settings.satellite, r.speech)
+            except Exception as err:  # noqa: BLE001
+                r.error = r.error or f"announce: {err}"
+        return Outcome(r.heard, r.speech, r.conversation_id, r.continue_conversation, r.error)
+
     vad, segmenter = Vad(), Segmenter()
     stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads)
-    utterances: queue.Queue[np.ndarray] = queue.Queue(maxsize=4)
+    listener = Listener(
+        stt,
+        Addressing(extra_targets=settings.extra_targets),
+        act if settings.act else None,
+        busy=busy,
+        followup=settings.followup,
+        name_wait=settings.name_wait,
+        keep_rejected_text=settings.rejected_text,
+    )
+    utterances: queue.Queue[Utterance] = queue.Queue(maxsize=8)
+    pending: deque[Utterance] = deque()
 
     def worker() -> None:
         last_prune = time.monotonic()
         while True:
-            audio = utterances.get()
-            heard = stt(audio)
-            seconds = round(len(audio) / RATE, 2)
-            if not heard.text or heard.no_speech > MAX_NO_SPEECH or heard.logprob < MIN_LOGPROB:
-                accepted, reason = False, "noise"
-            else:
-                decision = rules.decide(heard.text)
-                accepted, reason = decision.accepted, decision.reason
-            entry = {
-                "time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                "accepted": accepted,
-                "reason": reason,
-                "audio_s": seconds,
-                "stt_s": round(heard.seconds, 2),
-            }
-            if accepted or settings.rejected_text:
-                entry["text"] = heard.text
+            u = pending.popleft() if pending else utterances.get()
+            last_end = [u.end]
+
+            def more() -> np.ndarray | None:
+                """The next part, if the speaker went on within JOIN_GAP."""
+                while True:
+                    try:
+                        nxt = pending.popleft() if pending else utterances.get(timeout=0.1)
+                    except queue.Empty:
+                        if segmenter.in_speech and segmenter.speech_start - last_end[0] <= JOIN_GAP:
+                            continue  # still talking: wait for that part to end
+                        if segmenter.now - last_end[0] >= JOIN_GAP:
+                            return None
+                        continue
+                    if nxt.start - last_end[0] <= JOIN_GAP:
+                        last_end[0] = nxt.end
+                        return nxt.audio
+                    pending.appendleft(nxt)  # a new sentence, handled next
+                    return None
+
+            entry = listener.handle(u.audio, more)
             note(settings, entry)
-            log.info("%s %-13s %.1fs audio, %.2fs stt%s", "WOULD SEND" if accepted else "ignored   ",
-                     reason, seconds, heard.seconds, f": {heard.text}" if accepted else "")
+            if entry["reason"] not in {"satellite_busy", "noise"} or entry.get("accepted"):
+                log.info("%s %-18s %s%s", "SENT" if entry.get("sent") else ("WOULD SEND" if entry["accepted"] else "ignored   "),
+                         entry["reason"], entry.get("text", ""),
+                         f" -> {entry.get('answer') or entry.get('error', '')}" if entry.get("sent") else "")
             if time.monotonic() - last_prune > 86400:
                 prune(settings)
                 last_prune = time.monotonic()
@@ -101,12 +173,15 @@ def run(settings: Settings) -> None:
     threading.Thread(target=worker, daemon=True).start()
     away = False
     for frame in frames(settings.source):
-        if not presence.home():
+        if not home():
             if not away:
                 segmenter.reset()
                 vad.reset()
+                log.info("Nobody home: not listening")
             away = True
             continue
+        if away:
+            log.info("Someone home: listening")
         away = False
         utterance = segmenter.push(frame, vad(frame))
         if utterance is not None:
@@ -150,10 +225,11 @@ def report(settings: Settings) -> None:
     print(f"{len(entries)} sentences since {entries[0]['time']}; transcription {np.mean(stt):.2f}s on average, {max(stt):.2f}s at worst")
     for reason, count in reasons.most_common():
         print(f"  {reason:14} {count}")
-    print("\nWould have gone to MaDo:")
+    print("\nFor MaDo:")
     for e in entries:
         if e["accepted"]:
-            print(f"  {e['time']}  [{e['reason']}]  {e.get('text', '')}")
+            sent = f"  -> heard {e.get('voxtral', '')!r}, answered {e.get('answer') or e.get('error', '')!r}" if e.get("sent") else ""
+            print(f"  {e['time']}  [{e['reason']}]  {e.get('text', '')}{sent}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -170,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
     # faster-whisper announces every clip it processes; only its problems matter here.
     logging.getLogger("faster_whisper").setLevel(logging.WARNING)
+    logging.getLogger("websockets").setLevel(logging.WARNING)
     settings = load()
     if args.command == "run":
         if not CONFIG.exists():
