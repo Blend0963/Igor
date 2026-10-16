@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.4 — A square logo
+
+- In the logo, "MAJORDOME DOMOTIQUE" ran past the end of "MaDo" on the right. It now starts and ends exactly where "MaDo" and its rule do, so the wordmark reads as one square block.
+
 ## 0.10.3 — The butler at work
 
 - **Nothing in the thread while MaDo works**: the waiting bubble with its bow tie is gone. MaDo's bubble appears with the first words of the answer; until then everything happens bottom left.
