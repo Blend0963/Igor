@@ -13,7 +13,7 @@
  * puts them in the composer of a new thread.
  */
 
-var SHELL = "mado-shell-v4";
+var SHELL = "mado-shell-v5";
 var SHARE = "mado-share-v1";
 var SHELL_FILES = ["./", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "fonts/Caladea-Bold.ttf"];
 

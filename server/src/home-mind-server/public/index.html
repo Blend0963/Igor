@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MaDo</title>
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#0E1B33">
+<meta name="theme-color" content="#03A9F4">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -14,29 +14,28 @@
 <style>
   :root {
     color-scheme: light dark;
-    --bg: #F5F2EC; --surface: #FFFFFF; --hover: #F0EADF; --active: #E8DFCB; --border: #E4DCCB; --border-hi: #D2C3A2;
-    --fg: #16202F; --fg2: #3B4658; --muted: #7A7F88; --accent: #16294D; --accent-hi: #22396A; --accent-rgb: 22,41,77; --link: #8C6A1F;
-    --code-bg: #FAF8F3; --chart-bg: #FFFFFF; --axis: #B5AC98; --danger: #C8423A; --danger-strong: #B3261E; --ok: #2E8A55; --ok-border: #A8D8BA;
-    --warn: #A8822F; --warn-soft: #8A6A1F; --zebra: rgba(140,106,31,0.04);
-    --bubble: #FFFFFF; --bubble-shadow: 0 2px 12px rgba(22,32,47,0.07); --user-bubble: #16294D;
-    --hdr: linear-gradient(135deg, #1B3260, #0B1730); --hdr-shadow: 0 8px 24px rgba(11,23,48,0.25);
-    --gold: #C9A55A; --gold-text: #EBD29A; --gold-grad: linear-gradient(135deg, #EED49A, #B8903F); --gold-ink: #0E1B33; --brand: #A8822F;
-    --btn: #F1EADB; --btn-fg: #16294D; --comp-shadow: 0 4px 18px rgba(22,32,47,0.07);
-    --chip-on: #F6EBCF; --chip-on-fg: #7A5B14; --chip-off: #ECE8E0; --chip-off-fg: #4A5160; --chip-set: #F6EBCF; --chip-set-fg: #7A5B14;
-    --chip-rem: #E6EAF3; --chip-rem-fg: #22396A; --chip-auto: #E4F1E8; --chip-auto-fg: #2D6B45;
+    --bg: #FAFAFA; --surface: #FFFFFF; --hover: #F2F4F5; --active: #E1F3FD; --border: #E3E6E8; --border-hi: #CBD2D6; --line: #E8ECEF;
+    --fg: #212121; --fg2: #44474B; --muted: #727272; --accent: #03A9F4; --accent-hi: #0288D1; --accent-rgb: 3,169,244; --link: #0288D1;
+    --code-bg: #F7F9FA; --chart-bg: #FFFFFF; --axis: #B0B8BE; --danger: #DB4437; --danger-strong: #C62828; --ok: #43A047; --ok-border: #A5D6A7;
+    --warn: #FF9800; --warn-soft: #E65100; --zebra: rgba(3,169,244,0.03);
+    --bubble: #FFFFFF; --bubble-shadow: 0 1px 2px rgba(0,0,0,0.06), 0 4px 14px rgba(0,0,0,0.05); --user-bubble: #03A9F4;
+    --hdr: linear-gradient(135deg, #29B6F6 0%, #03A9F4 45%, #0288D1 100%); --hdr-shadow: 0 6px 20px rgba(3,169,244,0.28);
+    --gold-text: #FFFFFF; --gold-grad: linear-gradient(135deg, #29B6F6, #0288D1); --gold-ink: #FFFFFF; --brand: #0288D1;
+    --btn: #E1F3FD; --btn-fg: #0288D1; --comp-shadow: 0 4px 18px rgba(0,0,0,0.06);
+    --chip-on: #E1F3FD; --chip-on-fg: #0277BD; --chip-off: #F0F1F2; --chip-off-fg: #555555; --chip-set: #E1F3FD; --chip-set-fg: #0277BD;
+    --chip-rem: #FFF3E0; --chip-rem-fg: #E65100; --chip-auto: #E8F5E9; --chip-auto-fg: #2E7D32;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0A1120; --surface: #111A2C; --hover: #172238; --active: #1E2B45; --border: #233250; --border-hi: #34476B;
-      --fg: #ECE7DC; --fg2: #C9C3B5; --muted: #8D96A6; --accent: #2C4C86; --accent-hi: #3A5EA0; --accent-rgb: 201,165,90; --link: #E2C27A;
-      --code-bg: #0A101B; --chart-bg: #111A2C; --axis: #4A5A72; --danger: #FF7B72; --danger-strong: #C0392B; --ok: #7FD6A0; --ok-border: #2F5E3A;
-      --warn: #E2C27A; --warn-soft: #EBD29A; --zebra: rgba(255,255,255,0.02);
-      --bubble: #141F33; --bubble-shadow: 0 0 0 1px #233250; --user-bubble: #22396A;
-      --hdr: linear-gradient(135deg, #1B3260, #08101F); --hdr-shadow: 0 8px 24px rgba(0,0,0,0.4);
-      --brand: #E2C27A;
-      --btn: #1A2640; --btn-fg: #E2C27A; --comp-shadow: 0 4px 18px rgba(0,0,0,0.3);
-      --chip-on: #3A2F17; --chip-on-fg: #F1D9A0; --chip-off: #1B2638; --chip-off-fg: #B5C3D6; --chip-set: #3A2F17; --chip-set-fg: #F1D9A0;
-      --chip-rem: #1D2A47; --chip-rem-fg: #B7C8F0; --chip-auto: #14301F; --chip-auto-fg: #8FD9A8;
+      --bg: #111111; --surface: #1C1C1C; --hover: #262626; --active: #0D3B52; --border: #2C2C2C; --border-hi: #3A3A3A; --line: #2A2A2A;
+      --fg: #E1E1E1; --fg2: #C4C4C4; --muted: #9B9B9B; --accent: #03A9F4; --accent-hi: #29B6F6; --accent-rgb: 3,169,244; --link: #4FC3F7;
+      --code-bg: #141414; --chart-bg: #1C1C1C; --axis: #4A4A4A; --danger: #FF7B72; --danger-strong: #C62828; --ok: #81C784; --ok-border: #2E5E32;
+      --warn: #FFB74D; --warn-soft: #FFCC80; --zebra: rgba(255,255,255,0.02);
+      --bubble: #1C1C1C; --bubble-shadow: 0 1px 2px rgba(0,0,0,0.4); --user-bubble: #0288D1;
+      --hdr: linear-gradient(135deg, #039BE5 0%, #0288D1 45%, #01579B 100%); --hdr-shadow: 0 6px 20px rgba(0,0,0,0.45);
+      --brand: #4FC3F7; --btn: #262626; --btn-fg: #4FC3F7; --comp-shadow: 0 4px 18px rgba(0,0,0,0.35);
+      --chip-on: #0D3B52; --chip-on-fg: #81D4FA; --chip-off: #2A2A2A; --chip-off-fg: #BDBDBD; --chip-set: #0D3B52; --chip-set-fg: #81D4FA;
+      --chip-rem: #3E2A10; --chip-rem-fg: #FFB74D; --chip-auto: #1B3320; --chip-auto-fg: #81C784;
     }
   }
   @font-face { font-family: "MaDo Serif"; src: url("fonts/Caladea-Bold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
@@ -375,13 +374,38 @@
     .msg { max-width: 86%; }
     .icon-btn { width: 34px; min-width: 34px; height: 34px; }
   }
+
+  /* ----- Fioritures: fine lines, a quiet bow-tie pattern, a little shine ----- */
+  #chat-head { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='40' viewBox='0 0 56 40'%3E%3Cpath d='M24 18 L13 12.5 Q11 11.5 11 13.5 V26.5 Q11 28.5 13 27.5 L24 22 Z M32 18 L43 12.5 Q45 11.5 45 13.5 V26.5 Q45 28.5 43 27.5 L32 22 Z' fill='%23ffffff' fill-opacity='0.07'/%3E%3Crect x='24' y='16.5' width='8' height='7' rx='2' fill='%23ffffff' fill-opacity='0.1'/%3E%3C/svg%3E") right -8px top -6px / 56px 40px repeat, var(--hdr); overflow: hidden; }
+  #chat-head::before { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 140% at 0% 0%, rgba(255,255,255,0.22), transparent 55%); pointer-events: none; }
+  #chat-head::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 6px; top: -2px; border: 1px solid rgba(255,255,255,0.32); border-top: 0; border-radius: 0 0 19px 19px; pointer-events: none; }
+  #chat-head > * { position: relative; z-index: 1; }
+  .head-top .wordmark { text-shadow: 0 1px 0 rgba(1,87,155,0.35); }
+  .tagline::before { content: ""; display: inline-block; width: 18px; height: 1px; background: currentColor; opacity: 0.7; vertical-align: middle; margin: 0 8px 2px 2px; }
+  #chat-title { background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.38); color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,0.25); }
+  .msg.assistant { border: 1px solid var(--line); }
+  .msg.user { background: linear-gradient(160deg, #29B6F6, var(--user-bubble) 60%); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18), 0 3px 10px rgba(var(--accent-rgb),0.25); }
+  .chip { box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent); }
+  .composer-box { box-shadow: var(--comp-shadow), inset 0 0 0 3px var(--surface), inset 0 0 0 4px var(--line); }
+  .composer-box:focus-within { box-shadow: 0 0 0 3px rgba(var(--accent-rgb),0.15), inset 0 0 0 3px var(--surface), inset 0 0 0 4px rgba(var(--accent-rgb),0.35); }
+  #btn-send { box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 4px 12px rgba(3,169,244,0.35); }
+  .icon-btn, .pill { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--btn-fg) 14%, transparent); }
+  .side-head { position: relative; padding-bottom: 16px; }
+  .side-head::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 6px; height: 1px; background: linear-gradient(90deg, transparent, var(--border-hi) 18%, var(--border-hi) 82%, transparent); }
+  .thread.active { box-shadow: inset 3px 0 0 var(--accent); }
+  .t-section { display: flex; align-items: center; gap: 8px; }
+  .t-section::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--line), transparent); }
+  #empty .tagline { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+  #empty .tagline::before, #empty .tagline::after { content: ""; width: 34px; height: 1px; background: currentColor; opacity: 0.6; margin: 0; }
+  .modal .box { box-shadow: 0 20px 60px rgba(0,0,0,0.25), inset 0 0 0 1px var(--line); border: 0; }
+  .modal-head { padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 </style>
 </head>
 <body>
 <div id="app">
   <aside id="sidebar">
     <div class="side-head">
-      <span class="brand wordmark"><svg class="wm-bow" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="wmg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F1D9A0"/><stop offset="1" stop-color="#B8903F"/></linearGradient></defs><path d="M27 27.5 L8 18 Q5 16.5 5 20 V44 Q5 47.5 8 46 L27 36.5 Z M37 27.5 L56 18 Q59 16.5 59 20 V44 Q59 47.5 56 46 L37 36.5 Z" fill="url(#wmg2)"/><rect x="26" y="25" width="12" height="14" rx="3.5" fill="#FFF3D6"/></svg>MaDo</span>
+      <span class="brand wordmark"><svg class="wm-bow" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="wmg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4FC3F7"/><stop offset="1" stop-color="#0288D1"/></linearGradient></defs><path d="M27 27.5 L8 18 Q5 16.5 5 20 V44 Q5 47.5 8 46 L27 36.5 Z M37 27.5 L56 18 Q59 16.5 59 20 V44 Q59 47.5 56 46 L37 36.5 Z" fill="url(#wmg2)"/><rect x="26" y="25" width="12" height="14" rx="3.5" fill="#B3E5FC"/></svg>MaDo</span>
       <button id="btn-new" type="button">+ Nouveau fil</button>
       <button id="btn-close-side" type="button" title="Fermer" aria-label="Fermer la liste"><svg class="svg-ic" style="width:18px;height:18px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
@@ -409,7 +433,7 @@
     <header id="chat-head">
       <div class="head-top">
         <button id="btn-menu" class="hdr-btn" type="button" title="Fils de discussion" aria-label="Afficher les fils de discussion"><svg class="svg-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg></button>
-        <span class="wordmark"><svg class="wm-bow" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="wmg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F1D9A0"/><stop offset="1" stop-color="#B8903F"/></linearGradient></defs><path d="M27 27.5 L8 18 Q5 16.5 5 20 V44 Q5 47.5 8 46 L27 36.5 Z M37 27.5 L56 18 Q59 16.5 59 20 V44 Q59 47.5 56 46 L37 36.5 Z" fill="url(#wmg)"/><rect x="26" y="25" width="12" height="14" rx="3.5" fill="#FFF3D6"/></svg>MaDo<span class="tagline">Majordome domotique</span></span>
+        <span class="wordmark"><svg class="wm-bow" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="wmg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#D6F0FD"/></linearGradient></defs><path d="M27 27.5 L8 18 Q5 16.5 5 20 V44 Q5 47.5 8 46 L27 36.5 Z M37 27.5 L56 18 Q59 16.5 59 20 V44 Q59 47.5 56 46 L37 36.5 Z" fill="url(#wmg)"/><rect x="26" y="25" width="12" height="14" rx="3.5" fill="#B3E5FC"/></svg>MaDo<span class="tagline">Majordome domotique</span></span>
         <span class="head-actions">
           <button id="btn-move" type="button" class="hdr-btn" title="Ranger dans un projet" aria-label="Ranger dans un projet" hidden><svg class="svg-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z"/></svg></button>
           <button id="btn-export" type="button" class="hdr-btn" title="Exporter ce fil" aria-label="Exporter ce fil" hidden><svg class="svg-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button>
@@ -419,7 +443,7 @@
       <div class="head-sub"><span id="chat-title" class="untitled">Bienvenue</span></div>
     </header>
     <div id="empty">
-      <div class="big wordmark"><svg class="wm-bow" style="width:44px;height:44px" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="wmg3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F1D9A0"/><stop offset="1" stop-color="#B8903F"/></linearGradient></defs><path d="M27 27.5 L8 18 Q5 16.5 5 20 V44 Q5 47.5 8 46 L27 36.5 Z M37 27.5 L56 18 Q59 16.5 59 20 V44 Q59 47.5 56 46 L37 36.5 Z" fill="url(#wmg3)"/><rect x="26" y="25" width="12" height="14" rx="3.5" fill="#FFF3D6"/></svg>MaDo</div>
+      <div class="big wordmark"><svg class="wm-bow" style="width:44px;height:44px" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="wmg3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4FC3F7"/><stop offset="1" stop-color="#0288D1"/></linearGradient></defs><path d="M27 27.5 L8 18 Q5 16.5 5 20 V44 Q5 47.5 8 46 L27 36.5 Z M37 27.5 L56 18 Q59 16.5 59 20 V44 Q59 47.5 56 46 L37 36.5 Z" fill="url(#wmg3)"/><rect x="26" y="25" width="12" height="14" rx="3.5" fill="#B3E5FC"/></svg>MaDo</div>
       <div class="tagline" style="opacity:.8">Majordome domotique</div>
       <div>Créez un fil ou choisissez-en un dans la liste.</div>
     </div>

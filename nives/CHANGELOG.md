@@ -2,8 +2,8 @@
 
 ## 0.10.0 — MaDo, Majordome Domotique
 
-- **New identity, "Grand Hôtel" made modern.** MaDo stands for *Majordome Domotique*: the logo is a gold bow tie on night blue, framed with a thin gold line. It is used in the add-on store, the integration, the panel and the installed app, and the sidebar shows the matching built-in icon `mdi:bow-tie`.
-- **Panel theme in the same spirit**: night-blue band with the gold bow tie, "MaDo" in a serif wordmark (Caladea, bundled under the SIL Open Font License) and "Majordome domotique" beside it; ivory background, white cards, night-blue bubbles, gold send button and gold chips. Light and dark still follow the device.
+- **New identity.** MaDo stands for *Majordome Domotique*, and its symbol is the butler's bow tie: a white bow tie with folds and a light-blue knot on Home Assistant blue, framed by a double fine line (solid, then dotted), with a small sparkle. It is used in the add-on store, the integration, the panel and the installed app, and the sidebar shows the matching built-in icon `mdi:bow-tie`.
+- **Panel in Home Assistant's own colours**: HA blue (#03A9F4) and HA's light and dark backgrounds, with finishing touches: a faint bow-tie pattern and a fine inner line in the top band, "MaDo" in a serif wordmark (Caladea, bundled under the SIL Open Font License) with "— Majordome domotique", outlined chips and cards, a double-lined composer, a blue edge on the open thread, fine rules in the sidebar. Light and dark still follow the device.
 - The custom `mado:` icon set of 0.9.8–0.9.9 never showed in the sidebar on a real Home Assistant; it is removed, and the integration no longer loads a script on every Home Assistant page.
 
 ## 0.9.9 — The sidebar icon shows up
