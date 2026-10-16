@@ -405,7 +405,9 @@
 
   /* ----- Status line: one line, never the whole screen ----- */
   #statusline { display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; }
-  #statusline .st-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  #statusline .st-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; transition: opacity 0.2s ease; }
+  #statusline .st-text.swap { opacity: 0; }
+  #statusline .st-time { flex: none; font-variant-numeric: tabular-nums; opacity: 0.8; }
   .st-bow { flex: none; width: 22px; height: 14px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 40'%3E%3Cpath d='M27 15.5 L8 6 Q5 4.5 5 8 V32 Q5 35.5 8 34 L27 24.5 Z M37 15.5 L56 6 Q59 4.5 59 8 V32 Q59 35.5 56 34 L37 24.5 Z' fill='%2303A9F4'/%3E%3Crect x='26' y='13' width='12' height='14' rx='3.5' fill='%2381D4FA'/%3E%3C/svg%3E") center / contain no-repeat; animation: bow-flap 1.1s ease-in-out infinite; }
 
   /* ----- Animations, MaDo style: the bow tie at work ----- */
@@ -425,8 +427,6 @@
   .msg.fresh .chip { animation: chip-in 0.42s cubic-bezier(0.2, 0.9, 0.3, 1.3) both; }
   .msg.fresh .chip:nth-child(2) { animation-delay: 0.06s; } .msg.fresh .chip:nth-child(3) { animation-delay: 0.12s; }
   .msg.fresh .chip:nth-child(4) { animation-delay: 0.18s; } .msg.fresh .chip:nth-child(n+5) { animation-delay: 0.24s; }
-  .msg.assistant:empty { min-width: 72px; min-height: 40px; display: flex; align-items: center; justify-content: center; }
-  .msg.assistant:empty::before { content: ""; width: 36px; height: 22px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 40'%3E%3Cpath d='M27 15.5 L8 6 Q5 4.5 5 8 V32 Q5 35.5 8 34 L27 24.5 Z M37 15.5 L56 6 Q59 4.5 59 8 V32 Q59 35.5 56 34 L37 24.5 Z' fill='%2303A9F4'/%3E%3Crect x='26' y='13' width='12' height='14' rx='3.5' fill='%2381D4FA'/%3E%3C/svg%3E") center / contain no-repeat; animation: bow-flap 1.1s ease-in-out infinite; }
   #btn-send { transition: transform 0.12s ease, background 0.2s; }
   #btn-send:active { transform: scale(0.88); }
   #btn-send.stop { animation: send-ring 1.4s ease-out infinite; }
@@ -435,7 +435,8 @@
   .icon-btn:active, .hdr-btn:active, .msg-act:active { transform: scale(0.9); }
   .msg-act.done { animation: chip-in 0.3s ease both; }
   @media (prefers-reduced-motion: reduce) {
-    #chat-head, .head-top .wm-bow, #empty .big .wm-bow, .msg.fresh, .msg.fresh .chip, .st-bow, .msg.assistant:empty::before, #btn-send.stop, .msg-act.done { animation: none !important; }
+    #chat-head, .head-top .wm-bow, #empty .big .wm-bow, .msg.fresh, .msg.fresh .chip, .st-bow, #btn-send.stop, .msg-act.done { animation: none !important; }
+    #statusline .st-text { transition: none; }
   }
 </style>
 </head>
@@ -1537,28 +1538,36 @@
     // must not add bubbles to a thread that is being followed.
     var tag = "follow:" + id;
     state.liveFor = tag;
-    var bubble = addBubble("assistant", "");
-    bubble.classList.add("live");
+    // No bubble until there is text: meanwhile the busy line, without a
+    // time (this page does not know when the reply started).
+    var bubble = null;
+    startBusy("general", false);
     function tick() {
-      if (state.current !== id || state.liveFor !== tag) { if (bubble.parentNode) bubble.parentNode.removeChild(bubble); return; }
+      if (state.current !== id || state.liveFor !== tag) {
+        if (bubble && bubble.parentNode) bubble.parentNode.removeChild(bubble);
+        stopBusy();
+        return;
+      }
       api("api/running/" + USER_ID + "/" + encodeURIComponent(id))
         .then(function (res) { return res.json(); })
         .then(function (live) {
           if (state.current !== id || state.liveFor !== tag) return;
           if (!live.running) {
             // Stored: show the thread as it is now.
+            stopBusy();
             state.liveFor = null;
             openThread(id);
             refreshThreads();
             return;
           }
           if (live.text) {
+            if (!bubble) { bubble = addBubble("assistant", ""); bubble.classList.add("live"); }
             bubble.dataset.text = live.text;
             renderInto(bubble, "assistant", live.text);
-          } else {
-            bubble.textContent = live.status || "MaDo réfléchit…";
+            pauseBusy();
+          } else if (live.status) {
+            busyHint(live.status);
           }
-          setStatus(live.status || "MaDo répond…");
           scrollDown();
           setTimeout(tick, 1500);
         })
@@ -1790,9 +1799,20 @@
     m.scrollTop = m.scrollHeight;
   }
 
+  // Any other status ends the busy line ("busy" below).
   function setStatus(text, isError) {
+    if (busy) { clearInterval(busy.tick); busy = null; }
+    showStatus(text, isError);
+  }
+
+  function clearStatusLine() {
     var s = el("statusline");
-    if (!text) { s.hidden = true; s.textContent = ""; s.className = ""; return; }
+    s.hidden = true; s.textContent = ""; s.className = ""; s.title = "";
+  }
+
+  function showStatus(text, isError) {
+    var s = el("statusline");
+    if (!text) { clearStatusLine(); return; }
     s.hidden = false;
     s.textContent = "";
     // Something still going on ("Réflexion…", "Transcription…"): the bow tie
@@ -1809,6 +1829,183 @@
     s.appendChild(t);
     s.title = text;
     s.className = isError ? "err" : "";
+  }
+
+  // ----- "MaDo is busy" line -----
+  //
+  // While MaDo works, nothing shows in the thread: bottom left, the bow tie,
+  // a butler's phrase and the time spent. The phrases follow the request
+  // (lights, a question about the house, a reminder, a document…), then what
+  // MaDo is doing (thinking) and how long it takes; they change every few
+  // seconds, never twice the same in a row.
+  var BUSY_PHRASES = {
+    act: ["Je m'en occupe…", "Je fais le nécessaire…", "Je passe dans la pièce…", "J'actionne cela pour vous…", "Je vérifie que tout est en ordre…"],
+    look: ["Je fais le tour des pièces…", "Je consulte la maison…", "Je vérifie pour vous…", "Je jette un œil aux appareils…"],
+    history: ["Je consulte les registres…", "Je remonte le fil du temps…", "J'épluche les relevés…", "Je fais les comptes…"],
+    remind: ["Je le note dans l'agenda…", "Je prends note…", "Je réserve le créneau…"],
+    automation: ["Je rédige la consigne…", "Je prépare le protocole…", "Je règle les détails…"],
+    camera: ["Je jette un œil…", "Je regarde discrètement…", "Je vérifie les abords…"],
+    document: ["Je parcours le document…", "Je lis attentivement…", "Je prends des notes…"],
+    image: ["J'examine la photo…", "Je regarde de près…", "Je détaille l'image…"],
+    file: ["Je mets en page…", "Je prépare le document…", "Je soigne la présentation…"],
+    memory: ["Je consulte mes carnets…", "Je fouille ma mémoire…", "Je mets mes notes à jour…"],
+    general: ["Un instant, je vous prie…", "Je prépare la réponse…", "Je rassemble mes idées…", "Je mets les formes…", "Je rajuste mon nœud papillon…"],
+    thinking: ["Je réfléchis à la meilleure façon de faire…", "Je pèse le pour et le contre…", "Je rassemble mes idées…", "Je réfléchis à la question…"],
+    long: ["Cela demande un peu de soin…", "Je peaufine…", "Encore un instant…"],
+    veryLong: ["Merci de votre patience…", "J'y mets tout mon soin…", "Je n'oublie rien, promis…"]
+  };
+  // First match wins: "rappelle-moi d'éteindre" is a reminder, not an order,
+  // and "rappelle-toi" is memory, not a reminder.
+  // Words start after a non-letter: \b does not see "É" as a letter.
+  var BUSY_KINDS = [
+    ["memory", /(?:^|[^\wÀ-ÿ])(souviens|souvenir|retiens|mémorise|oublie|rappelles?-toi|tu sais que)/i],
+    ["remind", /(?:^|[^\wÀ-ÿ])(rappel|rappelle|préviens|prévenir|alerte|réveille)|(?:^|[^\wÀ-ÿ])dans \d+ ?(min|h|heure|jour)/i],
+    ["automation", /(?:^|[^\wÀ-ÿ])(automatisation|automation|scénario|scenario|routine|chaque (soir|matin|jour|nuit)|tous les (soirs|matins|jours))/i],
+    ["camera", /(?:^|[^\wÀ-ÿ])(caméra|camera|sonnette|qui est (à|devant))/i],
+    ["file", /(?:^|[^\wÀ-ÿ])(crée|créer|génère|générer|fais|exporte|prépare)[- ](moi )?(un |une |le |la )?(fichier|tableau|pdf|docx|word|excel|csv|document|présentation)/i],
+    ["history", /(?:^|[^\wÀ-ÿ])(hier|historique|consommation|semaine|mois|depuis|statistique|moyenne|graphique|courbe|kwh)/i],
+    ["act", /(?:^|[^\wÀ-ÿ])(allume|éteins|eteins|éteindre|allumer|ouvre|ferme|fermer|ouvrir|monte|baisse|lance|démarre|arrête|stoppe|mets|règle|active|désactive|verrouille|déverrouille|tamise|augmente|diminue|chauffe)/i],
+    ["look", /(?:^|[^\wÀ-ÿ])(est-ce que|est ce que|quel(le)?s? (est|sont)|combien|température|humidité|allumée?s?\s*\?|ouverte?s?\s*\?|où en est|état)/i]
+  ];
+
+  function busyKind(text, images, docs) {
+    if (docs && docs.length) return "document";
+    if (images && images.length) return "image";
+    for (var i = 0; i < BUSY_KINDS.length; i++) if (BUSY_KINDS[i][1].test(text || "")) return BUSY_KINDS[i][0];
+    return "general";
+  }
+
+  function shuffled(list) {
+    var out = list.slice();
+    for (var i = out.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = out[i]; out[i] = out[j]; out[j] = t; }
+    return out;
+  }
+
+  function formatElapsed(ms) {
+    var sec = Math.floor(ms / 1000);
+    if (sec < 60) return sec + " s";
+    var r = sec % 60;
+    return Math.floor(sec / 60) + " min " + (r < 10 ? "0" : "") + r + " s";
+  }
+
+  var busy = null;
+  var BUSY_ROTATE_MS = 5000;
+
+  // `withTime` false: following a reply another page started, whose start
+  // time is not known here.
+  function startBusy(kind, withTime) {
+    stopBusy();
+    busy = { kind: kind, start: Date.now(), withTime: withTime !== false, queue: [], phrase: "", shown: 0, hidden: false, phase: "", seen: {} };
+    busy.queue = BUSY_PHRASES[kind].slice(0, 1).concat(shuffled(BUSY_PHRASES[kind].slice(1)));
+    busy.tick = setInterval(busyTick, 1000);
+    nextBusyPhrase(true);
+  }
+
+  function stopBusy() {
+    if (!busy) return;
+    clearInterval(busy.tick);
+    var wasShown = !busy.hidden;
+    busy = null;
+    if (wasShown) clearStatusLine();
+  }
+
+  // MaDo writes: the line goes while the words come, and comes back if a
+  // later step (tools after a first sentence) keeps it busy again.
+  function pauseBusy() {
+    if (!busy || busy.hidden) return;
+    busy.hidden = true;
+    clearStatusLine();
+  }
+
+  function resumeBusy() {
+    if (!busy || !busy.hidden) return;
+    busy.hidden = false;
+    nextBusyPhrase(true);
+  }
+
+  // A status from the server: "Réflexion…" turns the phrases to thinking;
+  // anything else (a heads-up before a long lookup) is shown as it is.
+  function busyHint(text) {
+    if (!busy) { showStatus(text); return; }
+    // The same status again (a followed reply is polled): nothing new.
+    if (busy.lastHint === text) return;
+    busy.lastHint = text;
+    if (/^Réflexion/.test(text)) {
+      if (busy.phase === "thinking") return;
+      busy.phase = "thinking";
+      busy.queue = shuffled(BUSY_PHRASES.thinking);
+    } else {
+      busy.queue.unshift(text);
+    }
+    if (!busy.hidden) nextBusyPhrase(false);
+  }
+
+  function refillBusy() {
+    var elapsed = Date.now() - busy.start;
+    var pool = elapsed >= 60000 && !busy.seen.veryLong ? (busy.seen.veryLong = busy.seen.long = true, BUSY_PHRASES.veryLong)
+      : elapsed >= 30000 && !busy.seen.long ? (busy.seen.long = true, BUSY_PHRASES.long)
+      : busy.phase === "thinking" ? BUSY_PHRASES.thinking.concat(BUSY_PHRASES[busy.kind])
+      : BUSY_PHRASES[busy.kind].concat(BUSY_PHRASES.general);
+    busy.queue = shuffled(pool);
+  }
+
+  function nextBusyPhrase(instant) {
+    if (!busy.queue.length) refillBusy();
+    var next = busy.queue.shift();
+    if (next === busy.phrase) {
+      if (!busy.queue.length) refillBusy();
+      next = busy.queue.shift() || next;
+    }
+    busy.phrase = next;
+    busy.shown = Date.now();
+    renderBusy(instant);
+  }
+
+  function busyTick() {
+    if (!busy || busy.hidden) return;
+    var elapsed = Date.now() - busy.start;
+    // A long wait is said as soon as it is long, not at the next change.
+    var due = (elapsed >= 30000 && !busy.seen.long) || (elapsed >= 60000 && !busy.seen.veryLong);
+    if (due) busy.queue = [];
+    if (due || Date.now() - busy.shown >= BUSY_ROTATE_MS) nextBusyPhrase(false);
+    else renderTime();
+  }
+
+  function renderTime() {
+    var t = el("statusline").querySelector(".st-time");
+    if (t && busy) t.textContent = "· " + formatElapsed(Date.now() - busy.start);
+  }
+
+  function renderBusy(instant) {
+    var s = el("statusline");
+    var text = s.querySelector(".st-text");
+    if (!text || !s.querySelector(".st-bow")) {
+      clearStatusLine();
+      s.hidden = false;
+      var bow = document.createElement("span");
+      bow.className = "st-bow";
+      bow.setAttribute("aria-hidden", "true");
+      text = document.createElement("span");
+      text.className = "st-text";
+      s.appendChild(bow);
+      s.appendChild(text);
+      if (busy.withTime) {
+        var time = document.createElement("span");
+        time.className = "st-time";
+        s.appendChild(time);
+      }
+      instant = true;
+    }
+    var phrase = busy.phrase;
+    s.title = phrase;
+    renderTime();
+    if (instant || text.textContent === phrase) { text.textContent = phrase; text.classList.remove("swap"); return; }
+    text.classList.add("swap");
+    setTimeout(function () {
+      if (!busy || busy.phrase !== phrase) return;
+      text.textContent = phrase;
+      text.classList.remove("swap");
+    }, 200);
   }
 
   // What the tools of a turn were, grouped: fifty get_entities calls are one
@@ -1849,12 +2046,22 @@
     state.localRunning[threadId] = true;
     renderThreads(state.threads);
     refreshSendButton();
-    var bubble = addBubble("assistant", "");
-    bubble.classList.add("fresh");
+    // No bubble until MaDo writes: meanwhile only the busy line shows.
+    var bubble = null;
     var acc = "";
     var finalResponse = null;
+    startBusy(busyKind(text, images, docs));
 
-    function paint() { bubble.dataset.text = acc; renderInto(bubble, "assistant", acc); scrollDown(); }
+    function ensureBubble() {
+      if (bubble) return bubble;
+      bubble = addBubble("assistant", "");
+      bubble.classList.add("fresh");
+      // Another thread is on screen: the bubble is filled off screen.
+      if (state.current !== threadId) bubble.parentNode.removeChild(bubble);
+      return bubble;
+    }
+
+    function paint() { ensureBubble(); bubble.dataset.text = acc; renderInto(bubble, "assistant", acc); scrollDown(); }
 
     function handleBlock(block) {
       var lines = block.split("\n");
@@ -1869,6 +2076,8 @@
       try { payload = JSON.parse(data); } catch (e) { return; }
       if (eventName === "chunk") {
         acc += payload.text || "";
+        // MaDo writes: whatever it was busy with is over, for now.
+        if (payload.text) pauseBusy();
         // The person opened another thread meanwhile: this one is followed
         // again from the server if they come back to it.
         if (state.liveFor === threadId) paint();
@@ -1880,10 +2089,10 @@
         // The thread exists on the server now: show it, busy, in the list.
         if (!listed) { listed = true; refreshThreads(); }
         if (state.liveFor !== threadId) return;
-        if (acc) { bubble = addBubble("assistant", ""); acc = ""; }
+        if (acc) { bubble = null; acc = ""; resumeBusy(); }
       }
       else if (eventName === "title") { setThreadTitle(threadId, payload.title); }
-      else if (eventName === "status") { setStatus(payload.text || ""); }
+      else if (eventName === "status") { if (payload.text) busyHint(payload.text); }
       else if (eventName === "error") { streamError = payload.error || "Erreur"; setStatus(streamError, true); }
       else if (eventName === "done") { finalResponse = payload; }
       else if (eventName === "ocr_confirm") { ocrQuestion = payload; setStatus(""); }
@@ -1930,11 +2139,12 @@
         delete state.localRunning[threadId];
         if (state.liveFor === threadId) state.liveFor = null;
         if (ocrQuestion) {
-          askOcr(bubble, ocrQuestion, function (answer) { send(text, images, null, docs, answer); });
+          askOcr(ensureBubble(), ocrQuestion, function (answer) { send(text, images, null, docs, answer); });
           state.busy = false;
           refreshSendButton();
           return;
         }
+        stopBusy();
         // The final payload is authoritative: when nothing streamed (a
         // silent model, a structured error) it is the only place the
         // answer exists.
@@ -1948,6 +2158,8 @@
           }
           if (Array.isArray(finalResponse.toolsUsed) && finalResponse.toolsUsed.length) {
             setStatus("Outils : " + summarizeTools(finalResponse.toolsUsed));
+          } else if (!finalResponse.error) {
+            setStatus("");
           }
         } else if (!acc) {
           acc = streamError ? "Erreur : " + streamError : "Aucune réponse du serveur.";
@@ -1955,8 +2167,8 @@
         }
         // A last turn that wrote nothing (tools only, then silence) leaves
         // an empty bubble behind; it says nothing, so it goes.
-        if (!acc && bubble.parentNode) bubble.parentNode.removeChild(bubble);
-        else {
+        if (!acc) { if (bubble && bubble.parentNode) bubble.parentNode.removeChild(bubble); }
+        else if (bubble) {
           if (finalResponse && finalResponse.actions) addChips(bubble, finalResponse.actions);
           addCopy(bubble);
           addSpeak(bubble);
