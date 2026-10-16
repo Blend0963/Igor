@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.9 — The sidebar icon shows up
+
+- In 0.9.8 the sidebar could draw MaDo's entry before the icon set was loaded, and the icon then stayed empty. The icon set now redraws every `mado:` icon already on the page once it has loaded, and after each navigation.
+
 ## 0.9.8 — MaDo's icon in the sidebar
 
 - The sidebar shows MaDo's own icon (the leaning house with its small network) instead of the generic brain. The companion integration registers an icon set `mado:` with Home Assistant's frontend, so `mado:logo` can also be used anywhere Home Assistant asks for an icon (dashboards, buttons). Right after a restart the icon can take a moment to appear, until the integration has loaded.
