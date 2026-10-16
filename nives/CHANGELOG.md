@@ -1,8 +1,10 @@
 # Changelog
 
-## 0.10.3 — The bow tie rests
+## 0.10.3 — The butler at work
 
-- "Réflexion…" and its flapping bow tie stayed under the conversation after an answer that used no tool. The status now clears as soon as MaDo starts writing, and at the end only the tools line (when there is one) is left, without animation.
+- **Nothing in the thread while MaDo works**: the waiting bubble with its bow tie is gone. MaDo's bubble appears with the first words of the answer; until then everything happens bottom left.
+- **What MaDo is doing, in its own words, with the time spent**: the bow tie, a butler's phrase and a timer ("Je fais le tour des pièces… · 8 s", then "· 1 min 05 s"). The phrases follow the request (an order, a question about the house, history, a reminder, an automation, a camera, a document, a photo, a file to make, memory), then what MaDo does (thinking: "Je pèse le pour et le contre…") and how long it takes ("Cela demande un peu de soin…" after 30 s, "Merci de votre patience…" after a minute). They change every five seconds, never twice the same in a row, with a short fade (none when the device asks for reduced motion).
+- The line goes as soon as MaDo writes, and comes back if it then goes on with tools; at the end only the tools line (when there is one) is left. "Réflexion…" and its bow tie no longer stay under an answer that used no tool.
 
 ## 0.10.2 — The bow tie at work
 
