@@ -180,6 +180,7 @@
   @media (hover: none) { .thread .t-star { visibility: visible; } }
   .thread .t-edit { visibility: hidden; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px; }
   .thread:hover .t-edit { visibility: visible; }
+  @media (hover: none) { .thread .t-edit { visibility: visible; } }
   .thread .t-edit:hover { color: var(--link); }
   .rename { width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--accent); border-radius: 6px; padding: 2px 6px; font: inherit; font-size: 13px; }
   #chat-title { cursor: text; }
@@ -383,6 +384,8 @@
   .head-top .wordmark { text-shadow: 0 1px 0 rgba(1,87,155,0.35); }
   .tagline::before { content: ""; display: inline-block; width: 18px; height: 1px; background: currentColor; opacity: 0.7; vertical-align: middle; margin: 0 8px 2px 2px; }
   #chat-title { background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.38); color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,0.25); }
+  #chat-title:not(.untitled) { padding-right: 28px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20h4L19 9l-4-4L4 16v4z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; background-size: 12px; }
+  #chat-title:has(input) { background-image: none; padding-right: 12px; }
   .msg.assistant { border: 1px solid var(--line); }
   .msg.user { background: linear-gradient(160deg, #29B6F6, var(--user-bubble) 60%); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18), 0 3px 10px rgba(var(--accent-rgb),0.25); }
   .chip { box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent); }
