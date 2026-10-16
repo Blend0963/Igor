@@ -90,6 +90,17 @@ export class InMemoryConversationStore implements IConversationStore {
     return messages.slice(-limit);
   }
 
+  setMessageActions(messageId: string, actions: Array<{ kind: string; label: string }>): void {
+    if (!actions.length) return;
+    for (const messages of this.conversations.values()) {
+      const msg = messages.find((m) => m.id === messageId);
+      if (msg) {
+        msg.actions = actions;
+        return;
+      }
+    }
+  }
+
   getRecentMessages(userId: string, hoursOld: number = 24, limit: number = 12, excludeConversationId?: string): ConversationMessage[] {
     const cutoff = Date.now() - hoursOld * 60 * 60 * 1000;
     return [...this.conversations.values()]

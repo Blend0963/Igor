@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.7 — The MaDo look in the panel
+
+- **New panel theme**: a Home Assistant blue band at the top with "MaDo" in italics and the thread's name, white cards for MaDo's answers, blue bubbles for yours, rounded composer. **Light and dark follow the phone or computer** automatically. Same look on the phone and the laptop (thread list on the side).
+- **Drawn buttons** instead of emojis: attach, photo, microphone, send / stop, menu, new thread, export, and the sidebar tools.
+- **Copy button on every bubble**, yours and MaDo's, next to read aloud, edit and regenerate.
+- **Action chips**: above an answer, what MaDo really did in the house: "Salon · éteint", "Volet · fermé", "Rappel · samedi 18 octobre à 07:00", "Volets du soir · créée". They come from the actions Home Assistant confirmed, never from the model's words, and stay with the message.
+
 ## 0.9.6 — MaDo's own look
 
 - **New icon and logo**: a house with a small neural network inside, in Home Assistant blue, with "MaDo" in white italics. In the add-on store, the integration, the sidebar panel and the installed app.
