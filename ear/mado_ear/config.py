@@ -18,6 +18,7 @@ class Settings:
     language: str = "fr"
     cpu_threads: int = 2
     hotwords: str = "MaDo"
+    beam_size: int = 0
     extra_targets: list[str] = field(default_factory=list)
     act: bool = False
     followup: bool = True
@@ -48,6 +49,7 @@ def load(path: Path = CONFIG) -> Settings:
     s.language = str(stt.get("language", s.language))
     s.cpu_threads = int(stt.get("cpu_threads", s.cpu_threads))
     s.hotwords = str(stt.get("hotwords", s.hotwords))
+    s.beam_size = int(stt.get("beam_size", s.beam_size))
     s.extra_targets = [str(t) for t in addressing.get("extra_targets", [])]
     s.act = bool(mode.get("act", s.act))
     s.followup = bool(mode.get("followup", s.followup))

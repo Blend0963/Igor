@@ -22,6 +22,7 @@ device = "auto"      # auto (GPU, else CPU), cuda or cpu
 language = "fr"
 cpu_threads = 2      # used only on the CPU fallback
 hotwords = "MaDo"    # words Whisper should expect: it then writes the name right
+beam_size = 0        # 0: 5 on a GPU (hears the name better), 1 on a CPU
 
 [home_assistant]
 # Needed for act mode; also used in observation mode to stay quiet while
