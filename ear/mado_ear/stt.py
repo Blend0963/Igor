@@ -48,10 +48,20 @@ class Transcript:
 
 
 class Transcriber:
-    def __init__(self, model: str = "small", device: str = "auto", language: str = "fr", cpu_threads: int = 2) -> None:
+    def __init__(
+        self,
+        model: str = "small",
+        device: str = "auto",
+        language: str = "fr",
+        cpu_threads: int = 2,
+        hotwords: str = "MaDo",
+    ) -> None:
         from faster_whisper import WhisperModel
 
         self.language = language
+        # "MaDo" is no French word: told to expect it, Whisper writes it
+        # instead of "ma doux" or "Madame".
+        self.hotwords = hotwords or None
         attempts = [("cuda", "float32"), ("cpu", "int8")] if device == "auto" else [
             (device, "float32" if device == "cuda" else "int8")
         ]
@@ -79,6 +89,7 @@ class Transcriber:
         segments, _info = self._model.transcribe(
             audio,
             language=self.language,
+            hotwords=self.hotwords,
             beam_size=1,
             best_of=1,
             temperature=0.0,

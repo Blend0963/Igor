@@ -27,7 +27,7 @@ from typing import Callable
 
 import numpy as np
 
-from .addressing import Addressing, name_only
+from .addressing import NAME, Addressing, name_only, normalize
 
 RATE = 16000
 GAP = np.zeros(RATE // 5, dtype=np.float32)  # 0.2 s between "MaDo" and the order
@@ -99,7 +99,13 @@ class Listener:
         heard = self._hear(audio)
         now = self.clock()
         entry["stt_s"] = round(heard.seconds, 2)
-        noise = not heard.text or heard.no_speech > MAX_NO_SPEECH or heard.logprob < MIN_LOGPROB
+        # Silence or noise is dropped. A doubtful transcription (low log
+        # probability, common with the small models) is dropped too, unless
+        # it carries the name: that is all that matters here, MaDo gets the
+        # audio itself.
+        noise = not heard.text or heard.no_speech > MAX_NO_SPEECH or (
+            heard.logprob < MIN_LOGPROB and not NAME.search(normalize(heard.text))
+        )
 
         armed = self._armed is not None and now <= self._armed_until
         followup_open = self.followup and now <= self._followup_until

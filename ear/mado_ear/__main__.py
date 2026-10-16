@@ -124,7 +124,7 @@ def run(settings: Settings) -> None:
         return Outcome(r.heard, r.speech, r.conversation_id, r.continue_conversation, r.error)
 
     vad, segmenter = Vad(), Segmenter()
-    stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads)
+    stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords)
     listener = Listener(
         stt,
         Addressing(extra_targets=settings.extra_targets),
@@ -198,7 +198,7 @@ def bench(settings: Settings, seconds: float) -> None:
 
     print(f"Loading the model ({settings.model}, {settings.device})…", flush=True)
     t0 = time.monotonic()
-    stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads)
+    stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords)
     print(f"Ready on {stt.device} in {time.monotonic() - t0:.1f}s")
     print(f"Speak now: recording {seconds:.0f}s from {settings.source}…", flush=True)
     vad, chunks, probs = Vad(), [], []

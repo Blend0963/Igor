@@ -106,3 +106,16 @@ def test_long_speech_only_head_and_tail_transcribed():
     e = listener.handle(audio(40))
     assert lengths == [8 * 16000, 6 * 16000]
     assert e["accepted"] and e["reason"] == "name"
+
+
+def test_doubtful_transcription_with_the_name_is_kept():
+    def stt(a):
+        return Transcript("tu montons ma doux", 0.2, 0.3, -1.4)
+    e = Listener(stt, Addressing(), None).handle(audio())
+    assert e["accepted"] and e["reason"] == "name"
+
+
+def test_doubtful_transcription_without_the_name_is_noise():
+    def stt(a):
+        return Transcript("va plutôt ta blètre", 0.2, 0.3, -1.4)
+    assert Listener(stt, Addressing(), None).handle(audio())["reason"] == "noise"
