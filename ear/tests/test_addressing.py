@@ -1,8 +1,9 @@
 import pytest
 
-from mado_ear.addressing import Addressing, normalize
+from mado_ear.addressing import Addressing, name_only, normalize
 
-rules = Addressing(extra_targets=["lampe de chevet", "guirlande"])
+rules = Addressing(extra_targets=["lampe de chevet", "guirlande"], accept_commands=True)
+name_rules = Addressing()
 
 
 @pytest.mark.parametrize("text,reason", [
@@ -42,3 +43,23 @@ def test_followup_window():
 
 def test_normalize():
     assert normalize("Éteins  l’ÉCLAIRAGE !") == "eteins l'eclairage"
+
+
+@pytest.mark.parametrize("text", [
+    "Madou, éteins la lumière", "éteins la lumière Madou", "MaDo allume le salon",
+])
+def test_name_variants(text):
+    assert name_rules.decide(text).reason == "name"
+
+
+def test_commands_need_the_name_by_default():
+    assert not name_rules.decide("Allume le chauffage de la chambre.").accepted
+    assert not name_rules.decide("Éteins la lumière").accepted
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("MaDo ?", True), ("Euh, Madou", True), ("Hey MaDo.", True),
+    ("MaDo éteins la lumière", False), ("Mado, quelle heure est-il", False),
+])
+def test_name_only(text, expected):
+    assert name_only(text) is expected

@@ -1,34 +1,40 @@
 # mado-ear settings. Copied to ~/.config/mado-ear/config.toml by install.sh;
 # edit that copy, then: systemctl --user restart mado-ear
 
+[mode]
+# false: observation only, nothing is sent (notes in ~/.local/state/mado-ear).
+# true: sentences that name MaDo go to MaDo and the satellite answers.
+act = false
+# Right after MaDo asks a question, take the answer without the name.
+followup = true
+# After "MaDo" said alone, how long to wait for the order (seconds).
+name_wait = 6
+
 [audio]
 # The microphone, from `pactl list short sources`.
 source = "alsa_input.usb-Generalplus_Usb_Audio_Device-00.mono-fallback"
 
 [stt]
+# Local transcription, used only to hear the name; MaDo gets the audio
+# itself, transcribed by the Assist pipeline (Voxtral).
 model = "small"      # small fits the GTX 960's 2 GB in float32
 device = "auto"      # auto (GPU, else CPU), cuda or cpu
 language = "fr"
 cpu_threads = 2      # used only on the CPU fallback
 
-[addressing]
-# Your own names for things, counted as "something the house has":
-# extra_targets = ["lampe de chevet", "guirlande", "hotte"]
-extra_targets = []
-
 [home_assistant]
-# Optional: listen only while this entity says someone is home.
-# url = "http://homeassistant.local:8123"
-# token = "a long-lived access token"   (Profile > Security in Home Assistant)
-# presence_entity = "binary_sensor.presence"
-url = ""
-token = ""
-presence_entity = ""
+# Needed for act mode; also used in observation mode to stay quiet while
+# the satellite is busy and, optionally, while nobody is home.
+url = ""                       # e.g. "http://homeassistant.local:8123"
+token = ""                     # a long-lived access token (Profile > Security)
+satellite = ""                 # e.g. "assist_satellite.hub_audio": its voice answers
+pipeline = ""                  # empty: the preferred Assist pipeline
+presence_entity = ""           # e.g. "binary_sensor.presence"; empty: always listen
 home_states = ["on", "home"]
 
 [log]
 # Notes kept in ~/.local/state/mado-ear/observations.jsonl, on this machine only.
 keep_days = 7
-# Also note the text of sentences that were NOT for MaDo, to spot the ones
-# it should have taken. Turn off once the rules are judged.
+# Also note the text of sentences that were NOT for MaDo. Turn off once
+# the name detection is judged.
 rejected_text = true
