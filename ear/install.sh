@@ -43,6 +43,9 @@ if [ "$STACK" = maxwell ]; then
     [ -x "$APP/venv/bin/python" ] || "$APP/uv/bin/uv" venv --quiet --python 3.12 "$APP/venv"
     VIRTUAL_ENV="$APP/venv" "$APP/uv/bin/uv" pip install --quiet --no-cache -r "$HERE/requirements-maxwell.txt"
     VIRTUAL_ENV="$APP/venv" "$APP/uv/bin/uv" pip install --quiet --no-cache --no-deps "faster-whisper==1.2.1"
+    # glibc 2.41 (Debian 13) will not load a library asking for an executable
+    # stack, which libctranslate2 3.24 does without needing it.
+    "$APP/venv/bin/python" "$HERE/clear_execstack.py" "$APP"/venv/lib/python3.12/site-packages/ctranslate2.libs/*.so*
 else
     [ -x "$APP/venv/bin/python" ] || python3 -m venv "$APP/venv"
     "$APP/venv/bin/pip" install --quiet --upgrade pip
