@@ -250,7 +250,12 @@ def main(argv: list[str] | None = None) -> int:
     # faster-whisper announces every clip it processes; only its problems matter here.
     logging.getLogger("faster_whisper").setLevel(logging.WARNING)
     logging.getLogger("websockets").setLevel(logging.WARNING)
-    settings = load()
+    try:
+        settings = load()
+    except ValueError as err:  # tomllib.TOMLDecodeError
+        print(f"Error in {CONFIG}: {err}\n"
+              "Check that every value is on one line, between double quotes, and closed.", file=sys.stderr)
+        return 2
     if args.command == "run":
         if not CONFIG.exists():
             log.warning("No %s; using defaults", CONFIG)
