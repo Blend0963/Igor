@@ -93,6 +93,7 @@ def test_pipeline_sends_audio_and_reads_answer(server):
     assert received["audio"] == pcm
     run = received["run"]
     assert run["start_stage"] == "stt" and run["end_stage"] == "intent"
+    assert run["input"] == {"sample_rate": 16000, "no_vad": True}
     assert run["device_id"] == "dev-42" and run["pipeline"] == "p1" and run["conversation_id"] == "c0"
     assert r.heard == "Madou éteins la lumière"
     assert r.speech == "C'est fait. Autre chose ?"

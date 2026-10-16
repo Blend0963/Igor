@@ -10,9 +10,13 @@ with fakes. For each utterance:
    next sentence, within a few seconds, is the order, and both are sent
    together. Right after MaDo asked a question, the answer is taken without
    the name (follow-up).
-4. Taken, in act mode: the recorded audio (not Whisper's words) goes to the
-   Assist pipeline, so Voxtral hears it properly, and the satellite says
-   MaDo's answer. In observation mode it is only noted.
+4. Taken, in act mode: if the speaker goes on after a short pause, the rest
+   is joined first (`more`). Then the recorded audio (not Whisper's words)
+   goes to the Assist pipeline, so Voxtral hears all of it properly, and the
+   satellite says MaDo's answer. In observation mode it is only noted.
+
+A long sentence is not transcribed in full just to find the name: its first
+8 and last 6 seconds are, where "MaDo" is said in practice.
 """
 from __future__ import annotations
 
@@ -27,6 +31,11 @@ from .addressing import Addressing, name_only
 
 RATE = 16000
 GAP = np.zeros(RATE // 5, dtype=np.float32)  # 0.2 s between "MaDo" and the order
+
+# Longer than this, only the head and the tail are transcribed for the name.
+LONG_S = 16.0
+HEAD_S = 8.0
+TAIL_S = 6.0
 
 # Below these, Whisper is guessing words into noise.
 MAX_NO_SPEECH = 0.6
@@ -66,7 +75,20 @@ class Listener:
         self._followup_until = float("-inf")
         self._conversation: str | None = None
 
-    def handle(self, audio: np.ndarray) -> dict:
+    def _hear(self, audio: np.ndarray):
+        if len(audio) <= LONG_S * RATE:
+            return self.stt(audio)
+        head = self.stt(audio[: int(HEAD_S * RATE)])
+        tail = self.stt(audio[-int(TAIL_S * RATE):])
+        head.text = f"{head.text} … {tail.text}".strip(" …")
+        head.seconds += tail.seconds
+        head.no_speech = min(head.no_speech, tail.no_speech)
+        head.logprob = max(head.logprob, tail.logprob)
+        return head
+
+    def handle(self, audio: np.ndarray, more: Callable[[], np.ndarray | None] | None = None) -> dict:
+        """One utterance. `more()` returns the next part of the same speech,
+        if the speaker went on after a short pause, else None."""
         entry: dict = {
             "time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "audio_s": round(len(audio) / RATE, 2),
@@ -74,7 +96,7 @@ class Listener:
         if self.busy():
             entry.update(accepted=False, reason="satellite_busy")
             return entry
-        heard = self.stt(audio)
+        heard = self._hear(audio)
         now = self.clock()
         entry["stt_s"] = round(heard.seconds, 2)
         noise = not heard.text or heard.no_speech > MAX_NO_SPEECH or heard.logprob < MIN_LOGPROB
@@ -102,6 +124,15 @@ class Listener:
             entry["text"] = heard.text
         if not accepted or self.act is None:
             return entry
+
+        # The speaker may go on after a pause: join the rest first.
+        joined = 0
+        while more is not None and (part := more()) is not None:
+            send = np.concatenate([send, GAP, part])
+            joined += 1
+        if joined:
+            entry["joined"] = joined
+        entry["sent_s"] = round(len(send) / RATE, 2)
 
         # Act: the audio itself goes to MaDo through the Assist pipeline.
         conversation = self._conversation if reason == "followup" else None

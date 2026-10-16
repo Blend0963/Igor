@@ -54,13 +54,16 @@ def note(settings: Settings, entry: dict) -> None:
 
 BUSY = {"listening", "processing", "responding"}
 BUSY_TAIL = 1.5  # seconds after the satellite stops: the end of its own voice
+JOIN_GAP = 1.5   # a pause shorter than this does not end a sentence for MaDo
 
 
 def run(settings: Settings) -> None:
     from . import ha
     from .audio import frames
     from .listener import Listener, Outcome
-    from .segmenter import Segmenter
+    from collections import deque
+
+    from .segmenter import Segmenter, Utterance
     from .stt import Transcriber
     from .vad import Vad
 
@@ -131,12 +134,33 @@ def run(settings: Settings) -> None:
         name_wait=settings.name_wait,
         keep_rejected_text=settings.rejected_text,
     )
-    utterances: queue.Queue[np.ndarray] = queue.Queue(maxsize=4)
+    utterances: queue.Queue[Utterance] = queue.Queue(maxsize=8)
+    pending: deque[Utterance] = deque()
 
     def worker() -> None:
         last_prune = time.monotonic()
         while True:
-            entry = listener.handle(utterances.get())
+            u = pending.popleft() if pending else utterances.get()
+            last_end = [u.end]
+
+            def more() -> np.ndarray | None:
+                """The next part, if the speaker went on within JOIN_GAP."""
+                while True:
+                    try:
+                        nxt = pending.popleft() if pending else utterances.get(timeout=0.1)
+                    except queue.Empty:
+                        if segmenter.in_speech and segmenter.speech_start - last_end[0] <= JOIN_GAP:
+                            continue  # still talking: wait for that part to end
+                        if segmenter.now - last_end[0] >= JOIN_GAP:
+                            return None
+                        continue
+                    if nxt.start - last_end[0] <= JOIN_GAP:
+                        last_end[0] = nxt.end
+                        return nxt.audio
+                    pending.appendleft(nxt)  # a new sentence, handled next
+                    return None
+
+            entry = listener.handle(u.audio, more)
             note(settings, entry)
             if entry["reason"] not in {"satellite_busy", "noise"} or entry.get("accepted"):
                 log.info("%s %-18s %s%s", "SENT" if entry.get("sent") else ("WOULD SEND" if entry["accepted"] else "ignored   "),
@@ -222,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
     # faster-whisper announces every clip it processes; only its problems matter here.
     logging.getLogger("faster_whisper").setLevel(logging.WARNING)
+    logging.getLogger("websockets").setLevel(logging.WARNING)
     settings = load()
     if args.command == "run":
         if not CONFIG.exists():

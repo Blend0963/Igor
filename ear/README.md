@@ -17,7 +17,10 @@ microphone (PipeWire, shared with linux-voice-assistant)
   → the satellite says the answer (assist_satellite.announce)
 ```
 
-Nothing leaves the machine unless the sentence names MaDo. While the
+A long request is fine: MaDo gets the whole recording (up to a minute), and
+a pause of less than 1.5 s does not end it; Whisper only checks the first
+8 and last 6 seconds for the name. Nothing leaves the machine unless the
+sentence names MaDo. While the
 satellite is busy (after its own wake word, or speaking) the service stays
 quiet, so the wake word keeps working and MaDo never answers its own voice.
 

@@ -77,7 +77,9 @@ def run_pipeline(
             "type": "assist_pipeline/run",
             "start_stage": "stt",
             "end_stage": "intent",
-            "input": {"sample_rate": 16000},
+            # The sentence is already cut, pauses included: the pipeline must
+            # not end it at the first silence of its own.
+            "input": {"sample_rate": 16000, "no_vad": True},
             "timeout": 60,
         }
         if pipeline:

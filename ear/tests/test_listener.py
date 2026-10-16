@@ -85,3 +85,24 @@ def test_observation_mode_never_acts():
     listener, _, _ = make(["MaDo éteins tout"], act=False)
     e = listener.handle(audio())
     assert e["accepted"] and "sent" not in e
+
+
+def test_speech_going_on_after_a_pause_is_joined():
+    listener, _, sent = make(["MaDo donne-moi les nouvelles"])
+    parts = [audio(4), audio(3)]
+    e = listener.handle(audio(2), more=lambda: parts.pop(0) if parts else None)
+    assert e["joined"] == 2
+    assert sent[0][0] == 16000 * (2 + 4 + 3) + 2 * 3200
+
+
+def test_long_speech_only_head_and_tail_transcribed():
+    lengths = []
+
+    def stt(a):
+        lengths.append(len(a))
+        return Transcript("bla" if len(lengths) == 1 else "merci MaDo", 0.5, 0.1, -0.2)
+
+    listener = Listener(stt, Addressing(), None)
+    e = listener.handle(audio(40))
+    assert lengths == [8 * 16000, 6 * 16000]
+    assert e["accepted"] and e["reason"] == "name"
