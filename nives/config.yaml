@@ -1,7 +1,7 @@
 name: "MaDo"
-version: "0.9.9"
+version: "0.10.0"
 slug: "mado"
-description: "MaDo — assistant IA pour Home Assistant avec mémoire persistante"
+description: "MaDo, Majordome Domotique : l'assistant IA de la maison, avec sa mémoire"
 url: "https://github.com/Blend0963/MaDo"
 image: ghcr.io/blend0963/mado-{arch}
 arch:
@@ -23,7 +23,7 @@ ports:
 ports_description:
   3100/tcp: MaDo app (PWA), only behind your own HTTPS reverse proxy
 memory: 768
-panel_icon: "mado:logo"
+panel_icon: "mdi:bow-tie"
 
 # Thread panel served by the bundled server. Ingress puts it behind the
 # Home Assistant login and into the sidebar (panel_title above the icon);

@@ -11,16 +11,12 @@ from pathlib import Path
 from urllib.parse import quote
 
 import aiohttp
-from aiohttp import web
 
 from homeassistant.components import persistent_notification
-from homeassistant.components.frontend import add_extra_js_url
-from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
-from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.loader import async_get_integration
@@ -343,59 +339,6 @@ class MaDoData:
 
 
 type MaDoConfigEntry = ConfigEntry[MaDoData]
-
-
-# MaDo's own icon for Home Assistant's frontend: `mado:logo` (the add-on's
-# sidebar panel uses it, and so can any dashboard). Icons in the sidebar are
-# single-colour paths on a 24x24 grid, so this is the logo's silhouette: the
-# leaning house with its small network inside. Served by a view and loaded
-# as an extra module on every frontend page; the script only registers the set.
-MADO_ICON_PATHS = {
-    "logo": "M0.50 21.30 L2.33 12.69 L15.04 2.70 L23.50 12.69 L21.67 21.30Z M14.50 5.23 L4.00 13.48 L2.73 19.46 L20.22 19.46 L21.49 13.48Z M13.79 10.19 L13.75 10.62 L13.56 11.03 L13.33 11.33 L13.11 11.51 L12.79 11.70 L12.49 11.80 L11.85 13.20 L12.01 13.45 L12.09 13.68 L12.07 14.21 L13.50 15.10 L14.01 14.90 L14.55 14.91 L16.12 13.41 L16.10 13.16 L16.15 12.82 L16.28 12.48 L16.50 12.18 L16.70 11.98 L17.02 11.77 L17.27 11.67 L17.62 11.60 L18.04 11.64 L18.32 11.77 L18.55 11.98 L18.70 12.25 L18.76 12.56 L18.73 12.90 L18.58 13.32 L18.36 13.63 L18.00 13.94 L17.67 14.11 L17.24 14.20 L16.88 14.18 L15.31 15.68 L15.32 16.10 L15.14 16.60 L14.79 17.05 L14.32 17.36 L14.07 17.45 L13.72 17.49 L13.39 17.45 L13.10 17.31 L12.88 17.11 L12.73 16.84 L12.66 16.52 L12.70 16.15 L11.27 15.26 L10.76 15.46 L10.25 15.46 L8.60 17.11 L8.63 17.47 L8.53 17.90 L8.29 18.30 L7.95 18.62 L7.55 18.85 L7.11 18.95 L6.70 18.90 L6.35 18.73 L6.10 18.44 L5.98 18.06 L6.00 17.64 L6.16 17.22 L6.50 16.78 L6.89 16.51 L7.32 16.36 L7.82 16.36 L9.47 14.72 L9.44 14.43 L9.47 14.18 L9.67 13.68 L9.91 13.38 L10.12 13.20 L10.45 13.01 L10.74 12.91 L11.39 11.51 L11.17 11.11 L11.13 10.70 L11.27 10.19 L11.53 9.81 L11.89 9.50 L12.22 9.32 L12.57 9.24 L12.99 9.25 L13.29 9.36 L13.53 9.55 L13.73 9.88Z",
-}
-ICONS_URL = "/api/nives/mado-icons.js"
-ICONS_VERSION = "2"
-_ICONS_JS = (
-    "(function(){var P=" + json.dumps(MADO_ICON_PATHS) + ";"
-    "var get=function(n){return Promise.resolve(P[n]?{path:P[n]}:undefined);};"
-    "window.customIconsets=window.customIconsets||{};window.customIconsets.mado=get;"
-    "window.customIcons=window.customIcons||{};window.customIcons.mado={getIcon:get,"
-    "getIconList:function(){return Promise.resolve(Object.keys(P).map(function(n){return {name:n};}));}};"
-    # The sidebar can draw its icons before this module has run; an ha-icon
-    # that met an unknown prefix then stays empty. Every mado: icon already on
-    # the page is set again, through all the shadow roots, a few times while
-    # the frontend settles and after each navigation.
-    "function walk(root,out){var all=root.querySelectorAll('*');for(var i=0;i<all.length;i++){var e=all[i];"
-    "if(e.localName==='ha-icon'&&typeof e.icon==='string'&&e.icon.indexOf('mado:')===0)out.push(e);"
-    "if(e.shadowRoot)walk(e.shadowRoot,out);}return out;}"
-    "function refresh(){walk(document,[]).forEach(function(e){var v=e.icon;e.icon='';"
-    "requestAnimationFrame(function(){e.icon=v;});});}"
-    "[300,1500,4000,10000].forEach(function(t){setTimeout(refresh,t);});"
-    "window.addEventListener('location-changed',function(){setTimeout(refresh,300);});})();"
-)
-
-
-class _MaDoIconsView(HomeAssistantView):
-    """The icon set script. Public like the frontend's own files: it holds no data."""
-
-    url = ICONS_URL
-    name = "nives:icons"
-    requires_auth = False
-
-    async def get(self, request: web.Request) -> web.Response:
-        return web.Response(
-            text=_ICONS_JS,
-            content_type="application/javascript",
-            headers={"Cache-Control": "public, max-age=86400"},
-        )
-
-
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register MaDo's icon set with the frontend, once per Home Assistant start."""
-    if getattr(hass, "http", None) is not None:
-        hass.http.register_view(_MaDoIconsView())
-        add_extra_js_url(hass, f"{ICONS_URL}?v={ICONS_VERSION}")
-    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: MaDoConfigEntry) -> bool:

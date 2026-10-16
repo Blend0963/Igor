@@ -1,6 +1,6 @@
 <p align="center"><img src="assets/brand/mado-logo.png" alt="MaDo" width="420"></p>
 
-<p align="center"><b>The AI assistant that runs your home, inside Home Assistant.</b><br>
+<p align="center"><b>MaDo, Majordome Domotique: the AI butler that runs your home, inside Home Assistant.</b><br>
 Talk to it, show it a photo, hand it a file: it answers, remembers and acts.</p>
 
 ---
@@ -46,3 +46,5 @@ Memory, conversations and files stay on your Home Assistant machine. Only the cu
 ## License
 
 MaDo is free software under the **GNU AGPL-3.0**, see [LICENSE](LICENSE). It started as a fork of Home Mind / Nives; the original copyright notice is kept in the license file, as the AGPL requires.
+
+The panel's wordmark font, Caladea, is © The Caladea Project Authors and bundled under the SIL Open Font License 1.1 (`server/src/home-mind-server/public/fonts/Caladea-OFL.txt`).

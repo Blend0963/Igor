@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0 — MaDo, Majordome Domotique
+
+- **New identity.** MaDo stands for *Majordome Domotique*, and its symbol is the butler's bow tie: a white bow tie with folds and a light-blue knot on Home Assistant blue, framed by a double fine line (solid, then dotted), with a small sparkle. It is used in the add-on store, the integration, the panel and the installed app, and the sidebar shows the matching built-in icon `mdi:bow-tie`.
+- **Panel in Home Assistant's own colours**: HA blue (#03A9F4) and HA's light and dark backgrounds, with finishing touches: a faint bow-tie pattern and a fine inner line in the top band, "MaDo" in a serif wordmark (Caladea, bundled under the SIL Open Font License) with "— Majordome domotique", outlined chips and cards, a double-lined composer, a blue edge on the open thread, fine rules in the sidebar. Light and dark still follow the device.
+- **Renaming a thread on the phone**: the pencil next to each thread was hidden on touch screens (only the star and the cross showed). It is visible again, and the thread name in the top band shows a small pencil: tap it to rename.
+- The custom `mado:` icon set of 0.9.8–0.9.9 never showed in the sidebar on a real Home Assistant; it is removed, and the integration no longer loads a script on every Home Assistant page.
+
 ## 0.9.9 — The sidebar icon shows up
 
 - In 0.9.8 the sidebar could draw MaDo's entry before the icon set was loaded, and the icon then stayed empty. The icon set now redraws every `mado:` icon already on the page once it has loaded, and after each navigation.
