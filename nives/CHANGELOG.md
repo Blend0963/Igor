@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.8 — MaDo's icon in the sidebar
+
+- The sidebar shows MaDo's own icon (the leaning house with its small network) instead of the generic brain. The companion integration registers an icon set `mado:` with Home Assistant's frontend, so `mado:logo` can also be used anywhere Home Assistant asks for an icon (dashboards, buttons). Right after a restart the icon can take a moment to appear, until the integration has loaded.
+
 ## 0.9.7 — The MaDo look in the panel
 
 - **New panel theme**: a Home Assistant blue band at the top with "MaDo" in italics and the thread's name, white cards for MaDo's answers, blue bubbles for yours, rounded composer. **Light and dark follow the phone or computer** automatically. Same look on the phone and the laptop (thread list on the side).
