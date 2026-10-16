@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.10 — A sidebar icon that always shows
+
+- The custom `mado:` icon set of 0.9.8–0.9.9 did not show in the sidebar on a real Home Assistant, leaving MaDo's entry without an icon. It is removed, and the panel uses `mdi:home-automation` (a house with waves), the built-in icon closest to MaDo's logo. The integration no longer loads a script on every Home Assistant page.
+
 ## 0.9.9 — The sidebar icon shows up
 
 - In 0.9.8 the sidebar could draw MaDo's entry before the icon set was loaded, and the icon then stayed empty. The icon set now redraws every `mado:` icon already on the page once it has loaded, and after each navigation.
