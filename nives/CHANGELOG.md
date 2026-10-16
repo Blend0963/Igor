@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.2 — The bow tie at work
+
+- **Tools line on one line**: after an answer, the tools it used are grouped and named in French ("Outils : liste d'entités ×50 · action ×2 · rappel") instead of one name per call; fifty `get_entities` calls no longer cover the screen. The status line never wraps.
+- **Animations in MaDo's style** (off when the device asks for reduced motion): a bow tie flaps while MaDo thinks, in the status line and in the waiting bubble; the band's bow-tie pattern drifts slowly and the bow tie straightens itself when the panel opens; new messages slide in and action chips pop in one after the other; the welcome bow tie floats; buttons give a little press, and the stop button pulses while an answer is being written.
+
 ## 0.10.1 — Centred welcome
 
 - On the welcome screen, "— Majordome domotique —" sat off to the right under the logo: it kept the band's alignment. It is centred now.
