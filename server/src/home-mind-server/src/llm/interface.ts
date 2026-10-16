@@ -67,6 +67,8 @@ export interface ChatResponse {
   usage?: RequestUsage;
   /** Stopped by the user before the end. */
   interrupted?: boolean;
+  /** What the turn really changed in the house (llm/action-chips.ts). */
+  actions?: Array<{ kind: string; label: string }>;
 }
 
 export type StreamCallback = (chunk: string) => void;

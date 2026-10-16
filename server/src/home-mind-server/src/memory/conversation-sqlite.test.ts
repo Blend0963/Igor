@@ -250,3 +250,20 @@ describe("SqliteConversationStore", () => {
     expect(results.some((message) => message.userId === "user-2")).toBe(false);
   });
 });
+
+describe("SqliteConversationStore message actions", () => {
+  it("keeps a turn's chips with its message, and drops them with it", async () => {
+    const { SqliteConversationStore } = await import("./conversation-sqlite.js");
+    const store = new SqliteConversationStore(":memory:");
+    store.storeMessage("mado-thread:a", "u", "user", "éteins");
+    const id = store.storeMessage("mado-thread:a", "u", "assistant", "fait");
+    store.setMessageActions(id, [{ kind: "off", label: "Salon · éteint" }]);
+    const history = store.getConversationHistory("mado-thread:a", 10);
+    expect(history[0].actions).toBeUndefined();
+    expect(history[1].actions).toEqual([{ kind: "off", label: "Salon · éteint" }]);
+    store.deleteMessagesFrom("mado-thread:a", "u", id);
+    store.storeMessage("mado-thread:a", "u", "assistant", "autre");
+    expect(store.getConversationHistory("mado-thread:a", 10)[1].actions).toBeUndefined();
+    store.close();
+  });
+});

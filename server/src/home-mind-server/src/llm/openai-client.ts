@@ -185,6 +185,7 @@ export class OpenAIChatEngine implements IChatEngine {
       ownerId: userId,
       isThread: scope.isThread,
       unattended: request.unattended === true,
+      actions: [],
     };
 
     // 1. Load user's memory
@@ -547,7 +548,8 @@ export class OpenAIChatEngine implements IChatEngine {
 
     // 6. Store assistant response
     if (effectiveConversationId && responseText) {
-      this.conversations.storeMessage(effectiveConversationId, userId, "assistant", responseText);
+      const stored = this.conversations.storeMessage(effectiveConversationId, userId, "assistant", responseText);
+      if (toolCtx.actions?.length) void this.conversations.setMessageActions?.(stored, toolCtx.actions);
     }
 
     // 7. Extract and store facts (fire-and-forget). Memories a forget_memory
@@ -585,6 +587,7 @@ export class OpenAIChatEngine implements IChatEngine {
     return {
       response,
       toolsUsed,
+      ...(toolCtx.actions?.length ? { actions: toolCtx.actions } : {}),
       factsLearned: 0,
       ...(error && !interrupted ? { error } : {}),
       usage: { model, ...turnUsage.totals() },

@@ -53,6 +53,11 @@ export class SqliteConversationStore implements IConversationStore {
       CREATE INDEX IF NOT EXISTS idx_messages_conv_id ON messages(conversation_id);
       CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
       CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
+      -- The chips of what a turn really changed (llm/action-chips.ts), JSON.
+      CREATE TABLE IF NOT EXISTS message_actions (
+        message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+        actions TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS message_embeddings (
         message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
         embedding TEXT NOT NULL
@@ -130,10 +135,10 @@ export class SqliteConversationStore implements IConversationStore {
     limit: number = 10
   ): ConversationMessage[] {
     const rows = this.db.prepare(
-      `SELECT id, conversation_id, user_id, role, content, created_at
-       FROM messages
-       WHERE conversation_id = ?
-       ORDER BY rowid DESC
+      `SELECT m.id, m.conversation_id, m.user_id, m.role, m.content, m.created_at, a.actions
+       FROM messages m LEFT JOIN message_actions a ON a.message_id = m.id
+       WHERE m.conversation_id = ?
+       ORDER BY m.rowid DESC
        LIMIT ?`
     ).all(conversationId, limit) as Array<{
       id: string;
@@ -142,17 +147,29 @@ export class SqliteConversationStore implements IConversationStore {
       role: "user" | "assistant";
       content: string;
       created_at: string;
+      actions: string | null;
     }>;
 
     // Reverse to get chronological order (oldest first)
-    return rows.reverse().map((row) => ({
-      id: row.id,
-      conversationId: row.conversation_id,
-      userId: row.user_id,
-      role: row.role,
-      content: row.content,
-      createdAt: new Date(row.created_at),
-    }));
+    return rows.reverse().map((row) => {
+      const actions = parseActions(row.actions);
+      return {
+        id: row.id,
+        conversationId: row.conversation_id,
+        userId: row.user_id,
+        role: row.role,
+        content: row.content,
+        createdAt: new Date(row.created_at),
+        ...(actions ? { actions } : {}),
+      };
+    });
+  }
+
+  setMessageActions(messageId: string, actions: Array<{ kind: string; label: string }>): void {
+    if (!actions.length) return;
+    this.db
+      .prepare(`INSERT OR REPLACE INTO message_actions (message_id, actions) SELECT id, ? FROM messages WHERE id = ?`)
+      .run(JSON.stringify(actions), messageId);
   }
 
   getRecentMessages(userId: string, hoursOld: number = 24, limit: number = 12, excludeConversationId?: string): ConversationMessage[] {
@@ -376,5 +393,15 @@ export class SqliteConversationStore implements IConversationStore {
 
   close(): void {
     this.db.close();
+  }
+}
+
+function parseActions(raw: string | null): Array<{ kind: string; label: string }> | undefined {
+  if (!raw) return undefined;
+  try {
+    const list = JSON.parse(raw);
+    return Array.isArray(list) && list.length ? list : undefined;
+  } catch {
+    return undefined;
   }
 }

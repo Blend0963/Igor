@@ -33,6 +33,8 @@ export interface ConversationMessage {
   role: "user" | "assistant";
   content: string;
   createdAt: Date;
+  /** What the assistant really changed in that turn (the panel's chips, llm/action-chips.ts). */
+  actions?: Array<{ kind: string; label: string }>;
 }
 
 export interface ConversationSummary {
@@ -59,6 +61,8 @@ export interface IConversationStore {
     conversationId: string,
     limit?: number
   ): ConversationMessage[] | Promise<ConversationMessage[]>;
+  /** Attaches the turn's action chips to a stored assistant message. */
+  setMessageActions?(messageId: string, actions: Array<{ kind: string; label: string }>): void | Promise<void>;
   getRecentMessages(userId: string, hoursOld?: number, limit?: number, excludeConversationId?: string): ConversationMessage[] | Promise<ConversationMessage[]>;
   listConversations(
     userId: string

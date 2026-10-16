@@ -1,3 +1,4 @@
+import { addChips, chipsFromServiceCall, chipsFromTool, type ActionChip } from "./action-chips.js";
 import type { HomeAssistantClient, AutomationConfig } from "../ha/client.js";
 import { compactServiceResult, compactState, compactStateList } from "./compact-state.js";
 import { summarizeHistory } from "./history-summary.js";
@@ -66,6 +67,8 @@ export interface ToolContext {
   isThread?: boolean;
   /** Nobody is there to confirm (llm/tool-policy.ts). */
   unattended?: boolean;
+  /** What this turn really changed, for the panel's chips (llm/action-chips.ts). */
+  actions?: ActionChip[];
 }
 
 /**
@@ -179,6 +182,7 @@ export async function handleToolCall(
       if (ctx) ctx.attachments ??= [];
       try {
         result = await handleHomeTool(ha, toolName, input, ctx ?? {});
+        if (ctx?.actions) addChips(ctx.actions, chipsFromTool(toolName, input, result));
       } catch (error) {
         result = { error: error instanceof Error ? error.message.slice(0, 400) : "unknown error" };
       }
@@ -307,6 +311,7 @@ export async function handleToolCall(
             input.data as Record<string, unknown> | undefined
           )
         );
+        if (ctx?.actions) addChips(ctx.actions, chipsFromServiceCall(input, result));
         break;
       }
 
@@ -580,6 +585,10 @@ export async function handleToolCall(
 
       default:
         result = { error: `Unknown tool: ${toolName}` };
+    }
+
+    if (ctx?.actions && /^(create|update|delete)_automation$/.test(toolName)) {
+      addChips(ctx.actions, chipsFromTool(toolName, input, result));
     }
 
     const elapsed = Date.now() - start;
