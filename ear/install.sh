@@ -16,12 +16,17 @@ sudo apt-get install -y python3-venv pulseaudio-utils
 
 echo "== Python environment in $APP/venv"
 mkdir -p "$APP"
+# /tmp is a RAM disk of half the memory on Debian 13: too small for the CUDA
+# wheels (cuDNN alone unpacks to well over a gigabyte). Unpack on disk instead.
+export TMPDIR="$APP/tmp"
+mkdir -p "$TMPDIR"
+trap 'rm -rf "$TMPDIR"' EXIT
 [ -x "$APP/venv/bin/python" ] || python3 -m venv "$APP/venv"
 "$APP/venv/bin/pip" install --quiet --upgrade pip
-"$APP/venv/bin/pip" install --quiet -r "$HERE/requirements.txt"
+"$APP/venv/bin/pip" install --quiet --no-cache-dir -r "$HERE/requirements.txt"
 if nvidia-smi >/dev/null 2>&1; then
     echo "== NVIDIA GPU found: CUDA libraries"
-    "$APP/venv/bin/pip" install --quiet -r "$HERE/requirements-gpu.txt"
+    "$APP/venv/bin/pip" install --quiet --no-cache-dir -r "$HERE/requirements-gpu.txt"
 fi
 
 echo "== Program"
