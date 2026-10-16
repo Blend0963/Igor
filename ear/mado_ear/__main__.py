@@ -52,8 +52,6 @@ def note(settings: Settings, entry: dict) -> None:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-BUSY = {"listening", "processing", "responding"}
-BUSY_TAIL = 1.5  # seconds after the satellite stops: the end of its own voice
 JOIN_GAP = 1.5   # a pause shorter than this does not end a sentence for MaDo
 
 
@@ -74,11 +72,13 @@ def run(settings: Settings) -> None:
     if settings.act and not (connected and settings.satellite):
         raise SystemExit("Act mode needs [home_assistant] url, token and satellite in the settings")
 
-    last_busy = [float("-inf")]
+    from .gate import SatelliteGate
+
+    gate = SatelliteGate()
 
     def changed(entity: str, state: str) -> None:
-        if entity == settings.satellite and state in BUSY:
-            last_busy[0] = time.monotonic()
+        if entity == settings.satellite:
+            gate.update(state)
         elif entity == settings.presence_entity:
             log.info("Presence: %s", state)
 
@@ -90,10 +90,8 @@ def run(settings: Settings) -> None:
     def busy() -> bool:
         if watcher is None or not settings.satellite:
             return False
-        if watcher.state(settings.satellite) in BUSY:
-            last_busy[0] = time.monotonic()
-            return True
-        return time.monotonic() - last_busy[0] < BUSY_TAIL
+        gate.update(watcher.state(settings.satellite))
+        return gate.busy()
 
     def home() -> bool:
         if watcher is None or not settings.presence_entity:

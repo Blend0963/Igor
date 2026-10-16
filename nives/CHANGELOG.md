@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.7 — A satellite stuck "listening"
+
+- Some voice satellites report "listening" all the time (for instance when the wake word is handled by Home Assistant, which keeps the audio streaming). The wall tablet then showed "Je vous écoute…" for good, and mado-ear, which stays quiet while the satellite is busy, never heard anything again. A state held longer than any real exchange (listening 30 s, processing 90 s, responding 3 min) is now taken as stuck and ignored, on the tablet and in mado-ear; a real new exchange is followed as before.
+- Home Assistant needs one restart after this update to load the new integration files.
+
 ## 0.10.6 — Requests in a satellite's name
 
 - A request that reaches MaDo through the Assist pipeline with a voice satellite's device (as mado-ear does when it hears "MaDo" without the wake word, see `ear/`) is now treated like the satellite's own: MaDo answers in its spoken style, and the wall tablet shows the exchange. A phone, which also sends its device, keeps the written style.

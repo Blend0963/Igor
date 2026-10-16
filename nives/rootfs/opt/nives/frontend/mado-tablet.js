@@ -248,13 +248,27 @@
     }
     return null;
   }
+  // A state held far longer than any real exchange is a stuck satellite, or
+  // one that reports "listening" all the time (wake word handled in Home
+  // Assistant): ignored, or the overlay would never leave the screen.
+  var STALE_MS = { listening: 30000, processing: 90000, responding: 180000 };
+  var seen = {};
+  function fresh(id, state) {
+    var now = Date.now();
+    if (!seen[id] || seen[id].state !== state) seen[id] = { state: state, since: now };
+    return !(STALE_MS[state] && now - seen[id].since > STALE_MS[state]);
+  }
   function satelliteState(states, wanted) {
-    if (wanted) return states[wanted] ? states[wanted].state : "";
+    if (wanted) {
+      var w = states[wanted] ? states[wanted].state : "";
+      return w && fresh(wanted, w) ? w : "";
+    }
     // Any satellite busy counts: listening first, then the others.
     var best = "";
     for (var id in states) {
       if (id.indexOf("assist_satellite.") !== 0) continue;
       var s = states[id].state;
+      if (!fresh(id, s)) continue;
       if (s === "listening") return s;
       if (s === "processing" || s === "responding") best = s;
     }
