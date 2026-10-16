@@ -1,0 +1,17 @@
+[Unit]
+Description=MaDo listening without a wake word (observation mode)
+After=pipewire-pulse.service
+Wants=pipewire-pulse.service
+
+[Service]
+ExecStart=%h/.local/share/mado-ear/run.sh run
+Restart=always
+RestartSec=10
+# The VM is also the house's audio hub: sound and Bluetooth come first.
+Nice=10
+CPUQuota=200%
+IOSchedulingClass=idle
+MemoryMax=2G
+
+[Install]
+WantedBy=default.target
