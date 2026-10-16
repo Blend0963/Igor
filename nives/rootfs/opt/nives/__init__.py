@@ -8,6 +8,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import aiohttp
@@ -28,9 +29,13 @@ from .const import (
     CONF_API_URL,
     CONF_SHARED_MEMORY,
     CONF_USER_ID,
+    CONF_VOICE_DISPLAY,
     DEFAULT_SHARED_MEMORY,
     DEFAULT_USER_ID,
+    DEFAULT_VOICE_DISPLAY,
     DOMAIN,
+    FRONTEND_SCRIPT,
+    FRONTEND_URL_BASE,
     RESTART_ISSUE_ID,
     RESTART_NOTIFY_ID,
     TOKEN_ACK_RELPATH,
@@ -209,12 +214,15 @@ async def _async_setup_capability_watch(
     )
 
 
-def _get_platforms(stt_enabled: bool = False, tts_enabled: bool = False) -> list[Platform]:
+def _get_platforms(
+    stt_enabled: bool = False, tts_enabled: bool = False, voice_display: bool = False
+) -> list[Platform]:
     """Platforms to set up. AI Task is added only on HA versions that have it
     (2025.7+), so older cores keep the conversation agent and just skip it.
     Speech-to-text and text-to-speech are added only when the server is
     actually configured to transcribe or to speak (see
-    _async_server_capabilities)."""
+    _async_server_capabilities). The sensor is the wall-tablet display's
+    source (sensor.py), there while that option is on."""
     platforms: list[Platform] = [Platform.CONVERSATION]
     ai_task_platform = getattr(Platform, "AI_TASK", None)
     if ai_task_platform is not None:
@@ -228,7 +236,38 @@ def _get_platforms(stt_enabled: bool = False, tts_enabled: bool = False) -> list
         platforms.append(Platform.STT)
     if tts_enabled:
         platforms.append(Platform.TTS)
+    if voice_display:
+        platforms.append(Platform.SENSOR)
     return platforms
+
+
+async def _async_setup_frontend(hass: HomeAssistant) -> str | None:
+    """Serve the wall-tablet script and add it to every Home Assistant page.
+
+    It is loaded everywhere but does nothing until switched on for a device
+    (frontend/mado-tablet.js). The version in the URL makes each update load
+    fresh instead of from the browser cache. Served once per Core run: a
+    static path cannot be registered twice, while the page script is added
+    and removed with the entry. Returns the script's URL, or None when the
+    frontend cannot take it (the display then simply does not appear).
+    """
+    try:
+        from homeassistant.components import frontend
+        from homeassistant.components.http import StaticPathConfig
+    except ImportError:
+        _LOGGER.info("This Home Assistant cannot load extra frontend scripts; no tablet display")
+        return None
+    integration = await async_get_integration(hass, DOMAIN)
+    folder = Path(__file__).with_name("frontend")
+    store = hass.data.setdefault(DOMAIN, {})
+    if not store.get("static_registered"):
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(FRONTEND_URL_BASE, str(folder), False)]
+        )
+        store["static_registered"] = True
+    url = f"{FRONTEND_URL_BASE}/{FRONTEND_SCRIPT}?v={integration.version}"
+    frontend.add_extra_js_url(hass, url)
+    return url
 
 
 async def _async_server_capabilities(hass: HomeAssistant, api_url: str) -> dict:
@@ -336,6 +375,11 @@ class MaDoData:
     # so unload takes down exactly what setup brought up, even if the server's
     # answer about transcription has changed in between.
     platforms: list[Platform] = field(default_factory=list)
+    # The wall-tablet display: the sensor the conversation agent feeds
+    # (sensor.py, set once that platform is up) and the page script's URL.
+    voice_display: bool = DEFAULT_VOICE_DISPLAY
+    voice_sensor: Any = None
+    frontend_url: str | None = None
 
 
 type MaDoConfigEntry = ConfigEntry[MaDoData]
@@ -345,10 +389,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: MaDoConfigEntry) -> bool
     """Set up MaDo from a config entry."""
     api_url = entry.data.get(CONF_API_URL, "").rstrip("/")
     caps = await _async_server_capabilities(hass, api_url)
-    platforms = _get_platforms(caps["stt"], caps["tts"])
     # The options flow writes entry.options; entry.data holds what the entry
     # was created with. An option, once set, wins.
     settings = {**entry.data, **entry.options}
+    voice_display = bool(settings.get(CONF_VOICE_DISPLAY, DEFAULT_VOICE_DISPLAY))
+    platforms = _get_platforms(caps["stt"], caps["tts"], voice_display)
     entry.runtime_data = MaDoData(
         api_url=api_url,
         api_token=await _async_resolve_token(hass, entry),
@@ -356,7 +401,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: MaDoConfigEntry) -> bool
         shared_memory=bool(settings.get(CONF_SHARED_MEMORY, DEFAULT_SHARED_MEMORY)),
         platforms=platforms,
         tts_language=caps["tts_language"],
+        voice_display=voice_display,
     )
+    if voice_display:
+        entry.runtime_data.frontend_url = await _async_setup_frontend(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await _async_setup_update_watch(hass, entry)
@@ -377,4 +425,9 @@ async def _async_update_listener(hass: HomeAssistant, entry: MaDoConfigEntry) ->
 async def async_unload_entry(hass: HomeAssistant, entry: MaDoConfigEntry) -> bool:
     """Unload a config entry."""
     platforms = getattr(entry.runtime_data, "platforms", None) or _get_platforms()
+    url = getattr(entry.runtime_data, "frontend_url", None)
+    if url:
+        from homeassistant.components import frontend
+
+        frontend.remove_extra_js_url(hass, url)
     return await hass.config_entries.async_unload_platforms(entry, platforms)

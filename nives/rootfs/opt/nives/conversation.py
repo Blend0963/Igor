@@ -124,10 +124,44 @@ class MaDoConversationAgent(ConversationEntity):
         # _async_handle_message with them.
         return await super().async_process(user_input)
 
+    def _voice_sensor(self, user_input: ConversationInput):
+        """The wall-tablet sensor when this is a voice satellite's request."""
+        satellite = getattr(user_input, "satellite_id", None)
+        sensor = getattr(self.entry.runtime_data, "voice_sensor", None)
+        if satellite is None or sensor is None or sensor.hass is None:
+            return None
+        sensor.begin(user_input.text, satellite)
+        return sensor
+
+    @staticmethod
+    def _voice_finish(sensor, result: ConversationResult) -> ConversationResult:
+        """Close the tablet's turn with what is spoken, unless the stream did."""
+        if sensor is not None and sensor.active:
+            speech = result.response.speech.get("plain", {}).get("speech", "")
+            error = result.response.response_type == intent.IntentResponseType.ERROR
+            sensor.finish(speech, error=error)
+        return result
+
     async def _async_handle_message(
         self,
         user_input: ConversationInput,
         chat_log: ChatLog,
+    ) -> ConversationResult:
+        """Follow the turn on the wall-tablet sensor around the streamed reply."""
+        sensor = self._voice_sensor(user_input)
+        try:
+            result = await self._async_stream_message(user_input, chat_log, sensor)
+        except BaseException:
+            if sensor is not None and sensor.active:
+                sensor.finish(None, error=True)
+            raise
+        return self._voice_finish(sensor, result)
+
+    async def _async_stream_message(
+        self,
+        user_input: ConversationInput,
+        chat_log: ChatLog,
+        sensor=None,
     ) -> ConversationResult:
         """Stream the reply into the chat log as the server produces it.
 
@@ -158,6 +192,7 @@ class MaDoConversationAgent(ConversationEntity):
                     conversation_id=conversation_id,
                     language=user_input.language,
                     is_voice=is_voice,
+                    sensor=sensor,
                 ),
             ):
                 pass
@@ -190,6 +225,7 @@ class MaDoConversationAgent(ConversationEntity):
         conversation_id: str,
         language: str | None,
         is_voice: bool,
+        sensor=None,
     ):
         """Yield chat-log deltas from the server's event stream.
 
@@ -204,6 +240,8 @@ class MaDoConversationAgent(ConversationEntity):
             ):
                 for delta in builder.handle(event, payload):
                     yield delta
+                if sensor is not None:
+                    self._follow(sensor, builder, event, payload)
                 if builder.error:
                     if builder.error == "usage_limit_reached":
                         raise UsageLimitError()
@@ -227,6 +265,16 @@ class MaDoConversationAgent(ConversationEntity):
             # connection dropped mid-reply. Say so rather than show nothing.
             yield {"role": "assistant"}
             yield {"content": "Sorry, I lost the connection to the MaDo server mid-reply."}
+
+    @staticmethod
+    def _follow(sensor, builder: DeltaBuilder, event: str, payload: dict) -> None:
+        """Mirror one server event on the wall-tablet sensor."""
+        if event == "status":
+            sensor.status(str(payload.get("text") or ""))
+        elif event == "chunk":
+            sensor.answer(builder.current_text)
+        elif event == "done":
+            sensor.finish(builder.current_text, payload.get("actions"))
 
     async def _stream_events(
         self,
@@ -334,6 +382,17 @@ class MaDoConversationAgent(ConversationEntity):
 
     async def _async_process_legacy(self, user_input: ConversationInput) -> ConversationResult:
         """One request, one complete reply: for Cores without a chat log."""
+        sensor = self._voice_sensor(user_input)
+        try:
+            result = await self._async_process_legacy_inner(user_input)
+        except BaseException:
+            if sensor is not None and sensor.active:
+                sensor.finish(None, error=True)
+            raise
+        return self._voice_finish(sensor, result)
+
+    async def _async_process_legacy_inner(self, user_input: ConversationInput) -> ConversationResult:
+        """The single request behind _async_process_legacy."""
         _LOGGER.debug("Processing conversation input: %s", user_input.text)
 
         data = self.entry.runtime_data

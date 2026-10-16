@@ -21,9 +21,11 @@ from .const import (
     CONF_API_TOKEN,
     CONF_SHARED_MEMORY,
     CONF_USER_ID,
+    CONF_VOICE_DISPLAY,
     DEFAULT_API_URL,
     DEFAULT_SHARED_MEMORY,
     DEFAULT_USER_ID,
+    DEFAULT_VOICE_DISPLAY,
     API_HEALTH_ENDPOINT,
 )
 
@@ -172,7 +174,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class OptionsFlow(config_entries.OptionsFlow):
-    """Memory settings, changeable after setup.
+    """Memory and wall-tablet settings, changeable after setup.
 
     Add-on installs are created by discovery and never see the manual form, so
     until this existed their user_id could only be changed by deleting and
@@ -203,6 +205,10 @@ class OptionsFlow(config_entries.OptionsFlow):
                         CONF_USER_ID,
                         default=current.get(CONF_USER_ID) or DEFAULT_USER_ID,
                     ): str,
+                    vol.Required(
+                        CONF_VOICE_DISPLAY,
+                        default=current.get(CONF_VOICE_DISPLAY, DEFAULT_VOICE_DISPLAY),
+                    ): bool,
                 }
             ),
         )

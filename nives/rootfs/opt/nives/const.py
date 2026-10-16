@@ -122,3 +122,15 @@ AI_TASK_CUSTOM_PROMPT = (
     "instructions exactly and output only what is asked — no greetings, "
     "commentary, or chit-chat."
 )
+
+# The wall-tablet display (sensor.py, frontend/mado-tablet.js): a sensor that
+# follows each voice request live, and a script added to Home Assistant's
+# frontend that shows it full screen on the devices it is switched on for.
+# On by default; the options flow turns it off, sensor and script both.
+CONF_VOICE_DISPLAY = "voice_display"
+DEFAULT_VOICE_DISPLAY = True
+# Where the frontend script is served from, and the attribute that marks the
+# sensor so the script finds it whatever the user renamed its entity id to.
+FRONTEND_URL_BASE = "/nives_static"
+FRONTEND_SCRIPT = "mado-tablet.js"
+VOICE_SENSOR_MARKER = "mado_voice"

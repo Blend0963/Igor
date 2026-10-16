@@ -32,15 +32,17 @@
   "options": {
     "step": {
       "init": {
-        "title": "Memory",
-        "description": "Choose whether everyone in your home shares one memory with MaDo.",
+        "title": "MaDo",
+        "description": "Choose whether everyone in your home shares one memory with MaDo, and whether voice requests can be shown on a wall tablet.",
         "data": {
           "shared_memory": "Shared memory",
-          "user_id": "Memory name"
+          "user_id": "Memory name",
+          "voice_display": "Wall-tablet display"
         },
         "data_description": {
           "shared_memory": "On (recommended): everyone shares one memory, so something you tell a voice satellite is also known in the app and on the dashboard, and the other way round. Off: each Home Assistant user gets a memory of their own, and voice satellites and automations use the memory named below.",
-          "user_id": "The memory MaDo uses for the whole household, or, with shared memory off, for voice satellites and automations. Leave it as 'default' unless you have a reason to change it."
+          "user_id": "The memory MaDo uses for the whole household, or, with shared memory off, for voice satellites and automations. Leave it as 'default' unless you have a reason to change it.",
+          "voice_display": "On: the 'MaDo Assist' sensor follows each voice-satellite request (question, answer, actions), and devices you switch on show it full screen, by opening Home Assistant once with ?mado_tablet=1 at the end of the address. The texts are not kept in the history. Off: no sensor, nothing is shown."
         }
       }
     }
@@ -49,6 +51,18 @@
     "conversation": {
       "nives": {
         "name": "MaDo"
+      }
+    },
+    "sensor": {
+      "assist": {
+        "name": "Assist",
+        "state": {
+          "idle": "Idle",
+          "thinking": "Thinking",
+          "answering": "Answering",
+          "done": "Done",
+          "error": "Error"
+        }
       }
     }
   },

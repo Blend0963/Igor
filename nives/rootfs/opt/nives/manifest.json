@@ -12,7 +12,9 @@
     "conversation",
     "ai_task",
     "stt",
-    "tts"
+    "tts",
+    "frontend",
+    "http"
   ],
   "documentation": "https://github.com/Blend0963/MaDo",
   "integration_type": "service",
@@ -20,5 +22,5 @@
   "requirements": [
     "aiohttp>=3.8.0"
   ],
-  "version": "0.1.5"
+  "version": "0.1.6"
 }

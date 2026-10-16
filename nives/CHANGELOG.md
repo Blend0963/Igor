@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.5 — MaDo on the wall tablet
+
+- **Voice requests on a wall tablet**: on a tablet that shows Home Assistant (Fully Kiosk Browser, the app or a browser), each request to a voice satellite is shown full screen, in MaDo's style. The screen dims and the bow tie flaps with "Je vous écoute…" at the wake word. Your words appear once transcribed, then the butler phrases and timer while MaDo works, then the answer word by word with its action chips. It fades back to the dashboard after the answer; a tap closes it. A question from MaDo keeps the exchange on screen while the satellite listens for your answer.
+- Switched on per device by opening Home Assistant once with `?mado_tablet=1` (or `?mado_tablet=assist_satellite.x` for one satellite); other devices are untouched.
+- New **MaDo Assist** sensor (idle, thinking, answering, done), fed by the integration during voice requests. Its texts are not recorded in the history and are cleared three minutes after the answer. The integration options can turn the sensor and the display off.
+- Home Assistant needs one restart after this update to load the new integration files.
+
 ## 0.10.4 — A square logo
 
 - In the logo, "MAJORDOME DOMOTIQUE" ran past the end of "MaDo" on the right. It now starts and ends exactly where "MaDo" and its rule do, so the wordmark reads as one square block.
