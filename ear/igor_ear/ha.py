@@ -4,7 +4,7 @@ Two things only:
 - watch a few entities (the satellite, the presence entity) to know whether
   linux-voice-assistant is busy and whether anyone is home;
 - run the Assist pipeline from speech: the recorded sentence goes to the
-  pipeline's own speech-to-text (Voxtral, through MaDo) and on to MaDo, and
+  pipeline's own speech-to-text (Voxtral, through Igor) and on to Igor, and
   the answer comes back as text. The satellite then says it.
 
 A long-lived access token (Profile > Security) is the only credential.
@@ -19,7 +19,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable
 
-log = logging.getLogger("mado-ear")
+log = logging.getLogger("igor-ear")
 
 AUDIO_CHUNK = 8192  # bytes per binary websocket message (0.25 s of 16 kHz int16)
 
@@ -68,7 +68,7 @@ def run_pipeline(
     device_id: str | None = None,
     timeout: float = 90,
 ) -> PipelineResult:
-    """Speech in, MaDo's answer out (as text; the satellite speaks it)."""
+    """Speech in, Igor's answer out (as text; the satellite speaks it)."""
     result = PipelineResult()
     conn = connect(url, token)
     try:
@@ -87,7 +87,7 @@ def run_pipeline(
         if conversation_id:
             request["conversation_id"] = conversation_id
         if device_id:
-            # Asked in the satellite's name: MaDo answers in its spoken style
+            # Asked in the satellite's name: Igor answers in its spoken style
             # and the wall tablet shows the exchange.
             request["device_id"] = device_id
         conn.send(json.dumps(request))
@@ -133,7 +133,7 @@ def run_pipeline(
 
 
 def announce(url: str, token: str, satellite: str, message: str, timeout: float = 30) -> None:
-    """Have the satellite say MaDo's answer, with its own voice and speaker."""
+    """Have the satellite say Igor's answer, with its own voice and speaker."""
     body = json.dumps({"entity_id": satellite, "message": message, "preannounce": False}).encode()
     request = urllib.request.Request(
         url.rstrip("/") + "/api/services/assist_satellite/announce",

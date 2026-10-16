@@ -1,5 +1,5 @@
 /**
- * Files MaDo writes for the user: Word, Excel, PDF, text formats and ZIP
+ * Files Igor writes for the user: Word, Excel, PDF, text formats and ZIP
  * archives of them, built here without dependencies (office files are ZIP
  * archives of XML, see zip.ts). The model describes the content; this turns
  * it into a file the user downloads from the chat panel.

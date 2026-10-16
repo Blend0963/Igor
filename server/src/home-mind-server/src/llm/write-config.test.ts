@@ -19,7 +19,7 @@ const haWith = (result: string) =>
   }) as unknown as HomeAssistantClient & { checkConfig: ReturnType<typeof vi.fn>; callService: ReturnType<typeof vi.fn> };
 
 beforeEach(() => {
-  base = mkdtempSync(path.join(tmpdir(), "mado-write-"));
+  base = mkdtempSync(path.join(tmpdir(), "igor-write-"));
   writeFileSync(path.join(base, "scripts.yaml"), ORIGINAL);
   writeFileSync(path.join(base, "secrets.yaml"), "x: 1\n");
   setConfigDir(base);
@@ -62,7 +62,7 @@ describe("write_config_file", () => {
     const ha = haWith("valid");
     await handleToolCall(ha, "write_config_file", { path: "scripts.yaml", content: edited }, ctx("a"));
     const done = (await handleToolCall(ha, "write_config_file", { path: "scripts.yaml", confirm: true, backup: true }, ctx("b"))) as Record<string, string>;
-    expect(done.backup).toMatch(/^scripts\.yaml\.mado-\d{8}-\d{6}\.bak$/);
+    expect(done.backup).toMatch(/^scripts\.yaml\.igor-\d{8}-\d{6}\.bak$/);
     expect(readFileSync(path.join(base, done.backup), "utf8")).toBe(ORIGINAL);
   });
 

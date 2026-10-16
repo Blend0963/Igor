@@ -4,12 +4,12 @@
  * Two rules, enforced twice (the tool list sent to the model, and the handler
  * itself, so a model that names a tool it was not offered gets nothing):
  *
- * - CONFIG_EDITS decides how far MaDo may change the configuration: "off"
+ * - CONFIG_EDITS decides how far Igor may change the configuration: "off"
  *   (read only), "automations" (the automation tools, the default) or "yaml"
  *   (also write_config_file).
  * - An UNATTENDED turn (a scheduled task, the morning briefing, an AI Task
  *   request from Home Assistant: nobody is there to answer) never gets a tool
- *   whose safety rests on a person confirming, nor one that makes MaDo act
+ *   whose safety rests on a person confirming, nor one that makes Igor act
  *   again later or send things out on its own. Before 0.9.3 such a turn could
  *   preview a change in one run and "confirm" it in the next.
  */

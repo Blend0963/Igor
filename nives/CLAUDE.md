@@ -1,6 +1,6 @@
-# MaDo contributor notes
+# Igor contributor notes
 
-MaDo is a Home Assistant add-on for an AI assistant with persistent memory, conversation history, Home Assistant tools, and optional Tavily web search.
+Igor is a Home Assistant add-on for an AI assistant with persistent memory, conversation history, Home Assistant tools, and optional Tavily web search.
 
 ## Layout
 
@@ -26,7 +26,7 @@ The GitHub Actions workflow runs the server build and tests, then builds amd64 a
 
 New installs use BYOK mode. Supported providers are Anthropic, OpenAI, OpenRouter, and Ollama. `WEB_SEARCH_API_KEY` is optional; it enables the `web_search` tool using Tavily. Search results are untrusted source material and should be returned with source URLs.
 
-The companion integration still uses the internal `nives` domain, directory, and discovery identifier for compatibility with the inherited integration layout. User-visible branding is MaDo.
+The companion integration still uses the internal `nives` domain, directory, and discovery identifier for compatibility with the inherited integration layout. User-visible branding is Igor.
 
 ## Release checklist
 

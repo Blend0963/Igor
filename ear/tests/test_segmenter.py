@@ -1,6 +1,6 @@
 import numpy as np
 
-from mado_ear.segmenter import FRAME, Segmenter
+from igor_ear.segmenter import FRAME, Segmenter
 
 
 def feed(seg, probs):

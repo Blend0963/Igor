@@ -51,7 +51,7 @@ export async function handlePlatformTool(
 ): Promise<unknown> {
   const apiKey = mistralKey();
   if (!apiKey) {
-    return { error: "This tool needs a Mistral API key in the MaDo add-on configuration." };
+    return { error: "This tool needs a Mistral API key in the Igor add-on configuration." };
   }
   const text = (key: string, max = 8000) => (typeof input[key] === "string" ? (input[key] as string).trim().slice(0, max) : "");
 

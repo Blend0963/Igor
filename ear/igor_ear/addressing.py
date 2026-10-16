@@ -1,9 +1,9 @@
-"""Is this sentence meant for MaDo?
+"""Is this sentence meant for Igor?
 
-Rules only, all local and instant. A sentence is for MaDo when:
-- it names MaDo anywhere ("MaDo, éteins la lumière", "éteins la lumière
-  MaDo"), or
-- it answers a question MaDo has just asked (the follow-up window).
+Rules only, all local and instant. A sentence is for Igor when:
+- it names Igor anywhere ("Igor, éteins la lumière", "éteins la lumière
+  Igor"), or
+- it answers a question Igor has just asked (the follow-up window).
 
 Orders without the name ("éteins la cuisine") are only taken when
 `accept_commands` is on: with a television or a conversation in the room
@@ -15,8 +15,8 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
-# Whisper hears "MaDo" in many ways.
-NAME = re.compile(r"\b(ma ?d+o+u?[hstx]?|ma ?deaux?|ma ?daux?|ma ?d'?eau)\b")
+# Whisper writes "Igor" nearly always the same way; these are its rare slips.
+NAME = re.compile(r"\b(h?[iy] ?gor+e?s?)\b")
 
 VERBS = (
     "allume", "allumer", "eteins", "eteint", "eteindre", "ferme", "fermer", "ouvre", "ouvrir",
@@ -81,7 +81,7 @@ class Addressing:
         self._targets = re.compile(rf"\b({alternatives})\b")
         self._verbs = re.compile(rf"^({'|'.join(VERBS)})\b")
 
-    def decide(self, text: str, since_mado_spoke: float | None = None) -> Decision:
+    def decide(self, text: str, since_igor_spoke: float | None = None) -> Decision:
         norm = normalize(text)
         if not norm:
             return Decision(False, "empty")
@@ -89,7 +89,7 @@ class Addressing:
             return Decision(False, "hallucination")
         if NAME.search(norm):
             return Decision(True, "name")
-        if since_mado_spoke is not None and since_mado_spoke <= self.followup_seconds:
+        if since_igor_spoke is not None and since_igor_spoke <= self.followup_seconds:
             return Decision(True, "followup")
         command = OPENERS.sub("", norm)
         if (
@@ -103,7 +103,7 @@ class Addressing:
 
 
 def name_only(text: str) -> bool:
-    """Just the name, or nearly ("MaDo ?", "euh MaDo"): the order comes next."""
+    """Just the name, or nearly ("Igor ?", "euh Igor"): the order comes next."""
     rest = NAME.sub(" ", normalize(text))
     rest = OPENERS.sub("", rest.strip() + " ").strip()
     return len([w for w in rest.split() if w not in {"euh", "he", "hey", "dis", "oh", "bon"}]) == 0

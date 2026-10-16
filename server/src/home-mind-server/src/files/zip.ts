@@ -2,7 +2,7 @@
  * Just enough ZIP for office files and archives: reading (stored and
  * deflated entries, through the central directory) and writing (stored
  * entries). Office formats (docx, xlsx, pptx, odt…) are ZIP archives of XML,
- * so this is also what lets MaDo read and write them without a dependency.
+ * so this is also what lets Igor read and write them without a dependency.
  *
  * Reading is bounded: an archive can claim anything in its headers, and a
  * small file can inflate to gigabytes, so the entry count and the inflated

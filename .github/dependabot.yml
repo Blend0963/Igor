@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # The MaDo server — the package that
+  # The Igor server — the package that
   # carried the uuid/qs/express advisories. This is the high-value target.
   - package-ecosystem: "npm"
     directory: "/server/src/home-mind-server"

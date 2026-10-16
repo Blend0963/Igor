@@ -1,4 +1,4 @@
-"""Constants for MaDo integration."""
+"""Constants for Igor integration."""
 
 DOMAIN = "nives"
 CONF_API_URL = "api_url"
@@ -57,7 +57,7 @@ STT_LANGUAGES = [
     "ta", "te", "tg", "th", "tk", "tl", "tr", "tt", "uk", "ur", "uz", "vi",
     "yi", "yo", "yue", "zh",
     # Home Assistant's own code for Norwegian, translated on the way out — see
-    # LANGUAGE_ALIASES. Advertising it is what lets Assist pick MaDo at all
+    # LANGUAGE_ALIASES. Advertising it is what lets Assist pick Igor at all
     # for a Norwegian pipeline; the match is exact, with no fallback to "no".
     "nb",
 ]
@@ -123,7 +123,7 @@ AI_TASK_CUSTOM_PROMPT = (
     "commentary, or chit-chat."
 )
 
-# The wall-tablet display (sensor.py, frontend/mado-tablet.js): a sensor that
+# The wall-tablet display (sensor.py, frontend/igor-tablet.js): a sensor that
 # follows each voice request live, and a script added to Home Assistant's
 # frontend that shows it full screen on the devices it is switched on for.
 # On by default; the options flow turns it off, sensor and script both.
@@ -132,5 +132,5 @@ DEFAULT_VOICE_DISPLAY = True
 # Where the frontend script is served from, and the attribute that marks the
 # sensor so the script finds it whatever the user renamed its entity id to.
 FRONTEND_URL_BASE = "/nives_static"
-FRONTEND_SCRIPT = "mado-tablet.js"
-VOICE_SENSOR_MARKER = "mado_voice"
+FRONTEND_SCRIPT = "igor-tablet.js"
+VOICE_SENSOR_MARKER = "igor_voice"

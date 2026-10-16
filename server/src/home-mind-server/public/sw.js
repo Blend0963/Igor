@@ -1,5 +1,5 @@
 /*
- * MaDo's service worker: what makes the panel an installable app.
+ * Igor's service worker: what makes the panel an installable app.
  *
  * Two jobs only. The page itself is fetched from the network first and kept
  * as a fallback, so an update of the add-on shows at the next opening and a
@@ -13,7 +13,7 @@
  * puts them in the composer of a new thread.
  */
 
-var SHELL = "mado-shell-v5";
+var SHELL = "igor-shell-v5";
 var SHARE = "mado-share-v1";
 var SHELL_FILES = ["./", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "fonts/Caladea-Bold.ttf"];
 
@@ -92,7 +92,7 @@ self.addEventListener("fetch", function (event) {
       })
       .catch(function () {
         return caches.match(isPage ? scope.href : request).then(function (hit) {
-          return hit || new Response("MaDo est injoignable pour le moment.", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+          return hit || new Response("Igor est injoignable pour le moment.", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
         });
       })
   );

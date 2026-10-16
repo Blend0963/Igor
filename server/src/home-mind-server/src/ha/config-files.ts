@@ -1,6 +1,6 @@
 /**
  * Read-only access to Home Assistant's YAML for read_config_file: the
- * configuration folder the add-on maps at /config, so MaDo can review
+ * configuration folder the add-on maps at /config, so Igor can review
  * automations, scripts and packages written by hand, not only those the UI
  * editor stores.
  *
@@ -135,7 +135,7 @@ export type ConfigFileResult =
   | { error: string };
 
 export function readConfigFile(base: string, rel: string): ConfigFileResult {
-  if (!existsSync(base)) return { error: "The Home Assistant configuration folder is not available to MaDo." };
+  if (!existsSync(base)) return { error: "The Home Assistant configuration folder is not available to Igor." };
   const target = (rel ?? "").trim();
   const full = target ? resolveInside(base, target) : realpathSync(base);
   if (!existsSync(full)) return { error: `${target} does not exist. Call read_config_file without a path to list the YAML files.` };
@@ -205,7 +205,7 @@ export function restoreMasked(next: string, original: string | null): string {
 }
 
 /**
- * What MaDo may never add to the configuration, whatever the user confirms:
+ * What Igor may never add to the configuration, whatever the user confirms:
  * ways to run commands or code on the host, to call out to arbitrary URLs, to
  * reach the Supervisor, or to loosen Home Assistant's own login. Lines that
  * were already there are left alone (editing a file that has a shell_command
@@ -220,7 +220,7 @@ const FORBIDDEN_ADDITIONS: Array<[RegExp, string]> = [
   [/\b(auth_providers|trusted_networks|trusted_proxies|allow_bypass_login|use_x_forwarded_for|allowlist_external_dirs|allowlist_external_urls)\b/g, "a change to Home Assistant's login, proxy or file access settings"],
 ];
 
-/** What the new content adds that MaDo may not write, as phrases; empty when none. */
+/** What the new content adds that Igor may not write, as phrases; empty when none. */
 export function forbiddenAdditions(next: string, original: string | null): string[] {
   const found: string[] = [];
   for (const [pattern, label] of FORBIDDEN_ADDITIONS) {
@@ -268,7 +268,7 @@ export function lineDiff(a: string, b: string, context = 2, maxChars = 8000): st
 }
 
 function writableTarget(base: string, rel: string): { full: string; name: string } {
-  if (!existsSync(base)) throw new Error("The Home Assistant configuration folder is not available to MaDo.");
+  if (!existsSync(base)) throw new Error("The Home Assistant configuration folder is not available to Igor.");
   const target = (rel ?? "").trim();
   if (!target) throw new Error("write_config_file needs a path.");
   const full = resolveInside(base, target);
@@ -276,7 +276,7 @@ function writableTarget(base: string, rel: string): { full: string; name: string
   if (isSecrets(name)) throw new Error("secrets.yaml is never written.");
   if (!isYaml(name)) throw new Error("Only YAML files (.yaml, .yml) can be written.");
   if (name.split(path.sep).some((part) => SKIP_DIRS.has(part) || part.startsWith("."))) {
-    throw new Error("That folder is not part of the YAML configuration MaDo may change.");
+    throw new Error("That folder is not part of the YAML configuration Igor may change.");
   }
   if (existsSync(full) && statSync(full).isDirectory()) throw new Error(`${name} is a folder.`);
   return { full, name };
@@ -300,7 +300,7 @@ export function prepareConfigWrite(base: string, rel: string, content: string, c
   const forbidden = forbiddenAdditions(restored, original);
   if (forbidden.length) {
     throw new Error(
-      `MaDo may not add ${forbidden.join("; ")} to the configuration. NOTHING was prepared. Tell the user this part must be written by hand if they really want it.`
+      `Igor may not add ${forbidden.join("; ")} to the configuration. NOTHING was prepared. Tell the user this part must be written by hand if they really want it.`
     );
   }
   pendingWrites.set(`${conversationId}\u0000${name}`, { path: name, full, content: restored, original, turnId, at: Date.now() });
@@ -340,11 +340,11 @@ export function applyConfigWrite(base: string, rel: string, conversationId: stri
   let backupPath: string | undefined;
   if (backup && pending.original !== null) {
     const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-");
-    backupPath = `${pending.full}.mado-${stamp}.bak`;
+    backupPath = `${pending.full}.igor-${stamp}.bak`;
     writeFileSync(backupPath, pending.original);
   }
   mkdirSync(path.dirname(pending.full), { recursive: true });
-  const tmp = `${pending.full}.mado-tmp`;
+  const tmp = `${pending.full}.igor-tmp`;
   writeFileSync(tmp, pending.content);
   renameSync(tmp, pending.full);
   return { path: pending.path, full: pending.full, original: pending.original, ...(backupPath ? { backup: path.relative(realpathSync(base), backupPath) } : {}) };

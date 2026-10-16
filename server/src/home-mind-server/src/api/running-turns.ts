@@ -6,7 +6,7 @@
  * engine runs to the end and stores the answer. But the chat panel lives in
  * Home Assistant's ingress frame, which is torn down as soon as the person
  * opens another page, and the stream goes with it; coming back, they saw
- * their question with no answer and took MaDo for having stopped. The panel
+ * their question with no answer and took Igor for having stopped. The panel
  * now asks which threads are still running (to animate them in the list)
  * and follows the open one through its text so far until it is stored.
  */

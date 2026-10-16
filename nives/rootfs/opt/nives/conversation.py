@@ -1,4 +1,4 @@
-"""Conversation agent for MaDo."""
+"""Conversation agent for Igor."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ except ImportError:  # very old cores
         """Fallback id for cores without the ulid helper."""
         return uuid4().hex
 
-from . import MaDoConfigEntry
+from . import IgorConfigEntry
 from .const import (
     API_CHAT_ENDPOINT,
     API_CHAT_STREAM_ENDPOINT,
@@ -50,14 +50,14 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _out_of_credit_speech(language: str | None) -> str:
-    """What MaDo says when the AI provider has no credit left."""
+    """What Igor says when the AI provider has no credit left."""
     if (language or "").lower().startswith("fr"):
         return "Mon fournisseur d'IA n'a plus de crédit. Recharge le compte et je reprends tout de suite."
     return "My AI provider has run out of credit. Add credit to its account and I'll pick right back up."
 
 
 class UsageLimitError(Exception):
-    """Raised when the MaDo server returns HTTP 402 (usage limit reached)."""
+    """Raised when the Igor server returns HTTP 402 (usage limit reached)."""
 
 
 class StreamUnavailable(Exception):
@@ -66,22 +66,22 @@ class StreamUnavailable(Exception):
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: MaDoConfigEntry,
+    config_entry: IgorConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up conversation agent from a config entry."""
-    async_add_entities([MaDoConversationAgent(hass, config_entry)])
+    async_add_entities([IgorConversationAgent(hass, config_entry)])
 
 
-class MaDoConversationAgent(ConversationEntity):
-    """MaDo conversation agent."""
+class IgorConversationAgent(ConversationEntity):
+    """Igor conversation agent."""
 
     _attr_has_entity_name = True
     _attr_name = None  # entity name = device name
     _attr_supported_features = ConversationEntityFeature.CONTROL
     _attr_translation_key = "nives"
 
-    def __init__(self, hass: HomeAssistant, entry: MaDoConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: IgorConfigEntry) -> None:
         """Initialize the agent."""
         self.hass = hass
         self.entry = entry
@@ -90,8 +90,8 @@ class MaDoConversationAgent(ConversationEntity):
         self._attr_unique_id = entry.entry_id
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(entry.domain, entry.entry_id)},
-            name="MaDo",
-            manufacturer="MaDo",
+            name="Igor",
+            manufacturer="Igor",
             model="AI Assistant",
             entry_type=dr.DeviceEntryType.SERVICE,
         )
@@ -128,7 +128,7 @@ class MaDoConversationAgent(ConversationEntity):
         """The voice satellite a request comes from, if any.
 
         Home Assistant sets satellite_id for the satellite's own runs. A run
-        started elsewhere in a satellite's name (mado-ear, which hears "MaDo"
+        started elsewhere in a satellite's name (igor-ear, which hears "Igor"
         without the wake word and sends the audio through the Assist pipeline
         with the satellite's device_id) carries only the device: it is the
         satellite's when that device has an assist_satellite entity. A phone
@@ -220,19 +220,19 @@ class MaDoConversationAgent(ConversationEntity):
         except UsageLimitError:
             return await self._usage_limit_result(user_input, conversation_id)
         except aiohttp.ClientResponseError as err:
-            _LOGGER.error("MaDo server returned an error: %s", err.message)
+            _LOGGER.error("Igor server returned an error: %s", err.message)
             return self._error_result(
                 user_input,
                 conversation_id,
-                f"Sorry, the MaDo server returned an error (HTTP {err.status}). "
+                f"Sorry, the Igor server returned an error (HTTP {err.status}). "
                 "The add-on log has the details.",
             )
         except (aiohttp.ClientError, TimeoutError) as err:
-            _LOGGER.error("Error calling MaDo API: %s", err)
+            _LOGGER.error("Error calling Igor API: %s", err)
             return self._error_result(
                 user_input,
                 conversation_id,
-                "Sorry, I couldn't reach the MaDo server right now.",
+                "Sorry, I couldn't reach the Igor server right now.",
             )
 
         return self._result_from_chat_log(user_input, chat_log)
@@ -285,7 +285,7 @@ class MaDoConversationAgent(ConversationEntity):
             # The stream ended without a `done` event and without text: the
             # connection dropped mid-reply. Say so rather than show nothing.
             yield {"role": "assistant"}
-            yield {"content": "Sorry, I lost the connection to the MaDo server mid-reply."}
+            yield {"content": "Sorry, I lost the connection to the Igor server mid-reply."}
 
     @staticmethod
     def _follow(sensor, builder: DeltaBuilder, event: str, payload: dict) -> None:
@@ -373,16 +373,16 @@ class MaDoConversationAgent(ConversationEntity):
         self, user_input: ConversationInput, conversation_id: str | None
     ) -> ConversationResult:
         """Tell the user the balance is gone, once in the dialog and once as a notification."""
-        _LOGGER.warning("MaDo usage limit reached")
+        _LOGGER.warning("Igor usage limit reached")
         await self.hass.services.async_call(
             "persistent_notification",
             "create",
             {
-                "title": "MaDo — AI provider out of credit",
+                "title": "Igor — AI provider out of credit",
                 "message": (
                     "Your AI provider reports that its credit is used up. "
                     "Add credit to that account (Mistral, OpenAI, "
-                    "Anthropic…) and MaDo picks right back up."
+                    "Anthropic…) and Igor picks right back up."
                 ),
                 "notification_id": "nives_usage_limit",
             },
@@ -457,16 +457,16 @@ class MaDoConversationAgent(ConversationEntity):
                 is_voice=is_voice,
             )
         except UsageLimitError:
-            _LOGGER.warning("MaDo usage limit reached")
+            _LOGGER.warning("Igor usage limit reached")
             await self.hass.services.async_call(
                 "persistent_notification",
                 "create",
                 {
-                    "title": "MaDo — AI provider out of credit",
+                    "title": "Igor — AI provider out of credit",
                     "message": (
                         "Your AI provider reports that its credit is used up. "
                         "Add credit to that account (Mistral, OpenAI, "
-                        "Anthropic…) and MaDo picks right back up."
+                        "Anthropic…) and Igor picks right back up."
                     ),
                     "notification_id": "nives_usage_limit",
                 },
@@ -483,11 +483,11 @@ class MaDoConversationAgent(ConversationEntity):
             # The server ANSWERED — with an error status. Saying "couldn't
             # reach the server" here sends people debugging connectivity when
             # the log already names the real problem (#63, and #1 before it).
-            _LOGGER.error("MaDo server returned an error: %s", err.message)
+            _LOGGER.error("Igor server returned an error: %s", err.message)
             intent_response = intent.IntentResponse(language=user_input.language)
             intent_response.async_set_error(
                 intent.IntentResponseErrorCode.UNKNOWN,
-                f"Sorry, the MaDo server returned an error (HTTP {err.status}). "
+                f"Sorry, the Igor server returned an error (HTTP {err.status}). "
                 "The add-on log has the details.",
             )
             return ConversationResult(
@@ -495,11 +495,11 @@ class MaDoConversationAgent(ConversationEntity):
                 conversation_id=conversation_id,
             )
         except (aiohttp.ClientError, TimeoutError) as err:
-            _LOGGER.error("Error calling MaDo API: %s", err)
+            _LOGGER.error("Error calling Igor API: %s", err)
             intent_response = intent.IntentResponse(language=user_input.language)
             intent_response.async_set_error(
                 intent.IntentResponseErrorCode.UNKNOWN,
-                "Sorry, I couldn't reach the MaDo server right now.",
+                "Sorry, I couldn't reach the Igor server right now.",
             )
             return ConversationResult(
                 response=intent_response,
@@ -543,7 +543,7 @@ class MaDoConversationAgent(ConversationEntity):
         language: str | None = None,
         is_voice: bool = False,
     ) -> str:
-        """Call the MaDo API."""
+        """Call the Igor API."""
         url = f"{api_url}{API_CHAT_ENDPOINT}"
 
         payload: dict = {

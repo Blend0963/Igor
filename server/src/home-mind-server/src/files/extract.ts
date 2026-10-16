@@ -352,7 +352,7 @@ async function pdfFileText(name: string, data: Buffer, opts: ExtractOptions): Pr
   const pages = local?.pages ?? 0;
   const what = `scanned PDF${pages ? ` (${pages} page${pages > 1 ? "s" : ""})` : ""}`;
   if (!opts.ocrPdf) {
-    return `[${what}: it has no text layer, and reading it needs Mistral OCR, which needs a Mistral API key in the MaDo add-on configuration]`;
+    return `[${what}: it has no text layer, and reading it needs Mistral OCR, which needs a Mistral API key in the Igor add-on configuration]`;
   }
   const decision = opts.ocr ?? "ask";
   if (decision === "no") return `[${what} not read: the user chose not to pay for OCR]`;

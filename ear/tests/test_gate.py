@@ -1,4 +1,4 @@
-from mado_ear.gate import SatelliteGate
+from igor_ear.gate import SatelliteGate
 
 
 class Clock:

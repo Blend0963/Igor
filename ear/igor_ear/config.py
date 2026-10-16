@@ -1,4 +1,4 @@
-"""Settings, from ~/.config/mado-ear/config.toml (see config.example.toml)."""
+"""Settings, from ~/.config/igor-ear/config.toml (see config.example.toml)."""
 from __future__ import annotations
 
 import os
@@ -6,8 +6,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-CONFIG = Path(os.environ.get("MADO_EAR_CONFIG", Path.home() / ".config/mado-ear/config.toml"))
-STATE = Path(os.environ.get("MADO_EAR_STATE", Path.home() / ".local/state/mado-ear"))
+CONFIG = Path(os.environ.get("IGOR_EAR_CONFIG", Path.home() / ".config/igor-ear/config.toml"))
+STATE = Path(os.environ.get("IGOR_EAR_STATE", Path.home() / ".local/state/igor-ear"))
 
 
 @dataclass
@@ -17,7 +17,7 @@ class Settings:
     device: str = "auto"
     language: str = "fr"
     cpu_threads: int = 2
-    hotwords: str = "MaDo"
+    hotwords: str = "Igor"
     beam_size: int = 0
     extra_targets: list[str] = field(default_factory=list)
     act: bool = False
@@ -49,6 +49,10 @@ def load(path: Path = CONFIG) -> Settings:
     s.language = str(stt.get("language", s.language))
     s.cpu_threads = int(stt.get("cpu_threads", s.cpu_threads))
     s.hotwords = str(stt.get("hotwords", s.hotwords))
+    # A settings file from before the rename still primes Whisper for "MaDo",
+    # which would now hide the name it listens for.
+    if s.hotwords.strip().lower() == "mado":
+        s.hotwords = "Igor"
     s.beam_size = int(stt.get("beam_size", s.beam_size))
     s.extra_targets = [str(t) for t in addressing.get("extra_targets", [])]
     s.act = bool(mode.get("act", s.act))

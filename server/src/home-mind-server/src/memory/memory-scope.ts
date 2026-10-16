@@ -4,7 +4,7 @@
  * Conversation is always per world; long-term facts are shared by default.
  *
  * - **Assist** (voice satellites, the phone, the laptop, any Home Assistant
- *   conversation): one durable conversation per MaDo user and one long-term
+ *   conversation): one durable conversation per Igor user and one long-term
  *   fact bucket keyed by the user id, shared by every device.
  * - **A panel thread** (`mado-thread:<id>`): a chat-app conversation with its
  *   own history, its own long-term facts and its own semantic recall. It sees

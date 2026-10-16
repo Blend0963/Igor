@@ -1,10 +1,10 @@
-"""Is linux-voice-assistant busy, so mado-ear should stay quiet?
+"""Is linux-voice-assistant busy, so igor-ear should stay quiet?
 
 Busy while the satellite listens after its own wake word, processes, or
 speaks, and for a short tail after (the end of its own voice). A state
 that lasts far longer than any real exchange is a stuck satellite, or one
 that reports "listening" all the time (wake word handled in Home
-Assistant, audio always streaming): it is then ignored, or mado-ear would
+Assistant, audio always streaming): it is then ignored, or igor-ear would
 never hear anything again.
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ import logging
 import time
 from typing import Callable
 
-log = logging.getLogger("mado-ear")
+log = logging.getLogger("igor-ear")
 
 BUSY = {"listening", "processing", "responding"}
 TAIL = 1.5

@@ -239,7 +239,7 @@ scheduler
 
 // read_config_file reads Home Assistant's YAML here (the add-on's /config).
 setConfigDir(config.haConfigDir);
-// How far MaDo may change the configuration (CONFIG_EDITS).
+// How far Igor may change the configuration (CONFIG_EDITS).
 setConfigEdits(config.configEdits);
 console.log(`  Configuration changes: ${config.configEdits}`);
 

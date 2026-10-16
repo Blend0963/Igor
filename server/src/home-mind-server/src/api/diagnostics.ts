@@ -1,5 +1,5 @@
 /**
- * The panel's diagnostic: one pass over everything MaDo depends on, each
+ * The panel's diagnostic: one pass over everything Igor depends on, each
  * check reported as ok / failed with the provider's own message, so a setup
  * problem is visible without reading the add-on log.
  *
@@ -109,7 +109,7 @@ export function createDiagnostics(deps: Deps): (paid: boolean) => Promise<Diagno
 
     if (key) {
       results.push(await check("OCR (PDF scannés)", async () => {
-        const pdf = buildPdf("# Test MaDo\n\nBonjour, ceci est un test de lecture.");
+        const pdf = buildPdf("# Test Igor\n\nBonjour, ceci est un test de lecture.");
         const text = await ocrDocument(key, `data:application/pdf;base64,${pdf.toString("base64")}`);
         if (!/test/i.test(text)) throw new Error(`réponse inattendue : ${text.slice(0, 120)}`);
         return "lecture OK (1 page facturée)";
@@ -119,7 +119,7 @@ export function createDiagnostics(deps: Deps): (paid: boolean) => Promise<Diagno
     if (deps.tts) {
       let audio: Buffer | undefined;
       results.push(await check("Voix (synthèse)", async () => {
-        audio = await deps.tts!.synthesize("Bonjour, ceci est un test de MaDo.", "fr");
+        audio = await deps.tts!.synthesize("Bonjour, ceci est un test d'Igor.", "fr");
         if (audio.length < 1000) throw new Error(`audio trop court (${audio.length} octets)`);
         return `${Math.round(audio.length / 1024)} Ko d'audio`;
       }));

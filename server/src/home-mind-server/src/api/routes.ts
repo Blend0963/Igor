@@ -931,7 +931,7 @@ export function createRouter(
     const format = ["md", "pdf", "docx"].includes(String(req.query.format)) ? String(req.query.format) : "md";
     const messages = (await conversations.getConversationHistory(conversationId, THREAD_MESSAGE_CAP)).filter((m) => m.userId === userId);
     if (!messages.length) return res.status(404).json({ error: "Conversation not found" });
-    const title = (await conversations.listConversations(userId)).find((c) => c.conversationId === conversationId)?.title || "Fil MaDo";
+    const title = (await conversations.listConversations(userId)).find((c) => c.conversationId === conversationId)?.title || "Fil Igor";
     const body = messages
       .map((m) => {
         const content = m.content
@@ -939,7 +939,7 @@ export function createRouter(
           .replace(/!\[([^\]]*)\]\(api\/media\/[^)]*\)/g, "[image : $1]")
           .replace(/\[📎 ([^\]]*)\]\(api\/media\/[^)]*\)/g, "[fichier : $1]");
         const when = new Date(m.createdAt ?? Date.now()).toLocaleString("fr-FR");
-        return `## ${m.role === "user" ? "Vous" : "MaDo"} — ${when}\n\n${content}`;
+        return `## ${m.role === "user" ? "Vous" : "Igor"} — ${when}\n\n${content}`;
       })
       .join("\n\n---\n\n");
     const file = createFile({ filename: title.slice(0, 80), format, content: `# ${title}\n\n${body}` });

@@ -1,11 +1,11 @@
-<p align="center"><img src="assets/brand/mado-logo.png" alt="MaDo" width="420"></p>
+<p align="center"><img src="assets/brand/igor-logo.png" alt="Igor" width="420"></p>
 
-<p align="center"><b>MaDo, Majordome Domotique: the AI butler that runs your home, inside Home Assistant.</b><br>
+<p align="center"><b>Igor. <i>In Igor we trust.</i> The AI butler that runs your home, inside Home Assistant.</b><br>
 Talk to it, show it a photo, hand it a file: it answers, remembers and acts.</p>
 
 ---
 
-MaDo is a Home Assistant add-on. It plugs into Assist (voice and text), adds a chat panel to the sidebar, and can be installed on your phone as an app. It controls your devices, reads your sensors and their history, writes and fixes your automations, reminds you of things and keeps an eye on the house, with a memory that stays on your Home Assistant machine.
+Igor is a Home Assistant add-on. It plugs into Assist (voice and text), adds a chat panel to the sidebar, and can be installed on your phone as an app. It controls your devices, reads your sensors and their history, writes and fixes your automations, reminds you of things and keeps an eye on the house, with a memory that stays on your Home Assistant machine.
 
 ## What it does
 
@@ -34,8 +34,8 @@ MaDo is a Home Assistant add-on. It plugs into Assist (voice and text), adds a c
 ## Install
 
 1. In Home Assistant: **Settings → Add-ons → Add-on store → ⋮ → Repositories**, add `https://github.com/Blend0963/MaDo`.
-2. Install **MaDo**, open its **Configuration** tab, choose the provider and paste its API key.
-3. Start the add-on. Restart Home Assistant when asked, then pick **MaDo** as the conversation agent of your Assist pipeline.
+2. Install **Igor**, open its **Configuration** tab, choose the provider and paste its API key.
+3. Start the add-on. Restart Home Assistant when asked, then pick **Igor** as the conversation agent of your Assist pipeline.
 
 The full guide (options, reminders, YAML editing, installing the app on a phone) is in [nives/DOCS.md](nives/DOCS.md). What changed in each version: [CHANGELOG.md](CHANGELOG.md).
 
@@ -45,6 +45,6 @@ Memory, conversations and files stay on your Home Assistant machine. Only the cu
 
 ## License
 
-MaDo is free software under the **GNU AGPL-3.0**, see [LICENSE](LICENSE). It started as a fork of Home Mind / Nives; the original copyright notice is kept in the license file, as the AGPL requires.
+Igor is free software under the **GNU AGPL-3.0**, see [LICENSE](LICENSE). It started as a fork of Home Mind / Nives; the original copyright notice is kept in the license file, as the AGPL requires.
 
 The panel's wordmark font, Caladea, is © The Caladea Project Authors and bundled under the SIL Open Font License 1.1 (`server/src/home-mind-server/public/fonts/Caladea-OFL.txt`).

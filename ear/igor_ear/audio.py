@@ -15,14 +15,14 @@ import numpy as np
 
 from .segmenter import FRAME, RATE
 
-log = logging.getLogger("mado-ear")
+log = logging.getLogger("igor-ear")
 
 
 def frames(source: str) -> Iterator[np.ndarray]:
     """Yield float32 frames of FRAME samples, forever, restarting parec if it stops."""
     cmd = [
         "parec", "--device", source, "--format=s16le", f"--rate={RATE}", "--channels=1",
-        "--latency-msec=60", "--client-name=mado-ear", "--raw",
+        "--latency-msec=60", "--client-name=igor-ear", "--raw",
     ]
     size = FRAME * 2
     while True:

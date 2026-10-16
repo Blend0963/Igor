@@ -37,7 +37,7 @@ describe("automation confirmations", () => {
     // Preview with action as an array; confirm with a wildly different shape.
     recordPreview(conv, "create_automation", { alias: "X", trigger: [{ platform: "time", at: "12:00:00" }], action: [{ service: "notify.foo" }] }, "turn-1");
     const reformatted = {
-      alias: "MaDo: X",
+      alias: "Igor: X",
       action: { service: "foo", domain: "notify", service_data: { message: "hi" } },
       trigger: { at: "12:00:00", platform: "time" },
     };
@@ -64,7 +64,7 @@ describe("automation confirmations", () => {
   it("confirms a create whose alias only differs by the auto prefix or casing", () => {
     recordPreview(conv, "create_automation", create({ alias: "Porch light at sunset" }), "turn-1");
     expect(
-      isConfirmed(conv, "create_automation", create({ alias: "MaDo: porch light at sunset" }), "turn-2")
+      isConfirmed(conv, "create_automation", create({ alias: "Igor: porch light at sunset" }), "turn-2")
     ).toBe(true);
   });
 
@@ -294,7 +294,7 @@ describe("mixed-trigger note and untouched-fields enumeration (2026-07-27 live g
     // The live no-op: asked to lift a time window, the model only ever sent
     // trigger — and narrated the condition change as done.
     const preview = describePending("update_automation", {
-      entity_id: "automation.mado_bedroom_cooling_stop_when_20c",
+      entity_id: "automation.igor_bedroom_cooling_stop_when_20c",
       trigger: [{ platform: "numeric_state", entity_id: "sensor.temperatura_2", below: 20 }],
     });
     const note = (preview.notes as string[]).find((n) => /changes ONLY/.test(n));

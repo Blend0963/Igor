@@ -1,8 +1,8 @@
 import numpy as np
 
-from mado_ear.addressing import Addressing
-from mado_ear.listener import Listener, Outcome
-from mado_ear.stt import Transcript
+from igor_ear.addressing import Addressing
+from igor_ear.listener import Listener, Outcome
+from igor_ear.stt import Transcript
 
 
 class Clock:
@@ -36,7 +36,7 @@ def audio(seconds=1.0):
 
 
 def test_name_in_sentence_is_sent():
-    listener, _, sent = make(["Éteins la lumière Madou"])
+    listener, _, sent = make(["Éteins la lumière Igor"])
     e = listener.handle(audio())
     assert e["accepted"] and e["reason"] == "name" and e["sent"]
     assert sent == [(16000, None)]
@@ -49,7 +49,7 @@ def test_no_name_is_ignored_and_not_sent():
 
 
 def test_name_alone_then_order_sent_together():
-    listener, clock, sent = make(["MaDo ?", "éteins la cuisine"])
+    listener, clock, sent = make(["Igor ?", "éteins la cuisine"])
     assert listener.handle(audio(0.5))["reason"] == "name_alone_waiting"
     clock.t = 3
     e = listener.handle(audio(1.5))
@@ -58,7 +58,7 @@ def test_name_alone_then_order_sent_together():
 
 
 def test_name_alone_expires():
-    listener, clock, sent = make(["MaDo", "éteins la cuisine"])
+    listener, clock, sent = make(["Igor", "éteins la cuisine"])
     listener.handle(audio())
     clock.t = 20
     assert not listener.handle(audio())["accepted"]
@@ -66,8 +66,8 @@ def test_name_alone_expires():
 
 
 def test_followup_after_a_question_keeps_the_conversation():
-    listener, clock, sent = make(["MaDo baisse les volets", "oui le salon", "et la cuisine"])
-    listener.handle(audio())          # MaDo answers with a question
+    listener, clock, sent = make(["Igor baisse les volets", "oui le salon", "et la cuisine"])
+    listener.handle(audio())          # Igor answers with a question
     clock.t = 3
     e = listener.handle(audio())      # answered without the name
     assert e["reason"] == "followup" and sent[1][1] == "c1"
@@ -82,13 +82,13 @@ def test_satellite_busy_skips_everything():
 
 
 def test_observation_mode_never_acts():
-    listener, _, _ = make(["MaDo éteins tout"], act=False)
+    listener, _, _ = make(["Igor éteins tout"], act=False)
     e = listener.handle(audio())
     assert e["accepted"] and "sent" not in e
 
 
 def test_speech_going_on_after_a_pause_is_joined():
-    listener, _, sent = make(["MaDo donne-moi les nouvelles"])
+    listener, _, sent = make(["Igor donne-moi les nouvelles"])
     parts = [audio(4), audio(3)]
     e = listener.handle(audio(2), more=lambda: parts.pop(0) if parts else None)
     assert e["joined"] == 2
@@ -100,7 +100,7 @@ def test_long_speech_only_head_and_tail_transcribed():
 
     def stt(a):
         lengths.append(len(a))
-        return Transcript("bla" if len(lengths) == 1 else "merci MaDo", 0.5, 0.1, -0.2)
+        return Transcript("bla" if len(lengths) == 1 else "merci Igor", 0.5, 0.1, -0.2)
 
     listener = Listener(stt, Addressing(), None)
     e = listener.handle(audio(40))
@@ -110,7 +110,7 @@ def test_long_speech_only_head_and_tail_transcribed():
 
 def test_doubtful_transcription_with_the_name_is_kept():
     def stt(a):
-        return Transcript("tu montons ma doux", 0.2, 0.3, -1.4)
+        return Transcript("tu montons i gor", 0.2, 0.3, -1.4)
     e = Listener(stt, Addressing(), None).handle(audio())
     assert e["accepted"] and e["reason"] == "name"
 

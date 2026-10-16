@@ -1,13 +1,13 @@
-"""mado-ear: listen without a wake word, observation mode.
+"""igor-ear: listen without a wake word, observation mode.
 
-  python -m mado_ear run      listen; note (or, in act mode, send) what is for MaDo
-  python -m mado_ear bench    record a few seconds and time the transcription
-  python -m mado_ear report   summary of what was noted
-  python -m mado_ear check "éteins le salon"   test the rules on a sentence
+  python -m igor_ear run      listen; note (or, in act mode, send) what is for Igor
+  python -m igor_ear bench    record a few seconds and time the transcription
+  python -m igor_ear report   summary of what was noted
+  python -m igor_ear check "éteins le salon"   test the rules on a sentence
 
 Observation mode (the default) never sends anything anywhere: it writes, on
 this machine only, what it heard and what it would have done. Act mode
-([mode] act = true) sends the sentences that name MaDo to Home Assistant's
+([mode] act = true) sends the sentences that name Igor to Home Assistant's
 Assist pipeline, in the satellite's name, and the satellite says the answer.
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ from . import __version__
 from .addressing import Addressing
 from .config import CONFIG, Settings, load
 
-log = logging.getLogger("mado-ear")
+log = logging.getLogger("igor-ear")
 
 def prune(settings: Settings) -> None:
     """Drop notes older than keep_days."""
@@ -52,7 +52,7 @@ def note(settings: Settings, entry: dict) -> None:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-JOIN_GAP = 1.5   # a pause shorter than this does not end a sentence for MaDo
+JOIN_GAP = 1.5   # a pause shorter than this does not end a sentence for Igor
 
 
 def run(settings: Settings) -> None:
@@ -66,7 +66,7 @@ def run(settings: Settings) -> None:
     from .vad import Vad
 
     mode = "act" if settings.act else "observation"
-    log.info("mado-ear %s, %s mode, source %s", __version__, mode, settings.source)
+    log.info("igor-ear %s, %s mode, source %s", __version__, mode, settings.source)
     prune(settings)
     connected = bool(settings.ha_url and settings.ha_token)
     if connected and settings.presence_entity and settings.presence_entity.startswith("assist_satellite."):
@@ -109,7 +109,7 @@ def run(settings: Settings) -> None:
         try:
             device_id = ha.device_of(settings.ha_url, settings.ha_token, settings.satellite)
         except Exception as err:  # noqa: BLE001
-            log.warning("Satellite device not found (%s); MaDo will answer in its written style", err)
+            log.warning("Satellite device not found (%s); Igor will answer in its written style", err)
         log.info("Acting for %s (device %s)", settings.satellite, device_id or "unknown")
 
     def act(audio: np.ndarray, conversation: str | None) -> Outcome:
@@ -230,7 +230,7 @@ def report(settings: Settings) -> None:
     print(f"{len(entries)} sentences since {entries[0]['time']}; transcription {np.mean(stt):.2f}s on average, {max(stt):.2f}s at worst")
     for reason, count in reasons.most_common():
         print(f"  {reason:14} {count}")
-    print("\nFor MaDo:")
+    print("\nFor Igor:")
     for e in entries:
         if e["accepted"]:
             sent = f"  -> heard {e.get('voxtral', '')!r}, answered {e.get('answer') or e.get('error', '')!r}" if e.get("sent") else ""
@@ -238,7 +238,7 @@ def report(settings: Settings) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="mado-ear", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(prog="igor-ear", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("run")
     b = sub.add_parser("bench")

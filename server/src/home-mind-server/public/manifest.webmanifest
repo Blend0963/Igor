@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "MaDo",
-  "short_name": "MaDo",
-  "description": "Le majordome de la maison.",
+  "name": "Igor",
+  "short_name": "Igor",
+  "description": "In Igor we trust.",
   "lang": "fr",
   "start_url": "./",
   "scope": "./",

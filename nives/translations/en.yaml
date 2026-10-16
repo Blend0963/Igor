@@ -3,7 +3,7 @@ configuration:
     name: "Bring Your Own Key (BYOK)"
     description: >-
       Settings for using your own API key. Your model must support function/tool
-      calling, which is how MaDo controls your home. Going deep on local or
+      calling, which is how Igor controls your home. Going deep on local or
       custom models? Only used when LLM Mode is "byok".
     fields:
       provider:
@@ -37,9 +37,9 @@ configuration:
     name: Custom Prompt
     description: >-
       Give the assistant its personality — whatever you write here replaces the
-      default MaDo persona outright, so one sentence describing who it is does
+      default Igor persona outright, so one sentence describing who it is does
       the job (e.g. "You are HAL 9000, the calm and precise computer from 2001").
-      Applies once the add-on restarts. Leave empty for the default MaDo persona.
+      Applies once the add-on restarts. Leave empty for the default Igor persona.
       This text applies everywhere; the two fields below add to it for one kind
       of conversation only, so shared rules are written once.
   custom_prompt_voice:
@@ -52,14 +52,14 @@ configuration:
   custom_prompt_thread:
     name: Custom Prompt — Chat Threads
     description: >-
-      Added after the Custom Prompt for threads in the MaDo chat panel only,
+      Added after the Custom Prompt for threads in the Igor chat panel only,
       where replies are read on screen: Markdown, code blocks with a copy
       button and longer answers are welcome there. Leave empty to use the
       Custom Prompt alone.
   assist_mode:
     name: Assist Mode
     description: >-
-      How MaDo treats Assist requests. "auto" (default) treats only voice
+      How Igor treats Assist requests. "auto" (default) treats only voice
       satellites as spoken, because Home Assistant does not say when you used
       your voice in the phone app. "voice" treats every Assist request as
       spoken, the right choice when you talk to Assist rather than type.
@@ -68,7 +68,7 @@ configuration:
   memory_token_limit:
     name: Memory Budget (tokens)
     description: >-
-      How much of what MaDo remembers about you is sent with each request,
+      How much of what Igor remembers about you is sent with each request,
       most relevant first. Every request pays for it, so lower is cheaper.
       Leave empty for 1500, which holds a few dozen facts.
   thread_memory:
@@ -85,7 +85,7 @@ configuration:
       Transcription for the 🎤 button in the chat panel, done by Mistral's
       Voxtral. "auto" (default) turns it on whenever a Mistral key is set:
       the web-search key above, or your chat key when the provider is
-      Mistral. "off" hides the microphone. When on, MaDo also offers itself
+      Mistral. "off" hides the microphone. When on, Igor also offers itself
       as a speech-to-text engine in Home Assistant's voice assistants.
   thread_reasoning:
     name: Thinking in Chat Threads
@@ -97,8 +97,8 @@ configuration:
   text_to_speech:
     name: Text-to-Speech (Voxtral)
     description: >-
-      "mistral" gives MaDo a voice through Mistral's Voxtral TTS (needs a
-      Mistral key): a 🔊 button under each reply in the chat panel, and MaDo
+      "mistral" gives Igor a voice through Mistral's Voxtral TTS (needs a
+      Mistral key): a 🔊 button under each reply in the chat panel, and Igor
       offered as a text-to-speech engine in Home Assistant's voice assistants.
       Unset or "off": no voice.
   tts_voice:
@@ -110,18 +110,18 @@ configuration:
     name: Mistral Document Libraries
     description: >-
       Comma-separated ids of Mistral document libraries (Le Chat → Libraries)
-      MaDo may search: device manuals, invoices, contracts. Enables the
+      Igor may search: device manuals, invoices, contracts. Enables the
       search_documents tool, in Assist and in threads.
   mistral_connectors:
     name: Mistral Connectors (experimental)
     description: >-
       Comma-separated names or ids of connectors set up in your Mistral
       account (Gmail, calendar, Notion…). Enables the use_connector tool in
-      chat threads. MaDo asks before anything that sends, books or deletes.
+      chat threads. Igor asks before anything that sends, books or deletes.
   ocr_price_per_1000_pages:
     name: OCR Price (per 1000 pages)
     description: >-
-      Used only for the estimate MaDo shows before reading a scanned PDF with
+      Used only for the estimate Igor shows before reading a scanned PDF with
       Mistral OCR, in USD per 1000 pages. Unset = 4 (Mistral's list price for
       its latest OCR model in October 2026). PDFs that contain text are read on
       the add-on for free and never need OCR.
@@ -146,14 +146,14 @@ configuration:
   daily_briefing_time:
     name: Morning Briefing Time
     description: >-
-      HH:MM, house time (e.g. 07:30). Every day at that time MaDo writes a short
+      HH:MM, house time (e.g. 07:30). Every day at that time Igor writes a short
       summary (weather, indoor temperatures, yesterday's consumption, anything
       unusual at home), sends it as a notification and keeps it in the
       "Résumé du matin" thread. Each briefing costs one request. Empty = off.
   daily_briefing_prompt:
     name: Morning Briefing Request
     description: >-
-      What the morning briefing should contain, written as you would ask MaDo.
+      What the morning briefing should contain, written as you would ask Igor.
       Leave empty for the default summary.
   model_prices:
     name: Model Prices (cost counter)
@@ -165,7 +165,7 @@ configuration:
   config_edits:
     name: Configuration Changes
     description: >-
-      How far MaDo may change your Home Assistant configuration. "off": read
+      How far Igor may change your Home Assistant configuration. "off": read
       only (it can still read automations, scripts and YAML and suggest
       changes). "automations" (default): it can create, change and delete
       automations, each previewed and confirmed. "yaml": also edit YAML files
@@ -178,12 +178,12 @@ configuration:
     description: >-
       Turn on and restart the add-on to replace the API token (if you think it
       leaked). The option switches itself back off. Restart Home Assistant
-      once afterwards so the MaDo integration picks up the new token, and
+      once afterwards so the Igor integration picks up the new token, and
       paste the new key (🔑 in the panel) into the installed app if you use it.
   house_watch:
     name: House Watch
     description: >-
-      Lets MaDo speak up when something is wrong, through the notification
+      Lets Igor speak up when something is wrong, through the notification
       service above: a water leak, smoke, a window open for half an hour, a
       low battery, a device that stopped answering, an automation that failed,
       lights left on with everyone out. Plain checks run every 5 minutes for
@@ -203,7 +203,7 @@ configuration:
   watch_lively_time:
     name: Daily Useful Tip Time
     description: >-
-      HH:MM. Once a day from this time, MaDo looks at the weather and the house
+      HH:MM. Once a day from this time, Igor looks at the weather and the house
       and tells you only if there is something genuinely useful ("frost
       tonight and the garage window is open"). One cheap request a day. Empty
       = never.
@@ -211,7 +211,7 @@ configuration:
     name: Maximum Answer Length
     description: >-
       How much room one written answer gets, counted in tokens. Leave this empty
-      and MaDo chooses for you. Raise it if long answers stop before they
+      and Igor chooses for you. Raise it if long answers stop before they
       finish, which is most likely when you ask about several sensors at once or
       over a long period. Longer answers cost a little more. Spoken answers are
       not affected and stay short, because they are read out loud.
@@ -226,7 +226,7 @@ configuration:
   extraction_model:
     name: Memory Extraction Model
     description: >-
-      Model ID for MaDo's background memory pass — the call that rereads each
+      Model ID for Igor's background memory pass — the call that rereads each
       conversation turn and stores what was worth remembering. Leave empty to
       use the same model as your main chat model, or point it at a cheaper
       model on the same provider (for example ministral-8b-latest on Mistral)
@@ -234,7 +234,7 @@ configuration:
   extraction_gate:
     name: Skip Pointless Memory Extraction
     description: >-
-      On by default. After each turn, MaDo checks whether the message could
+      On by default. After each turn, Igor checks whether the message could
       have taught it anything: a pure command ("turn off the kitchen light"),
       a pure question, or a bare "yes"/"thanks" provably did not, so the
       memory pass is skipped and that API call is never made. Anything that
@@ -244,19 +244,19 @@ configuration:
   layout_from_exposed:
     name: Room map from exposed entities
     description: >-
-      On by default. The room map MaDo keeps of your home lists the entities you
+      On by default. The room map Igor keeps of your home lists the entities you
       have exposed to Assist (Settings, Voice assistants, Expose), which is what
       Home Assistant's own assistant sees too. Turn it off to list entities by
       type instead, as before. This only decides which entities appear in the
-      map; what MaDo can read and control is the next setting.
+      map; what Igor can read and control is the next setting.
   tools_from_exposed:
-    name: Limit MaDo to exposed entities
+    name: Limit Igor to exposed entities
     description: >-
-      On by default. MaDo can read and control only the entities you have
+      On by default. Igor can read and control only the entities you have
       exposed to Assist (Settings, Voice assistants, Expose), just like Home
       Assistant's own assistant. An exposed group still controls all of its
-      members. Something you expose while MaDo is running is picked up within
-      30 minutes, or straight away after a restart. Turn this off to let MaDo
+      members. Something you expose while Igor is running is picked up within
+      30 minutes, or straight away after a restart. Turn this off to let Igor
       reach every entity in the house again.
   layout_domains:
     name: Room map entity types
@@ -269,4 +269,4 @@ configuration:
     description: >-
       Logging verbosity. Use "debug" for troubleshooting.
 network:
-  3100/tcp: "MaDo app (PWA): give it a host port only to serve the app through your own HTTPS reverse proxy"
+  3100/tcp: "Igor app (PWA): give it a host port only to serve the app through your own HTTPS reverse proxy"

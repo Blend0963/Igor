@@ -1,8 +1,8 @@
-"""AI Task platform for MaDo.
+"""AI Task platform for Igor.
 
-Exposes MaDo as a Home Assistant AI Task provider so automations/scripts can
+Exposes Igor as a Home Assistant AI Task provider so automations/scripts can
 call `ai_task.generate_data` for text or structured (JSON) output, reasoned with
-the user's MaDo memory. Supports image attachments (e.g. a camera snapshot) for
+the user's Igor memory. Supports image attachments (e.g. a camera snapshot) for
 vision-capable models.
 """
 
@@ -36,7 +36,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util.json import json_loads
 
-from . import MaDoConfigEntry
+from . import IgorConfigEntry
 from .const import AI_TASK_CUSTOM_PROMPT, API_CHAT_ENDPOINT, DEFAULT_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,15 +44,15 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: MaDoConfigEntry,
+    config_entry: IgorConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the MaDo AI Task entity from a config entry."""
-    async_add_entities([MaDoAITaskEntity(hass, config_entry)])
+    """Set up the Igor AI Task entity from a config entry."""
+    async_add_entities([IgorAITaskEntity(hass, config_entry)])
 
 
-class MaDoAITaskEntity(ai_task.AITaskEntity):
-    """MaDo AI Task provider (text + structured data generation)."""
+class IgorAITaskEntity(ai_task.AITaskEntity):
+    """Igor AI Task provider (text + structured data generation)."""
 
     _attr_has_entity_name = True
     _attr_name = "AI Task"
@@ -61,7 +61,7 @@ class MaDoAITaskEntity(ai_task.AITaskEntity):
         | ai_task.AITaskEntityFeature.SUPPORT_ATTACHMENTS
     )
 
-    def __init__(self, hass: HomeAssistant, entry: MaDoConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: IgorConfigEntry) -> None:
         """Initialize the AI Task entity."""
         self.hass = hass
         self.entry = entry
@@ -70,8 +70,8 @@ class MaDoAITaskEntity(ai_task.AITaskEntity):
         self._attr_unique_id = f"{entry.entry_id}_ai_task"
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(entry.domain, entry.entry_id)},
-            name="MaDo",
-            manufacturer="MaDo",
+            name="Igor",
+            manufacturer="Igor",
             model="AI Assistant",
             entry_type=dr.DeviceEntryType.SERVICE,
         )
@@ -90,7 +90,7 @@ class MaDoAITaskEntity(ai_task.AITaskEntity):
         if task.structure is not None:
             if _schema_to_openapi is None:
                 raise HomeAssistantError(
-                    "MaDo cannot describe a structured output on this Home Assistant "
+                    "Igor cannot describe a structured output on this Home Assistant "
                     "version: no JSON schema converter is available. Plain text tasks "
                     "still work."
                 )
@@ -117,16 +117,16 @@ class MaDoAITaskEntity(ai_task.AITaskEntity):
         try:
             parsed = json_loads(_strip_code_fences(response_text))
         except ValueError as err:
-            _LOGGER.error("MaDo returned non-JSON for a structured task: %s", response_text)
+            _LOGGER.error("Igor returned non-JSON for a structured task: %s", response_text)
             raise HomeAssistantError(
-                "MaDo did not return valid JSON for the requested structure."
+                "Igor did not return valid JSON for the requested structure."
             ) from err
 
         try:
             validated = task.structure(parsed)
         except vol.Invalid as err:
             raise HomeAssistantError(
-                f"MaDo JSON did not match the requested structure: {err}"
+                f"Igor JSON did not match the requested structure: {err}"
             ) from err
 
         return ai_task.GenDataTaskResult(
@@ -135,7 +135,7 @@ class MaDoAITaskEntity(ai_task.AITaskEntity):
         )
 
     async def _collect_images(self, task: ai_task.GenDataTask) -> list[str]:
-        """Turn image attachments into base64 data URLs for the MaDo server.
+        """Turn image attachments into base64 data URLs for the Igor server.
 
         Reads file bytes off the event loop (blocking I/O). Non-image
         attachments are ignored. Vision needs a multimodal model on the
@@ -160,7 +160,7 @@ class MaDoAITaskEntity(ai_task.AITaskEntity):
         return images
 
     async def _call_nives(self, message: str, images: list[str] | None = None) -> str:
-        """POST a one-shot, memory-aware request to the MaDo server.
+        """POST a one-shot, memory-aware request to the Igor server.
 
         Stateless (no conversationId, so it never touches conversation history)
         and task-framed via a dedicated customPrompt. Mirrors the request shape
@@ -189,16 +189,16 @@ class MaDoAITaskEntity(ai_task.AITaskEntity):
             ) as response:
                 if response.status == 402:
                     raise HomeAssistantError(
-                        "MaDo: the AI provider has run out of credit. Add credit to its account."
+                        "Igor: the AI provider has run out of credit. Add credit to its account."
                     )
                 if response.status != 200:
                     raise HomeAssistantError(
-                        f"MaDo server returned HTTP {response.status}."
+                        f"Igor server returned HTTP {response.status}."
                     )
                 body = await response.json()
         except (aiohttp.ClientError, TimeoutError) as err:
             raise HomeAssistantError(
-                f"Couldn't reach the MaDo server: {err}"
+                f"Couldn't reach the Igor server: {err}"
             ) from err
 
         response_text = body.get("response")
@@ -207,8 +207,8 @@ class MaDoAITaskEntity(ai_task.AITaskEntity):
 
         error = body.get("error")
         if isinstance(error, dict) and error.get("hint"):
-            raise HomeAssistantError(f"MaDo could not complete the task: {error['hint']}")
-        raise HomeAssistantError("MaDo returned an empty response.")
+            raise HomeAssistantError(f"Igor could not complete the task: {error['hint']}")
+        raise HomeAssistantError("Igor returned an empty response.")
 
 
 def _strip_code_fences(text: str) -> str:

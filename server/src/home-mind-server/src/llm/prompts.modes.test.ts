@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildSystemPrompt, buildSystemPromptText } from "./prompts.js";
 
-const PERSONA = "Tu es Mado, le majordome de la maison.";
+const PERSONA = "Tu es Igor, le majordome de la maison.";
 
 describe("prompt modes", () => {
   const voice = buildSystemPromptText([], "voice");
@@ -42,8 +42,8 @@ describe("prompt modes", () => {
   });
 
   it("names its own default identity per mode", () => {
-    expect(thread).toMatch(/^You are MaDo, a capable general-purpose assistant/);
-    expect(voice).toMatch(/^You are MaDo, a helpful smart home voice assistant/);
+    expect(thread).toMatch(/^You are Igor, a capable general-purpose assistant/);
+    expect(voice).toMatch(/^You are Igor, a helpful smart home voice assistant/);
   });
 
   it("never asks the voice to read URLs aloud", () => {

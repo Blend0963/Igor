@@ -1,7 +1,7 @@
 {
-  "name": "@mado/server",
-  "version": "0.10.7",
-  "description": "MaDo API server - AI assistant with persistent memory for Home Assistant",
+  "name": "@igor/server",
+  "version": "0.11.0",
+  "description": "Igor API server - AI assistant with persistent memory for Home Assistant",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -42,7 +42,7 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "author": "MaDo contributors",
+  "author": "Igor contributors",
   "license": "AGPL-3.0",
   "repository": {
     "type": "git",

@@ -1,16 +1,16 @@
 import pytest
 
-from mado_ear.addressing import Addressing, name_only, normalize
+from igor_ear.addressing import Addressing, name_only, normalize
 
 rules = Addressing(extra_targets=["lampe de chevet", "guirlande"], accept_commands=True)
 name_rules = Addressing()
 
 
 @pytest.mark.parametrize("text,reason", [
-    ("MaDo, éteins la lumière du salon.", "name"),
-    ("Ferme les volets s'il te plaît Mado.", "name"),
-    ("Madeau, quelle heure est-il ?", "name"),
-    ("Fermez les volets si le te plaît ma dos.", "name"),
+    ("Igor, éteins la lumière du salon.", "name"),
+    ("Ferme les volets s'il te plaît Igor.", "name"),
+    ("Ygor, quelle heure est-il ?", "name"),
+    ("Fermez les volets si le te plaît Igore.", "name"),
     ("Fermez les volets de la chambre", "command"),
     ("Allume le chauffage de la chambre.", "command"),
     ("S'il te plaît, éteins la cuisine", "command"),
@@ -37,8 +37,8 @@ def test_rejected(text):
 
 
 def test_followup_window():
-    assert rules.decide("oui vas-y", since_mado_spoke=5).reason == "followup"
-    assert not rules.decide("oui vas-y", since_mado_spoke=90).accepted
+    assert rules.decide("oui vas-y", since_igor_spoke=5).reason == "followup"
+    assert not rules.decide("oui vas-y", since_igor_spoke=90).accepted
 
 
 def test_normalize():
@@ -46,7 +46,7 @@ def test_normalize():
 
 
 @pytest.mark.parametrize("text", [
-    "Madou, éteins la lumière", "éteins la lumière Madou", "MaDo allume le salon",
+    "Ygor, éteins la lumière", "éteins la lumière Igore", "Igor allume le salon",
 ])
 def test_name_variants(text):
     assert name_rules.decide(text).reason == "name"
@@ -58,8 +58,8 @@ def test_commands_need_the_name_by_default():
 
 
 @pytest.mark.parametrize("text,expected", [
-    ("MaDo ?", True), ("Euh, Madou", True), ("Hey MaDo.", True),
-    ("MaDo éteins la lumière", False), ("Mado, quelle heure est-il", False),
+    ("Igor ?", True), ("Euh, Ygor", True), ("Hey Igor.", True),
+    ("Igor éteins la lumière", False), ("Igor, quelle heure est-il", False),
 ])
 def test_name_only(text, expected):
     assert name_only(text) is expected

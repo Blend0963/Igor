@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-log = logging.getLogger("mado-ear")
+log = logging.getLogger("igor-ear")
 
 # Loads the model on the GPU and runs it once, in a separate process: a GPU
 # library problem can kill a process outright (segmentation fault), and
@@ -54,14 +54,14 @@ class Transcriber:
         device: str = "auto",
         language: str = "fr",
         cpu_threads: int = 2,
-        hotwords: str = "MaDo",
+        hotwords: str = "Igor",
         beam_size: int = 0,
     ) -> None:
         from faster_whisper import WhisperModel
 
         self.language = language
-        # "MaDo" is no French word: told to expect it, Whisper writes it
-        # instead of "ma doux" or "Madame".
+        # "Igor" is no French word: told to expect it, Whisper writes it the
+        # same way every time.
         self.hotwords = hotwords or None
         # Greedy decoding drops rare words like the name; several beams keep
         # it, at little cost on a GPU. 0 means: 5 on a GPU, 1 on a CPU.

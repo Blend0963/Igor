@@ -1,5 +1,5 @@
 /**
- * The house watch: MaDo speaking up when something is wrong, on the same
+ * The house watch: Igor speaking up when something is wrong, on the same
  * channel as reminders.
  *
  * Two stages, so watching costs almost nothing. Every few minutes plain code
@@ -171,7 +171,7 @@ export function parseVerdict(raw: string | undefined): { notify: boolean; title:
 }
 
 export interface HouseWatchOptions {
-  /** off: nothing; on: the entities MaDo may see; all: the whole house. */
+  /** off: nothing; on: the entities Igor may see; all: the whole house. */
   mode: "off" | "on" | "all";
   quietHours?: string;
   maxPerDay: number;
@@ -203,7 +203,7 @@ interface WatchMemo {
 }
 
 const JUDGE_SYSTEM = (lang: string) =>
-  "You are MaDo, the assistant of a home, watching it for its household. Automatic checks flagged the items below. " +
+  "You are Igor, the assistant of a home, watching it for its household. Automatic checks flagged the items below. " +
   "Decide whether to send the household a phone notification now. Notify what deserves their attention; stay quiet about " +
   "what is plainly normal (an outdoor sensor that is cold in winter, a fridge sensor that is cold, an opening that is " +
   "obviously meant to be open). Safety alarms (water leak, smoke, gas, CO, heat, a triggered alarm) are always notified. " +
@@ -212,7 +212,7 @@ const JUDGE_SYSTEM = (lang: string) =>
   `there is one, no Markdown. Write in the language whose code is "${lang}".`;
 
 const LIVELY_SYSTEM = (lang: string) =>
-  "You are MaDo, the assistant of a home. Here is the state of the house and the weather. Is there ONE genuinely useful, " +
+  "You are Igor, the assistant of a home. Here is the state of the house and the weather. Is there ONE genuinely useful, " +
   "timely thing to tell the household now? For example: frost or a storm tonight while a window, the garage or an awning " +
   "is open; heating running with a window open; rain coming while laundry or a window is out; everyone away with things " +
   "left on. If there is nothing of the kind, say nothing: no small talk, no weather report for its own sake. " +
@@ -254,7 +254,7 @@ export class HouseWatch {
     this.timer.unref?.();
     // A first look shortly after start, once Home Assistant has settled.
     setTimeout(() => void this.check(), 90_000).unref?.();
-    console.log(`[watch] watching ${this.options.mode === "all" ? "the whole house" : "the entities MaDo may see"} every ${this.options.intervalMinutes} min`);
+    console.log(`[watch] watching ${this.options.mode === "all" ? "the whole house" : "the entities Igor may see"} every ${this.options.intervalMinutes} min`);
   }
 
   stop(): void {
@@ -354,7 +354,7 @@ export class HouseWatch {
       console.log("[watch] lively check: nothing worth saying");
       return;
     }
-    await this.send(verdict.title || "🏠 MaDo", verdict.message, this.memo.day ?? "", false);
+    await this.send(verdict.title || "🏠 Igor", verdict.message, this.memo.day ?? "", false);
   }
 
   private async send(title: string, message: string, today: string, urgent: boolean): Promise<void> {
