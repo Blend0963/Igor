@@ -44,7 +44,10 @@ Update: `git -C ~/MaDo pull && bash ~/MaDo/ear/install.sh && systemctl --user re
 The service runs at low priority (nice 10, at most two CPUs, idle I/O,
 2 GB of memory) so that sound and Bluetooth on the same machine come first.
 On a GTX 960 (2 GB, compute capability 5.2) CTranslate2 runs float32 only:
-"small" fits in about 1 GB.
+"small" fits in about 1 GB. CTranslate2 4.x has no kernels for such Maxwell
+cards ("cudaErrorInvalidDevice"), so `install.sh` detects a compute
+capability below 6.0 and installs CTranslate2 3.24 with CUDA 11 on a
+Python 3.12 that uv downloads into the app folder.
 
 ## Tests
 

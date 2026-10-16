@@ -1,0 +1,13 @@
+# For GPUs older than compute capability 6.0 (Maxwell: GTX 9xx, GTX 750).
+# CTranslate2 4.x ships no kernels for them; 3.24 (CUDA 11, cuDNN 8) still
+# does, and has wheels up to Python 3.12 only. faster-whisper itself is
+# installed with --no-deps on top: it runs on CTranslate2 3.24 as is.
+ctranslate2==3.24.0
+tokenizers>=0.13,<1
+huggingface-hub>=0.21
+onnxruntime==1.31.0
+av>=11
+numpy>=2,<3
+tqdm
+nvidia-cublas-cu11>=11,<12
+nvidia-cudnn-cu11>=8,<9
