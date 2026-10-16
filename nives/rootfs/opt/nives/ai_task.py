@@ -189,7 +189,7 @@ class MaDoAITaskEntity(ai_task.AITaskEntity):
             ) as response:
                 if response.status == 402:
                     raise HomeAssistantError(
-                        "MaDo usage limit reached. Visit nives.house to renew or upgrade."
+                        "MaDo: the AI provider has run out of credit. Add credit to its account."
                     )
                 if response.status != 200:
                     raise HomeAssistantError(

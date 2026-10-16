@@ -128,7 +128,7 @@ describe("preview notes — surfacing what the payload does NOT do", () => {
       ],
       condition: [
         { condition: "time", after: "20:00:00", before: "22:00:00" },
-        { condition: "state", entity_id: "person.jure", state: "home" },
+        { condition: "state", entity_id: "person.alex", state: "home" },
         { condition: "numeric_state", entity_id: "sensor.temperatura_2", above: 22 },
       ],
       action: { service: "climate.set_temperature" },
@@ -150,7 +150,7 @@ describe("preview notes — surfacing what the payload does NOT do", () => {
       previewNotes({
         alias: "Porch light",
         trigger: { platform: "time", at: "20:00:00" },
-        condition: { condition: "state", entity_id: "person.jure", state: "home" },
+        condition: { condition: "state", entity_id: "person.alex", state: "home" },
         action: { service: "light.turn_on" },
       })
     ).toEqual([]);
@@ -266,7 +266,7 @@ describe("mixed-trigger note and untouched-fields enumeration (2026-07-27 live g
         { platform: "time", at: "20:00:00" },
       ],
       condition: [
-        { condition: "state", entity_id: "person.jure", state: "home" },
+        { condition: "state", entity_id: "person.alex", state: "home" },
         { condition: "time", after: "20:00:00", before: "22:00:00" },
       ],
       action: { service: "climate.set_temperature" },
@@ -283,7 +283,7 @@ describe("mixed-trigger note and untouched-fields enumeration (2026-07-27 live g
       ],
       condition: [
         { condition: "numeric_state", entity_id: "sensor.temperatura_2", above: 22 },
-        { condition: "state", entity_id: "person.jure", state: "home" },
+        { condition: "state", entity_id: "person.alex", state: "home" },
       ],
       action: { service: "climate.set_temperature" },
     });
@@ -326,15 +326,15 @@ describe("identityOverride (content-identity gating for forget_memory)", () => {
   });
 
   it("confirms in a later turn when the same override was previewed", () => {
-    recordPreview(conv, "forget_memory", { query: "my name is jure" }, "turn-1", "user s name is jure");
+    recordPreview(conv, "forget_memory", { query: "my name is alex" }, "turn-1", "user s name is alex");
     // Confirm call has a REWORDED query — only the override identity matters.
     expect(
-      isConfirmed(conv, "forget_memory", { query: "User's name is Jure" }, "turn-2", "user s name is jure")
+      isConfirmed(conv, "forget_memory", { query: "User's name is Alex" }, "turn-2", "user s name is alex")
     ).toBe(true);
   });
 
   it("does NOT confirm with a different override identity", () => {
-    recordPreview(conv, "forget_memory", { query: "a" }, "turn-1", "user s name is jure");
+    recordPreview(conv, "forget_memory", { query: "a" }, "turn-1", "user s name is alex");
     expect(isConfirmed(conv, "forget_memory", { query: "a" }, "turn-2", "user prefers 21 c")).toBe(false);
   });
 

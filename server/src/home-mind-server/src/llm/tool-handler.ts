@@ -71,7 +71,7 @@ export interface ToolContext {
 /**
  * Did the memory we previewed disappear before the user confirmed?
  *
- * Live on real HA: "forget that my name is Jure — my name is now HAL 9000"
+ * Live on real HA: "forget that my name is Alex — my name is now HAL 9000"
  * previews the delete, then the async extractor stores the new name and its
  * `replaces` path deletes the old fact. By the time the user says yes, the
  * previewed memory is gone, and re-resolving the same query lands on the
@@ -630,7 +630,7 @@ export async function extractAndStoreFacts(
   /**
    * Memories this turn's forget_memory calls touched (see ToolContext). Any
    * extracted fact resembling one of these is dropped — otherwise "forget that
-   * my name is Jure" teaches "User's name is Jure" straight back, under a new
+   * my name is Alex" teaches "User's name is Alex" straight back, under a new
    * id, and the user watches a deleted memory reappear. Everything else in the
    * same turn ("…my name is now HAL 9000") is stored as usual.
    */

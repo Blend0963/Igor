@@ -43,7 +43,7 @@ describe("spokenVoicePointer", () => {
 });
 
 describe("spokenVoicePointer writing rules", () => {
-  // Every rule here is a form Jure heard fail on the Slovene voice on 2026-09-09.
+  // Every rule here is a form heard failing on the Slovene voice on 2026-09-09.
   // The wrong forms are unintelligible, not merely clumsy, so each keeps its own test.
   const p = spokenVoicePointer("female");
 

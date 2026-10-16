@@ -57,7 +57,7 @@ describe("MemoryCleanupJob", () => {
       makeFact({ id: "bad-1", content: "Kitchen light is currently displaying red" }),
       makeFact({ id: "bad-2", content: "Light was set to blue by the assistant" }),
       makeFact({ id: "bad-3", content: "light.kitchen supports RGBW and color_temp modes" }),
-      makeFact({ id: "good-2", content: "User's name is Jure and he lives in Prague" }),
+      makeFact({ id: "good-2", content: "User's name is Alex and he lives in Prague" }),
     ];
     (memory.getFacts as ReturnType<typeof vi.fn>).mockResolvedValue(facts);
 

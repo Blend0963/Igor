@@ -225,7 +225,7 @@ describe("ShodhMemoryClient", () => {
 
       const ids = await client.rememberBatch("user-1", [
         { content: "User prefers 20°C", category: "preference", confidence: 0.9 },
-        { content: "User's name is Jure", category: "identity" },
+        { content: "User's name is Alex", category: "identity" },
       ]);
 
       expect(ids).toEqual(["mem-1", "mem-2"]);
@@ -243,7 +243,7 @@ describe("ShodhMemoryClient", () => {
                 tags: ["preference", "home-mind"],
               },
               {
-                content: "User's name is Jure",
+                content: "User's name is Alex",
                 memory_type: "Context",
                 importance: 0.8,
                 tags: ["identity", "home-mind"],

@@ -77,9 +77,9 @@ describe("resolveForgetQuery", () => {
   });
 
   it("matches a paraphrase above the threshold", () => {
-    // "my name is Jure" vs stored "User's name is Jure": Dice = 2·3/(4+5) ≈ 0.67
-    const name = makeFact("f-name", "User's name is Jure");
-    const result = resolveForgetQuery("my name is Jure", [name, temperature]);
+    // "my name is Alex" vs stored "User's name is Alex": Dice = 2·3/(4+5) ≈ 0.67
+    const name = makeFact("f-name", "User's name is Alex");
+    const result = resolveForgetQuery("my name is Alex", [name, temperature]);
     expect(result.status).toBe("match");
     if (result.status === "match") expect(result.group.ids).toEqual(["f-name"]);
   });
@@ -120,9 +120,9 @@ describe("resolveForgetQuery", () => {
   });
 
   it("groups duplicate contents into one candidate carrying all ids", () => {
-    const dupe1 = makeFact("f-1", "User's name is Jure");
-    const dupe2 = makeFact("f-2", "user's name is jure  ");
-    const result = resolveForgetQuery("User's name is Jure", [dupe1, dupe2, temperature]);
+    const dupe1 = makeFact("f-1", "User's name is Alex");
+    const dupe2 = makeFact("f-2", "user's name is alex  ");
+    const result = resolveForgetQuery("User's name is Alex", [dupe1, dupe2, temperature]);
     expect(result.status).toBe("match");
     if (result.status === "match") {
       expect(result.group.ids.sort()).toEqual(["f-1", "f-2"]);
@@ -152,20 +152,20 @@ describe("resolveForgetQuery", () => {
 
 describe("contentSimilarity (extraction filter)", () => {
   it("scores a verbatim re-learn at 1", () => {
-    expect(contentSimilarity("User's name is Jure", "user s name is jure")).toBe(1);
+    expect(contentSimilarity("User's name is Alex", "user s name is alex")).toBe(1);
   });
 
   it("puts a REPLACEMENT below the filter threshold — it must survive extraction", () => {
     // The issue #54 shape: same frame, different value. If this were filtered,
-    // "forget I'm Jure, I'm HAL 9000 now" would forget the old name and never
+    // "forget I'm Alex, I'm HAL 9000 now" would forget the old name and never
     // learn the new one.
-    const score = contentSimilarity("User's name is HAL 9000", "User's name is Jure");
+    const score = contentSimilarity("User's name is HAL 9000", "User's name is Alex");
     expect(score).toBeLessThan(FORGET_FILTER_THRESHOLD);
   });
 
   it("puts a REWORDED re-learn above the filter threshold — it must be dropped", () => {
     expect(
-      contentSimilarity("The user's name is Jure", "User's name is Jure")
+      contentSimilarity("The user's name is Alex", "User's name is Alex")
     ).toBeGreaterThanOrEqual(FORGET_FILTER_THRESHOLD);
     expect(
       contentSimilarity("The user's canary word is bumblebee", "User's test canary word is bumblebee")
@@ -173,12 +173,12 @@ describe("contentSimilarity (extraction filter)", () => {
   });
 
   it("scores unrelated facts near zero", () => {
-    expect(contentSimilarity("User prefers 20 degrees", "User's name is Jure")).toBeLessThan(0.3);
+    expect(contentSimilarity("User prefers 20 degrees", "User's name is Alex")).toBeLessThan(0.3);
   });
 
   it("is symmetric and safe on empty input", () => {
     expect(contentSimilarity("a b c", "c b a")).toBe(contentSimilarity("c b a", "a b c"));
-    expect(contentSimilarity("", "User's name is Jure")).toBe(0);
+    expect(contentSimilarity("", "User's name is Alex")).toBe(0);
   });
 });
 
@@ -202,7 +202,7 @@ describe("looksLikeRelearn (what the extraction filter actually asks)", () => {
   });
 
   it("does NOT flag a multi-token replacement (the name case)", () => {
-    expect(looksLikeRelearn("User's name is HAL 9000", "User's name is Jure")).toBe(false);
+    expect(looksLikeRelearn("User's name is HAL 9000", "User's name is Alex")).toBe(false);
   });
 
   it("does NOT flag an unrelated fact", () => {

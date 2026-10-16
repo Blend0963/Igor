@@ -79,7 +79,7 @@ describe("mergeMemoryInto (nives#65)", () => {
   it("copies other users' facts into the target and skips what it already has", async () => {
     const { memory, contents } = fakeMemory({
       default: ["User prefers 22°C at home"],
-      "ha-user-1": ["user prefers 22 °C at home!", "User's name is Jure"],
+      "ha-user-1": ["user prefers 22 °C at home!", "User's name is Alex"],
     });
     const conversations = knownUsers("default", "ha-user-1");
 
@@ -89,7 +89,7 @@ describe("mergeMemoryInto (nives#65)", () => {
       merged: 1,
       sources: [{ userId: "ha-user-1", copied: 1, duplicates: 1 }],
     });
-    expect(contents("default")).toEqual(["User prefers 22°C at home", "User's name is Jure"]);
+    expect(contents("default")).toEqual(["User prefers 22°C at home", "User's name is Alex"]);
   });
 
   it("copies a fact two people both hold only once", async () => {

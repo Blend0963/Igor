@@ -257,7 +257,7 @@ export function recordPreview(
  * disappeared — the fact extractor's own replace-on-update path can delete it
  * between the preview and the user's "yes". Without this the confirm call
  * re-resolves the query against what's left and lands on the REPLACEMENT
- * ("User's name is Jure" → "User's name is HAL 9000" scores 0.73), so the
+ * ("User's name is Alex" → "User's name is HAL 9000" scores 0.73), so the
  * assistant offers to forget the name the user just set.
  */
 export function pendingIdentities(conversationId: string, toolName: string): string[] {
