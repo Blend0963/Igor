@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MaDo</title>
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#111318">
+<meta name="theme-color" content="#0E1B33">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -14,29 +14,32 @@
 <style>
   :root {
     color-scheme: light dark;
-    --bg: #EEF3F8; --surface: #FFFFFF; --hover: #E6EEF6; --active: #D7E7F5; --border: #D8E2EC; --border-hi: #B9CCDD;
-    --fg: #14202E; --fg2: #34465A; --muted: #6B7A8C; --accent: #0D6EBF; --accent-hi: #1A86DB; --accent-rgb: 13,110,191; --link: #0D6EBF;
-    --code-bg: #F5F8FB; --chart-bg: #FFFFFF; --axis: #9AA9B9; --danger: #D93A3A; --danger-strong: #C62828; --ok: #2E9E5B; --ok-border: #A8DDBC;
-    --warn: #B97700; --warn-soft: #8A5A00; --zebra: rgba(13,110,191,0.03);
-    --bubble: #FFFFFF; --bubble-shadow: 0 2px 10px rgba(20,32,46,0.07); --user-bubble: #0D6EBF;
-    --hdr: linear-gradient(135deg, #41BDF5, #0D6EBF); --hdr-shadow: 0 8px 24px rgba(13,110,191,0.28);
-    --btn: #E8F1F9; --btn-fg: #0D6EBF; --comp-shadow: 0 4px 18px rgba(20,32,46,0.08);
-    --chip-on: #E3F4FD; --chip-on-fg: #0D6EBF; --chip-off: #E8EDF3; --chip-off-fg: #3A4A5E; --chip-set: #E3F4FD; --chip-set-fg: #0D6EBF;
-    --chip-rem: #EEE8FF; --chip-rem-fg: #5B3FC4; --chip-auto: #E2F6EA; --chip-auto-fg: #1E7A45;
+    --bg: #F5F2EC; --surface: #FFFFFF; --hover: #F0EADF; --active: #E8DFCB; --border: #E4DCCB; --border-hi: #D2C3A2;
+    --fg: #16202F; --fg2: #3B4658; --muted: #7A7F88; --accent: #16294D; --accent-hi: #22396A; --accent-rgb: 22,41,77; --link: #8C6A1F;
+    --code-bg: #FAF8F3; --chart-bg: #FFFFFF; --axis: #B5AC98; --danger: #C8423A; --danger-strong: #B3261E; --ok: #2E8A55; --ok-border: #A8D8BA;
+    --warn: #A8822F; --warn-soft: #8A6A1F; --zebra: rgba(140,106,31,0.04);
+    --bubble: #FFFFFF; --bubble-shadow: 0 2px 12px rgba(22,32,47,0.07); --user-bubble: #16294D;
+    --hdr: linear-gradient(135deg, #1B3260, #0B1730); --hdr-shadow: 0 8px 24px rgba(11,23,48,0.25);
+    --gold: #C9A55A; --gold-text: #EBD29A; --gold-grad: linear-gradient(135deg, #EED49A, #B8903F); --gold-ink: #0E1B33; --brand: #A8822F;
+    --btn: #F1EADB; --btn-fg: #16294D; --comp-shadow: 0 4px 18px rgba(22,32,47,0.07);
+    --chip-on: #F6EBCF; --chip-on-fg: #7A5B14; --chip-off: #ECE8E0; --chip-off-fg: #4A5160; --chip-set: #F6EBCF; --chip-set-fg: #7A5B14;
+    --chip-rem: #E6EAF3; --chip-rem-fg: #22396A; --chip-auto: #E4F1E8; --chip-auto-fg: #2D6B45;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0C1320; --surface: #121B2A; --hover: #18233A; --active: #1D2B40; --border: #223047; --border-hi: #2E4260;
-      --fg: #E6EEF8; --fg2: #C3CFDF; --muted: #8796AB; --accent: #1C7FD4; --accent-hi: #2A93EA; --accent-rgb: 28,127,212; --link: #8FD8FF;
-      --code-bg: #0A101B; --chart-bg: #121B2A; --axis: #4A5A72; --danger: #FF6B6B; --danger-strong: #C92A2A; --ok: #69DB7C; --ok-border: #2F5E3A;
-      --warn: #E6A93A; --warn-soft: #E6C27A; --zebra: rgba(255,255,255,0.02);
-      --bubble: #16202F; --bubble-shadow: 0 0 0 1px #223047; --user-bubble: #1C7FD4;
-      --hdr: linear-gradient(135deg, #1F8FD0, #0A3F7A); --hdr-shadow: 0 8px 24px rgba(0,0,0,0.35);
-      --btn: #1D2B40; --btn-fg: #8FD8FF; --comp-shadow: 0 4px 18px rgba(0,0,0,0.25);
-      --chip-on: #10314A; --chip-on-fg: #8FD8FF; --chip-off: #1B2638; --chip-off-fg: #B5C3D6; --chip-set: #10314A; --chip-set-fg: #8FD8FF;
-      --chip-rem: #271F45; --chip-rem-fg: #C8B5FF; --chip-auto: #12321F; --chip-auto-fg: #7FE0A0;
+      --bg: #0A1120; --surface: #111A2C; --hover: #172238; --active: #1E2B45; --border: #233250; --border-hi: #34476B;
+      --fg: #ECE7DC; --fg2: #C9C3B5; --muted: #8D96A6; --accent: #2C4C86; --accent-hi: #3A5EA0; --accent-rgb: 201,165,90; --link: #E2C27A;
+      --code-bg: #0A101B; --chart-bg: #111A2C; --axis: #4A5A72; --danger: #FF7B72; --danger-strong: #C0392B; --ok: #7FD6A0; --ok-border: #2F5E3A;
+      --warn: #E2C27A; --warn-soft: #EBD29A; --zebra: rgba(255,255,255,0.02);
+      --bubble: #141F33; --bubble-shadow: 0 0 0 1px #233250; --user-bubble: #22396A;
+      --hdr: linear-gradient(135deg, #1B3260, #08101F); --hdr-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      --brand: #E2C27A;
+      --btn: #1A2640; --btn-fg: #E2C27A; --comp-shadow: 0 4px 18px rgba(0,0,0,0.3);
+      --chip-on: #3A2F17; --chip-on-fg: #F1D9A0; --chip-off: #1B2638; --chip-off-fg: #B5C3D6; --chip-set: #3A2F17; --chip-set-fg: #F1D9A0;
+      --chip-rem: #1D2A47; --chip-rem-fg: #B7C8F0; --chip-auto: #14301F; --chip-auto-fg: #8FD9A8;
     }
   }
+  @font-face { font-family: "MaDo Serif"; src: url("fonts/Caladea-Bold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
   body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--fg); }
@@ -279,11 +282,14 @@
 
   /* ----- MaDo theme: the blue band, the bubbles, the drawn buttons ----- */
   .svg-ic { width: 20px; height: 20px; display: block; flex: none; }
-  .wordmark { font-style: italic; font-weight: 900; letter-spacing: -0.04em; display: inline-flex; align-items: center; line-height: 1; }
+  .wordmark { font-family: "MaDo Serif", Georgia, "Times New Roman", serif; font-weight: 700; letter-spacing: 0.04em; display: inline-flex; align-items: center; gap: 10px; line-height: 1; }
+  .wm-bow { width: 30px; height: 30px; flex: none; }
+  .tagline { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 10px; letter-spacing: 0.22em; font-weight: 600; opacity: 0.7; text-transform: uppercase; margin-left: 4px; align-self: flex-end; padding-bottom: 4px; }
   .spd { display: inline-flex; flex-direction: column; gap: 4px; margin-right: 7px; }
   .spd i { display: block; height: 3px; border-radius: 2px; background: currentColor; opacity: 0.5; }
   .spd i:nth-child(1) { width: 14px; margin-left: 5px; } .spd i:nth-child(2) { width: 19px; } .spd i:nth-child(3) { width: 11px; margin-left: 8px; }
-  .brand.wordmark { font-size: 24px; color: var(--accent); }
+  .brand.wordmark { font-size: 24px; color: var(--brand); }
+  .brand .wm-bow { width: 24px; height: 24px; }
   #sidebar { background: var(--surface); }
   #btn-new { background: var(--btn); color: var(--btn-fg); border: 0; border-radius: 10px; padding: 7px 12px; font-weight: 600; }
   #btn-new:hover { background: var(--active); }
@@ -292,7 +298,7 @@
   .foot-tools .mini .svg-ic { width: 18px; height: 18px; }
   #chat-head { display: block; background: var(--hdr); color: #fff; padding: 12px 14px 12px; border: 0; border-radius: 0 0 24px 24px; box-shadow: var(--hdr-shadow); position: relative; z-index: 2; }
   .head-top { display: flex; align-items: center; gap: 8px; }
-  .head-top .wordmark { font-size: 28px; flex: 1; min-width: 0; }
+  .head-top .wordmark { font-size: 28px; flex: 1; min-width: 0; color: var(--gold-text); }
   .head-actions { display: flex; gap: 6px; }
   .hdr-btn { width: 38px; height: 38px; border-radius: 12px; border: 0; background: rgba(255,255,255,0.16); color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
   .hdr-btn:hover { background: rgba(255,255,255,0.28); color: #fff; }
@@ -302,7 +308,7 @@
   #btn-menu, #btn-new-top { padding: 0; }
   #btn-new-top { display: inline-flex; margin: 0; color: #fff; }
   .head-sub { margin-top: 8px; display: flex; min-width: 0; }
-  #chat-title { flex: 0 1 auto; max-width: 100%; background: rgba(255,255,255,0.2); color: #fff; padding: 4px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; }
+  #chat-title { flex: 0 1 auto; max-width: 100%; background: rgba(235,210,154,0.16); border: 1px solid rgba(235,210,154,0.28); color: #F5EBD3; padding: 4px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; }
   #chat-title .rename { background: rgba(255,255,255,0.95); color: #14202E; border: 0; }
   #messages { padding: 16px 18px; }
   .msg { font-size: 14.5px; border-radius: 18px; }
@@ -333,10 +339,11 @@
   .pill { background: var(--btn); border-color: transparent; color: var(--btn-fg); height: 32px; }
   .pill:hover { background: var(--active); border-color: transparent; }
   .pill-icon { color: var(--btn-fg); display: inline-flex; align-items: center; }
-  #btn-send { width: 40px; height: 40px; min-width: 40px; border-radius: 14px; background: linear-gradient(135deg, #41BDF5, #0D6EBF); box-shadow: 0 4px 12px rgba(13,110,191,0.35); }
-  #btn-send:hover { background: linear-gradient(135deg, #5BC8F7, #1A7FD0); }
+  #btn-send { width: 40px; height: 40px; min-width: 40px; border-radius: 14px; background: var(--gold-grad); color: var(--gold-ink); box-shadow: 0 4px 12px rgba(184,144,63,0.35); }
+  #btn-send:hover { background: linear-gradient(135deg, #F3DDAA, #C49B48); }
+  #btn-send.stop { color: #fff; }
   #btn-send.stop { background: var(--danger-strong); box-shadow: none; }
-  #empty .big { font-size: 34px; color: var(--accent); }
+  #empty .big { font-size: 38px; color: var(--brand); }
   .modal { z-index: 40; }
   .t-star, .t-edit, .t-del { display: inline-flex; align-items: center; }
   .t-star .svg-ic, .t-edit .svg-ic, .t-del .svg-ic { width: 15px; height: 15px; }
@@ -364,6 +371,7 @@
     #chat-head { padding: 10px 12px 12px; }
     #btn-menu { display: inline-flex; }
     #btn-close-side { display: inline-flex; }
+    .head-top .tagline { display: none; }
     .msg { max-width: 86%; }
     .icon-btn { width: 34px; min-width: 34px; height: 34px; }
   }
@@ -373,7 +381,7 @@
 <div id="app">
   <aside id="sidebar">
     <div class="side-head">
-      <span class="brand wordmark">MaDo</span>
+      <span class="brand wordmark"><svg class="wm-bow" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="wmg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F1D9A0"/><stop offset="1" stop-color="#B8903F"/></linearGradient></defs><path d="M27 27.5 L8 18 Q5 16.5 5 20 V44 Q5 47.5 8 46 L27 36.5 Z M37 27.5 L56 18 Q59 16.5 59 20 V44 Q59 47.5 56 46 L37 36.5 Z" fill="url(#wmg2)"/><rect x="26" y="25" width="12" height="14" rx="3.5" fill="#FFF3D6"/></svg>MaDo</span>
       <button id="btn-new" type="button">+ Nouveau fil</button>
       <button id="btn-close-side" type="button" title="Fermer" aria-label="Fermer la liste"><svg class="svg-ic" style="width:18px;height:18px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
@@ -401,7 +409,7 @@
     <header id="chat-head">
       <div class="head-top">
         <button id="btn-menu" class="hdr-btn" type="button" title="Fils de discussion" aria-label="Afficher les fils de discussion"><svg class="svg-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg></button>
-        <span class="wordmark"><span class="spd" aria-hidden="true"><i></i><i></i><i></i></span>MaDo</span>
+        <span class="wordmark"><svg class="wm-bow" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="wmg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F1D9A0"/><stop offset="1" stop-color="#B8903F"/></linearGradient></defs><path d="M27 27.5 L8 18 Q5 16.5 5 20 V44 Q5 47.5 8 46 L27 36.5 Z M37 27.5 L56 18 Q59 16.5 59 20 V44 Q59 47.5 56 46 L37 36.5 Z" fill="url(#wmg)"/><rect x="26" y="25" width="12" height="14" rx="3.5" fill="#FFF3D6"/></svg>MaDo<span class="tagline">Majordome domotique</span></span>
         <span class="head-actions">
           <button id="btn-move" type="button" class="hdr-btn" title="Ranger dans un projet" aria-label="Ranger dans un projet" hidden><svg class="svg-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z"/></svg></button>
           <button id="btn-export" type="button" class="hdr-btn" title="Exporter ce fil" aria-label="Exporter ce fil" hidden><svg class="svg-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button>
@@ -411,7 +419,8 @@
       <div class="head-sub"><span id="chat-title" class="untitled">Bienvenue</span></div>
     </header>
     <div id="empty">
-      <div class="big wordmark">MaDo</div>
+      <div class="big wordmark"><svg class="wm-bow" style="width:44px;height:44px" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="wmg3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F1D9A0"/><stop offset="1" stop-color="#B8903F"/></linearGradient></defs><path d="M27 27.5 L8 18 Q5 16.5 5 20 V44 Q5 47.5 8 46 L27 36.5 Z M37 27.5 L56 18 Q59 16.5 59 20 V44 Q59 47.5 56 46 L37 36.5 Z" fill="url(#wmg3)"/><rect x="26" y="25" width="12" height="14" rx="3.5" fill="#FFF3D6"/></svg>MaDo</div>
+      <div class="tagline" style="opacity:.8">Majordome domotique</div>
       <div>Créez un fil ou choisissez-en un dans la liste.</div>
     </div>
     <div id="chat" hidden>

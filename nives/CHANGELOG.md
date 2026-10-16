@@ -1,8 +1,10 @@
 # Changelog
 
-## 0.9.10 — A sidebar icon that always shows
+## 0.10.0 — MaDo, Majordome Domotique
 
-- The custom `mado:` icon set of 0.9.8–0.9.9 did not show in the sidebar on a real Home Assistant, leaving MaDo's entry without an icon. It is removed, and the panel uses `mdi:brain` again. The integration no longer loads a script on every Home Assistant page.
+- **New identity, "Grand Hôtel" made modern.** MaDo stands for *Majordome Domotique*: the logo is a gold bow tie on night blue, framed with a thin gold line. It is used in the add-on store, the integration, the panel and the installed app, and the sidebar shows the matching built-in icon `mdi:bow-tie`.
+- **Panel theme in the same spirit**: night-blue band with the gold bow tie, "MaDo" in a serif wordmark (Caladea, bundled under the SIL Open Font License) and "Majordome domotique" beside it; ivory background, white cards, night-blue bubbles, gold send button and gold chips. Light and dark still follow the device.
+- The custom `mado:` icon set of 0.9.8–0.9.9 never showed in the sidebar on a real Home Assistant; it is removed, and the integration no longer loads a script on every Home Assistant page.
 
 ## 0.9.9 — The sidebar icon shows up
 
