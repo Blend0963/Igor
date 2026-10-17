@@ -9,7 +9,10 @@ with fakes. For each utterance:
 3. "Igor" anywhere in the sentence: taken. "Igor" alone ("Igor ?"): the
    next sentence, within a few seconds, is the order, and both are sent
    together. Right after Igor asked a question, the answer is taken without
-   the name (follow-up).
+   the name (follow-up). In the "smart" mode, a sentence without the name
+   that looks like a request goes to a small local AI (judge.py) with the
+   sentences heard just before; it decides, unless a television or radio is
+   making sound (then the name is needed).
 4. Taken, in act mode: if the speaker goes on after a short pause, the rest
    is joined first (`more`). Then the recorded audio (not Whisper's words)
    goes to the Assist pipeline, so Voxtral hears all of it properly, and the
@@ -21,6 +24,7 @@ A long sentence is not transcribed in full just to find the name: its first
 from __future__ import annotations
 
 import time
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
@@ -36,6 +40,10 @@ GAP = np.zeros(RATE // 5, dtype=np.float32)  # 0.2 s between "Igor" and the orde
 LONG_S = 16.0
 HEAD_S = 8.0
 TAIL_S = 6.0
+
+# What the smart judge is shown of the conversation before a sentence.
+CONTEXT_SENTENCES = 4
+CONTEXT_SECONDS = 90.0
 
 # Below these, Whisper is guessing words into noise.
 MAX_NO_SPEECH = 0.6
@@ -66,6 +74,9 @@ class Listener:
         keep_rejected_text: bool = True,
         clock: Callable[[], float] = time.monotonic,
         on_heard: Callable[[bool, float | None], None] | None = None,
+        judge: Callable[[list[tuple[float, str]], str], bool | None] | None = None,
+        judge_allowed: Callable[[], bool] = lambda: True,
+        judge_acts: bool = False,
     ) -> None:
         self.stt, self.rules, self.act, self.busy = stt, rules, act, busy
         self.followup, self.followup_seconds, self.name_wait = followup, followup_seconds, name_wait
@@ -76,6 +87,10 @@ class Listener:
         # the request, after the name alone or a question of its own:
         # (True, how long it listens).
         self.on_heard = on_heard
+        # Smart mode: the judge, whether it may judge now (no television
+        # sounding), and whether its "yes" acts or is only noted.
+        self.judge, self.judge_allowed, self.judge_acts = judge, judge_allowed, judge_acts
+        self._recent: deque[tuple[float, str]] = deque(maxlen=CONTEXT_SENTENCES)
         self._armed: np.ndarray | None = None
         self._armed_until = float("-inf")
         self._followup_until = float("-inf")
@@ -91,6 +106,24 @@ class Listener:
         head.no_speech = min(head.no_speech, tail.no_speech)
         head.logprob = max(head.logprob, tail.logprob)
         return head
+
+    def _remember(self, now: float, text: str) -> None:
+        self._recent.append((now, text))
+
+    def _ask_judge(self, now: float, text: str, entry: dict) -> tuple[bool, str]:
+        """Smart mode, a sentence without the name: the local AI decides."""
+        if not self.rules.looks_like_request(text):
+            return False, "not_addressed"
+        if not self.judge_allowed():
+            return False, "media_playing"
+        context = [(now - t, said) for t, said in self._recent if now - t <= CONTEXT_SECONDS]
+        started = self.clock()
+        verdict = self.judge(context, text)
+        entry["judge_s"] = round(self.clock() - started, 2)
+        entry["judge"] = verdict
+        if not verdict:
+            return False, "judged_not_for_igor" if verdict is False else "judge_unavailable"
+        return (True, "smart") if self.judge_acts else (False, "smart_would_act")
 
     def handle(self, audio: np.ndarray, more: Callable[[], np.ndarray | None] | None = None) -> dict:
         """One utterance. `more()` returns the next part of the same speech,
@@ -129,9 +162,13 @@ class Listener:
                 entry.update(accepted=False, reason="name_alone_waiting", text=heard.text)
                 if self.act is not None and self.on_heard is not None:
                     self.on_heard(True, self.name_wait)
+                self._remember(now, heard.text)
                 return entry
+            if not accepted and reason == "not_addressed" and self.judge is not None:
+                accepted, reason = self._ask_judge(now, heard.text, entry)
         if not noise:
             self._armed = None
+            self._remember(now, heard.text)
 
         entry.update(accepted=accepted, reason=reason)
         if accepted or self.keep_rejected_text:

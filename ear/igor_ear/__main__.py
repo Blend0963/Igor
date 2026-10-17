@@ -72,6 +72,10 @@ def run(settings: Settings) -> None:
 
     mode = "act" if settings.act else "observation"
     log.info("igor-ear %s, %s mode, source %s", __version__, mode, settings.source)
+    if settings.addressing == "smart":
+        log.info("Smart addressing: %s at %s judges sentences without the name (%s)%s",
+                 settings.smart_model, settings.smart_url, "acts" if settings.smart_act else "noted only",
+                 f"; not while {', '.join(settings.media_players)} sound" if settings.media_players else "")
     prune(settings)
     connected = bool(settings.ha_url and settings.ha_token)
     if connected and settings.presence_entity and settings.presence_entity.startswith("assist_satellite."):
@@ -91,7 +95,10 @@ def run(settings: Settings) -> None:
 
     watcher = None
     if connected:
-        watcher = ha.Watcher(settings.ha_url, settings.ha_token, [settings.satellite, settings.presence_entity], changed)
+        watched = [settings.satellite, settings.presence_entity]
+        if settings.addressing == "smart":
+            watched += settings.media_players
+        watcher = ha.Watcher(settings.ha_url, settings.ha_token, watched, changed)
         watcher.start()
 
     def busy() -> bool:
@@ -108,6 +115,26 @@ def run(settings: Settings) -> None:
         if state is None or state.lower() in {"unknown", "unavailable", ""}:
             return True
         return state.lower() in {s.lower() for s in settings.home_states}
+
+    from .media import audible
+
+    def media_sounding(unknown: bool = True) -> bool:
+        """A television, radio or speaker making sound: no sentence without
+        the name is judged. Unknown (Home Assistant unreachable) gives
+        `unknown`: for judging, sounding, since needing the name is better
+        than acting on a film; for closing the ear, not, so the name still
+        works."""
+        if settings.addressing != "smart" or not settings.media_players or watcher is None:
+            return False
+        if not watcher.connected:
+            return unknown
+        return any(audible(watcher.state(m), watcher.attributes(m)) for m in settings.media_players)
+
+    judge = None
+    if settings.addressing == "smart":
+        from .judge import Judge
+
+        judge = Judge(settings.smart_url, settings.smart_model)
 
     device_id = None
     if settings.act:
@@ -158,6 +185,9 @@ def run(settings: Settings) -> None:
         followup_seconds=settings.followup_seconds,
         keep_rejected_text=settings.rejected_text,
         on_heard=on_heard if settings.act and settings.satellite else None,
+        judge=judge,
+        judge_allowed=lambda: not media_sounding(),
+        judge_acts=settings.smart_act,
     )
     utterances: queue.Queue[Utterance] = queue.Queue(maxsize=8)
     pending: deque[Utterance] = deque()
@@ -188,7 +218,9 @@ def run(settings: Settings) -> None:
             entry = listener.handle(u.audio, more)
             note(settings, entry)
             if entry["reason"] not in {"satellite_busy", "noise"} or entry.get("accepted"):
-                log.info("%s %-18s %s%s", "SENT" if entry.get("sent") else ("WOULD SEND" if entry["accepted"] else "ignored   "),
+                label = "SENT" if entry.get("sent") else ("WOULD SEND" if entry["accepted"] else
+                                                          ("WOULD ACT " if entry["reason"] == "smart_would_act" else "ignored   "))
+                log.info("%s %-18s %s%s", label,
                          entry["reason"], entry.get("text", ""), sent_summary(entry) if entry.get("sent") else "")
             if time.monotonic() - last_prune > 86400:
                 prune(settings)
@@ -196,7 +228,20 @@ def run(settings: Settings) -> None:
 
     threading.Thread(target=worker, daemon=True).start()
     away = False
+    closed = False
     for frame in frames(settings.source):
+        # [smart] when_media = "closed": nothing at all is heard while a
+        # television or radio makes sound, not even the name.
+        if settings.when_media == "closed" and media_sounding(unknown=False):
+            if not closed:
+                segmenter.reset()
+                vad.reset()
+                log.info("A television or radio is sounding: not listening")
+            closed = True
+            continue
+        if closed:
+            log.info("Quiet again: listening")
+        closed = False
         if not home():
             if not away:
                 segmenter.reset()

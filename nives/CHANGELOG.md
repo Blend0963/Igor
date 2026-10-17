@@ -3,6 +3,7 @@
 ## 0.11.2 — The tablet shows when Igor waits for your answer
 
 - When Igor asks a question ("Tous les volets, ou seulement ceux du salon ?"), igor-ear already took the answer without the name for 8 seconds, but nothing said so. The tablet now shows the bow tie with "Je vous écoute…" for that time, the question and answer kept in view, and closes when the window ends. The same after "Igor" said alone. The listening time is `[mode] followup_seconds` in igor-ear (default 8); the `nives.heard` service takes a new `seconds` field.
+- **igor-ear, smart mode** (`[mode] addressing = "smart"`): requests said without "Igor" are taken too, when a small AI on the hub (qwen2.5:3b in Ollama, nothing leaves the house) judges, with the sentences heard just before, that they are for Igor. While a television or radio listed in `[smart] media_players` plays with sound, sentences without the name are not judged. `[smart] act = false` (the default) only notes what it would have done. See `ear/README.md`.
 - Home Assistant needs one restart after this update. On the hub: `git -C ~/MaDo pull && bash ~/MaDo/ear/install.sh && systemctl --user restart igor-ear`.
 
 ## 0.11.1 — The tablet shows at once that Igor heard you

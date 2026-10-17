@@ -184,6 +184,7 @@ class Watcher:
         self.url, self.token = url, token
         self.entities = [e for e in entities if e]
         self.states: dict[str, str] = {}
+        self.attrs: dict[str, dict] = {}
         self.connected = False
         self._on_change = on_change
         self._thread = threading.Thread(target=self._loop, daemon=True)
@@ -195,17 +196,26 @@ class Watcher:
     def state(self, entity: str) -> str | None:
         return self.states.get(entity)
 
+    def attributes(self, entity: str) -> dict:
+        return self.attrs.get(entity, {})
+
     def apply(self, message: dict) -> None:
         """Apply one subscribe_entities event ({'a': added, 'c': changed, 'r': removed})."""
         event = message.get("event") or {}
         for entity, data in (event.get("a") or {}).items():
+            self.attrs[entity] = dict(data.get("a") or {})
             self._set(entity, str(data.get("s", "")))
         for entity, data in (event.get("c") or {}).items():
             plus = data.get("+") or {}
+            attrs = self.attrs.setdefault(entity, {})
+            attrs.update(plus.get("a") or {})
+            for key in (data.get("-") or {}).get("a") or []:
+                attrs.pop(key, None)
             if "s" in plus:
                 self._set(entity, str(plus["s"]))
         for entity in event.get("r") or []:
             self.states.pop(entity, None)
+            self.attrs.pop(entity, None)
 
     def _set(self, entity: str, state: str) -> None:
         if self.states.get(entity) != state:
@@ -232,6 +242,7 @@ class Watcher:
                 log.warning("Home Assistant unreachable (%s); retrying in %ss", err, delay)
             self.connected = False
             self.states.clear()
+            self.attrs.clear()
             time.sleep(delay)
             delay = min(delay * 2, 120)
 

@@ -2,6 +2,11 @@
 # edit that copy, then: systemctl --user restart igor-ear
 
 [mode]
+# How Igor knows a sentence is for it:
+#   "name":  "Igor" said somewhere in the sentence (the safe default)
+#   "smart": also without the name, when a small AI on this machine judges
+#            it is a request for the house (see [smart] and ear/README.md)
+addressing = "name"
 # false: observation only, nothing is sent (notes in ~/.local/state/igor-ear).
 # true: sentences that name Igor go to Igor and the satellite answers.
 act = false
@@ -45,3 +50,19 @@ keep_days = 7
 # Also note the text of sentences that were NOT for Igor. Turn off once
 # the name detection is judged.
 rejected_text = true
+
+[smart]
+# Used only with [mode] addressing = "smart". The AI runs in Ollama on this
+# machine: nothing heard leaves the house.
+url = "http://127.0.0.1:11434"
+model = "qwen2.5:3b"       # ~2.5 GB of memory; 2-3 s per judged sentence on 4 CPU cores
+# false: Igor only notes what it would have done ("WOULD ACT" in the journal);
+# true: it acts. Leave false for a few days and read the journal first.
+act = false
+# While one of these makes sound (playing, not muted, volume above zero),
+# sentences without the name are not judged: films and radio are full of
+# orders that are not for Igor.
+media_players = []         # e.g. ["media_player.tv_salon", "media_player.radio"]
+# "name": the name still works while they sound; "closed": nothing is heard.
+when_media = "name"
+
