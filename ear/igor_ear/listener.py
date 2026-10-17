@@ -41,6 +41,10 @@ LONG_S = 16.0
 HEAD_S = 8.0
 TAIL_S = 6.0
 
+# "Éteins la lumière… Igor": with a pause before the name, the order is the
+# sentence before. It is joined in when it ended this short a time before.
+PREVIOUS_GAP = 2.0
+
 # What the smart judge is shown of the conversation before a sentence.
 CONTEXT_SENTENCES = 4
 CONTEXT_SECONDS = 90.0
@@ -91,6 +95,9 @@ class Listener:
         # sounding), and whether its "yes" acts or is only noted.
         self.judge, self.judge_allowed, self.judge_acts = judge, judge_allowed, judge_acts
         self._recent: deque[tuple[float, str]] = deque(maxlen=CONTEXT_SENTENCES)
+        # The last sentence not taken, with its end on the stream clock, in
+        # case the name comes right after it.
+        self._previous: tuple[np.ndarray, str, float] | None = None
         self._armed: np.ndarray | None = None
         self._armed_until = float("-inf")
         self._followup_until = float("-inf")
@@ -125,9 +132,19 @@ class Listener:
             return False, "judged_not_for_igor" if verdict is False else "judge_unavailable"
         return (True, "smart") if self.judge_acts else (False, "smart_would_act")
 
-    def handle(self, audio: np.ndarray, more: Callable[[], np.ndarray | None] | None = None) -> dict:
+    def _before(self, start: float | None) -> tuple[np.ndarray, str] | None:
+        """The sentence that ended just before this one, if any."""
+        if self._previous is None or start is None:
+            return None
+        audio, text, end = self._previous
+        return (audio, text) if 0 <= start - end <= PREVIOUS_GAP else None
+
+    def handle(self, audio: np.ndarray, more: Callable[[], np.ndarray | None] | None = None,
+               start: float | None = None, end: float | None = None) -> dict:
         """One utterance. `more()` returns the next part of the same speech,
-        if the speaker went on after a short pause, else None."""
+        if the speaker went on after a short pause, else None. `start` and
+        `end` are on the stream's clock (seconds of audio read)."""
+        previous, self._previous = self._previous, None
         entry: dict = {
             "time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "audio_s": round(len(audio) / RATE, 2),
@@ -135,6 +152,7 @@ class Listener:
         if self.busy():
             entry.update(accepted=False, reason="satellite_busy")
             return entry
+        self._previous = previous
         heard = self._hear(audio)
         now = self.clock()
         entry["stt_s"] = round(heard.seconds, 2)
@@ -157,7 +175,16 @@ class Listener:
         else:
             decision = self.rules.decide(heard.text, since_igor_spoke=0.0 if followup_open else None)
             accepted, reason = decision.accepted, decision.reason
-            if accepted and reason == "name" and name_only(heard.text):
+            before = self._before(start) if accepted and reason == "name" else None
+            alone = name_only(heard.text)
+            rest = NAME.sub(" ", normalize(heard.text))
+            if (before is not None and self.rules.looks_like_request(before[1])
+                    and not self.rules.looks_like_request(rest)):
+                # "Éteins la lumière… Igor", "Éteins la lumière… du salon,
+                # Igor": the order, or its start, was the sentence just before.
+                send = np.concatenate([before[0], GAP, audio])
+                entry["previous"] = before[1]
+            elif accepted and reason == "name" and alone:
                 self._armed, self._armed_until = audio, now + self.name_wait
                 entry.update(accepted=False, reason="name_alone_waiting", text=heard.text)
                 if self.act is not None and self.on_heard is not None:
@@ -169,6 +196,7 @@ class Listener:
         if not noise:
             self._armed = None
             self._remember(now, heard.text)
+        self._previous = None if accepted or noise or end is None else (audio, heard.text, end)
 
         entry.update(accepted=accepted, reason=reason)
         if accepted or self.keep_rejected_text:

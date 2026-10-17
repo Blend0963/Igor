@@ -230,7 +230,7 @@ def run(settings: Settings) -> None:
                     pending.appendleft(nxt)  # a new sentence, handled next
                     return None
 
-            entry = listener.handle(u.audio, more)
+            entry = listener.handle(u.audio, more, u.start, u.end)
             note(settings, entry)
             if entry["reason"] not in {"satellite_busy", "noise"} or entry.get("accepted"):
                 label = "SENT" if entry.get("sent") else ("WOULD SEND" if entry["accepted"] else

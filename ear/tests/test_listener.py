@@ -160,3 +160,54 @@ def test_a_question_from_igor_shows_it_listens_for_the_answer():
     assert e["reason"] == "followup"
     assert events == [("heard", False, None), ("sent", None), ("heard", True, 8),
                       ("heard", False, None), ("sent", "c1")]
+
+
+def make_timed(texts):
+    clock = Clock()
+    heard = iter(texts)
+    sent = []
+
+    def stt(a):
+        return Transcript(next(heard), 0.3, 0.1, -0.2)
+
+    def do(a, conversation):
+        sent.append(len(a))
+        return Outcome(speech="Fait.")
+
+    return Listener(stt, Addressing(), do, clock=clock), sent
+
+
+def test_name_at_the_end_after_a_pause_takes_the_sentence_before():
+    listener, sent = make_timed(["Éteins la lumière du salon", "Igor"])
+    assert listener.handle(audio(1.0), None, 0.0, 1.0)["reason"] == "not_addressed"
+    e = listener.handle(audio(0.5), None, 2.0, 2.5)            # 1 s later
+    assert e["sent"] and e["previous"] == "Éteins la lumière du salon"
+    assert sent == [16000 + 3200 + 8000]                         # before + gap + "Igor"
+
+
+def test_end_of_the_order_with_the_name_takes_its_start():
+    listener, sent = make_timed(["Éteins la lumière", "du salon, Igor"])
+    listener.handle(audio(1.0), None, 0.0, 1.0)
+    e = listener.handle(audio(1.0), None, 1.8, 2.8)
+    assert e["sent"] and e["previous"] == "Éteins la lumière"
+
+
+def test_a_complete_order_with_the_name_stands_alone():
+    listener, sent = make_timed(["Ferme les volets", "Igor, éteins la lumière"])
+    listener.handle(audio(1.0), None, 0.0, 1.0)
+    e = listener.handle(audio(1.0), None, 1.5, 2.5)
+    assert e["sent"] and "previous" not in e and sent == [16000]
+
+
+def test_chatter_before_the_name_is_not_joined():
+    listener, sent = make_timed(["On a bien mangé hier", "Igor"])
+    listener.handle(audio(1.0), None, 0.0, 1.0)
+    e = listener.handle(audio(0.5), None, 1.5, 2.0)
+    assert e["reason"] == "name_alone_waiting" and sent == []   # waits for the order
+
+
+def test_too_long_a_pause_and_the_name_waits_for_the_order():
+    listener, sent = make_timed(["Éteins la lumière", "Igor"])
+    listener.handle(audio(1.0), None, 0.0, 1.0)
+    e = listener.handle(audio(0.5), None, 5.0, 5.5)             # 4 s later
+    assert e["reason"] == "name_alone_waiting" and sent == []
