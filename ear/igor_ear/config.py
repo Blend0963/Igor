@@ -21,7 +21,14 @@ class Settings:
     beam_size: int = 0
     extra_targets: list[str] = field(default_factory=list)
     act: bool = False
+    addressing: str = "name"
+    smart_url: str = "http://127.0.0.1:11434"
+    smart_model: str = "qwen2.5:3b"
+    smart_act: bool = False
+    media_players: list[str] = field(default_factory=list)
+    when_media: str = "name"
     followup: bool = True
+    followup_seconds: float = 8.0
     name_wait: float = 6.0
     join_gap: float = 0.6
     ha_url: str = ""
@@ -57,7 +64,19 @@ def load(path: Path = CONFIG) -> Settings:
     s.beam_size = int(stt.get("beam_size", s.beam_size))
     s.extra_targets = [str(t) for t in addressing.get("extra_targets", [])]
     s.act = bool(mode.get("act", s.act))
+    s.addressing = str(mode.get("addressing", s.addressing)).strip().lower()
+    if s.addressing not in {"name", "smart"}:
+        raise ValueError(f'[mode] addressing must be "name" or "smart", not "{s.addressing}"')
+    smart = data.get("smart", {})
+    s.smart_url = str(smart.get("url", s.smart_url))
+    s.smart_model = str(smart.get("model", s.smart_model))
+    s.smart_act = bool(smart.get("act", s.smart_act))
+    s.media_players = [str(m) for m in smart.get("media_players", [])]
+    s.when_media = str(smart.get("when_media", s.when_media)).strip().lower()
+    if s.when_media not in {"name", "closed"}:
+        raise ValueError(f'[smart] when_media must be "name" or "closed", not "{s.when_media}"')
     s.followup = bool(mode.get("followup", s.followup))
+    s.followup_seconds = float(mode.get("followup_seconds", s.followup_seconds))
     s.name_wait = float(mode.get("name_wait", s.name_wait))
     s.join_gap = float(mode.get("join_gap", s.join_gap))
     s.satellite = str(ha.get("satellite", ""))

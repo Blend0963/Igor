@@ -131,9 +131,32 @@ def test_the_tablet_is_told_before_the_words_are_sent():
         events.append("sent")
         return Outcome(speech="Fait.")
 
-    listener = Listener(stt, Addressing(), do, clock=clock, on_heard=lambda waiting: events.append(("heard", waiting)))
+    listener = Listener(stt, Addressing(), do, clock=clock,
+                        on_heard=lambda waiting, seconds: events.append(("heard", waiting, seconds)))
     listener.handle(audio())              # the name alone: waiting for the order
     listener.handle(audio())              # the order: heard, then sent
     listener.handle(audio())              # name in the sentence: heard, then sent
     listener.handle(audio())              # not for Igor: nothing
-    assert events == [("heard", True), ("heard", False), "sent", ("heard", False), "sent"]
+    assert events == [("heard", True, 6.0), ("heard", False, None), "sent", ("heard", False, None), "sent"]
+
+
+def test_a_question_from_igor_shows_it_listens_for_the_answer():
+    events = []
+    clock = Clock()
+    heard = iter(["Igor, ferme les volets", "oui"])
+    stt = lambda a: Transcript(next(heard), 0.3, 0.1, -0.2)  # noqa: E731
+
+    def do(a, conversation):
+        events.append(("sent", conversation))
+        first = len(events) == 2
+        return Outcome(speech="Tous les volets ?" if first else "C'est fait.",
+                       conversation_id="c1", continue_conversation=first)
+
+    listener = Listener(stt, Addressing(), do, clock=clock, followup_seconds=8,
+                        on_heard=lambda waiting, seconds: events.append(("heard", waiting, seconds)))
+    listener.handle(audio())   # the order; Igor asks back
+    clock.t = 3
+    e = listener.handle(audio())   # the answer, without the name
+    assert e["reason"] == "followup"
+    assert events == [("heard", False, None), ("sent", None), ("heard", True, 8),
+                      ("heard", False, None), ("sent", "c1")]

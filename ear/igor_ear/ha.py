@@ -157,10 +157,15 @@ def announce(url: str, token: str, satellite: str, message: str, timeout: float 
         raise
 
 
-def heard(url: str, token: str, satellite: str, waiting: bool = False, timeout: float = 5) -> None:
+def heard(url: str, token: str, satellite: str, waiting: bool = False, seconds: float | None = None,
+          timeout: float = 5) -> None:
     """Tell Igor's integration the name was heard, so the wall tablet shows it
-    at once (service nives.heard, add-on 0.11.1 and later)."""
-    body = json.dumps({"satellite": satellite, "waiting": waiting}).encode()
+    at once (service nives.heard, add-on 0.11.1 and later). `waiting`: Igor
+    listens for the request, for at most `seconds` (0.11.2 and later)."""
+    data: dict = {"satellite": satellite, "waiting": waiting}
+    if seconds:
+        data["seconds"] = round(seconds, 1)
+    body = json.dumps(data).encode()
     request = urllib.request.Request(
         url.rstrip("/") + "/api/services/nives/heard",
         data=body,
@@ -179,6 +184,7 @@ class Watcher:
         self.url, self.token = url, token
         self.entities = [e for e in entities if e]
         self.states: dict[str, str] = {}
+        self.attrs: dict[str, dict] = {}
         self.connected = False
         self._on_change = on_change
         self._thread = threading.Thread(target=self._loop, daemon=True)
@@ -190,17 +196,26 @@ class Watcher:
     def state(self, entity: str) -> str | None:
         return self.states.get(entity)
 
+    def attributes(self, entity: str) -> dict:
+        return self.attrs.get(entity, {})
+
     def apply(self, message: dict) -> None:
         """Apply one subscribe_entities event ({'a': added, 'c': changed, 'r': removed})."""
         event = message.get("event") or {}
         for entity, data in (event.get("a") or {}).items():
+            self.attrs[entity] = dict(data.get("a") or {})
             self._set(entity, str(data.get("s", "")))
         for entity, data in (event.get("c") or {}).items():
             plus = data.get("+") or {}
+            attrs = self.attrs.setdefault(entity, {})
+            attrs.update(plus.get("a") or {})
+            for key in (data.get("-") or {}).get("a") or []:
+                attrs.pop(key, None)
             if "s" in plus:
                 self._set(entity, str(plus["s"]))
         for entity in event.get("r") or []:
             self.states.pop(entity, None)
+            self.attrs.pop(entity, None)
 
     def _set(self, entity: str, state: str) -> None:
         if self.states.get(entity) != state:
@@ -227,6 +242,7 @@ class Watcher:
                 log.warning("Home Assistant unreachable (%s); retrying in %ss", err, delay)
             self.connected = False
             self.states.clear()
+            self.attrs.clear()
             time.sleep(delay)
             delay = min(delay * 2, 120)
 

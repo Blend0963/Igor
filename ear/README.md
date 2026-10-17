@@ -18,7 +18,7 @@ microphone (PipeWire, shared with linux-voice-assistant)
 ```
 
 A long request is fine: Igor gets the whole recording (up to a minute), and
-a pause of less than 1.5 s does not end it; Whisper only checks the first
+a pause of less than 0.6 s (`[mode] join_gap`) does not end it; Whisper only checks the first
 8 and last 6 seconds for the name. Nothing leaves the machine unless the
 sentence names Igor. While the
 satellite is busy (after its own wake word, or speaking) the service stays
@@ -52,6 +52,34 @@ journalctl --user -u igor-ear -f                    # follow it
 ```
 
 Update: `git -C ~/MaDo pull && bash ~/MaDo/ear/install.sh && systemctl --user restart igor-ear`.
+
+## Smart mode: without the name
+
+`[mode] addressing = "smart"` also takes requests said without "Igor". A
+sentence that looks like one (it starts with an order, "éteins la lumière",
+or is a question) goes to a small AI on this machine, with the sentences
+heard just before; it says whether the sentence is for Igor or for someone
+in the room. Nothing heard leaves the machine for this. "Igor" in the
+sentence still works as always, and `addressing = "name"` switches back.
+
+- **The AI** runs in [Ollama](https://ollama.com), on this machine:
+  ```sh
+  curl -fsSL https://ollama.com/install.sh | sh
+  ollama pull qwen2.5:3b
+  ```
+  qwen2.5:3b needs about 2.5 GB of memory (give the VM 6 GB or more) and
+  takes 2 to 3 seconds per judged sentence on 4 CPU cores, less on a GPU.
+  Measured on 34 everyday sentences: 33 right, no false "yes", one question
+  missed. A model this small says "no" when unsure; say "Igor" then.
+- **Television and radio**: list the media players in `[smart]
+  media_players`. While one is playing with sound (not paused, not muted,
+  volume above zero), sentences without the name are not judged at all, so
+  a film cannot give orders. `when_media = "closed"` goes further: nothing
+  is heard, not even the name.
+- **Try it first**: with `[smart] act = false` (the default) Igor only notes
+  what it would have done, `WOULD ACT` in the journal and
+  `smart_would_act` in the observations. Read a few days of it, then set
+  `act = true`.
 
 ## Resources
 

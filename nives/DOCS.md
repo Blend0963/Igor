@@ -40,7 +40,7 @@ Igor works as a Home Assistant Assist conversation agent. Speech-to-text and tex
 
 A tablet that shows Home Assistant all day (Fully Kiosk Browser, the companion app or any browser) can show each voice request full screen while it happens: the bow tie and "Je vous écoute…" as soon as the satellite hears the wake word, your words once transcribed, Igor's butler phrases with the time spent, the answer as it is written and the action chips. It fades back to the dashboard a few seconds after the satellite stops talking; a tap closes it.
 
-With igor-ear (the listener in `ear/` that needs no wake word), the tablet shows "Je vous ai entendu…" the moment it hears "Igor", a few seconds before the words reach Igor ("Je vous écoute…" when the name came alone). igor-ear calls the integration's `nives.heard` service for this.
+With igor-ear (the listener in `ear/` that needs no wake word), the tablet shows "Je vous ai entendu…" the moment it hears "Igor", a few seconds before the words reach Igor ("Je vous écoute…" when the name came alone, and while Igor waits for the answer to a question of its own). igor-ear calls the integration's `nives.heard` service for this.
 
 1. Restart Home Assistant once after updating, so it loads the new integration files.
 2. On the tablet, open Home Assistant once with `?igor_tablet=1` at the end of the address, for example `http://homeassistant.local:8123/lovelace/0?igor_tablet=1`. In Fully Kiosk Browser, put it in the Start URL. With several satellites, `?igor_tablet=assist_satellite.living_room` follows that one only. `?igor_tablet=0` switches it off. The choice is kept by that browser only; other devices are not affected.

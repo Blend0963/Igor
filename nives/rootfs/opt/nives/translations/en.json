@@ -91,7 +91,11 @@
         },
         "waiting": {
           "name": "Waiting",
-          "description": "The name came alone: the request is still to come."
+          "description": "The request is still to come: the name came alone, or Igor asked a question and listens for the answer."
+        },
+        "seconds": {
+          "name": "Seconds",
+          "description": "How long the tablet shows that Igor is listening, if nothing follows. Default 30."
         }
       }
     }

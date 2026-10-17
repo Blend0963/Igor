@@ -24,6 +24,7 @@ VERBS = (
     "demarre", "demarrer", "arrete", "arreter", "coupe", "couper", "active", "activer",
     "desactive", "desactiver", "augmente", "augmenter", "diminue", "diminuer", "regle", "regler",
     "tamise", "verrouille", "deverrouille",
+    "rappelle", "joue", "passe", "donne", "ajoute", "programme", "reveille",
     # The same orders said with "vous".
     "allumez", "eteignez", "fermez", "ouvrez", "montez", "baissez", "mettez", "lancez",
     "demarrez", "arretez", "coupez", "activez", "desactivez", "augmentez", "diminuez", "reglez",
@@ -43,6 +44,10 @@ TARGETS = (
 # Polite or filler openings that may come before the verb.
 OPENERS = re.compile(r"^(?:(?:s'il te plait|s'il vous plait|stp|svp|peux-tu|tu peux|pourrais-tu|"
                      r"tu pourrais|vas-y|allez|bon|alors|euh|hey|he|dis|oh|ok|okay)[ ,]+)+")
+
+# How a question to the house starts ("quelle heure est-il", "combien fait-il").
+QUESTION = re.compile(r"^(?:quel|quelle|quels|quelles|combien|est-ce|est ce|quand|ou est|ou sont|"
+                      r"qu'est-ce|comment|pourquoi|y a-t-il|il fait combien|il est quelle)\b")
 
 # What Whisper writes on silence or noise; never a real request.
 HALLUCINATIONS = (
@@ -100,6 +105,19 @@ class Addressing:
         ):
             return Decision(True, "command")
         return Decision(False, "not_addressed")
+
+
+    def looks_like_request(self, text: str) -> bool:
+        """Could this be for the house at all: an order or a question, short
+        enough? Only these are handed to the smart judge."""
+        norm = normalize(text)
+        if not norm or any(h in norm for h in HALLUCINATIONS) or len(norm.split()) > 25:
+            return False
+        # An order starts with its verb; anything else that only mentions a
+        # lamp or a door ("vers sept heures, ferme la porte en partant") is
+        # far more often said to someone.
+        command = OPENERS.sub("", norm)
+        return bool(self._verbs.match(command) or QUESTION.match(command) or text.rstrip().endswith("?"))
 
 
 def name_only(text: str) -> bool:
