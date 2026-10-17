@@ -23,6 +23,9 @@ name_wait = 8
 # A pause shorter than this does not end a sentence (seconds). Shorter answers
 # sooner; longer lets you hesitate mid-sentence.
 join_gap = 0.6
+# The same once Igor waits for an order (after "Igor" alone, or its question):
+# you may hesitate longer there, the whole sentence is still taken.
+order_gap = 1.2
 
 [audio]
 # The microphone, from `pactl list short sources`.

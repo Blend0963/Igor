@@ -78,7 +78,7 @@ class Listener:
         keep_rejected_text: bool = True,
         clock: Callable[[], float] = time.monotonic,
         on_heard: Callable[[bool, float | None], None] | None = None,
-        on_name_alone: Callable[[], None] | None = None,
+        on_name_alone: Callable[[Callable[[], None]], None] | None = None,
         judge: Callable[[list[tuple[float, str]], str], bool | None] | None = None,
         judge_allowed: Callable[[], bool] = lambda: True,
         judge_acts: bool = False,
@@ -92,7 +92,8 @@ class Listener:
         # the request, after the name alone or a question of its own:
         # (True, how long it listens).
         self.on_heard = on_heard
-        # "Igor" said alone: Igor answers aloud ("Oui ?") while it waits.
+        # "Igor" said alone: Igor answers aloud ("Oui ?"), then calls the
+        # function it is given, once silent: the wait for the order starts.
         self.on_name_alone = on_name_alone
         # Smart mode: the judge, whether it may judge now (no television
         # sounding), and whether its "yes" acts or is only noted.
@@ -116,6 +117,14 @@ class Listener:
         head.no_speech = min(head.no_speech, tail.no_speech)
         head.logprob = max(head.logprob, tail.logprob)
         return head
+
+    def rearm(self) -> None:
+        """Igor has finished its "Oui ?": the order is waited for from now."""
+        if self._armed is None:
+            return
+        self._armed_until = self.clock() + self.name_wait
+        if self.on_heard is not None:
+            self.on_heard(True, self.name_wait)
 
     def waiting(self) -> bool:
         """Igor waits for words: after the name alone, or after its question."""
@@ -198,10 +207,13 @@ class Listener:
             elif accepted and reason == "name" and alone:
                 self._armed, self._armed_until = audio, now + self.name_wait
                 entry.update(accepted=False, reason="name_alone_waiting", text=heard.text)
-                if self.act is not None and self.on_heard is not None:
-                    self.on_heard(True, self.name_wait)
                 if self.act is not None and self.on_name_alone is not None:
-                    self.on_name_alone()
+                    # Igor answers first; the wait starts once it is silent.
+                    if self.on_heard is not None:
+                        self.on_heard(False, None)
+                    self.on_name_alone(self.rearm)
+                elif self.act is not None and self.on_heard is not None:
+                    self.on_heard(True, self.name_wait)
                 self._remember(now, heard.text)
                 return entry
             if not accepted and reason == "not_addressed" and self.judge is not None:

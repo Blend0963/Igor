@@ -86,7 +86,7 @@ def run(settings: Settings) -> None:
     if settings.act and not (connected and settings.satellite):
         raise SystemExit("Act mode needs [home_assistant] url, token and satellite in the settings")
 
-    from .gate import SatelliteGate
+    from .gate import OwnVoice, SatelliteGate
 
     gate = SatelliteGate()
 
@@ -112,7 +112,9 @@ def run(settings: Settings) -> None:
         if watcher is None or not settings.satellite:
             return False
         gate.update(watcher.state(settings.satellite))
-        return gate.busy()
+        # Right after Igor's own voice, the ear was closed until the speakers
+        # fell quiet: the satellite's short tail is already covered.
+        return gate.busy(tail=not voice.just_spoke())
 
     def home() -> bool:
         if watcher is None or not settings.presence_entity:
@@ -131,6 +133,18 @@ def run(settings: Settings) -> None:
 
         speakers = Speakers(settings.sink, settings.quiet_db)
         speakers.start()
+    # Igor's own voice is not heard: the ear closes while it speaks.
+    voice_quiet = speakers.quiet_for if speakers is not None else None
+    if voice_quiet is None and settings.act:
+        from .speakers import Speakers
+
+        own = Speakers(settings.sink, settings.quiet_db)
+        own.start()
+        voice_quiet = own.quiet_for
+    voice = OwnVoice(voice_quiet)
+
+    def say(text: str) -> None:
+        voice.say(lambda: ha.announce(settings.ha_url, settings.ha_token, settings.satellite, text))
 
     def players_sounding(unknown: bool) -> bool:
         if settings.sound_from not in {"players", "both"} or not settings.media_players or watcher is None:
@@ -175,7 +189,7 @@ def run(settings: Settings) -> None:
             return Outcome(error=str(err))
         if r.speech:
             try:
-                ha.announce(settings.ha_url, settings.ha_token, settings.satellite, r.speech)
+                say(r.speech)
             except Exception as err:  # noqa: BLE001
                 r.error = r.error or f"announce: {err}"
         return Outcome(r.heard, r.speech, r.conversation_id, r.continue_conversation, r.error)
@@ -196,18 +210,21 @@ def run(settings: Settings) -> None:
 
     replies = Deck(settings.name_reply)
 
-    def on_name_alone() -> None:
-        """"Igor" alone: a short "Oui ?" in its own voice, in the background."""
+    def on_name_alone(ready) -> None:
+        """"Igor" alone: a short "Oui ?" in its own voice, in the background;
+        `ready()` once it is silent, and the wait for the order starts."""
         if not replies:
+            ready()
             return
         reply = replies.draw()
 
-        def say() -> None:
+        def answer() -> None:
             try:
-                ha.announce(settings.ha_url, settings.ha_token, settings.satellite, reply)
+                say(reply)
             except Exception as err:  # noqa: BLE001 - a courtesy only
                 log.info("Could not answer the name: %s", err)
-        threading.Thread(target=say, daemon=True).start()
+            ready()
+        threading.Thread(target=answer, daemon=True).start()
 
     vad, segmenter = Vad(), Segmenter()
     stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords,
@@ -235,19 +252,22 @@ def run(settings: Settings) -> None:
         while True:
             u = pending.popleft() if pending else utterances.get()
             last_end = [u.end]
+            # Igor waits for an order (after its name, or its question): the
+            # speaker may pause longer, mid-sentence, before it is cut.
+            gap = settings.order_gap if listener.waiting() else settings.join_gap
 
             def more() -> np.ndarray | None:
-                """The next part, if the speaker went on within join_gap."""
+                """The next part, if the speaker went on within the gap."""
                 while True:
                     try:
                         nxt = pending.popleft() if pending else utterances.get(timeout=0.1)
                     except queue.Empty:
-                        if segmenter.in_speech and segmenter.speech_start - last_end[0] <= settings.join_gap:
+                        if segmenter.in_speech and segmenter.speech_start - last_end[0] <= gap:
                             continue  # still talking: wait for that part to end
-                        if segmenter.now - last_end[0] >= settings.join_gap:
+                        if segmenter.now - last_end[0] >= gap:
                             return None
                         continue
-                    if nxt.start - last_end[0] <= settings.join_gap:
+                    if nxt.start - last_end[0] <= gap:
                         last_end[0] = nxt.end
                         return nxt.audio
                     pending.appendleft(nxt)  # a new sentence, handled next
@@ -267,7 +287,16 @@ def run(settings: Settings) -> None:
     threading.Thread(target=worker, daemon=True).start()
     away = False
     closed = False
+    deaf = False
     for frame in frames(settings.source):
+        # Igor is speaking: its own voice is not a sentence.
+        if voice.speaking():
+            if not deaf:
+                segmenter.reset()
+                vad.reset()
+            deaf = True
+            continue
+        deaf = False
         # [media] when_media = "closed": nothing at all is heard while a
         # television or radio makes sound, not even the name. Except while
         # Igor waits for an answer: its own voice has just played.
