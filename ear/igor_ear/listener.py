@@ -175,6 +175,9 @@ class Listener:
         else:
             decision = self.rules.decide(heard.text, since_igor_spoke=0.0 if followup_open else None)
             accepted, reason = decision.accepted, decision.reason
+            if reason == "near_name":
+                reason = "name"
+                entry["near_name"] = True
             before = self._before(start) if accepted and reason == "name" else None
             alone = name_only(heard.text)
             rest = NAME.sub(" ", normalize(heard.text))

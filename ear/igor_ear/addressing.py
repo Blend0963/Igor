@@ -64,6 +64,21 @@ def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _distance(a: str, b: str) -> int:
+    """Edit distance (insertions, deletions, substitutions)."""
+    row = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        prev, row[0] = row[0], i
+        for j, cb in enumerate(b, 1):
+            prev, row[j] = row[j], min(row[j] + 1, row[j - 1] + 1, prev + (ca != cb))
+    return row[-1]
+
+
+def near_name(word: str) -> bool:
+    """A word one letter away from the name: "igo", "egor", "igar", "igors"."""
+    return 3 <= len(word) <= 6 and _distance(word, "igor") <= 1
+
+
 @dataclass
 class Decision:
     accepted: bool
@@ -94,6 +109,15 @@ class Addressing:
             return Decision(False, "hallucination")
         if NAME.search(norm):
             return Decision(True, "name")
+        # Second chance: Whisper's small models often write the name one
+        # letter off. Taken only at the start or the end of a sentence that
+        # is otherwise a request, so "Hugo est passé hier" stays ignored.
+        words = OPENERS.sub("", norm).replace(",", " ").split()
+        for i in (0, len(words) - 1) if words else ():
+            if near_name(words[i]):
+                rest = " ".join(words[:i] + words[i + 1:])
+                if rest and self.looks_like_request(rest):
+                    return Decision(True, "near_name")
         if since_igor_spoke is not None and since_igor_spoke <= self.followup_seconds:
             return Decision(True, "followup")
         command = OPENERS.sub("", norm)

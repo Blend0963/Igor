@@ -211,3 +211,19 @@ def test_too_long_a_pause_and_the_name_waits_for_the_order():
     listener.handle(audio(1.0), None, 0.0, 1.0)
     e = listener.handle(audio(0.5), None, 5.0, 5.5)             # 4 s later
     assert e["reason"] == "name_alone_waiting" and sent == []
+
+
+def test_a_faint_voice_is_brought_up_before_transcription():
+    from igor_ear.stt import louder
+    quiet = np.full(1000, 0.05, dtype=np.float32)
+    assert abs(float(np.max(louder(quiet))) - 0.4) < 1e-6      # gain capped at 8
+    assert abs(float(np.max(louder(np.full(10, 0.2, dtype=np.float32)))) - 0.6) < 1e-6
+    loud = np.full(10, 0.9, dtype=np.float32)
+    assert louder(loud) is loud                                  # never turned down
+    assert louder(np.zeros(10, dtype=np.float32)).max() == 0
+
+
+def test_a_name_one_letter_off_is_sent_and_noted():
+    listener, _, sent = make(["Egor, éteins la lumière du salon"])
+    e = listener.handle(audio())
+    assert e["sent"] and e["reason"] == "name" and e["near_name"] is True

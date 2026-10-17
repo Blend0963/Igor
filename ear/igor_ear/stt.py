@@ -47,6 +47,21 @@ class Transcript:
     logprob: float
 
 
+# A voice from across the room arrives faint, and Whisper hears faint words
+# worse. Each sentence is brought up to this peak before it is transcribed
+# (never down, at most 8 times): the microphone's own gain is left alone,
+# since raising it makes close voices saturate.
+TARGET_PEAK = 0.6
+MAX_GAIN = 8.0
+
+
+def louder(audio: np.ndarray) -> np.ndarray:
+    peak = float(np.max(np.abs(audio))) if audio.size else 0.0
+    if peak <= 0 or peak >= TARGET_PEAK:
+        return audio
+    return (audio * min(TARGET_PEAK / peak, MAX_GAIN)).astype(np.float32)
+
+
 class Transcriber:
     def __init__(
         self,
@@ -106,7 +121,7 @@ class Transcriber:
 
     def __call__(self, audio: np.ndarray) -> Transcript:
         start = time.monotonic()
-        segments = self._run(audio)
+        segments = self._run(louder(audio))
         text = " ".join(s.text.strip() for s in segments).strip()
         no_speech = max((s.no_speech_prob for s in segments), default=1.0)
         logprob = min((s.avg_logprob for s in segments), default=-10.0)
