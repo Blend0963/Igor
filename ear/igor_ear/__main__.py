@@ -275,11 +275,15 @@ def run(settings: Settings) -> None:
 
             entry = listener.handle(u.audio, more, u.start, u.end)
             note(settings, entry)
-            if entry["reason"] not in {"satellite_busy", "noise"} or entry.get("accepted"):
+            # Noise is shown too when Whisper made words of it: a name taken
+            # for noise must be seen. Its doubt (no_speech) goes with it.
+            shown = entry["reason"] != "satellite_busy" and (entry["reason"] != "noise" or entry.get("text"))
+            if shown or entry.get("accepted"):
                 label = "SENT" if entry.get("sent") else ("WOULD SEND" if entry["accepted"] else
                                                           ("WOULD ACT " if entry["reason"] == "smart_would_act" else "ignored   "))
-                log.info("%s %-18s %s%s", label,
-                         entry["reason"], entry.get("text", ""), sent_summary(entry) if entry.get("sent") else "")
+                doubt = f"  (no_speech {entry['no_speech']}, logprob {entry['logprob']})" if entry["reason"] == "noise" else ""
+                log.info("%s %-18s %s%s%s", label,
+                         entry["reason"], entry.get("text", ""), sent_summary(entry) if entry.get("sent") else "", doubt)
             if time.monotonic() - last_prune > 86400:
                 prune(settings)
                 last_prune = time.monotonic()

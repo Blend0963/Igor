@@ -281,3 +281,13 @@ def test_deck_deals_all_before_repeating():
     assert all(a != b for a, b in zip(said, said[1:]))
     assert all(r.endswith("?") for r in NAME_REPLIES) and len(NAME_REPLIES) >= 50
     assert not Deck([]) and Deck(["Oui ?"]).draw() == "Oui ?"
+
+
+def test_the_name_alone_is_kept_though_whisper_doubts_it_is_speech():
+    heard = iter([Transcript("Igor ?", 0.3, 0.8, -0.9), Transcript("bonjour", 0.3, 0.8, -0.2),
+                  Transcript("Igor ?", 0.3, 0.95, -0.9)])
+    listener = Listener(lambda a: next(heard), Addressing(), None)
+    assert listener.handle(audio())["reason"] == "name_alone_waiting"
+    e = listener.handle(audio())
+    assert e["reason"] == "noise" and e["no_speech"] == 0.8 and e["text"] == "bonjour"
+    assert listener.handle(audio())["reason"] == "noise"

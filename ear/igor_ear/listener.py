@@ -52,6 +52,10 @@ CONTEXT_SECONDS = 90.0
 # Below these, Whisper is guessing words into noise.
 MAX_NO_SPEECH = 0.6
 MIN_LOGPROB = -1.0
+# A word said alone ("Igor ?") is a very short sound, and Whisper doubts it
+# is speech at all; the voice detector already heard a voice. With the
+# name, only near certainty of no speech drops it.
+MAX_NO_SPEECH_NAME = 0.9
 
 
 @dataclass
@@ -177,9 +181,11 @@ class Listener:
         # probability, common with the small models) is dropped too, unless
         # it carries the name: that is all that matters here, Igor gets the
         # audio itself.
-        noise = not heard.text or heard.no_speech > MAX_NO_SPEECH or (
-            heard.logprob < MIN_LOGPROB and not NAME.search(normalize(heard.text))
+        named = bool(NAME.search(normalize(heard.text)))
+        noise = not heard.text or heard.no_speech > (MAX_NO_SPEECH_NAME if named else MAX_NO_SPEECH) or (
+            heard.logprob < MIN_LOGPROB and not named
         )
+        entry.update(no_speech=round(heard.no_speech, 2), logprob=round(heard.logprob, 2))
 
         armed = self._armed is not None and now <= self._armed_until
         followup_open = self.followup and now <= self._followup_until
