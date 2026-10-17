@@ -123,10 +123,11 @@ class IgorVoiceSensor(SensorEntity):
             self.async_write_ha_state()
 
     @callback
-    def heard(self, satellite: str | None, waiting: bool = False) -> None:
+    def heard(self, satellite: str | None, waiting: bool = False, seconds: float | None = None) -> None:
         """Igor heard its name (from a listener such as igor-ear) before the
         words reach it: the tablet can show at once that it was heard.
-        `waiting`: the name came alone, the request is still to come."""
+        `waiting`: the request is still to come (the name came alone, or Igor
+        asked a question and listens for the answer), for at most `seconds`."""
         if self.active:
             return
         self._cancel_timers()
@@ -138,7 +139,7 @@ class IgorVoiceSensor(SensorEntity):
         self._started = _now_iso()
         self._attr_native_value = "heard"
         self._write()
-        self._clear = async_call_later(self.hass, HEARD_TIMEOUT, self._reset)
+        self._clear = async_call_later(self.hass, seconds or HEARD_TIMEOUT, self._reset)
 
     @callback
     def begin(self, question: str, satellite: str | None) -> None:

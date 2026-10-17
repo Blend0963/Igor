@@ -22,6 +22,7 @@ class Settings:
     extra_targets: list[str] = field(default_factory=list)
     act: bool = False
     followup: bool = True
+    followup_seconds: float = 8.0
     name_wait: float = 6.0
     join_gap: float = 0.6
     ha_url: str = ""
@@ -58,6 +59,7 @@ def load(path: Path = CONFIG) -> Settings:
     s.extra_targets = [str(t) for t in addressing.get("extra_targets", [])]
     s.act = bool(mode.get("act", s.act))
     s.followup = bool(mode.get("followup", s.followup))
+    s.followup_seconds = float(mode.get("followup_seconds", s.followup_seconds))
     s.name_wait = float(mode.get("name_wait", s.name_wait))
     s.join_gap = float(mode.get("join_gap", s.join_gap))
     s.satellite = str(ha.get("satellite", ""))

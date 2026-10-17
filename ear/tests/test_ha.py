@@ -130,7 +130,7 @@ def test_ws_url():
 
 
 def test_heard(server):
-    ha.heard(server[1], TOKEN, "assist_satellite.vm", waiting=True)
+    ha.heard(server[1], TOKEN, "assist_satellite.vm", waiting=True, seconds=8)
     path, auth, body, agent = received["announce"]
     assert path == "/api/services/nives/heard" and auth == "Bearer secret" and agent == "igor-ear"
-    assert body == {"satellite": "assist_satellite.vm", "waiting": True}
+    assert body == {"satellite": "assist_satellite.vm", "waiting": True, "seconds": 8}

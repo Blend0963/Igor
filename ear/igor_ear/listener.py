@@ -65,14 +65,16 @@ class Listener:
         name_wait: float = 6.0,
         keep_rejected_text: bool = True,
         clock: Callable[[], float] = time.monotonic,
-        on_heard: Callable[[bool], None] | None = None,
+        on_heard: Callable[[bool, float | None], None] | None = None,
     ) -> None:
         self.stt, self.rules, self.act, self.busy = stt, rules, act, busy
         self.followup, self.followup_seconds, self.name_wait = followup, followup_seconds, name_wait
         self.keep_rejected_text = keep_rejected_text
         self.clock = clock
         # Called the moment Igor is addressed, before the words are sent (the
-        # tablet shows it at once); True when the name came alone.
+        # tablet shows it at once): (False, None). And when Igor listens for
+        # the request, after the name alone or a question of its own:
+        # (True, how long it listens).
         self.on_heard = on_heard
         self._armed: np.ndarray | None = None
         self._armed_until = float("-inf")
@@ -126,7 +128,7 @@ class Listener:
                 self._armed, self._armed_until = audio, now + self.name_wait
                 entry.update(accepted=False, reason="name_alone_waiting", text=heard.text)
                 if self.act is not None and self.on_heard is not None:
-                    self.on_heard(True)
+                    self.on_heard(True, self.name_wait)
                 return entry
         if not noise:
             self._armed = None
@@ -138,7 +140,7 @@ class Listener:
             return entry
 
         if self.on_heard is not None:
-            self.on_heard(False)
+            self.on_heard(False, None)
 
         # The speaker may go on after a pause: join the rest first.
         joined = 0
@@ -156,8 +158,12 @@ class Listener:
         if outcome.error:
             entry["error"] = outcome.error
         if self.followup and outcome.continue_conversation:
+            # Igor asked a question (and has finished saying it): the answer
+            # is taken without the name, and the tablet shows it listens.
             self._followup_until = self.clock() + self.followup_seconds
             self._conversation = outcome.conversation_id
+            if self.on_heard is not None:
+                self.on_heard(True, self.followup_seconds)
         else:
             self._followup_until = float("-inf")
             self._conversation = None

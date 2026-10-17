@@ -133,12 +133,12 @@ def run(settings: Settings) -> None:
 
     heard_failed = [False]
 
-    def on_heard(waiting: bool) -> None:
+    def on_heard(waiting: bool, seconds: float | None) -> None:
         """Show on the wall tablet at once that Igor was heard. In the
         background: the words must not wait for it."""
         def call() -> None:
             try:
-                ha.heard(settings.ha_url, settings.ha_token, settings.satellite, waiting)
+                ha.heard(settings.ha_url, settings.ha_token, settings.satellite, waiting, seconds)
             except Exception as err:  # noqa: BLE001 - a display only
                 if not heard_failed[0]:
                     heard_failed[0] = True
@@ -155,6 +155,7 @@ def run(settings: Settings) -> None:
         busy=busy,
         followup=settings.followup,
         name_wait=settings.name_wait,
+        followup_seconds=settings.followup_seconds,
         keep_rejected_text=settings.rejected_text,
         on_heard=on_heard if settings.act and settings.satellite else None,
     )

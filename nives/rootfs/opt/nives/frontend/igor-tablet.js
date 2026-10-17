@@ -315,13 +315,15 @@
     }
     // Igor heard its name (igor-ear, no wake word): shown at once, before
     // the words reach Igor a few seconds later.
-    var heardFresh = attrs.started && Date.now() - Date.parse(attrs.started) < 30000;
+    var heardFresh = attrs.started && Date.now() - Date.parse(attrs.started) < 120000;
     if (fromWanted && sensorState === "heard" && heardFresh) {
       if (dismissed === turnKey) return;
       var waiting = attrs.status === "listening";
       var phase = waiting ? "listening" : "transcribing";
       if (view.phase !== phase || view.turnKey !== turnKey) {
-        if (view.turnKey !== turnKey) { dismissed = null; clearTalk(); }
+        // Igor asked a question and listens for the answer: the exchange
+        // stays in view, as with a satellite's own follow-up.
+        if (view.turnKey !== turnKey) { dismissed = null; if (!(waiting && view.phase === "done")) clearTalk(); }
         view.turnKey = turnKey;
         view.phase = phase;
         show();

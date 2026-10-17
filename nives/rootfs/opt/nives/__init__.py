@@ -423,6 +423,7 @@ HEARD_SCHEMA = vol.Schema(
     {
         vol.Optional("satellite"): vol.All(str, vol.Length(max=255)),
         vol.Optional("waiting", default=False): bool,
+        vol.Optional("seconds"): vol.All(vol.Coerce(float), vol.Range(min=1, max=120)),
     }
 )
 
@@ -441,7 +442,7 @@ def _async_register_heard(hass: HomeAssistant) -> None:
         for entry in hass.config_entries.async_entries(DOMAIN):
             sensor = getattr(getattr(entry, "runtime_data", None), "voice_sensor", None)
             if sensor is not None and sensor.hass is not None:
-                sensor.heard(satellite, call.data["waiting"])
+                sensor.heard(satellite, call.data["waiting"], call.data.get("seconds"))
 
     hass.services.async_register(DOMAIN, SERVICE_HEARD, _heard, schema=HEARD_SCHEMA)
 

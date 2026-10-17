@@ -7,6 +7,8 @@
 act = false
 # Right after Igor asks a question, take the answer without the name.
 followup = true
+# How long Igor listens for that answer (seconds); the tablet shows it.
+followup_seconds = 8
 # After "Igor" said alone, how long to wait for the order (seconds).
 name_wait = 6
 # A pause shorter than this does not end a sentence (seconds). Shorter answers
