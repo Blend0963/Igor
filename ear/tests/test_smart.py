@@ -153,3 +153,41 @@ def test_smart_waits_while_the_television_sounds():
     assert listener.handle(audio())["reason"] == "media_playing"
     assert listener.handle(audio())["reason"] == "name"            # the name still works
     assert seen == [] and sent == [None]
+
+
+# --- the speakers' watch -----------------------------------------------------
+from igor_ear.speakers import Speakers, level_db, parse_mute, parse_volume  # noqa: E402
+
+
+def test_level_db():
+    assert level_db(np.zeros(800, dtype=np.int16)) == float("-inf")
+    loud = (np.sin(np.linspace(0, 200, 2000)) * 16000).astype(np.int16)
+    assert -10 < level_db(loud) < -8
+    assert level_db(np.full(800, 3, dtype=np.int16)) < -70      # dither: silence
+
+
+def test_pactl_parsing():
+    assert parse_mute("Mute: yes\n") is True and parse_mute("Mute: no") is False and parse_mute("") is None
+    v = "Volume: front-left: 42598 /  65% / -11.23 dB,   front-right: 45875 /  70% / -9.30 dB\n"
+    assert parse_volume(v) == 70 and parse_volume("") is None
+
+
+def test_speakers_sound_hold_mute_and_unknown():
+    clock = Clock()
+    sp = Speakers(quiet_db=-50, hold=3, clock=clock)
+    assert sp.sounding() is True and sp.sounding(unknown=False) is False   # monitor not read yet
+    sp.listening = True
+    sp.feed(-75)
+    assert not sp.sounding()                                               # quiet
+    sp.feed(-22)
+    clock.t = 2
+    sp.feed(-80)
+    assert sp.sounding()                                                   # a pause in the film
+    clock.t = 3.5
+    assert not sp.sounding()                                               # silence for 3 s
+    clock.t = 4
+    sp.feed(-20)
+    sp.muted = True
+    assert not sp.sounding()                                               # muted output
+    sp.muted, sp.volume = False, 0
+    assert not sp.sounding()                                               # volume at 0

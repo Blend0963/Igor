@@ -75,7 +75,7 @@ def run(settings: Settings) -> None:
     if settings.addressing == "smart":
         log.info("Smart addressing: %s at %s judges sentences without the name (%s)%s",
                  settings.smart_model, settings.smart_url, "acts" if settings.smart_act else "noted only",
-                 f"; not while {', '.join(settings.media_players)} sound" if settings.media_players else "")
+                 f"; paused while sound comes from {settings.sound_from}")
     prune(settings)
     connected = bool(settings.ha_url and settings.ha_token)
     if connected and settings.presence_entity and settings.presence_entity.startswith("assist_satellite."):
@@ -96,7 +96,7 @@ def run(settings: Settings) -> None:
     watcher = None
     if connected:
         watched = [settings.satellite, settings.presence_entity]
-        if settings.addressing == "smart":
+        if settings.addressing == "smart" and settings.sound_from in {"players", "both"}:
             watched += settings.media_players
         watcher = ha.Watcher(settings.ha_url, settings.ha_token, watched, changed)
         watcher.start()
@@ -118,17 +118,32 @@ def run(settings: Settings) -> None:
 
     from .media import audible
 
-    def media_sounding(unknown: bool = True) -> bool:
-        """A television, radio or speaker making sound: no sentence without
-        the name is judged. Unknown (Home Assistant unreachable) gives
-        `unknown`: for judging, sounding, since needing the name is better
-        than acting on a film; for closing the ear, not, so the name still
-        works."""
-        if settings.addressing != "smart" or not settings.media_players or watcher is None:
+    speakers = None
+    if settings.addressing == "smart" and settings.sound_from in {"speakers", "both"}:
+        from .speakers import Speakers
+
+        speakers = Speakers(settings.sink, settings.quiet_db)
+        speakers.start()
+
+    def players_sounding(unknown: bool) -> bool:
+        if settings.sound_from not in {"players", "both"} or not settings.media_players or watcher is None:
             return False
         if not watcher.connected:
             return unknown
         return any(audible(watcher.state(m), watcher.attributes(m)) for m in settings.media_players)
+
+    def media_sounding(unknown: bool = True) -> bool:
+        """Sound in the house (out of this machine's speakers, or from a
+        listed media player): no sentence without the name is judged.
+        Unknown (monitor unreadable, Home Assistant unreachable) gives
+        `unknown`: for judging, sounding, since needing the name is better
+        than acting on a film; for closing the ear, not, so the name still
+        works."""
+        if settings.addressing != "smart":
+            return False
+        if speakers is not None and speakers.sounding(unknown):
+            return True
+        return players_sounding(unknown)
 
     judge = None
     if settings.addressing == "smart":
@@ -284,6 +299,22 @@ def bench(settings: Settings, seconds: float) -> None:
     print(f"(no_speech {heard.no_speech:.2f}, logprob {heard.logprob:.2f})")
 
 
+def sound(settings: Settings, seconds: float) -> None:
+    """What the speakers' watch sees, every half second, to set quiet_db."""
+    from .speakers import Speakers
+
+    speakers = Speakers(settings.sink, settings.quiet_db)
+    speakers.start()
+    print(f"Watching {speakers.monitor} for {seconds:.0f}s; sound above {settings.quiet_db:.0f} dB pauses the smart judge.")
+    end = time.monotonic() + seconds
+    time.sleep(1)
+    while time.monotonic() < end:
+        level = "silence" if speakers.level == float("-inf") else f"{speakers.level:6.1f} dB"
+        state = "SOUND" if speakers.sounding(unknown=False) else "quiet"
+        print(f"  {level:>10}  mute={speakers.muted}  volume={speakers.volume}%  -> {state}", flush=True)
+        time.sleep(0.5)
+
+
 def report(settings: Settings) -> None:
     path = settings.log_file
     entries = [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()] if path.exists() else []
@@ -310,6 +341,8 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--seconds", type=float, default=5)
     b.add_argument("--device", choices=["auto", "cuda", "cpu"])
     sub.add_parser("report")
+    so = sub.add_parser("sound", help="watch the speakers' level, to set [smart] quiet_db")
+    so.add_argument("--seconds", type=float, default=15)
     c = sub.add_parser("check")
     c.add_argument("text")
     args = parser.parse_args(argv)
@@ -331,6 +364,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.device:
             settings.device = args.device
         bench(settings, args.seconds)
+    elif args.command == "sound":
+        sound(settings, args.seconds)
     elif args.command == "report":
         report(settings)
     elif args.command == "check":
