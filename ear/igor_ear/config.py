@@ -74,15 +74,18 @@ def load(path: Path = CONFIG) -> Settings:
     s.smart_url = str(smart.get("url", s.smart_url))
     s.smart_model = str(smart.get("model", s.smart_model))
     s.smart_act = bool(smart.get("act", s.smart_act))
-    s.media_players = [str(m) for m in smart.get("media_players", [])]
-    s.sound_from = str(smart.get("sound_from", s.sound_from)).strip().lower()
+    # Sound in the house concerns both modes, so it has its own [media]
+    # section; the same keys under [smart] (0.11.2) are still read.
+    media = {**smart, **data.get("media", {})}
+    s.media_players = [str(m) for m in media.get("media_players", [])]
+    s.sound_from = str(media.get("sound_from", s.sound_from)).strip().lower()
     if s.sound_from not in {"speakers", "players", "both"}:
-        raise ValueError(f'[smart] sound_from must be "speakers", "players" or "both", not "{s.sound_from}"')
-    s.sink = str(smart.get("sink", s.sink))
-    s.quiet_db = float(smart.get("quiet_db", s.quiet_db))
-    s.when_media = str(smart.get("when_media", s.when_media)).strip().lower()
+        raise ValueError(f'[media] sound_from must be "speakers", "players" or "both", not "{s.sound_from}"')
+    s.sink = str(media.get("sink", s.sink))
+    s.quiet_db = float(media.get("quiet_db", s.quiet_db))
+    s.when_media = str(media.get("when_media", s.when_media)).strip().lower()
     if s.when_media not in {"name", "closed"}:
-        raise ValueError(f'[smart] when_media must be "name" or "closed", not "{s.when_media}"')
+        raise ValueError(f'[media] when_media must be "name" or "closed", not "{s.when_media}"')
     s.followup = bool(mode.get("followup", s.followup))
     s.followup_seconds = float(mode.get("followup_seconds", s.followup_seconds))
     s.name_wait = float(mode.get("name_wait", s.name_wait))

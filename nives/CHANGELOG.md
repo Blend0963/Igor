@@ -6,6 +6,7 @@
 - "Éteins la lumière du salon… Igor": with a pause before the name, the order was a sentence already set aside. When the sentence just before (2 s at most) was a request and the one with the name holds none, igor-ear now sends both together.
 - igor-ear gives the name a second chance: Whisper's small models often write it one letter off ("Igo", "Egor", "Igar"). Such a word at the start or the end of a sentence that is otherwise a request counts as "Igor"; "Hugo est passé hier" still does not.
 - igor-ear brings a faint sentence up (to a peak of 0.6, at most 8 times) before transcribing it, so a voice from across the room is heard better without raising the microphone, which made close voices saturate.
+- igor-ear can stay closed while the television or radio plays in the "name" mode too, not only the smart one: `[media] when_media = "closed"` (the sound settings move from `[smart]` to a new `[media]` section; the old place is still read). The answer to a question Igor has just asked is still heard.
 - Igor is told that some voice requests come from an always-on microphone: the transcript can hold words said around the request, and it acts only on what is addressed to it.
 - On the hub: `git -C ~/MaDo pull && bash ~/MaDo/ear/install.sh && systemctl --user restart igor-ear`.
 

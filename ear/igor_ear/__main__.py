@@ -73,9 +73,11 @@ def run(settings: Settings) -> None:
     mode = "act" if settings.act else "observation"
     log.info("igor-ear %s, %s mode, source %s", __version__, mode, settings.source)
     if settings.addressing == "smart":
-        log.info("Smart addressing: %s at %s judges sentences without the name (%s)%s",
+        log.info("Smart addressing: %s at %s judges sentences without the name (%s); paused while sound comes from %s",
                  settings.smart_model, settings.smart_url, "acts" if settings.smart_act else "noted only",
-                 f"; paused while sound comes from {settings.sound_from}")
+                 settings.sound_from)
+    if settings.when_media == "closed":
+        log.info("Not listening while sound comes from %s", settings.sound_from)
     prune(settings)
     connected = bool(settings.ha_url and settings.ha_token)
     if connected and settings.presence_entity and settings.presence_entity.startswith("assist_satellite."):
@@ -93,10 +95,14 @@ def run(settings: Settings) -> None:
         elif entity == settings.presence_entity:
             log.info("Presence: %s", state)
 
+    # Sound in the house matters to the smart judge, and to closing the ear
+    # while it plays ([media] when_media = "closed"), in either mode.
+    watch_sound = settings.addressing == "smart" or settings.when_media == "closed"
+
     watcher = None
     if connected:
         watched = [settings.satellite, settings.presence_entity]
-        if settings.addressing == "smart" and settings.sound_from in {"players", "both"}:
+        if watch_sound and settings.sound_from in {"players", "both"}:
             watched += settings.media_players
         watcher = ha.Watcher(settings.ha_url, settings.ha_token, watched, changed)
         watcher.start()
@@ -119,7 +125,7 @@ def run(settings: Settings) -> None:
     from .media import audible
 
     speakers = None
-    if settings.addressing == "smart" and settings.sound_from in {"speakers", "both"}:
+    if watch_sound and settings.sound_from in {"speakers", "both"}:
         from .speakers import Speakers
 
         speakers = Speakers(settings.sink, settings.quiet_db)
@@ -139,7 +145,7 @@ def run(settings: Settings) -> None:
         `unknown`: for judging, sounding, since needing the name is better
         than acting on a film; for closing the ear, not, so the name still
         works."""
-        if settings.addressing != "smart":
+        if not watch_sound:
             return False
         if speakers is not None and speakers.sounding(unknown):
             return True
@@ -245,9 +251,10 @@ def run(settings: Settings) -> None:
     away = False
     closed = False
     for frame in frames(settings.source):
-        # [smart] when_media = "closed": nothing at all is heard while a
-        # television or radio makes sound, not even the name.
-        if settings.when_media == "closed" and media_sounding(unknown=False):
+        # [media] when_media = "closed": nothing at all is heard while a
+        # television or radio makes sound, not even the name. Except while
+        # Igor waits for an answer: its own voice has just played.
+        if settings.when_media == "closed" and media_sounding(unknown=False) and not listener.waiting():
             if not closed:
                 segmenter.reset()
                 vad.reset()
@@ -305,7 +312,7 @@ def sound(settings: Settings, seconds: float) -> None:
 
     speakers = Speakers(settings.sink, settings.quiet_db)
     speakers.start()
-    print(f"Watching {speakers.monitor} for {seconds:.0f}s; sound above {settings.quiet_db:.0f} dB pauses the smart judge.")
+    print(f"Watching {speakers.monitor} for {seconds:.0f}s; sound above {settings.quiet_db:.0f} dB counts as playing.")
     end = time.monotonic() + seconds
     time.sleep(1)
     while time.monotonic() < end:
@@ -341,7 +348,7 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--seconds", type=float, default=5)
     b.add_argument("--device", choices=["auto", "cuda", "cpu"])
     sub.add_parser("report")
-    so = sub.add_parser("sound", help="watch the speakers' level, to set [smart] quiet_db")
+    so = sub.add_parser("sound", help="watch the speakers' level, to set [media] quiet_db")
     so.add_argument("--seconds", type=float, default=15)
     c = sub.add_parser("check")
     c.add_argument("text")

@@ -114,6 +114,11 @@ class Listener:
         head.logprob = max(head.logprob, tail.logprob)
         return head
 
+    def waiting(self) -> bool:
+        """Igor waits for words: after the name alone, or after its question."""
+        now = self.clock()
+        return (self._armed is not None and now <= self._armed_until) or (self.followup and now <= self._followup_until)
+
     def _remember(self, now: float, text: str) -> None:
         self._recent.append((now, text))
 
