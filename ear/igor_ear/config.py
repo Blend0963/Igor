@@ -10,6 +10,10 @@ CONFIG = Path(os.environ.get("IGOR_EAR_CONFIG", Path.home() / ".config/igor-ear/
 STATE = Path(os.environ.get("IGOR_EAR_STATE", Path.home() / ".local/state/igor-ear"))
 
 
+# What Igor says when it hears its name alone, one at random.
+NAME_REPLIES = ("Oui ?", "Je vous écoute.", "Oui, monsieur ?", "À votre écoute.", "Je suis là.")
+
+
 @dataclass
 class Settings:
     source: str = "default"
@@ -32,7 +36,8 @@ class Settings:
     when_media: str = "name"
     followup: bool = True
     followup_seconds: float = 8.0
-    name_wait: float = 6.0
+    name_wait: float = 8.0
+    name_reply: list[str] = field(default_factory=lambda: list(NAME_REPLIES))
     join_gap: float = 0.6
     ha_url: str = ""
     ha_token: str = ""
@@ -89,6 +94,7 @@ def load(path: Path = CONFIG) -> Settings:
     s.followup = bool(mode.get("followup", s.followup))
     s.followup_seconds = float(mode.get("followup_seconds", s.followup_seconds))
     s.name_wait = float(mode.get("name_wait", s.name_wait))
+    s.name_reply = [str(r) for r in mode.get("name_reply", s.name_reply) if str(r).strip()]
     s.join_gap = float(mode.get("join_gap", s.join_gap))
     s.satellite = str(ha.get("satellite", ""))
     s.pipeline = str(ha.get("pipeline", ""))
