@@ -157,6 +157,21 @@ def announce(url: str, token: str, satellite: str, message: str, timeout: float 
         raise
 
 
+def heard(url: str, token: str, satellite: str, waiting: bool = False, timeout: float = 5) -> None:
+    """Tell Igor's integration the name was heard, so the wall tablet shows it
+    at once (service nives.heard, add-on 0.11.1 and later)."""
+    body = json.dumps({"satellite": satellite, "waiting": waiting}).encode()
+    request = urllib.request.Request(
+        url.rstrip("/") + "/api/services/nives/heard",
+        data=body,
+        method="POST",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
+                 "User-Agent": "igor-ear"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout):
+        pass
+
+
 class Watcher:
     """Live states of a few entities, kept up to date in a background thread."""
 

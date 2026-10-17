@@ -23,6 +23,7 @@ class Settings:
     act: bool = False
     followup: bool = True
     name_wait: float = 6.0
+    join_gap: float = 0.6
     ha_url: str = ""
     ha_token: str = ""
     satellite: str = ""
@@ -58,6 +59,7 @@ def load(path: Path = CONFIG) -> Settings:
     s.act = bool(mode.get("act", s.act))
     s.followup = bool(mode.get("followup", s.followup))
     s.name_wait = float(mode.get("name_wait", s.name_wait))
+    s.join_gap = float(mode.get("join_gap", s.join_gap))
     s.satellite = str(ha.get("satellite", ""))
     s.pipeline = str(ha.get("pipeline", ""))
     s.ha_url = str(ha.get("url", ""))

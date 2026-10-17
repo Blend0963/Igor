@@ -313,6 +313,23 @@
       }
       return;
     }
+    // Igor heard its name (igor-ear, no wake word): shown at once, before
+    // the words reach Igor a few seconds later.
+    var heardFresh = attrs.started && Date.now() - Date.parse(attrs.started) < 30000;
+    if (fromWanted && sensorState === "heard" && heardFresh) {
+      if (dismissed === turnKey) return;
+      var waiting = attrs.status === "listening";
+      var phase = waiting ? "listening" : "transcribing";
+      if (view.phase !== phase || view.turnKey !== turnKey) {
+        if (view.turnKey !== turnKey) { dismissed = null; clearTalk(); }
+        view.turnKey = turnKey;
+        view.phase = phase;
+        show();
+        veil.dataset.phase = waiting ? "listening" : "thinking";
+        setLabel(waiting ? "Je vous écoute…" : "Je vous ai entendu…", false);
+      }
+      return;
+    }
     if (dismissed && dismissed === turnKey && !live) return;
     if (live) {
       if (dismissed === turnKey) return;

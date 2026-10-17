@@ -58,6 +58,7 @@
         "name": "Assist",
         "state": {
           "idle": "Idle",
+          "heard": "Heard",
           "thinking": "Thinking",
           "answering": "Answering",
           "done": "Done",
@@ -75,6 +76,22 @@
             "title": "Restart required",
             "description": "Home Assistant needs a restart to finish updating Igor ({running_version} → {installed_version}). Click Submit to restart Home Assistant now — or close this and restart later, at a moment that suits you. Igor keeps working in the meantime."
           }
+        }
+      }
+    }
+  },
+  "services": {
+    "heard": {
+      "name": "Heard",
+      "description": "Tells the wall tablet that Igor heard its name, before the request itself arrives. Called by a listener such as igor-ear.",
+      "fields": {
+        "satellite": {
+          "name": "Satellite",
+          "description": "The voice satellite the request is for. The tablet set to one satellite shows only its requests."
+        },
+        "waiting": {
+          "name": "Waiting",
+          "description": "The name came alone: the request is still to come."
         }
       }
     }

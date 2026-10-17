@@ -1,0 +1,11 @@
+heard:
+  fields:
+    satellite:
+      example: assist_satellite.living_room
+      selector:
+        entity:
+          domain: assist_satellite
+    waiting:
+      default: false
+      selector:
+        boolean:

@@ -119,3 +119,21 @@ def test_doubtful_transcription_without_the_name_is_noise():
     def stt(a):
         return Transcript("va plutôt ta blètre", 0.2, 0.3, -1.4)
     assert Listener(stt, Addressing(), None).handle(audio())["reason"] == "noise"
+
+
+def test_the_tablet_is_told_before_the_words_are_sent():
+    events = []
+    clock = Clock()
+    heard = iter(["Igor ?", "allume la cuisine", "Éteins la lumière Igor", "il fait beau"])
+    stt = lambda a: Transcript(next(heard), 0.3, 0.1, -0.2)  # noqa: E731
+
+    def do(a, conversation):
+        events.append("sent")
+        return Outcome(speech="Fait.")
+
+    listener = Listener(stt, Addressing(), do, clock=clock, on_heard=lambda waiting: events.append(("heard", waiting)))
+    listener.handle(audio())              # the name alone: waiting for the order
+    listener.handle(audio())              # the order: heard, then sent
+    listener.handle(audio())              # name in the sentence: heard, then sent
+    listener.handle(audio())              # not for Igor: nothing
+    assert events == [("heard", True), ("heard", False), "sent", ("heard", False), "sent"]

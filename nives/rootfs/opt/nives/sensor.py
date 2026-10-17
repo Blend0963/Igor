@@ -32,11 +32,14 @@ from .const import VOICE_SENSOR_MARKER
 ANSWER_UPDATE_INTERVAL = 0.3  # seconds
 # How long the last exchange stays readable before it is cleared.
 CLEAR_AFTER = 180  # seconds
+# How long "heard" may wait for the words before it is dropped: the
+# transcription and the request normally follow within a few seconds.
+HEARD_TIMEOUT = 30  # seconds
 # Longest text kept: a voice answer is a few sentences.
 MAX_TEXT = 2000
 MAX_CHIPS = 12
 
-STATES = ["idle", "thinking", "answering", "done", "error"]
+STATES = ["idle", "heard", "thinking", "answering", "done", "error"]
 TEXT_ATTRIBUTES = frozenset(
     {"question", "answer", "status", "actions", "satellite", "started", "turn", VOICE_SENSOR_MARKER}
 )
@@ -118,6 +121,24 @@ class IgorVoiceSensor(SensorEntity):
         self._last_write = time.monotonic()
         if self.hass is not None:
             self.async_write_ha_state()
+
+    @callback
+    def heard(self, satellite: str | None, waiting: bool = False) -> None:
+        """Igor heard its name (from a listener such as igor-ear) before the
+        words reach it: the tablet can show at once that it was heard.
+        `waiting`: the name came alone, the request is still to come."""
+        if self.active:
+            return
+        self._cancel_timers()
+        self._turn += 1
+        self._question = self._answer = ""
+        self._status = "listening" if waiting else ""
+        self._actions = []
+        self._satellite = satellite
+        self._started = _now_iso()
+        self._attr_native_value = "heard"
+        self._write()
+        self._clear = async_call_later(self.hass, HEARD_TIMEOUT, self._reset)
 
     @callback
     def begin(self, question: str, satellite: str | None) -> None:
