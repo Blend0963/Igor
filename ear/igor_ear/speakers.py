@@ -84,6 +84,10 @@ class Speakers:
             return False
         return self.clock() - self.last_sound < self.hold
 
+    def quiet_for(self, seconds: float) -> bool:
+        """No sound out for `seconds` (true when the monitor cannot be read)."""
+        return not self.listening or self.clock() - self.last_sound >= seconds
+
     # --- reading -----------------------------------------------------------
     def start(self) -> None:
         threading.Thread(target=self._read_monitor, daemon=True).start()

@@ -61,6 +61,19 @@ def sent_summary(entry: dict) -> str:
         else f" -> Home Assistant transcribed nothing ({outcome})"
 
 
+def make_spotter(settings: Settings):
+    """Vosk for the names, or None (off, or not installed: Whisper alone)."""
+    if settings.spotter != "vosk":
+        return None
+    try:
+        from .spotter import Spotter
+
+        return Spotter(settings.vosk_model, settings.names)
+    except Exception as err:  # noqa: BLE001 - Whisper alone still works
+        log.warning("Name spotter unavailable (%s); run install.sh again. Whisper alone hears the name", err)
+        return None
+
+
 def run(settings: Settings) -> None:
     from . import ha
     from .audio import frames
@@ -86,7 +99,7 @@ def run(settings: Settings) -> None:
     if settings.act and not (connected and settings.satellite):
         raise SystemExit("Act mode needs [home_assistant] url, token and satellite in the settings")
 
-    from .gate import SatelliteGate
+    from .gate import OwnVoice, SatelliteGate
 
     gate = SatelliteGate()
 
@@ -112,7 +125,9 @@ def run(settings: Settings) -> None:
         if watcher is None or not settings.satellite:
             return False
         gate.update(watcher.state(settings.satellite))
-        return gate.busy()
+        # Right after Igor's own voice, the ear was closed until the speakers
+        # fell quiet: the satellite's short tail is already covered.
+        return gate.busy(tail=not voice.just_spoke())
 
     def home() -> bool:
         if watcher is None or not settings.presence_entity:
@@ -131,6 +146,18 @@ def run(settings: Settings) -> None:
 
         speakers = Speakers(settings.sink, settings.quiet_db)
         speakers.start()
+    # Igor's own voice is not heard: the ear closes while it speaks.
+    voice_quiet = speakers.quiet_for if speakers is not None else None
+    if voice_quiet is None and settings.act:
+        from .speakers import Speakers
+
+        own = Speakers(settings.sink, settings.quiet_db)
+        own.start()
+        voice_quiet = own.quiet_for
+    voice = OwnVoice(voice_quiet)
+
+    def say(text: str) -> None:
+        voice.say(lambda: ha.announce(settings.ha_url, settings.ha_token, settings.satellite, text))
 
     def players_sounding(unknown: bool) -> bool:
         if settings.sound_from not in {"players", "both"} or not settings.media_players or watcher is None:
@@ -175,7 +202,7 @@ def run(settings: Settings) -> None:
             return Outcome(error=str(err))
         if r.speech:
             try:
-                ha.announce(settings.ha_url, settings.ha_token, settings.satellite, r.speech)
+                say(r.speech)
             except Exception as err:  # noqa: BLE001
                 r.error = r.error or f"announce: {err}"
         return Outcome(r.heard, r.speech, r.conversation_id, r.continue_conversation, r.error)
@@ -194,27 +221,32 @@ def run(settings: Settings) -> None:
                     log.info("The tablet is not told when Igor is heard (%s); add-on 0.11.1 or later needed", err)
         threading.Thread(target=call, daemon=True).start()
 
-    replies = Deck(settings.name_reply)
+    # The replies speak of Igor; under another name, of that one.
+    called = settings.names[0].capitalize()
+    replies = Deck([r.replace("Igor", called) for r in settings.name_reply])
 
-    def on_name_alone() -> None:
-        """"Igor" alone: a short "Oui ?" in its own voice, in the background."""
+    def on_name_alone(ready) -> None:
+        """"Igor" alone: a short "Oui ?" in its own voice, in the background;
+        `ready()` once it is silent, and the wait for the order starts."""
         if not replies:
+            ready()
             return
         reply = replies.draw()
 
-        def say() -> None:
+        def answer() -> None:
             try:
-                ha.announce(settings.ha_url, settings.ha_token, settings.satellite, reply)
+                say(reply)
             except Exception as err:  # noqa: BLE001 - a courtesy only
                 log.info("Could not answer the name: %s", err)
-        threading.Thread(target=say, daemon=True).start()
+            ready()
+        threading.Thread(target=answer, daemon=True).start()
 
     vad, segmenter = Vad(), Segmenter()
     stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords,
                       settings.beam_size)
     listener = Listener(
         stt,
-        Addressing(extra_targets=settings.extra_targets),
+        Addressing(extra_targets=settings.extra_targets, names=settings.names),
         act if settings.act else None,
         busy=busy,
         followup=settings.followup,
@@ -226,6 +258,7 @@ def run(settings: Settings) -> None:
         judge=judge,
         judge_allowed=lambda: not media_sounding(),
         judge_acts=settings.smart_act,
+        spotter=make_spotter(settings),
     )
     utterances: queue.Queue[Utterance] = queue.Queue(maxsize=8)
     pending: deque[Utterance] = deque()
@@ -235,19 +268,22 @@ def run(settings: Settings) -> None:
         while True:
             u = pending.popleft() if pending else utterances.get()
             last_end = [u.end]
+            # Igor waits for an order (after its name, or its question): the
+            # speaker may pause longer, mid-sentence, before it is cut.
+            gap = settings.order_gap if listener.waiting() else settings.join_gap
 
             def more() -> np.ndarray | None:
-                """The next part, if the speaker went on within join_gap."""
+                """The next part, if the speaker went on within the gap."""
                 while True:
                     try:
                         nxt = pending.popleft() if pending else utterances.get(timeout=0.1)
                     except queue.Empty:
-                        if segmenter.in_speech and segmenter.speech_start - last_end[0] <= settings.join_gap:
+                        if segmenter.in_speech and segmenter.speech_start - last_end[0] <= gap:
                             continue  # still talking: wait for that part to end
-                        if segmenter.now - last_end[0] >= settings.join_gap:
+                        if segmenter.now - last_end[0] >= gap:
                             return None
                         continue
-                    if nxt.start - last_end[0] <= settings.join_gap:
+                    if nxt.start - last_end[0] <= gap:
                         last_end[0] = nxt.end
                         return nxt.audio
                     pending.appendleft(nxt)  # a new sentence, handled next
@@ -255,11 +291,15 @@ def run(settings: Settings) -> None:
 
             entry = listener.handle(u.audio, more, u.start, u.end)
             note(settings, entry)
-            if entry["reason"] not in {"satellite_busy", "noise"} or entry.get("accepted"):
+            # Noise is shown too when Whisper made words of it: a name taken
+            # for noise must be seen. Its doubt (no_speech) goes with it.
+            shown = entry["reason"] != "satellite_busy" and (entry["reason"] != "noise" or entry.get("text"))
+            if shown or entry.get("accepted"):
                 label = "SENT" if entry.get("sent") else ("WOULD SEND" if entry["accepted"] else
                                                           ("WOULD ACT " if entry["reason"] == "smart_would_act" else "ignored   "))
-                log.info("%s %-18s %s%s", label,
-                         entry["reason"], entry.get("text", ""), sent_summary(entry) if entry.get("sent") else "")
+                doubt = f"  (no_speech {entry['no_speech']}, logprob {entry['logprob']})" if entry["reason"] == "noise" else ""
+                log.info("%s %-18s %s%s%s", label,
+                         entry["reason"], entry.get("text", ""), sent_summary(entry) if entry.get("sent") else "", doubt)
             if time.monotonic() - last_prune > 86400:
                 prune(settings)
                 last_prune = time.monotonic()
@@ -267,7 +307,16 @@ def run(settings: Settings) -> None:
     threading.Thread(target=worker, daemon=True).start()
     away = False
     closed = False
+    deaf = False
     for frame in frames(settings.source):
+        # Igor is speaking: its own voice is not a sentence.
+        if voice.speaking():
+            if not deaf:
+                segmenter.reset()
+                vad.reset()
+            deaf = True
+            continue
+        deaf = False
         # [media] when_media = "closed": nothing at all is heard while a
         # television or radio makes sound, not even the name. Except while
         # Igor waits for an answer: its own voice has just played.
@@ -321,6 +370,13 @@ def bench(settings: Settings, seconds: float) -> None:
     heard = stt(audio)
     print(f"Transcribed in {heard.seconds:.2f}s on {stt.device}: {heard.text!r}")
     print(f"(no_speech {heard.no_speech:.2f}, logprob {heard.logprob:.2f})")
+    spotter = make_spotter(settings)
+    if spotter is not None:
+        t0 = time.monotonic()
+        spot = spotter(audio)
+        found = " ".join(spot.names) or "no name"
+        alone = " (alone)" if spot.alone else ""
+        print(f"Vosk in {time.monotonic() - t0:.2f}s: {found}{alone}, {spot.others} other word(s)")
 
 
 def sound(settings: Settings, seconds: float) -> None:
@@ -393,7 +449,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "report":
         report(settings)
     elif args.command == "check":
-        d = Addressing(extra_targets=settings.extra_targets).decide(args.text)
+        d = Addressing(extra_targets=settings.extra_targets, names=settings.names).decide(args.text)
         print(f"{'WOULD SEND' if d.accepted else 'ignored'} ({d.reason})")
     return 0
 

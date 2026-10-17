@@ -33,7 +33,7 @@ done
 rm -rf "$APP/mado_ear"
 
 echo "== System packages (sudo)"
-sudo apt-get install -y python3-venv pulseaudio-utils
+sudo apt-get install -y python3-venv pulseaudio-utils curl
 
 echo "== Python environment in $APP/venv"
 mkdir -p "$APP"
@@ -80,6 +80,16 @@ else
     fi
 fi
 echo "$STACK" > "$APP/venv/.igor-stack"
+
+# The name spotter's French model (Vosk, 41 MB), checked before it is used.
+VOSK_MODEL=vosk-model-small-fr-0.22
+VOSK_SHA256=cabf6180e177eb9b3a9a9d43a437bd5e549f3a7d09525e5d69a3fed787be12ad
+if [ ! -d "$APP/$VOSK_MODEL" ]; then
+    echo "== Name spotter model ($VOSK_MODEL)"
+    curl -fsSL -o "$TMPDIR/$VOSK_MODEL.zip" "https://alphacephei.com/vosk/models/$VOSK_MODEL.zip"
+    echo "$VOSK_SHA256  $TMPDIR/$VOSK_MODEL.zip" | sha256sum -c --quiet
+    "$APP/venv/bin/python" -m zipfile -e "$TMPDIR/$VOSK_MODEL.zip" "$APP/"
+fi
 
 echo "== Program"
 rm -rf "$APP/igor_ear"

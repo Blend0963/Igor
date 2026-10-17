@@ -12,3 +12,5 @@ tqdm
 websockets>=13,<17
 nvidia-cublas-cu11>=11,<12
 nvidia-cudnn-cu11>=8,<9
+# The name spotter (spotter.py), CPU only.
+vosk==0.3.45

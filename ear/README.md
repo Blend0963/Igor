@@ -18,17 +18,29 @@ microphone (PipeWire, shared with linux-voice-assistant)
 ```
 
 A long request is fine: Igor gets the whole recording (up to a minute), and
-a pause of less than 0.6 s (`[mode] join_gap`) does not end it; Whisper only checks the first
+a pause of less than 0.6 s (`[mode] join_gap`; 1.2 s, `order_gap`, once Igor
+waits for an order) does not end it; Whisper only checks the first
 8 and last 6 seconds for the name. Nothing leaves the machine unless the
 sentence names Igor. While the
 satellite is busy (after its own wake word, or speaking) the service stays
 quiet, so the wake word keeps working and Igor never answers its own voice.
+While Igor speaks through the satellite (an answer, its "Oui ?") the ear is
+closed: until Home Assistant reports the end of the announcement and the
+speakers have fallen quiet (2 s at most more, if a television plays).
+
+The name is heard twice: by Whisper, and by Vosk (`[name] spotter`), a
+small French recogniser on the CPU that runs at the same time. The name
+heard by either one counts; Vosk is steadier on a short name said alone,
+at the start or the end, where Whisper "base" writes "Hector" or "ignore".
+`[name] names` sets the names it answers to (`["igor"]`, `["mado"]`, or
+both); Whisper is told to expect them. `install.sh` installs Vosk and its
+41 MB model (checked against its SHA-256).
 
 Said alone, "Igor" gets a short question aloud in its own voice ("Oui,
 monsieur ?", "Que puis-je pour vous ?"…: about seventy, each said once in
 random order before any comes back; `[mode] name_reply` replaces them, `[]`
-for silence), the tablet shows "Je vous écoute…", and the next sentence, within
-`name_wait` seconds (8), is the order.
+for silence). Once it has finished saying it, the tablet shows "Je vous
+écoute…", and the next sentence, within `name_wait` seconds (8), is the order.
 
 **Observation mode** (the default, `[mode] act = false`): nothing is sent;
 each sentence is noted in `~/.local/state/igor-ear/observations.jsonl` on

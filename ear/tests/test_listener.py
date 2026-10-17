@@ -234,11 +234,29 @@ def test_the_name_alone_gets_a_spoken_answer_once():
     heard = iter(["Igor ?", "allume la cuisine", "Igor, éteins la lumière"])
     listener = Listener(lambda a: Transcript(next(heard), 0.3, 0.1, -0.2), Addressing(),
                         lambda a, c: Outcome(speech="Fait."), clock=Clock(),
-                        on_name_alone=lambda: answered.append(True))
+                        on_name_alone=lambda ready: answered.append(ready))
     listener.handle(audio())     # "Igor ?" -> "Oui ?"
     listener.handle(audio())     # the order
     listener.handle(audio())     # name with an order: no "Oui ?"
-    assert answered == [True]
+    assert len(answered) == 1
+
+
+def test_the_wait_for_the_order_starts_once_igor_is_silent():
+    events, ready = [], []
+    clock = Clock()
+    heard = iter(["Igor ?", "allume la cuisine"])
+    listener = Listener(lambda a: Transcript(next(heard), 0.3, 0.1, -0.2), Addressing(),
+                        lambda a, c: events.append("sent") or Outcome(speech="Fait."), clock=clock, name_wait=8,
+                        on_heard=lambda waiting, seconds: events.append(("heard", waiting, seconds)),
+                        on_name_alone=ready.append)
+    listener.handle(audio())
+    assert events == [("heard", False, None)]  # heard; not yet "Je vous écoute"
+    clock.t = 7                                  # a long "Oui, monsieur ?"
+    ready[0]()
+    assert events[-1] == ("heard", True, 8)
+    clock.t = 13                                 # 6 s after it ended: still waited for
+    e = listener.handle(audio())
+    assert e["reason"] == "after_name" and events[-1] == "sent"
 
 
 def test_settings_name_reply(tmp_path):
@@ -263,3 +281,13 @@ def test_deck_deals_all_before_repeating():
     assert all(a != b for a, b in zip(said, said[1:]))
     assert all(r.endswith("?") for r in NAME_REPLIES) and len(NAME_REPLIES) >= 50
     assert not Deck([]) and Deck(["Oui ?"]).draw() == "Oui ?"
+
+
+def test_the_name_alone_is_kept_though_whisper_doubts_it_is_speech():
+    heard = iter([Transcript("Igor ?", 0.3, 0.8, -0.9), Transcript("bonjour", 0.3, 0.8, -0.2),
+                  Transcript("Igor ?", 0.3, 0.95, -0.9)])
+    listener = Listener(lambda a: next(heard), Addressing(), None)
+    assert listener.handle(audio())["reason"] == "name_alone_waiting"
+    e = listener.handle(audio())
+    assert e["reason"] == "noise" and e["no_speech"] == 0.8 and e["text"] == "bonjour"
+    assert listener.handle(audio())["reason"] == "noise"
