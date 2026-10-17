@@ -27,6 +27,7 @@ import numpy as np
 from . import __version__
 from .addressing import Addressing
 from .config import CONFIG, Settings, load
+from .replies import Deck
 
 log = logging.getLogger("igor-ear")
 
@@ -193,15 +194,17 @@ def run(settings: Settings) -> None:
                     log.info("The tablet is not told when Igor is heard (%s); add-on 0.11.1 or later needed", err)
         threading.Thread(target=call, daemon=True).start()
 
+    replies = Deck(settings.name_reply)
+
     def on_name_alone() -> None:
         """"Igor" alone: a short "Oui ?" in its own voice, in the background."""
-        if not settings.name_reply:
+        if not replies:
             return
-        import random
+        reply = replies.draw()
 
         def say() -> None:
             try:
-                ha.announce(settings.ha_url, settings.ha_token, settings.satellite, random.choice(settings.name_reply))
+                ha.announce(settings.ha_url, settings.ha_token, settings.satellite, reply)
             except Exception as err:  # noqa: BLE001 - a courtesy only
                 log.info("Could not answer the name: %s", err)
         threading.Thread(target=say, daemon=True).start()

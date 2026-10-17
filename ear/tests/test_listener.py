@@ -248,3 +248,18 @@ def test_settings_name_reply(tmp_path):
     assert load(f).name_reply == list(NAME_REPLIES) and load(f).name_wait == 8.0
     f.write_text('[mode]\nname_reply = []\n')
     assert load(f).name_reply == []
+
+
+def test_deck_deals_all_before_repeating():
+    import random
+
+    from igor_ear.config import NAME_REPLIES
+    from igor_ear.replies import Deck
+
+    deck = Deck(list(NAME_REPLIES), random.Random(1))
+    said = [deck.draw() for _ in range(len(NAME_REPLIES) * 5)]
+    for i in range(0, len(said), len(NAME_REPLIES)):
+        assert sorted(said[i:i + len(NAME_REPLIES)]) == sorted(NAME_REPLIES)
+    assert all(a != b for a, b in zip(said, said[1:]))
+    assert all(r.endswith("?") for r in NAME_REPLIES) and len(NAME_REPLIES) >= 50
+    assert not Deck([]) and Deck(["Oui ?"]).draw() == "Oui ?"
