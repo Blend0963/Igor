@@ -16,12 +16,17 @@ def test_one_utterance_with_preroll():
     seg = Segmenter()
     probs = [0.0] * 20 + [0.9] * 40 + [0.0] * 30
     (u,) = feed(seg, probs)
-    # pre-roll (10 frames, the last 3 of them speech) + speech + the closing silence
-    assert len(u) == FRAME * (10 + 37 + seg.end_frames)
+    preroll = seg._preroll.maxlen   # 22 frames (700 ms), the last 3 of them speech
+    assert len(u) == FRAME * (preroll + 37 + seg.end_frames)
 
 
 def test_too_short_is_dropped():
     assert feed(Segmenter(), [0.9] * 5 + [0.0] * 40) == []
+
+
+def test_the_name_alone_is_kept():
+    # "Igor" said before a pause: about a third of a second of speech.
+    assert len(feed(Segmenter(), [0.0] * 30 + [0.9] * 10 + [0.0] * 40)) == 1
 
 
 def test_long_speech_is_cut():
@@ -43,7 +48,7 @@ def test_times_on_the_stream_clock():
         u = seg.push(np.zeros(FRAME, dtype=np.float32), p)
         got = u or got
     frame_s = FRAME / 16000
-    assert abs(got.start - (20 - 7) * frame_s) < 1e-9          # pre-roll included
+    assert abs(got.start - (23 - seg._preroll.maxlen) * frame_s) < 1e-9   # pre-roll included
     assert abs(got.end - (60 + seg.end_frames) * frame_s) < 1e-9
     assert abs(got.end - got.start - len(got.audio) / 16000) < 1e-9
 

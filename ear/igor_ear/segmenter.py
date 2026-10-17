@@ -30,8 +30,11 @@ class Segmenter:
         end_threshold: float = 0.35,
         start_frames: int = 3,
         end_silence_ms: int = 700,
-        preroll_ms: int = 320,
-        min_speech_ms: int = 400,
+        # A soft first sound (the "I" of "Igor") is detected late: keep
+        # what came just before the voice was noticed.
+        preroll_ms: int = 700,
+        # "Igor" said alone, before a pause, lasts about a third of a second.
+        min_speech_ms: int = 250,
         max_utterance_s: float = 60.0,
     ) -> None:
         ms = FRAME * 1000 / RATE

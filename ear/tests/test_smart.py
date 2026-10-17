@@ -191,3 +191,33 @@ def test_speakers_sound_hold_mute_and_unknown():
     assert not sp.sounding()                                               # muted output
     sp.muted, sp.volume = False, 0
     assert not sp.sounding()                                               # volume at 0
+
+
+# --- [media] in either mode --------------------------------------------------
+def test_media_settings_in_their_own_section_and_the_old_place(tmp_path):
+    from igor_ear.config import load
+    f = tmp_path / "c.toml"
+    f.write_text('[mode]\naddressing = "name"\n[media]\nwhen_media = "closed"\nsound_from = "both"\n'
+                 'media_players = ["media_player.nvidia_shield"]\nquiet_db = -55\n')
+    s = load(f)
+    assert (s.addressing, s.when_media, s.sound_from, s.quiet_db) == ("name", "closed", "both", -55.0)
+    assert s.media_players == ["media_player.nvidia_shield"]
+    f.write_text('[smart]\nwhen_media = "closed"\nquiet_db = -60\n')          # 0.11.2 settings file
+    s = load(f)
+    assert s.when_media == "closed" and s.quiet_db == -60.0
+
+
+def test_the_listener_says_when_it_waits_for_words():
+    clock, heard = Clock(), iter(["Igor", "Igor, ferme les volets"])
+
+    def do(a, conversation):
+        return Outcome(speech="Tous ?", conversation_id="c", continue_conversation=True)
+
+    listener = Listener(lambda a: Transcript(next(heard), 0.3, 0.1, -0.2), Addressing(), do, clock=clock)
+    assert not listener.waiting()
+    listener.handle(audio())                 # the name alone
+    assert listener.waiting()
+    clock.t = 10
+    assert not listener.waiting()            # gave up on the order
+    listener.handle(audio())                 # Igor asks back
+    assert listener.waiting()

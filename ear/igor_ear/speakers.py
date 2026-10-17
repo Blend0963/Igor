@@ -98,7 +98,7 @@ class Speakers:
                      "--channels=1", "--latency-msec=100", "--client-name=igor-ear-speakers"],
                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 )
-                log.info("Speakers: watching %s (sound above %.0f dB pauses the smart judge)", self.monitor, self.quiet_db)
+                log.info("Speakers: watching %s (sound above %.0f dB counts as playing)", self.monitor, self.quiet_db)
                 while True:
                     raw = proc.stdout.read(CHUNK * 2)
                     if not raw:

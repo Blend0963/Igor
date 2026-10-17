@@ -82,6 +82,9 @@ sentence still works as always, and `addressing = "name"` switches back.
   in silence) and `quiet_db`. `sound_from = "players"` uses the Home
   Assistant media players listed in `media_players` instead, `"both"` both.
   `when_media = "closed"` goes further: nothing is heard, not even the name.
+  These settings are in `[media]` and `when_media = "closed"` works in the
+  "name" mode too: while the television plays, the ear is closed, except
+  for the answer to a question Igor has just asked.
 - **Try it first**: with `[smart] act = false` (the default) Igor only notes
   what it would have done, `WOULD ACT` in the journal and
   `smart_would_act` in the observations. Read a few days of it, then set

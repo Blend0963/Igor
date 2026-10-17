@@ -63,3 +63,15 @@ def test_commands_need_the_name_by_default():
 ])
 def test_name_only(text, expected):
     assert name_only(text) is expected
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Igo, éteins la lumière du salon", "near_name"),
+    ("Éteins la lumière du salon Egor", "near_name"),
+    ("Igar, il est quelle heure ?", "near_name"),
+    ("Hugo, éteins la lumière", "not_addressed"),          # another name, two letters off
+    ("Igo est passé hier soir", "not_addressed"),          # not a request
+    ("Allume la lampe, ego", "not_addressed"),
+])
+def test_a_name_one_letter_off(text, expected):
+    assert name_rules.decide(text).reason == expected
