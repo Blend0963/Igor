@@ -26,6 +26,9 @@ class Settings:
     smart_model: str = "qwen2.5:3b"
     smart_act: bool = False
     media_players: list[str] = field(default_factory=list)
+    sound_from: str = "speakers"
+    sink: str = "@DEFAULT_SINK@"
+    quiet_db: float = -50.0
     when_media: str = "name"
     followup: bool = True
     followup_seconds: float = 8.0
@@ -72,6 +75,11 @@ def load(path: Path = CONFIG) -> Settings:
     s.smart_model = str(smart.get("model", s.smart_model))
     s.smart_act = bool(smart.get("act", s.smart_act))
     s.media_players = [str(m) for m in smart.get("media_players", [])]
+    s.sound_from = str(smart.get("sound_from", s.sound_from)).strip().lower()
+    if s.sound_from not in {"speakers", "players", "both"}:
+        raise ValueError(f'[smart] sound_from must be "speakers", "players" or "both", not "{s.sound_from}"')
+    s.sink = str(smart.get("sink", s.sink))
+    s.quiet_db = float(smart.get("quiet_db", s.quiet_db))
     s.when_media = str(smart.get("when_media", s.when_media)).strip().lower()
     if s.when_media not in {"name", "closed"}:
         raise ValueError(f'[smart] when_media must be "name" or "closed", not "{s.when_media}"')

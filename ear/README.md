@@ -71,11 +71,17 @@ sentence still works as always, and `addressing = "name"` switches back.
   takes 2 to 3 seconds per judged sentence on 4 CPU cores, less on a GPU.
   Measured on 34 everyday sentences: 33 right, no false "yes", one question
   missed. A model this small says "no" when unsure; say "Igor" then.
-- **Television and radio**: list the media players in `[smart]
-  media_players`. While one is playing with sound (not paused, not muted,
-  volume above zero), sentences without the name are not judged at all, so
-  a film cannot give orders. `when_media = "closed"` goes further: nothing
-  is heard, not even the name.
+- **Television and radio**: while sound plays, sentences without the name
+  are not judged at all, so a film cannot give orders. By default
+  (`[smart] sound_from = "speakers"`) igor-ear listens to what comes out of
+  this machine's speakers (the monitor of its output, 8 kHz mono): the
+  television, the radio, a phone over Bluetooth, anything the hub plays. A
+  muted output or one at 0 % counts as silence, and sound counts for 3 s
+  more so a pause in a film does not reopen the judge. Set the threshold
+  with `~/.local/share/igor-ear/run.sh sound` (once with music playing, once
+  in silence) and `quiet_db`. `sound_from = "players"` uses the Home
+  Assistant media players listed in `media_players` instead, `"both"` both.
+  `when_media = "closed"` goes further: nothing is heard, not even the name.
 - **Try it first**: with `[smart] act = false` (the default) Igor only notes
   what it would have done, `WOULD ACT` in the journal and
   `smart_would_act` in the observations. Read a few days of it, then set
