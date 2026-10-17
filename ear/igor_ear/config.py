@@ -8,6 +8,7 @@ from pathlib import Path
 
 CONFIG = Path(os.environ.get("IGOR_EAR_CONFIG", Path.home() / ".config/igor-ear/config.toml"))
 STATE = Path(os.environ.get("IGOR_EAR_STATE", Path.home() / ".local/state/igor-ear"))
+APP = Path.home() / ".local/share/igor-ear"
 
 
 # What Igor says when it hears its name alone, one at random.
@@ -95,6 +96,9 @@ class Settings:
     hotwords: str = "Igor"
     beam_size: int = 0
     extra_targets: list[str] = field(default_factory=list)
+    names: list[str] = field(default_factory=lambda: ["igor"])
+    spotter: str = "vosk"
+    vosk_model: str = str(APP / "vosk-model-small-fr-0.22")
     act: bool = False
     addressing: str = "name"
     smart_url: str = "http://127.0.0.1:11434"
@@ -136,11 +140,17 @@ def load(path: Path = CONFIG) -> Settings:
     s.device = str(stt.get("device", s.device))
     s.language = str(stt.get("language", s.language))
     s.cpu_threads = int(stt.get("cpu_threads", s.cpu_threads))
-    s.hotwords = str(stt.get("hotwords", s.hotwords))
-    # A settings file from before the rename still primes Whisper for "MaDo",
-    # which would now hide the name it listens for.
-    if s.hotwords.strip().lower() == "mado":
-        s.hotwords = "Igor"
+    name = data.get("name", {})
+    s.names = [str(n).strip().lower() for n in name.get("names", s.names) if str(n).strip()] or ["igor"]
+    s.spotter = str(name.get("spotter", s.spotter)).strip().lower()
+    if s.spotter not in {"vosk", "off"}:
+        raise ValueError(f'[name] spotter must be "vosk" or "off", not "{s.spotter}"')
+    s.vosk_model = os.path.expanduser(str(name.get("vosk_model", s.vosk_model)))
+    # Whisper is told to expect the names. A hotwords line that only holds
+    # a name (the old defaults "MaDo" and "Igor") follows [name] names.
+    s.hotwords = str(stt.get("hotwords", ""))
+    if s.hotwords.strip().lower() in {"", "igor", "mado"}:
+        s.hotwords = ", ".join(n.capitalize() for n in s.names)
     s.beam_size = int(stt.get("beam_size", s.beam_size))
     s.extra_targets = [str(t) for t in addressing.get("extra_targets", [])]
     s.act = bool(mode.get("act", s.act))

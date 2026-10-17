@@ -25,13 +25,15 @@ from __future__ import annotations
 
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
 
 import numpy as np
 
-from .addressing import NAME, Addressing, name_only, normalize
+from .addressing import Addressing, normalize
+from .spotter import Spot
 
 RATE = 16000
 GAP = np.zeros(RATE // 5, dtype=np.float32)  # 0.2 s between "Igor" and the order
@@ -86,6 +88,7 @@ class Listener:
         judge: Callable[[list[tuple[float, str]], str], bool | None] | None = None,
         judge_allowed: Callable[[], bool] = lambda: True,
         judge_acts: bool = False,
+        spotter: Callable[[np.ndarray], Spot] | None = None,
     ) -> None:
         self.stt, self.rules, self.act, self.busy = stt, rules, act, busy
         self.followup, self.followup_seconds, self.name_wait = followup, followup_seconds, name_wait
@@ -102,6 +105,10 @@ class Listener:
         # Smart mode: the judge, whether it may judge now (no television
         # sounding), and whether its "yes" acts or is only noted.
         self.judge, self.judge_allowed, self.judge_acts = judge, judge_allowed, judge_acts
+        # A second ear for the name (Vosk, on the CPU), run while Whisper
+        # transcribes on the GPU.
+        self.spotter = spotter
+        self._spotting = ThreadPoolExecutor(1, "spotter") if spotter is not None else None
         self._recent: deque[tuple[float, str]] = deque(maxlen=CONTEXT_SENTENCES)
         # The last sentence not taken, with its end on the stream clock, in
         # case the name comes right after it.
@@ -129,6 +136,32 @@ class Listener:
         self._armed_until = self.clock() + self.name_wait
         if self.on_heard is not None:
             self.on_heard(True, self.name_wait)
+
+    def _with_spotted_name(self, text: str, spot: Spot | None, entry: dict) -> str:
+        """Whisper missed the name Vosk heard: put it where Vosk heard it, so
+        the rules (name alone, name at the end…) read the sentence right."""
+        if spot is None or not spot.found:
+            return text
+        entry["vosk"] = " ".join(spot.names)
+        if self.rules.name.search(normalize(text)):
+            return text
+        entry["vosk_only"] = True
+        name = self.rules.names[0].capitalize()
+        # Alone: Whisper wrote at most a word or two for it ("Ma dot.").
+        if spot.alone and len(normalize(text).split()) <= 2:
+            return f"{name} ?"
+        if spot.last and not spot.first:
+            return f"{text} {name}"
+        return f"{name}, {text}"
+
+    def _spot(self, audio: np.ndarray):
+        if self._spotting is None:
+            return None
+
+        def timed():
+            started = time.monotonic()
+            return self.spotter(audio), time.monotonic() - started
+        return self._spotting.submit(timed)
 
     def waiting(self) -> bool:
         """Igor waits for words: after the name alone, or after its question."""
@@ -174,17 +207,28 @@ class Listener:
             entry.update(accepted=False, reason="satellite_busy")
             return entry
         self._previous = previous
+        spotting = self._spot(audio)
         heard = self._hear(audio)
+        spot = None
+        if spotting is not None:
+            try:
+                spot, seconds = spotting.result()
+                entry["vosk_s"] = round(seconds, 2)
+            except Exception as err:  # noqa: BLE001 - Whisper alone then
+                entry["vosk_error"] = str(err)
+        text = self._with_spotted_name(heard.text, spot, entry)
         now = self.clock()
         entry["stt_s"] = round(heard.seconds, 2)
         # Silence or noise is dropped. A doubtful transcription (low log
         # probability, common with the small models) is dropped too, unless
         # it carries the name: that is all that matters here, Igor gets the
         # audio itself.
-        named = bool(NAME.search(normalize(heard.text)))
-        noise = not heard.text or heard.no_speech > (MAX_NO_SPEECH_NAME if named else MAX_NO_SPEECH) or (
+        named = bool(self.rules.name.search(normalize(text)))
+        noise = not text or heard.no_speech > (MAX_NO_SPEECH_NAME if named else MAX_NO_SPEECH) or (
             heard.logprob < MIN_LOGPROB and not named
         )
+        if spot is not None and spot.found and named:
+            noise = False  # Vosk heard the name too: a voice, whatever Whisper thinks
         entry.update(no_speech=round(heard.no_speech, 2), logprob=round(heard.logprob, 2))
 
         armed = self._armed is not None and now <= self._armed_until
@@ -196,14 +240,14 @@ class Listener:
             accepted, reason = True, "after_name"
             send = np.concatenate([self._armed, GAP, audio])
         else:
-            decision = self.rules.decide(heard.text, since_igor_spoke=0.0 if followup_open else None)
+            decision = self.rules.decide(text, since_igor_spoke=0.0 if followup_open else None)
             accepted, reason = decision.accepted, decision.reason
             if reason == "near_name":
                 reason = "name"
                 entry["near_name"] = True
             before = self._before(start) if accepted and reason == "name" else None
-            alone = name_only(heard.text)
-            rest = NAME.sub(" ", normalize(heard.text))
+            alone = self.rules.name_only(text)
+            rest = self.rules.name.sub(" ", normalize(text))
             if (before is not None and self.rules.looks_like_request(before[1])
                     and not self.rules.looks_like_request(rest)):
                 # "Éteins la lumière… Igor", "Éteins la lumière… du salon,
@@ -212,7 +256,7 @@ class Listener:
                 entry["previous"] = before[1]
             elif accepted and reason == "name" and alone:
                 self._armed, self._armed_until = audio, now + self.name_wait
-                entry.update(accepted=False, reason="name_alone_waiting", text=heard.text)
+                entry.update(accepted=False, reason="name_alone_waiting", text=text)
                 if self.act is not None and self.on_name_alone is not None:
                     # Igor answers first; the wait starts once it is silent.
                     if self.on_heard is not None:
@@ -220,18 +264,18 @@ class Listener:
                     self.on_name_alone(self.rearm)
                 elif self.act is not None and self.on_heard is not None:
                     self.on_heard(True, self.name_wait)
-                self._remember(now, heard.text)
+                self._remember(now, text)
                 return entry
             if not accepted and reason == "not_addressed" and self.judge is not None:
-                accepted, reason = self._ask_judge(now, heard.text, entry)
+                accepted, reason = self._ask_judge(now, text, entry)
         if not noise:
             self._armed = None
-            self._remember(now, heard.text)
-        self._previous = None if accepted or noise or end is None else (audio, heard.text, end)
+            self._remember(now, text)
+        self._previous = None if accepted or noise or end is None else (audio, text, end)
 
         entry.update(accepted=accepted, reason=reason)
         if accepted or self.keep_rejected_text:
-            entry["text"] = heard.text
+            entry["text"] = text
         if not accepted or self.act is None:
             return entry
 

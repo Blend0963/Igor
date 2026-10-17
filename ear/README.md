@@ -28,6 +28,14 @@ While Igor speaks through the satellite (an answer, its "Oui ?") the ear is
 closed: until Home Assistant reports the end of the announcement and the
 speakers have fallen quiet (2 s at most more, if a television plays).
 
+The name is heard twice: by Whisper, and by Vosk (`[name] spotter`), a
+small French recogniser on the CPU that runs at the same time. The name
+heard by either one counts; Vosk is steadier on a short name said alone,
+at the start or the end, where Whisper "base" writes "Hector" or "ignore".
+`[name] names` sets the names it answers to (`["igor"]`, `["mado"]`, or
+both); Whisper is told to expect them. `install.sh` installs Vosk and its
+41 MB model (checked against its SHA-256).
+
 Said alone, "Igor" gets a short question aloud in its own voice ("Oui,
 monsieur ?", "Que puis-je pour vous ?"…: about seventy, each said once in
 random order before any comes back; `[mode] name_reply` replaces them, `[]`

@@ -61,6 +61,19 @@ def sent_summary(entry: dict) -> str:
         else f" -> Home Assistant transcribed nothing ({outcome})"
 
 
+def make_spotter(settings: Settings):
+    """Vosk for the names, or None (off, or not installed: Whisper alone)."""
+    if settings.spotter != "vosk":
+        return None
+    try:
+        from .spotter import Spotter
+
+        return Spotter(settings.vosk_model, settings.names)
+    except Exception as err:  # noqa: BLE001 - Whisper alone still works
+        log.warning("Name spotter unavailable (%s); run install.sh again. Whisper alone hears the name", err)
+        return None
+
+
 def run(settings: Settings) -> None:
     from . import ha
     from .audio import frames
@@ -208,7 +221,9 @@ def run(settings: Settings) -> None:
                     log.info("The tablet is not told when Igor is heard (%s); add-on 0.11.1 or later needed", err)
         threading.Thread(target=call, daemon=True).start()
 
-    replies = Deck(settings.name_reply)
+    # The replies speak of Igor; under another name, of that one.
+    called = settings.names[0].capitalize()
+    replies = Deck([r.replace("Igor", called) for r in settings.name_reply])
 
     def on_name_alone(ready) -> None:
         """"Igor" alone: a short "Oui ?" in its own voice, in the background;
@@ -231,7 +246,7 @@ def run(settings: Settings) -> None:
                       settings.beam_size)
     listener = Listener(
         stt,
-        Addressing(extra_targets=settings.extra_targets),
+        Addressing(extra_targets=settings.extra_targets, names=settings.names),
         act if settings.act else None,
         busy=busy,
         followup=settings.followup,
@@ -243,6 +258,7 @@ def run(settings: Settings) -> None:
         judge=judge,
         judge_allowed=lambda: not media_sounding(),
         judge_acts=settings.smart_act,
+        spotter=make_spotter(settings),
     )
     utterances: queue.Queue[Utterance] = queue.Queue(maxsize=8)
     pending: deque[Utterance] = deque()
@@ -354,6 +370,13 @@ def bench(settings: Settings, seconds: float) -> None:
     heard = stt(audio)
     print(f"Transcribed in {heard.seconds:.2f}s on {stt.device}: {heard.text!r}")
     print(f"(no_speech {heard.no_speech:.2f}, logprob {heard.logprob:.2f})")
+    spotter = make_spotter(settings)
+    if spotter is not None:
+        t0 = time.monotonic()
+        spot = spotter(audio)
+        found = " ".join(spot.names) or "no name"
+        alone = " (alone)" if spot.alone else ""
+        print(f"Vosk in {time.monotonic() - t0:.2f}s: {found}{alone}, {spot.others} other word(s)")
 
 
 def sound(settings: Settings, seconds: float) -> None:
@@ -426,7 +449,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "report":
         report(settings)
     elif args.command == "check":
-        d = Addressing(extra_targets=settings.extra_targets).decide(args.text)
+        d = Addressing(extra_targets=settings.extra_targets, names=settings.names).decide(args.text)
         print(f"{'WOULD SEND' if d.accepted else 'ignored'} ({d.reason})")
     return 0
 

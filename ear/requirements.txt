@@ -3,3 +3,5 @@ ctranslate2==4.8.3
 onnxruntime==1.31.0
 numpy>=2,<3
 websockets>=13,<17
+# The name spotter (spotter.py), CPU only.
+vosk==0.3.45

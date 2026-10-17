@@ -27,6 +27,16 @@ join_gap = 0.6
 # you may hesitate longer there, the whole sentence is still taken.
 order_gap = 1.2
 
+[name]
+# The names Igor answers to, in lower case, without accents: ["igor"],
+# ["mado"], or both ["igor", "mado"]. Whisper is told to expect them.
+names = ["igor"]
+# A second ear for the names only: Vosk, on the CPU, told to expect nothing
+# else (steadier on a short name said alone, at the start or the end). The
+# name heard by Vosk or by Whisper counts. "off": Whisper alone.
+spotter = "vosk"
+# vosk_model = "~/.local/share/igor-ear/vosk-model-small-fr-0.22"
+
 [audio]
 # The microphone, from `pactl list short sources`.
 source = "alsa_input.usb-Generalplus_Usb_Audio_Device-00.mono-fallback"
@@ -38,7 +48,7 @@ model = "base"       # on a CPU: base (tiny hears too little; small is slow)
 device = "auto"      # auto (GPU, else CPU), cuda or cpu
 language = "fr"
 cpu_threads = 2      # used only on the CPU fallback
-hotwords = "Igor"    # words Whisper should expect: it then writes the name right
+# hotwords = "Igor"  # words Whisper should expect; by default the [name] names
 beam_size = 0        # 0: 5 on a GPU (hears the name better), 1 on a CPU
 
 [home_assistant]
