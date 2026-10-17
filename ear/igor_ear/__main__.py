@@ -55,6 +55,14 @@ def note(settings: Settings, entry: dict) -> None:
 JOIN_GAP = 1.5   # a pause shorter than this does not end a sentence for Igor
 
 
+def sent_summary(entry: dict) -> str:
+    """What Home Assistant made of a sent sentence, for the journal."""
+    heard = entry.get("voxtral") or ""
+    outcome = entry.get("error") or entry.get("answer") or "no answer"
+    return f" -> heard {heard!r}, {'error' if entry.get('error') else 'answered'}: {outcome}" if heard or entry.get("error") \
+        else f" -> Home Assistant transcribed nothing ({outcome})"
+
+
 def run(settings: Settings) -> None:
     from . import ha
     from .audio import frames
@@ -168,8 +176,7 @@ def run(settings: Settings) -> None:
             note(settings, entry)
             if entry["reason"] not in {"satellite_busy", "noise"} or entry.get("accepted"):
                 log.info("%s %-18s %s%s", "SENT" if entry.get("sent") else ("WOULD SEND" if entry["accepted"] else "ignored   "),
-                         entry["reason"], entry.get("text", ""),
-                         f" -> {entry.get('answer') or entry.get('error', '')}" if entry.get("sent") else "")
+                         entry["reason"], entry.get("text", ""), sent_summary(entry) if entry.get("sent") else "")
             if time.monotonic() - last_prune > 86400:
                 prune(settings)
                 last_prune = time.monotonic()

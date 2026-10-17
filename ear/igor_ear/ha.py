@@ -15,6 +15,7 @@ import json
 import logging
 import threading
 import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -139,10 +140,21 @@ def announce(url: str, token: str, satellite: str, message: str, timeout: float 
         url.rstrip("/") + "/api/services/assist_satellite/announce",
         data=body,
         method="POST",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        # Python's default User-Agent is refused (403) by proxies that screen
+        # bots, such as Cloudflare in front of a remote Home Assistant URL.
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
+                 "User-Agent": "igor-ear"},
     )
-    with urllib.request.urlopen(request, timeout=timeout):
-        pass
+    try:
+        with urllib.request.urlopen(request, timeout=timeout):
+            pass
+    except urllib.error.HTTPError as err:
+        if err.code in (401, 403):
+            raise RuntimeError(
+                f"HTTP {err.code}: Home Assistant or a proxy in front of it refused the call; "
+                "use the local address (http://<ip>:8123) and an administrator's token"
+            ) from err
+        raise
 
 
 class Watcher:

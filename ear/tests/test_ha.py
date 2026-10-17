@@ -61,7 +61,7 @@ def handler(ws):
 class Rest(BaseHTTPRequestHandler):
     def do_POST(self):
         body = self.rfile.read(int(self.headers["Content-Length"]))
-        received["announce"] = (self.path, self.headers["Authorization"], json.loads(body))
+        received["announce"] = (self.path, self.headers["Authorization"], json.loads(body), self.headers["User-Agent"])
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"[]")
@@ -118,8 +118,9 @@ def test_watcher(server):
 
 def test_announce(server):
     ha.announce(server[1], TOKEN, "assist_satellite.vm", "C'est fait.")
-    path, auth, body = received["announce"]
+    path, auth, body, agent = received["announce"]
     assert path == "/api/services/assist_satellite/announce" and auth == "Bearer secret"
+    assert agent == "igor-ear"  # Python's default one is refused by bot screening
     assert body == {"entity_id": "assist_satellite.vm", "message": "C'est fait.", "preannounce": False}
 
 
