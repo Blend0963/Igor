@@ -127,3 +127,10 @@ def test_announce(server):
 def test_ws_url():
     assert ha.ws_url("https://ha.local:8123/") == "wss://ha.local:8123/api/websocket"
     assert ha.ws_url("http://10.0.0.2:8123") == "ws://10.0.0.2:8123/api/websocket"
+
+
+def test_heard(server):
+    ha.heard(server[1], TOKEN, "assist_satellite.vm", waiting=True)
+    path, auth, body, agent = received["announce"]
+    assert path == "/api/services/nives/heard" and auth == "Bearer secret" and agent == "igor-ear"
+    assert body == {"satellite": "assist_satellite.vm", "waiting": True}

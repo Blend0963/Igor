@@ -9,6 +9,9 @@ act = false
 followup = true
 # After "Igor" said alone, how long to wait for the order (seconds).
 name_wait = 6
+# A pause shorter than this does not end a sentence (seconds). Shorter answers
+# sooner; longer lets you hesitate mid-sentence.
+join_gap = 0.6
 
 [audio]
 # The microphone, from `pactl list short sources`.

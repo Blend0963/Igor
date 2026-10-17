@@ -65,11 +65,15 @@ class Listener:
         name_wait: float = 6.0,
         keep_rejected_text: bool = True,
         clock: Callable[[], float] = time.monotonic,
+        on_heard: Callable[[bool], None] | None = None,
     ) -> None:
         self.stt, self.rules, self.act, self.busy = stt, rules, act, busy
         self.followup, self.followup_seconds, self.name_wait = followup, followup_seconds, name_wait
         self.keep_rejected_text = keep_rejected_text
         self.clock = clock
+        # Called the moment Igor is addressed, before the words are sent (the
+        # tablet shows it at once); True when the name came alone.
+        self.on_heard = on_heard
         self._armed: np.ndarray | None = None
         self._armed_until = float("-inf")
         self._followup_until = float("-inf")
@@ -121,6 +125,8 @@ class Listener:
             if accepted and reason == "name" and name_only(heard.text):
                 self._armed, self._armed_until = audio, now + self.name_wait
                 entry.update(accepted=False, reason="name_alone_waiting", text=heard.text)
+                if self.act is not None and self.on_heard is not None:
+                    self.on_heard(True)
                 return entry
         if not noise:
             self._armed = None
@@ -130,6 +136,9 @@ class Listener:
             entry["text"] = heard.text
         if not accepted or self.act is None:
             return entry
+
+        if self.on_heard is not None:
+            self.on_heard(False)
 
         # The speaker may go on after a pause: join the rest first.
         joined = 0

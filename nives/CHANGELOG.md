@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1 — The tablet shows at once that Igor heard you
+
+- With igor-ear (no wake word), the wall tablet used to stay blank until the words had been transcribed and reached Igor, a few seconds after you stopped talking: you could not tell whether you had been heard. igor-ear now tells the integration the moment it hears "Igor" (new `nives.heard` service), and the tablet shows the bow tie with "Je vous ai entendu…" (or "Je vous écoute…" after the name alone). The **Igor Assist** sensor has a new state, `heard`, which goes back to idle after 30 seconds if nothing follows.
+- igor-ear answers about a second sooner: a pause of 0.6 s now ends a sentence instead of 1.5 s (`[mode] join_gap`, raise it if you are cut off mid-sentence).
+- Home Assistant needs one restart after this update to load the new integration files. On the hub: `git -C ~/MaDo pull && bash ~/MaDo/ear/install.sh && systemctl --user restart igor-ear`.
+
 ## 0.11.0 — MaDo becomes Igor
 
 - **MaDo is now called Igor**, with the tagline *In Igor we trust*. The name changes everywhere it shows: the add-on and its panel, the chat app, the integration and its entities' device, the default persona ("You are Igor"; a Custom Prompt you wrote yourself is left as it is), the notifications, the wall tablet, the logo, and the listener in `ear/`, now **igor-ear**, which answers to "Igor". The bow tie and the colours stay.

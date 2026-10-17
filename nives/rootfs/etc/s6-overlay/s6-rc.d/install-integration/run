@@ -16,7 +16,7 @@ fi
 # included) used to stay forever.
 content_hash() {
     [ -d "$1" ] || { echo none; return; }
-    (cd "$1" && { find . -maxdepth 1 -type f \( -name '*.py' -o -name '*.json' \) -print0 \
+    (cd "$1" && { find . -maxdepth 1 -type f \( -name '*.py' -o -name '*.json' -o -name '*.yaml' \) -print0 \
         | sort -z | xargs -0 -r sha256sum; \
         [ -d brand ] && find brand -type f -print0 | sort -z | xargs -0 -r sha256sum; \
         [ -d translations ] && find translations -type f -print0 | sort -z | xargs -0 -r sha256sum; \
@@ -44,6 +44,8 @@ if [ "$NEEDS_UPDATE" = "true" ]; then
     mkdir -p "$TARGET"
     cp -f "$SOURCE"/*.py "$TARGET/"
     cp -f "$SOURCE"/*.json "$TARGET/"
+    # Service descriptions (services.yaml).
+    cp -f "$SOURCE"/*.yaml "$TARGET/" 2>/dev/null || true
     # Brand images: HA 2026.3+ serves icon/logo from the integration's brand/
     # folder (local images take priority over the brands CDN).
     if [ -d "$SOURCE/brand" ]; then

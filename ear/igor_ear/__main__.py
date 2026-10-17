@@ -52,9 +52,6 @@ def note(settings: Settings, entry: dict) -> None:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-JOIN_GAP = 1.5   # a pause shorter than this does not end a sentence for Igor
-
-
 def sent_summary(entry: dict) -> str:
     """What Home Assistant made of a sent sentence, for the journal."""
     heard = entry.get("voxtral") or ""
@@ -134,6 +131,20 @@ def run(settings: Settings) -> None:
                 r.error = r.error or f"announce: {err}"
         return Outcome(r.heard, r.speech, r.conversation_id, r.continue_conversation, r.error)
 
+    heard_failed = [False]
+
+    def on_heard(waiting: bool) -> None:
+        """Show on the wall tablet at once that Igor was heard. In the
+        background: the words must not wait for it."""
+        def call() -> None:
+            try:
+                ha.heard(settings.ha_url, settings.ha_token, settings.satellite, waiting)
+            except Exception as err:  # noqa: BLE001 - a display only
+                if not heard_failed[0]:
+                    heard_failed[0] = True
+                    log.info("The tablet is not told when Igor is heard (%s); add-on 0.11.1 or later needed", err)
+        threading.Thread(target=call, daemon=True).start()
+
     vad, segmenter = Vad(), Segmenter()
     stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords,
                       settings.beam_size)
@@ -145,6 +156,7 @@ def run(settings: Settings) -> None:
         followup=settings.followup,
         name_wait=settings.name_wait,
         keep_rejected_text=settings.rejected_text,
+        on_heard=on_heard if settings.act and settings.satellite else None,
     )
     utterances: queue.Queue[Utterance] = queue.Queue(maxsize=8)
     pending: deque[Utterance] = deque()
@@ -156,17 +168,17 @@ def run(settings: Settings) -> None:
             last_end = [u.end]
 
             def more() -> np.ndarray | None:
-                """The next part, if the speaker went on within JOIN_GAP."""
+                """The next part, if the speaker went on within join_gap."""
                 while True:
                     try:
                         nxt = pending.popleft() if pending else utterances.get(timeout=0.1)
                     except queue.Empty:
-                        if segmenter.in_speech and segmenter.speech_start - last_end[0] <= JOIN_GAP:
+                        if segmenter.in_speech and segmenter.speech_start - last_end[0] <= settings.join_gap:
                             continue  # still talking: wait for that part to end
-                        if segmenter.now - last_end[0] >= JOIN_GAP:
+                        if segmenter.now - last_end[0] >= settings.join_gap:
                             return None
                         continue
-                    if nxt.start - last_end[0] <= JOIN_GAP:
+                    if nxt.start - last_end[0] <= settings.join_gap:
                         last_end[0] = nxt.end
                         return nxt.audio
                     pending.appendleft(nxt)  # a new sentence, handled next

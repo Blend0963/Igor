@@ -134,3 +134,5 @@ DEFAULT_VOICE_DISPLAY = True
 FRONTEND_URL_BASE = "/nives_static"
 FRONTEND_SCRIPT = "igor-tablet.js"
 VOICE_SENSOR_MARKER = "igor_voice"
+# Service a listener calls the moment it hears the name (sensor.py, heard).
+SERVICE_HEARD = "heard"

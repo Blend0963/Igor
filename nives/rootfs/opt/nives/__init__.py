@@ -12,11 +12,12 @@ from typing import Any
 from urllib.parse import quote
 
 import aiohttp
+import voluptuous as vol
 
 from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
@@ -38,6 +39,7 @@ from .const import (
     FRONTEND_URL_BASE,
     RESTART_ISSUE_ID,
     RESTART_NOTIFY_ID,
+    SERVICE_HEARD,
     TOKEN_ACK_RELPATH,
     TOKEN_FILE_RELPATH,
 )
@@ -405,6 +407,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     )
     if voice_display:
         entry.runtime_data.frontend_url = await _async_setup_frontend(hass)
+        _async_register_heard(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await _async_setup_update_watch(hass, entry)
@@ -414,6 +417,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
             hass, _async_merge_memory(hass, entry), "nives_memory_merge"
         )
     return True
+
+
+HEARD_SCHEMA = vol.Schema(
+    {
+        vol.Optional("satellite"): vol.All(str, vol.Length(max=255)),
+        vol.Optional("waiting", default=False): bool,
+    }
+)
+
+
+@callback
+def _async_register_heard(hass: HomeAssistant) -> None:
+    """The service a listener calls the moment it hears Igor's name (igor-ear
+    in ear/): the wall tablet shows at once that the request was heard, a few
+    seconds before the words reach Igor."""
+    if hass.services.has_service(DOMAIN, SERVICE_HEARD):
+        return
+
+    @callback
+    def _heard(call: ServiceCall) -> None:
+        satellite = call.data.get("satellite") or None
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            sensor = getattr(getattr(entry, "runtime_data", None), "voice_sensor", None)
+            if sensor is not None and sensor.hass is not None:
+                sensor.heard(satellite, call.data["waiting"])
+
+    hass.services.async_register(DOMAIN, SERVICE_HEARD, _heard, schema=HEARD_SCHEMA)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: IgorConfigEntry) -> None:
