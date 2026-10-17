@@ -24,6 +24,11 @@ sentence names Igor. While the
 satellite is busy (after its own wake word, or speaking) the service stays
 quiet, so the wake word keeps working and Igor never answers its own voice.
 
+Said alone, "Igor" gets a short answer aloud in its own voice ("Oui ?",
+"Je vous écoute.", one at random from `[mode] name_reply`; `[]` for
+silence), the tablet shows "Je vous écoute…", and the next sentence, within
+`name_wait` seconds (8), is the order.
+
 **Observation mode** (the default, `[mode] act = false`): nothing is sent;
 each sentence is noted in `~/.local/state/igor-ear/observations.jsonl` on
 this machine with what would have happened, to judge the name detection on

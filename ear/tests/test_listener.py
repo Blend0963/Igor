@@ -227,3 +227,24 @@ def test_a_name_one_letter_off_is_sent_and_noted():
     listener, _, sent = make(["Egor, éteins la lumière du salon"])
     e = listener.handle(audio())
     assert e["sent"] and e["reason"] == "name" and e["near_name"] is True
+
+
+def test_the_name_alone_gets_a_spoken_answer_once():
+    answered = []
+    heard = iter(["Igor ?", "allume la cuisine", "Igor, éteins la lumière"])
+    listener = Listener(lambda a: Transcript(next(heard), 0.3, 0.1, -0.2), Addressing(),
+                        lambda a, c: Outcome(speech="Fait."), clock=Clock(),
+                        on_name_alone=lambda: answered.append(True))
+    listener.handle(audio())     # "Igor ?" -> "Oui ?"
+    listener.handle(audio())     # the order
+    listener.handle(audio())     # name with an order: no "Oui ?"
+    assert answered == [True]
+
+
+def test_settings_name_reply(tmp_path):
+    from igor_ear.config import NAME_REPLIES, load
+    f = tmp_path / "c.toml"
+    f.write_text("")
+    assert load(f).name_reply == list(NAME_REPLIES) and load(f).name_wait == 8.0
+    f.write_text('[mode]\nname_reply = []\n')
+    assert load(f).name_reply == []

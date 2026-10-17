@@ -78,6 +78,7 @@ class Listener:
         keep_rejected_text: bool = True,
         clock: Callable[[], float] = time.monotonic,
         on_heard: Callable[[bool, float | None], None] | None = None,
+        on_name_alone: Callable[[], None] | None = None,
         judge: Callable[[list[tuple[float, str]], str], bool | None] | None = None,
         judge_allowed: Callable[[], bool] = lambda: True,
         judge_acts: bool = False,
@@ -91,6 +92,8 @@ class Listener:
         # the request, after the name alone or a question of its own:
         # (True, how long it listens).
         self.on_heard = on_heard
+        # "Igor" said alone: Igor answers aloud ("Oui ?") while it waits.
+        self.on_name_alone = on_name_alone
         # Smart mode: the judge, whether it may judge now (no television
         # sounding), and whether its "yes" acts or is only noted.
         self.judge, self.judge_allowed, self.judge_acts = judge, judge_allowed, judge_acts
@@ -197,6 +200,8 @@ class Listener:
                 entry.update(accepted=False, reason="name_alone_waiting", text=heard.text)
                 if self.act is not None and self.on_heard is not None:
                     self.on_heard(True, self.name_wait)
+                if self.act is not None and self.on_name_alone is not None:
+                    self.on_name_alone()
                 self._remember(now, heard.text)
                 return entry
             if not accepted and reason == "not_addressed" and self.judge is not None:

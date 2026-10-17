@@ -193,6 +193,19 @@ def run(settings: Settings) -> None:
                     log.info("The tablet is not told when Igor is heard (%s); add-on 0.11.1 or later needed", err)
         threading.Thread(target=call, daemon=True).start()
 
+    def on_name_alone() -> None:
+        """"Igor" alone: a short "Oui ?" in its own voice, in the background."""
+        if not settings.name_reply:
+            return
+        import random
+
+        def say() -> None:
+            try:
+                ha.announce(settings.ha_url, settings.ha_token, settings.satellite, random.choice(settings.name_reply))
+            except Exception as err:  # noqa: BLE001 - a courtesy only
+                log.info("Could not answer the name: %s", err)
+        threading.Thread(target=say, daemon=True).start()
+
     vad, segmenter = Vad(), Segmenter()
     stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords,
                       settings.beam_size)
@@ -206,6 +219,7 @@ def run(settings: Settings) -> None:
         followup_seconds=settings.followup_seconds,
         keep_rejected_text=settings.rejected_text,
         on_heard=on_heard if settings.act and settings.satellite else None,
+        on_name_alone=on_name_alone if settings.act and settings.satellite else None,
         judge=judge,
         judge_allowed=lambda: not media_sounding(),
         judge_acts=settings.smart_act,

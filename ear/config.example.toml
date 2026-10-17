@@ -15,7 +15,9 @@ followup = true
 # How long Igor listens for that answer (seconds); the tablet shows it.
 followup_seconds = 8
 # After "Igor" said alone, how long to wait for the order (seconds).
-name_wait = 6
+name_wait = 8
+# What Igor answers aloud to its name said alone, one at random; [] for silence.
+name_reply = ["Oui ?", "Je vous écoute.", "Oui, monsieur ?", "À votre écoute.", "Je suis là."]
 # A pause shorter than this does not end a sentence (seconds). Shorter answers
 # sooner; longer lets you hesitate mid-sentence.
 join_gap = 0.6
