@@ -513,7 +513,7 @@ describe("OpenAIChatEngine", () => {
     it("reasons at the thread setting while Assist stays at none for voice", async () => {
       config.threadReasoning = "high";
       mockCreate.mockResolvedValue(reply());
-      await engine.chat({ message: "x", userId: "user-1", conversationId: thread });
+      await engine.chat({ message: "Analyse pourquoi x", userId: "user-1", conversationId: thread });
       expect(mockCreate.mock.calls[0][0].reasoning_effort).toBe("high");
 
       mockCreate.mockResolvedValue(reply());
