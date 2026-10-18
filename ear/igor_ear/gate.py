@@ -19,7 +19,9 @@ log = logging.getLogger("igor-ear")
 BUSY = {"listening", "processing", "responding"}
 TAIL = 1.5
 # Longest a real exchange keeps each state; beyond, the state is stale.
-STALE = {"listening": 30.0, "processing": 90.0, "responding": 180.0}
+# "responding" covers an answer being read out; a satellite that never
+# reports the end of an announcement stays in it, so a minute is the limit.
+STALE = {"listening": 30.0, "processing": 90.0, "responding": 60.0}
 
 
 class SatelliteGate:
@@ -36,6 +38,10 @@ class SatelliteGate:
             if self._state in BUSY and not self._stale():
                 self._last_busy = self.clock()
             self._state, self._since, self._warned = state, self.clock(), False
+
+    def describe(self) -> str:
+        """The state and for how long, for the journal."""
+        return f"{self._state or 'unknown'} for {self.clock() - self._since:.0f} s"
 
     def _stale(self) -> bool:
         return self._state in STALE and self.clock() - self._since > STALE[self._state]

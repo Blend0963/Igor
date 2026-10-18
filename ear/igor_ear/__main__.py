@@ -105,6 +105,7 @@ def run(settings: Settings) -> None:
 
     def changed(entity: str, state: str) -> None:
         if entity == settings.satellite:
+            log.info("Satellite: %s", state)
             gate.update(state)
         elif entity == settings.presence_entity:
             log.info("Presence: %s", state)
@@ -305,6 +306,10 @@ def run(settings: Settings) -> None:
             note(settings, entry)
             # Noise is shown too when Whisper made words of it: a name taken
             # for noise must be seen. Its doubt (no_speech) goes with it.
+            if entry["reason"] == "satellite_busy":
+                # Not transcribed, so no words to show; but a sentence lost
+                # to a satellite stuck "responding" must be seen.
+                log.info("ignored    satellite_busy     (a %.1f s sentence; satellite %s)", entry["audio_s"], gate.describe())
             shown = entry["reason"] != "satellite_busy" and (entry["reason"] != "noise" or entry.get("text"))
             if shown or entry.get("accepted"):
                 label = "SENT" if entry.get("sent") else ("WOULD SEND" if entry["accepted"] else
