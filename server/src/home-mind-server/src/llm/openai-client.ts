@@ -747,7 +747,8 @@ export class OpenAIChatEngine implements IChatEngine {
     const calls: { id: string; name: string; arguments: string; extraContent?: unknown }[] = [];
     const callAtIndex = new Map<number, number>();
 
-    for await (const chunk of stream) {
+    try {
+      for await (const chunk of stream) {
       // The usage chunk arrives last and carries no choices, so read it before
       // the guard below skips it.
       if (chunk.usage) usage = readUsage(chunk.usage);
@@ -802,6 +803,19 @@ export class OpenAIChatEngine implements IChatEngine {
       if (choice.finish_reason) {
         finishReason = choice.finish_reason;
       }
+      }
+    } catch (error) {
+      // If the user presses Stop mid-sentence, the guard's buffer has not been
+      // emitted yet. Flush that partial text so the existing interrupted-reply
+      // path can preserve it; on a normal stream we still wait for sentence ends.
+      if (opts.signal?.aborted) {
+        const partial = spoken.flush();
+        if (partial) {
+          text += partial;
+          onChunk?.(partial);
+        }
+      }
+      throw error;
     }
 
     const rest = spoken.flush();
