@@ -52,6 +52,9 @@ class Segmenter:
         self._speech = 0
         self._seen = 0
         self._start = 0.0
+        # Sounds dropped as too short to be speech, for a full journal.
+        self.too_short = 0
+        self.too_short_ms = 0
 
     @property
     def in_speech(self) -> bool:
@@ -101,6 +104,8 @@ class Segmenter:
             frames, speech, start = self._frames, self._speech, self._start
             self._clear()
             if speech < self.min_speech_frames:
+                self.too_short += 1
+                self.too_short_ms = round(speech * FRAME * 1000 / RATE)
                 return None
             return Utterance(np.concatenate(frames), start, self.now)
         return None
