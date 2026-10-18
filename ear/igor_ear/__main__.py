@@ -74,7 +74,15 @@ def make_spotter(settings: Settings):
         return None
 
 
+# A sentence that takes longer than this to handle (transcription, Vosk,
+# Igor's answer included) is stuck: every thread's stack goes to the journal.
+STUCK_AFTER = 120
+
+
 def run(settings: Settings) -> None:
+    import faulthandler
+    import signal
+
     from . import ha
     from .audio import frames
     from .listener import Listener, Outcome
@@ -84,6 +92,9 @@ def run(settings: Settings) -> None:
     from .stt import Transcriber
     from .vad import Vad
 
+    # `systemctl --user kill -s USR1 igor-ear` writes where every thread is
+    # to the journal, to see what igor-ear is doing when it seems deaf.
+    faulthandler.register(signal.SIGUSR1, all_threads=True)
     mode = "act" if settings.act else "observation"
     log.info("igor-ear %s, %s mode, source %s", __version__, mode, settings.source)
     if settings.addressing == "smart":
@@ -287,10 +298,16 @@ def run(settings: Settings) -> None:
 
             def more() -> np.ndarray | None:
                 """The next part, if the speaker went on within the gap."""
+                # The stream clock stands still while nothing is heard (Igor
+                # speaking, a television with the ear closed, nobody home):
+                # never wait on it for longer than this.
+                give_up = time.monotonic() + gap + 15
                 while True:
                     try:
                         nxt = pending.popleft() if pending else utterances.get(timeout=0.1)
                     except queue.Empty:
+                        if time.monotonic() > give_up:
+                            return None
                         if segmenter.in_speech and segmenter.speech_start - last_end[0] <= gap:
                             continue  # still talking: wait for that part to end
                         if segmenter.now - last_end[0] >= gap:
@@ -302,8 +319,17 @@ def run(settings: Settings) -> None:
                     pending.appendleft(nxt)  # a new sentence, handled next
                     return None
 
-            entry = listener.handle(u.audio, more, u.start, u.end)
+            faulthandler.dump_traceback_later(STUCK_AFTER)
+            try:
+                entry = listener.handle(u.audio, more, u.start, u.end)
+            except Exception:  # noqa: BLE001 - one bad sentence must not stop the ear
+                log.exception("A sentence could not be handled; listening on")
+                continue
+            finally:
+                faulthandler.cancel_dump_traceback_later()
             note(settings, entry)
+            if entry.get("vosk_error"):
+                log.warning("Vosk failed on this sentence: %s", entry["vosk_error"])
             # Noise is shown too when Whisper made words of it: a name taken
             # for noise must be seen. Its doubt (no_speech) goes with it.
             if entry["reason"] == "satellite_busy":
@@ -315,8 +341,10 @@ def run(settings: Settings) -> None:
                 label = "SENT" if entry.get("sent") else ("WOULD SEND" if entry["accepted"] else
                                                           ("WOULD ACT " if entry["reason"] == "smart_would_act" else "ignored   "))
                 doubt = f"  (no_speech {entry['no_speech']}, logprob {entry['logprob']})" if entry["reason"] == "noise" else ""
-                log.info("%s %-18s %s%s%s", label,
-                         entry["reason"], entry.get("text", ""), sent_summary(entry) if entry.get("sent") else "", doubt)
+                vosk = " (name heard by Vosk only)" if entry.get("vosk_only") else ""
+                log.info("%s %-18s %s%s%s%s", label,
+                         entry["reason"], entry.get("text", ""), vosk,
+                         sent_summary(entry) if entry.get("sent") else "", doubt)
             if time.monotonic() - last_prune > 86400:
                 prune(settings)
                 last_prune = time.monotonic()
@@ -331,6 +359,7 @@ def run(settings: Settings) -> None:
             if not deaf:
                 segmenter.reset()
                 vad.reset()
+                log.info("Ear closed: Igor speaks")
             deaf = True
             continue
         deaf = False

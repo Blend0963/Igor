@@ -61,13 +61,23 @@ class Spotter:
         SetLogLevel(-1)
         self._model = Model(model_path)
         self._names = {n.lower() for n in names}
+        self._kaldi = KaldiRecognizer
         # Made once: a new recogniser costs far more than a sentence. After
         # FinalResult it starts afresh for the next one.
-        self._recognizer = KaldiRecognizer(self._model, RATE)
-        self._recognizer.SetWords(True)
+        self._recognizer = self._new_recognizer()
         log.info("Name spotter: Vosk (%s) listening for %s", model_path, ", ".join(sorted(self._names)))
+
+    def _new_recognizer(self):
+        r = self._kaldi(self._model, RATE)
+        r.SetWords(True)
+        return r
 
     def __call__(self, audio: np.ndarray) -> Spot:
         r = self._recognizer
-        r.AcceptWaveform((np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes())
-        return read(json.loads(r.FinalResult()), self._names)
+        try:
+            r.AcceptWaveform((np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes())
+            return read(json.loads(r.FinalResult()), self._names)
+        except Exception:
+            # A recogniser left half-way is not trusted with the next sentence.
+            self._recognizer = self._new_recognizer()
+            raise
