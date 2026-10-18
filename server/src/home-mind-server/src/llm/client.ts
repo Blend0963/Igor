@@ -392,9 +392,16 @@ export class LLMClient implements IChatEngine {
     }
     if (guard.stopped) {
       // Never execute a tool call from a response cut for runaway output.
+      // Preserve provider metadata (including required citation fields) from
+      // the partial text block while replacing its content with guarded text.
+      const partialText = message.content.find(
+        (block): block is Anthropic.TextBlock => block.type === "text"
+      );
       message = {
         ...message,
-        content: safeText ? [{ type: "text", text: safeText }] : [],
+        content: safeText
+          ? [{ ...(partialText ?? { type: "text" as const, citations: [] }), type: "text" as const, text: safeText }]
+          : [],
         stop_reason: "end_turn",
       };
     }
