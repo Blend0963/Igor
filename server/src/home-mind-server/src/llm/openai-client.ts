@@ -731,8 +731,9 @@ export class OpenAIChatEngine implements IChatEngine {
 
     let text = "";
     let finishReason: string | null = null;
-    // A spoken reply is passed on sentence by sentence and cut if it loops.
-    const spoken = isVoice ? new SpokenGuard() : undefined;
+    // Guard every reply. Spoken mode additionally strips emoji and separators;
+    // written mode preserves both while still stopping repeated sentences.
+    const spoken = new SpokenGuard(isVoice);
     let usage: TokenUsage | undefined;
     // OpenRouter names the provider that served the request on every chunk.
     // Which one it was is the difference between a 1 s and a 3 s first token.
@@ -746,7 +747,8 @@ export class OpenAIChatEngine implements IChatEngine {
     const calls: { id: string; name: string; arguments: string; extraContent?: unknown }[] = [];
     const callAtIndex = new Map<number, number>();
 
-    for await (const chunk of stream) {
+    try {
+      for await (const chunk of stream) {
       // The usage chunk arrives last and carries no choices, so read it before
       // the guard below skips it.
       if (chunk.usage) usage = readUsage(chunk.usage);
@@ -760,17 +762,16 @@ export class OpenAIChatEngine implements IChatEngine {
       // Normalize each delta before storing or forwarding it to Home Assistant/TTS.
       if (opts.onThinking && isThinkingPart(choice.delta?.content)) opts.onThinking();
       const raw = contentToText(choice.delta?.content);
-      const chunkText = spoken ? spoken.push(raw) : raw;
+      const chunkText = spoken.push(raw);
       if (chunkText) {
         text += chunkText;
         if (onChunk) {
           onChunk(chunkText);
         }
       }
-      if (spoken?.stopped) {
-        // A looping reply: the rest of the stream is not read (leaving the
-        // loop closes the request), and the turn ends on what was said.
-        console.warn(`[llm] ${model} started repeating itself (${spoken.reason}); spoken reply cut there`);
+      if (spoken.stopped) {
+        // Stop consuming the provider stream as soon as repetition is detected.
+        console.warn(`[llm] ${model} response cut after repeated text (mode=${isVoice ? "voice" : "text"}, reason=${spoken.reason})`);
         finishReason = "stop";
         break;
       }
@@ -802,9 +803,22 @@ export class OpenAIChatEngine implements IChatEngine {
       if (choice.finish_reason) {
         finishReason = choice.finish_reason;
       }
+      }
+    } catch (error) {
+      // If the user presses Stop mid-sentence, the guard's buffer has not been
+      // emitted yet. Flush that partial text so the existing interrupted-reply
+      // path can preserve it; on a normal stream we still wait for sentence ends.
+      if (opts.signal?.aborted) {
+        const partial = spoken.flush();
+        if (partial) {
+          text += partial;
+          onChunk?.(partial);
+        }
+      }
+      throw error;
     }
 
-    const rest = spoken?.flush();
+    const rest = spoken.flush();
     if (rest) {
       text += rest;
       onChunk?.(rest);

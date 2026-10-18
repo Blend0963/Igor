@@ -167,7 +167,7 @@ describe("OpenAIChatEngine", () => {
     expect(userMsg.content).toBe("Hello");
   });
 
-  it("fires onChunk callback for each text delta", async () => {
+  it("buffers text deltas until a complete sentence can be checked", async () => {
     mockCreate.mockResolvedValue(
       makeStream([
         { choices: [{ delta: { content: "A" }, finish_reason: null }] },
@@ -181,7 +181,7 @@ describe("OpenAIChatEngine", () => {
       chunks.push(chunk)
     );
 
-    expect(chunks).toEqual(["A", "B"]);
+    expect(chunks).toEqual(["AB"]);
   });
 
   it("accumulates tool call deltas across chunks", async () => {
@@ -1006,7 +1006,7 @@ describe("OpenAIChatEngine", () => {
     );
   });
 
-  it("uses the spoken ceiling (2000) for voice mode", async () => {
+  it("uses the spoken ceiling (4096) for voice mode", async () => {
     mockCreate.mockResolvedValue(
       makeStream([
         { choices: [{ delta: { content: "Short" }, finish_reason: null }] },
@@ -1021,7 +1021,7 @@ describe("OpenAIChatEngine", () => {
     });
 
     const createCall = mockCreate.mock.calls[0][0];
-    expect(createCall.max_tokens).toBe(2000);
+    expect(createCall.max_tokens).toBe(4096);
   });
 
   it("honours a configured output cap, which OPENAI_MAX_TOKENS never reached before", async () => {
@@ -1258,7 +1258,7 @@ describe("OpenAIChatEngine", () => {
       expect(result.error).toBeUndefined();
     });
 
-    it("keeps the spoken version of that notice short", async () => {
+    it("does not read an internal token-limit notice aloud", async () => {
       mockCreate.mockResolvedValue(
         makeStream([
           { choices: [{ delta: { content: "It is 21 degrees" }, finish_reason: "length" }] },
@@ -1267,9 +1267,8 @@ describe("OpenAIChatEngine", () => {
 
       const result = await engine.chat({ message: "Hi", userId: "user-1", isVoice: true });
 
-      expect(result.response).toContain("It is 21 degrees");
-      expect(result.response).toContain("ran out of room");
-      expect(result.response).not.toContain("add-on settings");
+      expect(result.response).toBe("It is 21 degrees");
+      expect(result.response).not.toMatch(/tokens|ran out of room|add-on settings/i);
     });
 
     it("leaves a complete answer untouched", async () => {
@@ -1301,7 +1300,7 @@ describe("OpenAIChatEngine", () => {
       expect(spoken.join("").trim()).toBe("Le minuteur est lancé, monsieur. Bonne nuit.");
     });
 
-    it("leaves a written reply as the model wrote it", async () => {
+    it("leaves a written reply as the model wrote it when it is not looping", async () => {
       mockCreate.mockResolvedValue(
         makeStream([{ choices: [{ delta: { content: "Fait. 🌙 --- Fait." }, finish_reason: "stop" }] }])
       );
@@ -1309,6 +1308,23 @@ describe("OpenAIChatEngine", () => {
       const result = await engine.chat({ message: "Hi", userId: "user-1" });
 
       expect(result.response).toBe("Fait. 🌙 --- Fait.");
+    });
+
+    it("cuts a repeated sentence in written chat before it is streamed twice", async () => {
+      const chunks: string[] = [];
+      mockCreate.mockResolvedValue(
+        makeStream([
+          { choices: [{ delta: { content: "J'ai trouvé le dépôt. " }, finish_reason: null }] },
+          { choices: [{ delta: { content: "Voici le résultat. " }, finish_reason: null }] },
+          { choices: [{ delta: { content: "J'ai trouvé le dépôt. Et je recommence." }, finish_reason: null }] },
+          { choices: [{ delta: {}, finish_reason: "stop" }] },
+        ])
+      );
+
+      const result = await engine.chat({ message: "Hi", userId: "user-1" }, (c) => chunks.push(c));
+
+      expect(result.response).toBe("J'ai trouvé le dépôt. Voici le résultat. ");
+      expect(chunks.join("")).toBe(result.response);
     });
 
     it("asks the endpoint for a usage breakdown on every streamed call", async () => {

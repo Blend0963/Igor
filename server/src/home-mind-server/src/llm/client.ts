@@ -12,6 +12,7 @@ import { filterTools } from "./tool-policy.js";
 import { randomUUID } from "node:crypto";
 import { handleToolCall, extractAndStoreFacts, type ToolContext } from "./tool-handler.js";
 import { describeLongBatch } from "./long-task.js";
+import { SpokenGuard } from "./runaway.js";
 import { recallSemantically, rememberSemantically } from "./semantic-recall.js";
 import { RECALL_LIMIT, resolveMemoryScope } from "../memory/memory-scope.js";
 import { toStreamEvents } from "./interface.js";
@@ -355,15 +356,55 @@ export class LLMClient implements IChatEngine {
       messages,
     });
 
-    // Stream text chunks to callback if provided
-    if (onChunk) {
-      stream.on("text", (textDelta) => {
-        onChunk(textDelta);
-      });
+    // Guard the stream before text reaches Assist/TTS. Buffering by sentence
+    // means a repeated sentence is never spoken or stored twice.
+    const guard = new SpokenGuard(isVoice);
+    let safeText = "";
+    stream.on("text", (textDelta) => {
+      if (guard.stopped) return;
+      const safe = guard.push(textDelta);
+      safeText += safe;
+      if (safe) onChunk?.(safe);
+      if (guard.stopped) {
+        console.warn(
+          `[llm] ${this.config.llmModel} response cut after repeated text (mode=${isVoice ? "voice" : "text"}, reason=${guard.reason})`
+        );
+        stream.abort();
+      }
+    });
+
+    // If the guard aborts a runaway, use the partial snapshot and turn it into
+    // a normal final answer. Other stream errors still propagate unchanged.
+    let message: Anthropic.Message;
+    try {
+      message = await stream.finalMessage();
+    } catch (error) {
+      if (!guard.stopped) throw error;
+      const partial = stream.currentMessage;
+      if (!partial) throw error;
+      message = partial;
     }
 
-    // Wait for the complete message
-    const message = await stream.finalMessage();
+    if (!guard.stopped) {
+      const rest = guard.flush();
+      safeText += rest;
+      if (rest) onChunk?.(rest);
+    }
+    if (guard.stopped) {
+      // Never execute a tool call from a response cut for runaway output.
+      // Preserve provider metadata (including required citation fields) from
+      // the partial text block while replacing its content with guarded text.
+      const partialText = message.content.find(
+        (block): block is Anthropic.TextBlock => block.type === "text"
+      );
+      message = {
+        ...message,
+        content: safeText
+          ? [{ ...(partialText ?? { type: "text" as const, citations: [] }), type: "text" as const, text: safeText }]
+          : [],
+        stop_reason: "end_turn",
+      };
+    }
 
     // Anthropic always reports usage on the final message, so unlike the OpenAI
     // engine nothing has to be requested for it. Same two lines as over there:

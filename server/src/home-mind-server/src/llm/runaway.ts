@@ -1,17 +1,11 @@
 /**
- * Keeps a spoken reply from running away.
+ * Stops repetitive model output before it reaches the user.
  *
- * A small model on a plain command (FAST_MODEL) sometimes loops: it answers,
- * adds an emoji, then writes "--- *I must not add emojis, I correct:*" and
- * the same answer again, and again, until the output cap (2000 tokens) is
- * spent. The satellite reads all of it aloud and the tablet shows it.
- *
- * The guard sits between the stream and its listener, one sentence at a
- * time: a sentence already said in this reply, or a "---" rule (a spoken
- * reply has no use for one; it is how these loops start), ends the reply
- * there. Emojis are dropped on the way: the voice would read their names.
- * A sentence is passed on once it is complete, so nothing of a repeat is
- * ever heard.
+ * The guard buffers one sentence at a time so a repeated sentence is never
+ * streamed twice. In spoken mode it also drops emoji (TTS often reads their
+ * names) and stops at self-correction separators that commonly precede loops.
+ * In written mode normal Markdown and emoji are preserved; repeated sentences
+ * are still detected before they can be streamed twice.
  */
 const EMOJI = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}\u{20E3}]/gu;
 const RULE = /(^|\s)(?:-{3,}|\*{3,}|_{3,})(?=\s|$)/;
@@ -26,6 +20,8 @@ function key(sentence: string): string {
 
 export class SpokenGuard {
   private pending = "";
+
+  constructor(private readonly spokenOnly = true) {}
   private readonly seen = new Set<string>();
   /** True once the reply has been cut; whatever comes next is dropped. */
   stopped = false;
@@ -35,12 +31,17 @@ export class SpokenGuard {
   /** Text that may be passed on now. */
   push(chunk: string): string {
     if (this.stopped) return "";
-    this.pending += chunk.replace(EMOJI, "");
+    this.pending += this.spokenOnly ? chunk.replace(EMOJI, "") : chunk;
     let out = "";
-    const rule = RULE.exec(this.pending);
+    const rule = this.spokenOnly ? RULE.exec(this.pending) : null;
     const limit = rule ? rule.index : this.pending.length;
     let match: RegExpExecArray | null;
-    while (!this.stopped && (match = SENTENCE_END.exec(this.pending.slice(0, limit + 1))) !== null) {
+    while (!this.stopped) {
+      // This global regex is reused across calls; reset its cursor whenever the
+      // pending buffer changes or exec() can skip an otherwise matching sentence.
+      SENTENCE_END.lastIndex = 0;
+      match = SENTENCE_END.exec(this.pending.slice(0, limit + 1));
+      if (!match) break;
       const end = match.index + match[0].length;
       const sentence = this.pending.slice(0, end);
       if (this.repeats(sentence)) return out;
