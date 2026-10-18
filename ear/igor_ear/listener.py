@@ -358,9 +358,16 @@ class Listener:
         entry.update(sent=True, voxtral=outcome.heard, answer=outcome.speech)
         if outcome.error:
             entry["error"] = outcome.error
-        if self.followup and outcome.continue_conversation:
+        # A short call ("Je m'appelle Igor": Whisper padding a lone name)
+        # went to Igor as it was; the order may come next, without the name.
+        called = reason == "name" and self.rules.short_call(text)
+        if called:
+            entry["short_call"] = True
+        if self.followup and (outcome.continue_conversation or called):
             # Igor asked a question (and has finished saying it): the answer
             # is taken without the name, and the tablet shows it listens.
+            if called and not outcome.continue_conversation:
+                log.info("Listening for the order, without the name, for %.0f s", self.followup_seconds)
             self._followup_until = self.clock() + self.followup_seconds
             self._conversation = outcome.conversation_id
             if self.on_heard is not None:

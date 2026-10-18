@@ -396,6 +396,12 @@ def run(settings: Settings) -> None:
         away = False
         dropped = segmenter.too_short
         utterance = segmenter.push(frame, vad(frame))
+        # Keep the voice detector fresh: cleared after each sentence and
+        # every few seconds of silence (vad.FRESH_AFTER_S).
+        if utterance is not None:
+            vad.reset()
+        elif not segmenter.in_speech:
+            vad.quiet()
         if settings.journal_all and segmenter.too_short != dropped:
             log.info("sound      too short          %d ms of voice: not speech (250 ms needed)", segmenter.too_short_ms)
         if utterance is not None:

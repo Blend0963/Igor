@@ -75,3 +75,20 @@ def test_name_only(text, expected):
 ])
 def test_a_name_one_letter_off(text, expected):
     assert name_rules.decide(text).reason == expected
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Je m'appelle Igor.", True),           # Whisper padding a lone "Igor"
+    ("Ah, Igor là.", True),
+    ("Igor", False),                        # the name alone: name_only
+    ("Igor, éteins la lumière", False),     # an order
+    ("Igor, la cuisine", False),            # a room: a request of its own
+    ("Igor, tu es là ?", False),            # a question
+    ("Merci Igor", False),                  # thanks go to Igor as they are
+    ("Bonne nuit Igor", False),
+    ("Igor, non, stop, tais-toi", False),
+    ("Hugo est passé hier", False),         # no name at all
+    ("Igor, je crois que tu as mal compris ce que je disais", False),  # too long
+])
+def test_short_call(text, expected):
+    assert name_rules.short_call(text) is expected

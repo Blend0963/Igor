@@ -53,6 +53,12 @@ it). With `[mode] name_alone = "satellite"` the satellite says the reply and
 listens itself instead (`assist_satellite.start_conversation`), as after its
 wake word; if it cannot, this ear takes the order.
 
+Whisper sometimes pads a lone "Igor" with a word or two ("Je m'appelle
+Igor"). Such a short call (at most three words around the name, with no
+verb, room, device, question or thanks) still goes to Igor as it is, in
+case it was a short order; then the next sentence, begun within
+`followup_seconds` (8), is taken without the name.
+
 **Observation mode** (the default, `[mode] act = false`): nothing is sent;
 each sentence is noted in `~/.local/state/igor-ear/observations.jsonl` on
 this machine with what would have happened, to judge the name detection on

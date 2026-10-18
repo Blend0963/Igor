@@ -10,6 +10,13 @@ import os
 import numpy as np
 
 CONTEXT = 64  # samples of the previous frame the model expects in front
+# Fed for minutes without a break, the model's recurrent state drifts with
+# the room's noise until a short word ("Igor") no longer reaches the speech
+# threshold: on the hub the name was heard for half a minute after a start,
+# then no more, while louder, longer sentences still went through. The state
+# is cleared after this much silence (and after each sentence).
+FRESH_AFTER_S = 3.0
+FRAME_S = 512 / 16000
 
 
 class Vad:
@@ -31,6 +38,14 @@ class Vad:
         self._h = np.zeros((1, 1, 128), dtype=np.float32)
         self._c = np.zeros((1, 1, 128), dtype=np.float32)
         self._context = np.zeros(CONTEXT, dtype=np.float32)
+        self._quiet = 0
+
+    def quiet(self) -> None:
+        """One more frame outside any speech: after FRESH_AFTER_S of them,
+        the state starts afresh."""
+        self._quiet += 1
+        if self._quiet * FRAME_S >= FRESH_AFTER_S:
+            self.reset()
 
     def __call__(self, frame: np.ndarray) -> float:
         """Speech probability of one 512-sample float32 frame."""

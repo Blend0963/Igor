@@ -163,9 +163,31 @@ class Addressing:
     def name_only(self, text: str) -> bool:
         return name_only(text, self.name)
 
+    def short_call(self, text: str) -> bool:
+        """The name with a few words around it that ask for nothing clear:
+        Whisper sometimes pads a lone "Igor" ("Je m'appelle Igor", "Ah Igor
+        là"). Such a sentence still goes to Igor (it may be a short order
+        with a verb not listed here), but the order may come next. A verb,
+        a room or device, a question, thanks or goodnight rule it out."""
+        if not self.name.search(normalize(text)) or text.rstrip().endswith("?"):
+            return False
+        rest = OPENERS.sub("", self.name.sub(" ", normalize(text)).strip() + " ").strip()
+        words = [w for w in rest.split() if w not in FILLERS]
+        if not 1 <= len(words) <= MAX_PADDING or any(w in SAID_TO_IGOR for w in words):
+            return False
+        return not (self.looks_like_request(rest) or self._targets.search(rest)
+                    or any(self._verbs.match(w) for w in words))
+
+
+FILLERS = {"euh", "he", "hey", "dis", "oh", "bon"}
+# Words Whisper may wrap around a lone name, at most this many.
+MAX_PADDING = 3
+# Said to Igor, not a call for it: these go to Igor as they are.
+SAID_TO_IGOR = {"merci", "nuit", "revoir", "bravo", "stop", "tais", "tais-toi", "chut", "pardon", "rien"}
+
 
 def name_only(text: str, name: re.Pattern = NAME) -> bool:
     """Just the name, or nearly ("Igor ?", "euh Igor"): the order comes next."""
     rest = name.sub(" ", normalize(text))
     rest = OPENERS.sub("", rest.strip() + " ").strip()
-    return len([w for w in rest.split() if w not in {"euh", "he", "hey", "dis", "oh", "bon"}]) == 0
+    return len([w for w in rest.split() if w not in FILLERS]) == 0
