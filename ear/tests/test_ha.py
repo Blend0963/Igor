@@ -134,3 +134,11 @@ def test_heard(server):
     path, auth, body, agent = received["announce"]
     assert path == "/api/services/nives/heard" and auth == "Bearer secret" and agent == "igor-ear"
     assert body == {"satellite": "assist_satellite.vm", "waiting": True, "seconds": 8}
+
+
+def test_start_conversation(server):
+    ha.start_conversation(server[1], TOKEN, "assist_satellite.vm", "Que puis-je pour vous ?")
+    path, auth, body, agent = received["announce"]
+    assert path == "/api/services/assist_satellite/start_conversation" and agent == "igor-ear"
+    assert body == {"entity_id": "assist_satellite.vm", "start_message": "Que puis-je pour vous ?",
+                    "preannounce": False}

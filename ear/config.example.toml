@@ -16,6 +16,12 @@ followup = true
 followup_seconds = 8
 # After "Igor" said alone, how long to wait for the order (seconds).
 name_wait = 8
+# Who listens for that order: "ear" (this service: everything said within
+# name_wait is for Igor) or "satellite" (the satellite says its reply and
+# listens itself, as after its wake word: its own end-of-speech detection;
+# Home Assistant 2025.4+ and a satellite that supports start_conversation;
+# if it does not, this ear takes the order).
+name_alone = "ear"
 # What Igor answers aloud to its name said alone; [] for silence. Left out,
 # about seventy short questions ("Oui, monsieur ?", "Que puis-je pour vous ?"…),
 # each said once in random order before any comes back.

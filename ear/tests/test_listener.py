@@ -288,8 +288,31 @@ def test_the_name_alone_is_kept_though_whisper_doubts_it_is_speech():
                   Transcript("Igor ?", 0.3, 0.95, -0.9)])
     listener = Listener(lambda a: next(heard), Addressing(), None)
     assert listener.handle(audio())["reason"] == "name_alone_waiting"
+    listener._armed = None                   # no longer waiting for the order
     e = listener.handle(audio())
     assert e["reason"] == "noise" and e["no_speech"] == 0.8 and e["text"] == "bonjour"
+    assert listener.handle(audio())["reason"] == "noise"
+
+
+def test_while_waiting_for_the_order_everything_said_is_for_igor():
+    clock = Clock()
+    heard = iter([Transcript("Mado ?", 0.3, 0.1, -0.2), Transcript("le salon", 0.3, 0.85, -1.3)])
+    sent = []
+    busy = [False]
+    listener = Listener(lambda a: next(heard), Addressing(names=["mado"]),
+                        lambda a, c: sent.append(1) or Outcome(speech="Fait."), clock=clock,
+                        busy=lambda: busy[0], on_name_alone=lambda ready: ready())
+    assert listener.handle(audio())["reason"] == "name_alone_waiting"
+    busy[0] = True                       # the satellite still says "responding"
+    e = listener.handle(audio())         # doubtful for Whisper, but Igor is waiting
+    assert e["reason"] == "after_name" and sent and e["satellite_busy_ignored"]
+
+
+def test_a_hallucination_while_waiting_is_still_noise():
+    heard = iter([Transcript("Igor ?", 0.3, 0.1, -0.2), Transcript("Sous-titrage ST' 501", 0.3, 0.5, -0.5)])
+    listener = Listener(lambda a: next(heard), Addressing(), lambda a, c: Outcome(speech="Fait."),
+                        clock=Clock(), on_name_alone=lambda ready: ready())
+    listener.handle(audio())
     assert listener.handle(audio())["reason"] == "noise"
 
 
@@ -334,3 +357,25 @@ def test_its_voice_is_forgotten_after_a_while():
     listener.said("Tous les volets ?")
     clock.t = 31
     assert listener.handle(audio())["reason"] != "own_voice"
+
+
+def test_disarm_hands_the_order_to_the_satellite():
+    heard = iter(["Mado ?", "allume la cuisine"])
+    sent = []
+    listener = Listener(lambda a: Transcript(next(heard), 0.3, 0.1, -0.2), Addressing(names=["mado"]),
+                        lambda a, c: sent.append(1) or Outcome(speech="Fait."), clock=Clock(),
+                        busy=lambda: True, on_name_alone=lambda ready: listener.disarm())
+    listener.busy = lambda: False
+    listener.handle(audio())
+    listener.busy = lambda: True          # the satellite listens
+    assert listener.handle(audio())["reason"] == "satellite_busy" and not sent
+
+
+def test_settings_name_alone(tmp_path):
+    from igor_ear.config import load
+
+    f = tmp_path / "c.toml"
+    f.write_text('[mode]\nname_alone = "satellite"\n')
+    assert load(f).name_alone == "satellite"
+    f.write_text("")
+    assert load(f).name_alone == "ear"
