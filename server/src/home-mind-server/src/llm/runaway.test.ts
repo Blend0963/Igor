@@ -43,11 +43,11 @@ describe("SpokenGuard", () => {
   it("cuts repeated sentences in written mode without removing emoji", () => {
     const guard = new SpokenGuard(false);
     let said = "";
-    said += guard.push("C'est fait 🌙. ");
-    said += guard.push("Voici le détail. ");
-    said += guard.push("C'est fait 🌙. Encore.");
+    said += guard.push("La lumière est allumée 🌙. ");
+    said += guard.push("Voici le détail complet. ");
+    said += guard.push("La lumière est allumée 🌙. Encore.");
     said += guard.flush();
-    expect(said).toBe("C'est fait 🌙. Voici le détail. ");
+    expect(said).toBe("La lumière est allumée 🌙. Voici le détail complet. ");
     expect(guard.reason).toBe("repeat");
   });
 
