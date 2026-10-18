@@ -403,3 +403,28 @@ def test_an_order_begun_too_late_is_not_taken():
     listener.handle(audio())
     clock.t = 12                       # begun at 10 s
     assert listener.handle(audio(2.0))["reason"] == "not_addressed"
+
+
+def test_a_padded_name_is_sent_and_the_order_is_taken_next():
+    # 03:43 on the hub: "Igor" alone heard as "Je m'appelle Igor", then the order.
+    clock = Clock()
+    heard = iter(["Je m'appelle Igor.", "active la scène tamisée"])
+    sent = []
+    listener = Listener(lambda a: Transcript(next(heard), 0.3, 0.1, -0.2), Addressing(),
+                        lambda a, c: sent.append(c) or Outcome(speech="Je suis là, monsieur.", conversation_id="c9"),
+                        clock=clock, followup_seconds=8)
+    e = listener.handle(audio())
+    assert e["sent"] and e["reason"] == "name" and e["short_call"]
+    clock.t = 5
+    e = listener.handle(audio())
+    assert e["reason"] == "followup" and e["sent"] and sent == [None, "c9"]
+
+
+def test_a_full_sentence_with_the_name_opens_no_window():
+    clock = Clock()
+    heard = iter(["Igor, éteins la lumière", "il fait beau"])
+    listener = Listener(lambda a: Transcript(next(heard), 0.3, 0.1, -0.2), Addressing(),
+                        lambda a, c: Outcome(speech="C'est éteint."), clock=clock)
+    listener.handle(audio())
+    clock.t = 4
+    assert listener.handle(audio())["reason"] == "not_addressed"
