@@ -187,7 +187,11 @@ def run(settings: Settings) -> None:
         works."""
         if not watch_sound:
             return False
-        if speakers is not None and speakers.sounding(unknown):
+        # Igor's own voice comes out of the same speakers: while it speaks,
+        # and for the few seconds the speakers' watch keeps a sound, that
+        # sound is not a television.
+        own_voice = voice.speaking() or (speakers is not None and voice.just_spoke(speakers.hold + 0.5))
+        if speakers is not None and speakers.sounding(unknown) and not own_voice:
             return True
         return players_sounding(unknown)
 
