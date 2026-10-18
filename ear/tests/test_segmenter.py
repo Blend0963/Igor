@@ -55,3 +55,18 @@ def test_times_on_the_stream_clock():
 
 def test_a_minute_fits_in_one_utterance():
     assert len(feed(Segmenter(), [0.9] * 1500 + [0.0] * 30)) == 1  # 48 s
+
+
+def test_the_voice_detector_starts_afresh_after_silence():
+    from igor_ear import vad as vad_module
+
+    v = vad_module.Vad.__new__(vad_module.Vad)
+    v.reset()
+    v._h += 1.0                               # some state from the room
+    import math
+
+    for _ in range(math.ceil(vad_module.FRESH_AFTER_S / vad_module.FRAME_S) - 1):
+        v.quiet()
+    assert v._h.any()                         # not yet
+    v.quiet()
+    assert not v._h.any() and v._quiet == 0   # cleared after 3 s of silence
