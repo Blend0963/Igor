@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.5 — Chat threads that think only as much as needed
+
+- Chat-panel threads now adapt reasoning to the request: greetings and simple home-state questions skip reasoning, everyday conversation uses low effort, and explicit analysis, debugging, comparison or substantial prompts keep the configured reasoning level. A reasoning level explicitly chosen for a request still takes precedence. The configured thread level is the ceiling, so complex requests retain the existing quality setting while routine turns can start and finish sooner.
+
+
 ## 0.11.4 — A spoken answer that loops is cut short
 
 - On a plain command ("mets un minuteur de 30 minutes") the fast model sometimes looped: it answered, added an emoji, then wrote "--- *Je corrige :*" and the same answer again and again, all of it read aloud and shown on the tablet. A spoken reply is now passed on sentence by sentence: a sentence it already said, or a "---" rule, ends it there, before any of the repeat is heard. Emojis are left out of spoken replies (the voice read their names). Written replies and threads are unchanged.
