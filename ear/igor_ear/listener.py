@@ -23,6 +23,7 @@ A long sentence is not transcribed in full just to find the name: its first
 """
 from __future__ import annotations
 
+import difflib
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -50,6 +51,11 @@ PREVIOUS_GAP = 2.0
 # What the smart judge is shown of the conversation before a sentence.
 CONTEXT_SENTENCES = 4
 CONTEXT_SECONDS = 90.0
+
+# A sentence this close to what Igor said this recently is its own voice,
+# come back through the microphone.
+OWN_VOICE_SECONDS = 30.0
+OWN_VOICE_LIKENESS = 0.7
 
 # Below these, Whisper is guessing words into noise.
 MAX_NO_SPEECH = 0.6
@@ -110,6 +116,8 @@ class Listener:
         self.spotter = spotter
         self._spotting = ThreadPoolExecutor(1, "spotter") if spotter is not None else None
         self._recent: deque[tuple[float, str]] = deque(maxlen=CONTEXT_SENTENCES)
+        # What Igor said aloud lately, to know its own voice if it comes back.
+        self._said: deque[tuple[float, str]] = deque(maxlen=4)
         # The last sentence not taken, with its end on the stream clock, in
         # case the name comes right after it.
         self._previous: tuple[np.ndarray, str, float] | None = None
@@ -153,6 +161,26 @@ class Listener:
         if spot.last and not spot.first:
             return f"{text} {name}"
         return f"{name}, {text}"
+
+    def said(self, text: str) -> None:
+        """Igor is about to say this aloud."""
+        if normalize(text):
+            self._said.append((self.clock(), normalize(text)))
+
+    def _own_voice(self, text: str) -> tuple[str, str] | None:
+        """(what Igor said, what was heard after it), when this sentence
+        starts with Igor's own words: its voice came back. An answer that
+        only repeats some of them ("oui, tous les volets") starts otherwise."""
+        heard = normalize(text).split()
+        now = self.clock()
+        for t, said in reversed(self._said):
+            words = said.split()
+            if now - t > OWN_VOICE_SECONDS or not heard or not words:
+                continue
+            head = " ".join(heard[: len(words)])
+            if difflib.SequenceMatcher(None, head, " ".join(words)).ratio() >= OWN_VOICE_LIKENESS:
+                return said, " ".join(heard[len(words):])
+        return None
 
     def _spot(self, audio: np.ndarray):
         if self._spotting is None:
@@ -234,6 +262,15 @@ class Listener:
         armed = self._armed is not None and now <= self._armed_until
         followup_open = self.followup and now <= self._followup_until
         send = audio
+        echo = None if noise else self._own_voice(text)
+        if echo is not None:
+            entry["igor_said"] = echo[0]
+            if len(echo[1].split()) <= 1:
+                # Igor hearing itself: dropped, and whatever it waits for still is.
+                entry.update(accepted=False, reason="own_voice", text=text)
+                return entry
+            # Its voice, then someone speaking: the rules read what came after.
+            text = echo[1]
         if noise:
             accepted, reason = False, "noise"
         elif armed:

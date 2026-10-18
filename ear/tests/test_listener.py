@@ -291,3 +291,46 @@ def test_the_name_alone_is_kept_though_whisper_doubts_it_is_speech():
     e = listener.handle(audio())
     assert e["reason"] == "noise" and e["no_speech"] == 0.8 and e["text"] == "bonjour"
     assert listener.handle(audio())["reason"] == "noise"
+
+
+def test_igor_hearing_its_own_reply_ignores_it():
+    clock = Clock()
+    heard = iter(["Mado ?", "De quoi s'agit-il ?", "allume la cuisine"])
+    sent = []
+    listener = Listener(lambda a: Transcript(next(heard), 0.3, 0.1, -0.2), Addressing(names=["mado"]),
+                        lambda a, c: sent.append(1) or Outcome(speech="Fait."), clock=clock, name_wait=8,
+                        on_name_alone=lambda ready: (listener.said("De quoi s'agit-il ?"), ready()))
+    assert listener.handle(audio())["reason"] == "name_alone_waiting"
+    e = listener.handle(audio())          # its own voice, come back
+    assert e["reason"] == "own_voice" and not sent
+    e = listener.handle(audio())          # still waiting for the order
+    assert e["reason"] == "after_name" and sent
+
+
+def test_its_voice_then_the_order_keeps_the_order():
+    clock = Clock()
+    heard = iter(["Que puis-je pour vous ? Éteins la lumière, Mado"])
+    listener = Listener(lambda a: Transcript(next(heard), 0.3, 0.1, -0.2), Addressing(names=["mado"]),
+                        lambda a, c: Outcome(speech="Fait."), clock=clock)
+    listener.said("Que puis-je pour vous ?")
+    e = listener.handle(audio())
+    assert e["sent"] and e["igor_said"] and e["reason"] == "name"
+
+
+def test_an_answer_repeating_its_words_is_not_its_voice():
+    clock = Clock()
+    heard = iter(["Oui, tous les volets", "Tous les volets ?"])
+    listener = Listener(lambda a: Transcript(next(heard), 0.3, 0.1, -0.2), Addressing(),
+                        lambda a, c: Outcome(speech="Fait."), clock=clock)
+    listener.said("Tous les volets ?")
+    assert listener.handle(audio())["reason"] != "own_voice"
+    assert listener.handle(audio())["reason"] == "own_voice"
+
+
+def test_its_voice_is_forgotten_after_a_while():
+    clock = Clock()
+    listener = Listener(lambda a: Transcript("Tous les volets ?", 0.3, 0.1, -0.2), Addressing(),
+                        lambda a, c: Outcome(speech="Fait."), clock=clock)
+    listener.said("Tous les volets ?")
+    clock.t = 31
+    assert listener.handle(audio())["reason"] != "own_voice"

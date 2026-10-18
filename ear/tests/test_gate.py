@@ -50,23 +50,39 @@ def test_unknown_state_is_free():
     assert not SatelliteGate(Clock()).busy()
 
 
-def test_own_voice_closes_the_ear_until_the_speakers_are_quiet():
-    from igor_ear.gate import OwnVoice
+class FakeSpeakers:
+    """Sound comes out between `start` and `stop` on the shared clock."""
 
-    t = [0.0]
-    clock = lambda: t[0]  # noqa: E731
-    sound_until = [0.0]
-    seen = []
+    def __init__(self, t, start=None, stop=None, listening=True):
+        self.t, self.start, self.stop, self.listening = t, start, stop, listening
+
+    @property
+    def last_sound(self):
+        if self.start is None or self.t[0] < self.start:
+            return float("-inf")
+        return min(self.t[0], self.stop)
+
+    def quiet_for(self, seconds):
+        return not self.listening or self.t[0] - self.last_sound >= seconds
+
+
+def voice_with(speakers, t, **kw):
+    from igor_ear.gate import OwnVoice
 
     def sleep(s):
         t[0] += s
+    return OwnVoice(speakers, tail=0.3, settle=2.0, clock=lambda: t[0], sleep=sleep, **kw)
 
-    voice = OwnVoice(quiet=lambda s: t[0] - sound_until[0] >= s, tail=0.3, settle=2.0, clock=clock, sleep=sleep)
+
+def test_own_voice_closes_the_ear_until_the_speakers_are_quiet():
+    t = [0.0]
+    sp = FakeSpeakers(t, start=0.5, stop=1.4)
+    voice = voice_with(sp, t)
+    seen = []
 
     def speak():
         seen.append(voice.speaking())
         t[0] += 1.0                # the announce call returns after 1 s
-        sound_until[0] = t[0] + 0.4  # the last of the voice still playing
 
     voice.say(speak)
     assert seen == [True]
@@ -77,17 +93,43 @@ def test_own_voice_closes_the_ear_until_the_speakers_are_quiet():
     assert not voice.just_spoke()
 
 
-def test_own_voice_waits_at_most_settle_when_a_television_plays():
-    from igor_ear.gate import OwnVoice
-
+def test_announce_returning_before_the_voice_plays_keeps_the_ear_closed():
+    # Home Assistant answers at 0.2 s; the voice plays from 1.5 s to 3.5 s.
     t = [0.0]
+    voice = voice_with(FakeSpeakers(t, start=1.5, stop=3.5), t)
 
-    def sleep(s):
-        t[0] += s
+    def speak():
+        t[0] += 0.2
+    voice.say(speak)
+    assert t[0] >= 3.8 and voice.speaking()
+    t[0] += 0.31
+    assert not voice.speaking()
 
-    voice = OwnVoice(quiet=lambda s: False, tail=0.3, settle=2.0, clock=lambda: t[0], sleep=sleep)
+
+def test_a_voice_never_seen_waits_start_wait_only():
+    t = [0.0]
+    voice = voice_with(FakeSpeakers(t), t)
+    voice.say(lambda: None)
+    assert 4.0 <= t[0] < 4.2
+
+
+def test_own_voice_waits_at_most_settle_when_a_television_plays():
+    t = [0.0]
+    voice = voice_with(FakeSpeakers(t, start=-100, stop=1000), t)
     voice.say(lambda: None)
     assert 2.0 <= t[0] < 2.2
+    t[0] += 0.31
+    assert not voice.speaking()
+
+
+def test_unwatched_speakers_close_the_ear_for_the_call_only():
+    t = [0.0]
+    voice = voice_with(FakeSpeakers(t, listening=False), t)
+
+    def speak():
+        t[0] += 1.0
+    voice.say(speak)
+    assert t[0] == 1.0 and voice.speaking()
     t[0] += 0.31
     assert not voice.speaking()
 

@@ -25,8 +25,13 @@ sentence names Igor. While the
 satellite is busy (after its own wake word, or speaking) the service stays
 quiet, so the wake word keeps working and Igor never answers its own voice.
 While Igor speaks through the satellite (an answer, its "Oui ?") the ear is
-closed: until Home Assistant reports the end of the announcement and the
-speakers have fallen quiet (2 s at most more, if a television plays).
+closed: for the whole announce call, then, since Home Assistant may answer
+before the voice even plays, until the voice has come out of the speakers
+(4 s at most) and they have fallen quiet (2 s at most, if a television
+plays). The journal says each time how long and why ("Ear closed 3.2 s
+while Igor spoke…"). And should its voice still come back, a sentence that
+starts with what Igor just said (in the last 30 s) is its own: dropped
+(`own_voice`), or, with words after it, only those are read.
 
 The name is heard twice: by Whisper, and by Vosk (`[name] spotter`), a
 small French recogniser on the CPU that runs at the same time. The name

@@ -147,16 +147,16 @@ def run(settings: Settings) -> None:
         speakers = Speakers(settings.sink, settings.quiet_db)
         speakers.start()
     # Igor's own voice is not heard: the ear closes while it speaks.
-    voice_quiet = speakers.quiet_for if speakers is not None else None
-    if voice_quiet is None and settings.act:
+    own = speakers
+    if own is None and settings.act:
         from .speakers import Speakers
 
         own = Speakers(settings.sink, settings.quiet_db)
         own.start()
-        voice_quiet = own.quiet_for
-    voice = OwnVoice(voice_quiet)
+    voice = OwnVoice(own)
 
     def say(text: str) -> None:
+        listener.said(text)
         voice.say(lambda: ha.announce(settings.ha_url, settings.ha_token, settings.satellite, text))
 
     def players_sounding(unknown: bool) -> bool:
