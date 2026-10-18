@@ -36,7 +36,12 @@ export class SpokenGuard {
     const rule = this.spokenOnly ? RULE.exec(this.pending) : null;
     const limit = rule ? rule.index : this.pending.length;
     let match: RegExpExecArray | null;
-    while (!this.stopped && (match = SENTENCE_END.exec(this.pending.slice(0, limit + 1))) !== null) {
+    while (!this.stopped) {
+      // This global regex is reused across calls; reset its cursor whenever the
+      // pending buffer changes or exec() can skip an otherwise matching sentence.
+      SENTENCE_END.lastIndex = 0;
+      match = SENTENCE_END.exec(this.pending.slice(0, limit + 1));
+      if (!match) break;
       const end = match.index + match[0].length;
       const sentence = this.pending.slice(0, end);
       if (this.repeats(sentence)) return out;
