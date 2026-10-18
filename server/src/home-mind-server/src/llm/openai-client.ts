@@ -9,7 +9,7 @@ import { TopologyScanner } from "../ha/topology-scanner.js";
 import { buildSystemPromptText } from "./prompts.js";
 import { toolsForMode, toOpenAITools } from "./tool-definitions.js";
 import { listFromEnv, mistralKey } from "./mistral-platform.js";
-import { isActionCommand, isSimpleRequest, mayBeOrder } from "./model-router.js";
+import { isActionCommand, isSimpleRequest, mayBeOrder, selectThreadReasoning } from "./model-router.js";
 import { formatLiveState } from "./live-state.js";
 import { askIsOrder } from "./order-check.js";
 import { SpokenGuard } from "./runaway.js";
@@ -341,11 +341,17 @@ export class OpenAIChatEngine implements IChatEngine {
         ? this.config.fastModel
         : undefined;
     let model = request.model ?? fastModel ?? this.config.llmModel;
+    // An explicit reasoning level chosen in the panel wins. Otherwise,
+    // threadReasoning is the ceiling and ordinary chat adapts down to avoid
+    // paying for deep reasoning on greetings and straightforward questions.
+    const threadEffort = scope.isThread
+      ? selectThreadReasoning(message, this.config.threadReasoning)
+      : undefined;
     let effort = request.reasoning
       ?? (fastModel
         ? "none"
         : scope.isThread
-          ? this.config.threadReasoning
+          ? threadEffort
           : this.config.reasoningEffort ?? (isVoice ? "none" : undefined));
     if (fastModel) console.log(`[route] fast model ${fastModel} for: ${message.slice(0, 60)}`);
     let thinkingShown = false;
@@ -409,7 +415,7 @@ export class OpenAIChatEngine implements IChatEngine {
         if (model === this.config.llmModel || signal?.aborted) throw error;
         console.warn(`[route] ${model} failed (${error instanceof Error ? error.message : error}); using ${this.config.llmModel}`);
         model = this.config.llmModel;
-        effort = scope.isThread ? this.config.threadReasoning : this.config.reasoningEffort ?? (isVoice ? "none" : undefined);
+        effort = scope.isThread ? threadEffort : this.config.reasoningEffort ?? (isVoice ? "none" : undefined);
         turnText = "";
         return once();
       }
