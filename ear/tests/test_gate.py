@@ -144,3 +144,13 @@ def test_gate_tail_can_be_left_out():
     gate.update("idle")
     t[0] = 1.5
     assert gate.busy() and not gate.busy(tail=False)
+
+
+def test_just_spoke_covers_the_speakers_hold():
+    t = [0.0]
+    voice = voice_with(FakeSpeakers(t, start=0.1, stop=0.8), t)
+    voice.say(lambda: None)
+    t[0] = voice.ended + 0.01
+    assert voice.just_spoke(3.5)
+    t[0] = voice.ended + 3.6
+    assert not voice.just_spoke(3.5)
