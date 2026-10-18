@@ -147,12 +147,10 @@ export function spentBudgetOnReasoning(usage: TokenUsage | undefined): boolean {
  */
 export const WRITTEN_OUTPUT_CAP = 8192;
 // Spoken replies are kept short by the voice prompt, not by this number; the
-// cap only stops a runaway. It used to be 500, and a reasoning model (Mistral
-// Large 4 thinks before it answers) spent all of it thinking on a plain "who
-// are you?" and returned nothing but a truncation notice. Voice turns now
-// default to no reasoning at all (see openai-client.ts), and this leaves room
-// for the turns that still reason.
-export const VOICE_OUTPUT_CAP = 2000;
+// A generous provider-side safety ceiling, not a target response length. Voice
+// answers are kept short by the voice prompt and runaway guard; this only stops
+// a pathological generation from running indefinitely.
+export const VOICE_OUTPUT_CAP = 4096;
 
 /**
  * Appended when a reply stopped because it ran out of room. A plain sentence,
@@ -165,5 +163,5 @@ export const TRUNCATION_NOTICE =
   "period or fewer sensors at a time, or raise Maximum Answer Length in the " +
   "add-on settings.)";
 
-/** The spoken version, kept to one short sentence because it is read aloud. */
-export const VOICE_TRUNCATION_NOTICE = " Sorry, I ran out of room there.";
+/** Never read internal generation/token-limit diagnostics aloud. */
+export const VOICE_TRUNCATION_NOTICE = "";
