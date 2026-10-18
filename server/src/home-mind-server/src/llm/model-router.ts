@@ -93,7 +93,9 @@ export function selectThreadReasoning(
 ): ThreadReasoningLevel {
   if (ceiling === "none") return "none";
   const text = message.trim();
-  if (!text || CASUAL_EXCHANGE.test(text) || isSimpleRequest({ message: text })) return "none";
+  if (!text || CASUAL_EXCHANGE.test(text)) return "none";
+  // Explicitly demanding intent must win over the generic short/simple heuristic.
   if (DEEP_REASONING.test(text) || text.length >= 700) return ceiling;
+  if (isSimpleRequest({ message: text })) return "none";
   return ceiling === "high" || ceiling === "medium" ? "low" : ceiling;
 }
