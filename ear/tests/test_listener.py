@@ -379,3 +379,27 @@ def test_settings_name_alone(tmp_path):
     assert load(f).name_alone == "satellite"
     f.write_text("")
     assert load(f).name_alone == "ear"
+
+
+def test_a_long_order_begun_in_time_is_taken():
+    clock = Clock()
+    heard = iter(["Mado ?", "allume la lumière du salon et ferme les volets de la chambre"])
+    sent = []
+    listener = Listener(lambda a: Transcript(next(heard), 0.3, 0.1, -0.2), Addressing(names=["mado"]),
+                        lambda a, c: sent.append(1) or Outcome(speech="Fait."), clock=clock, name_wait=8,
+                        on_name_alone=lambda ready: ready())
+    listener.handle(audio())
+    clock.t = 12                       # a 6 s order, begun at 6 s, handled at 12 s
+    e = listener.handle(audio(6.0))
+    assert e["reason"] == "after_name" and sent
+
+
+def test_an_order_begun_too_late_is_not_taken():
+    clock = Clock()
+    heard = iter(["Mado ?", "allume la lumière"])
+    listener = Listener(lambda a: Transcript(next(heard), 0.3, 0.1, -0.2), Addressing(names=["mado"]),
+                        lambda a, c: Outcome(speech="Fait."), clock=clock, name_wait=8,
+                        on_name_alone=lambda ready: ready())
+    listener.handle(audio())
+    clock.t = 12                       # begun at 10 s
+    assert listener.handle(audio(2.0))["reason"] == "not_addressed"

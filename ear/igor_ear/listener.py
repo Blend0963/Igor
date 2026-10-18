@@ -199,9 +199,11 @@ class Listener:
             return self.spotter(audio), time.monotonic() - started
         return self._spotting.submit(timed)
 
-    def waiting(self) -> bool:
-        """Igor waits for words: after the name alone, or after its question."""
-        now = self.clock()
+    def waiting(self, at: float | None = None) -> bool:
+        """Igor waits for words: after the name alone, or after its question.
+        `at`: when a sentence began; one begun in time is taken, however
+        long it lasts."""
+        now = self.clock() if at is None else at
         return (self._armed is not None and now <= self._armed_until) or (self.followup and now <= self._followup_until)
 
     def _remember(self, now: float, text: str) -> None:
@@ -242,7 +244,10 @@ class Listener:
         # Igor waits for an order: whatever is said is for it. The satellite
         # may still report its own "Je vous écoute" for a moment; that voice
         # is already kept out (the ear was closed, and own_voice below).
-        waiting = self.waiting()
+        # When this sentence began: the windows below count from there, so
+        # a long order started in time is not cut off by its own length.
+        began = self.clock() - len(audio) / RATE
+        waiting = self.waiting(began)
         if self.busy():
             if not waiting:
                 entry.update(accepted=False, reason="satellite_busy")
@@ -278,8 +283,8 @@ class Listener:
             noise = not norm or heard.no_speech > MAX_NO_SPEECH_NAME or any(h in norm for h in HALLUCINATIONS)
         entry.update(no_speech=round(heard.no_speech, 2), logprob=round(heard.logprob, 2))
 
-        armed = self._armed is not None and now <= self._armed_until
-        followup_open = self.followup and now <= self._followup_until
+        armed = self._armed is not None and began <= self._armed_until
+        followup_open = self.followup and began <= self._followup_until
         send = audio
         echo = None if noise else self._own_voice(text)
         if echo is not None:
