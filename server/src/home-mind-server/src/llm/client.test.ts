@@ -127,12 +127,12 @@ describe("LLMClient (Anthropic engine)", () => {
     expect(stream.abort).toHaveBeenCalledOnce();
   });
 
-  it("uses the shared spoken ceiling for voice", async () => {
+  it("uses a generous safety ceiling for voice", async () => {
     mockStream.mockReturnValue(
       finalMessage({ content: [{ type: "text", text: "Hello" }] })
     );
     await engine.chat({ message: "Hi", userId: "u", isVoice: true });
-    expect(mockStream.mock.calls[0][0].max_tokens).toBe(2000);
+    expect(mockStream.mock.calls[0][0].max_tokens).toBe(4096);
   });
 
   it("honours a configured ceiling over the default", async () => {
@@ -157,7 +157,7 @@ describe("LLMClient (Anthropic engine)", () => {
     expect(result.error).toBeUndefined();
   });
 
-  it("keeps the spoken notice short", async () => {
+  it("does not append an internal token-limit notice to spoken replies", async () => {
     mockStream.mockReturnValue(
       finalMessage({
         content: [{ type: "text", text: "It is 21 degrees" }],
@@ -165,8 +165,8 @@ describe("LLMClient (Anthropic engine)", () => {
       })
     );
     const result = await engine.chat({ message: "Hi", userId: "u", isVoice: true });
-    expect(result.response).toContain("ran out of room");
-    expect(result.response).not.toContain("add-on settings");
+    expect(result.response).toBe("It is 21 degrees");
+    expect(result.response).not.toMatch(/tokens|ran out of room|add-on settings/i);
   });
 
   it("attaches MAX_TOKENS_TRUNCATED when the cap left nothing at all", async () => {
