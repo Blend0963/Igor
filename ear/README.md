@@ -45,7 +45,12 @@ Said alone, "Igor" gets a short question aloud in its own voice ("Oui,
 monsieur ?", "Que puis-je pour vous ?"…: about seventy, each said once in
 random order before any comes back; `[mode] name_reply` replaces them, `[]`
 for silence). Once it has finished saying it, the tablet shows "Je vous
-écoute…", and the next sentence, within `name_wait` seconds (8), is the order.
+écoute…", and the next sentence, within `name_wait` seconds (8), is the order:
+whatever is said then is for Igor, without the name (the satellite still
+reporting its own reply, or Whisper doubting a short answer, no longer drop
+it). With `[mode] name_alone = "satellite"` the satellite says the reply and
+listens itself instead (`assist_satellite.start_conversation`), as after its
+wake word; if it cannot, this ear takes the order.
 
 **Observation mode** (the default, `[mode] act = false`): nothing is sent;
 each sentence is noted in `~/.local/state/igor-ear/observations.jsonl` on

@@ -234,6 +234,18 @@ def run(settings: Settings) -> None:
         reply = replies.draw()
 
         def answer() -> None:
+            if settings.name_alone == "satellite":
+                # The satellite says it and listens itself, as after its own
+                # wake word; its busy state then keeps this ear out.
+                try:
+                    listener.said(reply)
+                    voice.say(lambda: ha.start_conversation(settings.ha_url, settings.ha_token,
+                                                            settings.satellite, reply))
+                    listener.disarm()
+                    log.info("The satellite listens for the order")
+                    return
+                except Exception as err:  # noqa: BLE001 - this ear takes the order instead
+                    log.warning("The satellite cannot listen for the order (%s); this ear does", err)
             try:
                 say(reply)
             except Exception as err:  # noqa: BLE001 - a courtesy only

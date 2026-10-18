@@ -157,6 +157,23 @@ def announce(url: str, token: str, satellite: str, message: str, timeout: float 
         raise
 
 
+def start_conversation(url: str, token: str, satellite: str, message: str, timeout: float = 30) -> None:
+    """Have the satellite say `message`, then listen itself, with its own
+    microphone and end-of-speech detection, as after its wake word; the
+    answer goes through its Assist pipeline (Home Assistant 2025.4 and later,
+    and a satellite that supports it)."""
+    body = json.dumps({"entity_id": satellite, "start_message": message, "preannounce": False}).encode()
+    request = urllib.request.Request(
+        url.rstrip("/") + "/api/services/assist_satellite/start_conversation",
+        data=body,
+        method="POST",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
+                 "User-Agent": "igor-ear"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout):
+        pass
+
+
 def heard(url: str, token: str, satellite: str, waiting: bool = False, seconds: float | None = None,
           timeout: float = 5) -> None:
     """Tell Igor's integration the name was heard, so the wall tablet shows it

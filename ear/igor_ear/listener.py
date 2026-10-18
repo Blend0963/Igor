@@ -24,6 +24,7 @@ A long sentence is not transcribed in full just to find the name: its first
 from __future__ import annotations
 
 import difflib
+import logging
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -33,8 +34,10 @@ from typing import Callable
 
 import numpy as np
 
-from .addressing import Addressing, normalize
+from .addressing import HALLUCINATIONS, Addressing, normalize
 from .spotter import Spot
+
+log = logging.getLogger("igor-ear")
 
 RATE = 16000
 GAP = np.zeros(RATE // 5, dtype=np.float32)  # 0.2 s between "Igor" and the order
@@ -142,8 +145,13 @@ class Listener:
         if self._armed is None:
             return
         self._armed_until = self.clock() + self.name_wait
+        log.info("Listening for the order, without the name, for %.0f s", self.name_wait)
         if self.on_heard is not None:
             self.on_heard(True, self.name_wait)
+
+    def disarm(self) -> None:
+        """The order will not be taken here (the satellite listens for it)."""
+        self._armed, self._armed_until = None, float("-inf")
 
     def _with_spotted_name(self, text: str, spot: Spot | None, entry: dict) -> str:
         """Whisper missed the name Vosk heard: put it where Vosk heard it, so
@@ -231,9 +239,15 @@ class Listener:
             "time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "audio_s": round(len(audio) / RATE, 2),
         }
+        # Igor waits for an order: whatever is said is for it. The satellite
+        # may still report its own "Je vous écoute" for a moment; that voice
+        # is already kept out (the ear was closed, and own_voice below).
+        waiting = self.waiting()
         if self.busy():
-            entry.update(accepted=False, reason="satellite_busy")
-            return entry
+            if not waiting:
+                entry.update(accepted=False, reason="satellite_busy")
+                return entry
+            entry["satellite_busy_ignored"] = True
         self._previous = previous
         spotting = self._spot(audio)
         heard = self._hear(audio)
@@ -257,6 +271,11 @@ class Listener:
         )
         if spot is not None and spot.found and named:
             noise = False  # Vosk heard the name too: a voice, whatever Whisper thinks
+        if waiting:
+            # An order after "Je vous écoute": a short answer ("le salon")
+            # often gets Whisper's doubt; only near certain noise is dropped.
+            norm = normalize(text)
+            noise = not norm or heard.no_speech > MAX_NO_SPEECH_NAME or any(h in norm for h in HALLUCINATIONS)
         entry.update(no_speech=round(heard.no_speech, 2), logprob=round(heard.logprob, 2))
 
         armed = self._armed is not None and now <= self._armed_until
