@@ -71,3 +71,29 @@ export function mayBeOrder(message: string): boolean {
   if (!text || text.length > FAST_MAX_CHARS * 2 || text.includes("<document")) return false;
   return !COMPLEX.test(text);
 }
+
+
+/** Reasoning level chosen for a thread, bounded by the user's configured ceiling. */
+export type ThreadReasoningLevel = "none" | "low" | "medium" | "high";
+
+const DEEP_REASONING =
+  /\b(?:why|pourquoi|explain|explique|analyse|analyze|compare|debug|diagnos|prove|prouve|derive|d[ée]duis|architecture|implement|impl[ée]mente|review|audit|research|recherche|investigate|investigue|step[- ]by[- ]step|in depth|en d[ée]tail|pros and cons|avantages et inconv[ée]nients|refactor|optimis[ez]|optimize|optimise|design|code|write|r[ée]dige|[ée]cris|cr[ée]e|planifie|plan)/i;
+
+const CASUAL_EXCHANGE =
+  /^(?:bonjour|salut|coucou|hello|hi|hey|merci|thanks|thank you|ok|okay|d'accord|parfait|super|bonne nuit|à bientôt)[.!?\s]*$/i;
+
+/**
+ * Ordinary thread chat uses low/no reasoning; explicit analysis stays at the
+ * configured level. An explicit per-request level from the UI takes precedence
+ * in openai-client.ts.
+ */
+export function selectThreadReasoning(
+  message: string,
+  ceiling: ThreadReasoningLevel
+): ThreadReasoningLevel {
+  if (ceiling === "none") return "none";
+  const text = message.trim();
+  if (!text || CASUAL_EXCHANGE.test(text) || isSimpleRequest({ message: text })) return "none";
+  if (DEEP_REASONING.test(text) || text.length >= 700) return ceiling;
+  return ceiling === "high" || ceiling === "medium" ? "low" : ceiling;
+}
