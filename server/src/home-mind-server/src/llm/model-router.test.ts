@@ -83,6 +83,7 @@ describe("selectThreadReasoning", () => {
 
   it("keeps the configured ceiling for explicitly demanding tasks", () => {
     expect(selectThreadReasoning("Analyse pourquoi la consommation a augmenté", "high")).toBe("high");
+    expect(selectThreadReasoning("Analyse ce problème", "high")).toBe("high");
     expect(selectThreadReasoning("Compare les deux options", "medium")).toBe("medium");
   });
 
