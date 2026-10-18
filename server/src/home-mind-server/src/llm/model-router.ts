@@ -77,7 +77,7 @@ export function mayBeOrder(message: string): boolean {
 export type ThreadReasoningLevel = "none" | "low" | "medium" | "high";
 
 const DEEP_REASONING =
-  /\b(?:why|pourquoi|explain|explique|analyse|analyze|compare|debug|diagnos|prove|prouve|derive|d[ée]duis|architecture|implement|impl[ée]mente|review|audit|research|recherche|investigate|investigue|step[- ]by[- ]step|in depth|en d[ée]tail|pros and cons|avantages et inconv[ée]nients|refactor|optimis[ez]|optimize|optimise|design|code|write|r[ée]dige|[ée]cris|cr[ée]e|planifie|plan)/i;
+  /\b(?:why|pourquoi|explain|explique|analyse|analyze|compare|debug|diagnos|prove|prouve|derive|d[ée]duis|architecture|implement|impl[ée]mente|review|audit|research|recherche|investigate|investigue|step[- ]by[- ]step|in depth|en d[ée]tail|pros and cons|avantages et inconv[ée]nients|refactor|optimis[ez]|optimize|optimise|design|code|write|r[ée]dige|[ée]cris|cr[ée]e|planifie|plan)\b/i;
 
 const CASUAL_EXCHANGE =
   /^(?:bonjour|salut|coucou|hello|hi|hey|merci|thanks|thank you|ok|okay|d'accord|parfait|super|bonne nuit|à bientôt)[.!?\s]*$/i;
