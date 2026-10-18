@@ -68,7 +68,6 @@ describe("mayBeOrder", () => {
   });
 });
 
-
 describe("selectThreadReasoning", () => {
   it("turns reasoning off for greetings and simple home commands", () => {
     expect(selectThreadReasoning("Bonjour", "high")).toBe("none");
@@ -81,9 +80,10 @@ describe("selectThreadReasoning", () => {
     expect(selectThreadReasoning("Raconte-moi ce que tu peux faire", "medium")).toBe("low");
   });
 
-  it("keeps the configured ceiling for explicitly demanding tasks", () => {
+  it("keeps the configured ceiling for explicitly demanding tasks, including the short prompt from CI", () => {
     expect(selectThreadReasoning("Analyse pourquoi la consommation a augmenté", "high")).toBe("high");
     expect(selectThreadReasoning("Analyse ce problème", "high")).toBe("high");
+    expect(selectThreadReasoning("Analyse pourquoi x", "high")).toBe("high");
     expect(selectThreadReasoning("Compare les deux options", "medium")).toBe("medium");
   });
 
