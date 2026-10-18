@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isActionCommand, isSimpleRequest, mayBeOrder } from "./model-router.js";
+import { isActionCommand, isSimpleRequest, mayBeOrder, selectThreadReasoning } from "./model-router.js";
 
 describe("isSimpleRequest", () => {
   it.each([
@@ -65,5 +65,30 @@ describe("mayBeOrder", () => {
     expect(mayBeOrder("Plonge la maison dans le noir")).toBe(true);
     expect(mayBeOrder("Pourquoi le salon est allumé ?")).toBe(false);
     expect(mayBeOrder("x".repeat(400))).toBe(false);
+  });
+});
+
+
+describe("selectThreadReasoning", () => {
+  it("turns reasoning off for greetings and simple home commands", () => {
+    expect(selectThreadReasoning("Bonjour", "high")).toBe("none");
+    expect(selectThreadReasoning("Allume la lumière du salon", "high")).toBe("none");
+    expect(selectThreadReasoning("Quelle est la température dans le salon ?", "high")).toBe("none");
+  });
+
+  it("uses low effort for ordinary conversation", () => {
+    expect(selectThreadReasoning("Raconte-moi ce que tu peux faire", "high")).toBe("low");
+    expect(selectThreadReasoning("Raconte-moi ce que tu peux faire", "medium")).toBe("low");
+  });
+
+  it("keeps the configured ceiling for explicitly demanding tasks", () => {
+    expect(selectThreadReasoning("Analyse pourquoi la consommation a augmenté", "high")).toBe("high");
+    expect(selectThreadReasoning("Analyse ce problème", "high")).toBe("high");
+    expect(selectThreadReasoning("Compare les deux options", "medium")).toBe("medium");
+  });
+
+  it("respects none and lower configured ceilings", () => {
+    expect(selectThreadReasoning("Analyse ce problème en détail", "none")).toBe("none");
+    expect(selectThreadReasoning("Discussion ordinaire", "low")).toBe("low");
   });
 });
