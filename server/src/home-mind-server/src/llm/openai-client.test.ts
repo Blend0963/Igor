@@ -167,7 +167,7 @@ describe("OpenAIChatEngine", () => {
     expect(userMsg.content).toBe("Hello");
   });
 
-  it("fires onChunk callback for each text delta", async () => {
+  it("buffers text deltas until a complete sentence can be checked", async () => {
     mockCreate.mockResolvedValue(
       makeStream([
         { choices: [{ delta: { content: "A" }, finish_reason: null }] },
@@ -181,7 +181,7 @@ describe("OpenAIChatEngine", () => {
       chunks.push(chunk)
     );
 
-    expect(chunks).toEqual(["A", "B"]);
+    expect(chunks).toEqual(["AB"]);
   });
 
   it("accumulates tool call deltas across chunks", async () => {
@@ -1006,7 +1006,7 @@ describe("OpenAIChatEngine", () => {
     );
   });
 
-  it("uses the spoken ceiling (2000) for voice mode", async () => {
+  it("uses the spoken ceiling (4096) for voice mode", async () => {
     mockCreate.mockResolvedValue(
       makeStream([
         { choices: [{ delta: { content: "Short" }, finish_reason: null }] },
@@ -1021,7 +1021,7 @@ describe("OpenAIChatEngine", () => {
     });
 
     const createCall = mockCreate.mock.calls[0][0];
-    expect(createCall.max_tokens).toBe(2000);
+    expect(createCall.max_tokens).toBe(4096);
   });
 
   it("honours a configured output cap, which OPENAI_MAX_TOKENS never reached before", async () => {
