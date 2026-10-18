@@ -14,7 +14,8 @@ act = false
 followup = true
 # How long Igor listens for that answer (seconds); the tablet shows it.
 followup_seconds = 8
-# After "Igor" said alone, how long to wait for the order (seconds).
+# After "Igor" said alone, how long to wait for the order to begin (seconds);
+# an order begun in time is taken whatever its length.
 name_wait = 8
 # Who listens for that order: "ear" (this service: everything said within
 # name_wait is for Igor) or "satellite" (the satellite says its reply and

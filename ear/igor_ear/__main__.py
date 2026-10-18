@@ -294,7 +294,7 @@ def run(settings: Settings) -> None:
             last_end = [u.end]
             # Igor waits for an order (after its name, or its question): the
             # speaker may pause longer, mid-sentence, before it is cut.
-            gap = settings.order_gap if listener.waiting() else settings.join_gap
+            gap = settings.order_gap if listener.waiting(time.monotonic() - len(u.audio) / 16000) else settings.join_gap
 
             def more() -> np.ndarray | None:
                 """The next part, if the speaker went on within the gap."""
