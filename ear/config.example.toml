@@ -73,6 +73,10 @@ keep_days = 7
 # Also note the text of sentences that were NOT for Igor. Turn off once
 # the name detection is judged.
 rejected_text = true
+# Every sound heard in the journal, even the ones too short to be speech and
+# the ones nobody made words of, with their level and what Whisper and Vosk
+# understood: to see why a name was missed. Leave false otherwise.
+journal_all = false
 
 [smart]
 # Used only with [mode] addressing = "smart". The AI runs in Ollama on this

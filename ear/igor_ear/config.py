@@ -124,6 +124,7 @@ class Settings:
     home_states: list[str] = field(default_factory=lambda: ["on", "home"])
     keep_days: int = 7
     rejected_text: bool = True
+    journal_all: bool = False
 
     @property
     def log_file(self) -> Path:
@@ -191,4 +192,5 @@ def load(path: Path = CONFIG) -> Settings:
     s.home_states = [str(x) for x in ha.get("home_states", s.home_states)]
     s.keep_days = int(log.get("keep_days", s.keep_days))
     s.rejected_text = bool(log.get("rejected_text", s.rejected_text))
+    s.journal_all = bool(log.get("journal_all", s.journal_all))
     return s

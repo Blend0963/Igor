@@ -337,6 +337,10 @@ def run(settings: Settings) -> None:
                 # to a satellite stuck "responding" must be seen.
                 log.info("ignored    satellite_busy     (a %.1f s sentence; satellite %s)", entry["audio_s"], gate.describe())
             shown = entry["reason"] != "satellite_busy" and (entry["reason"] != "noise" or entry.get("text"))
+            if settings.journal_all and not (shown or entry.get("accepted")) and entry["reason"] != "satellite_busy":
+                log.info("sound      %-18s %.1f s, peak %.2f; Whisper: %r (no_speech %s); Vosk: %s",
+                         entry["reason"], entry["audio_s"], float(np.max(np.abs(u.audio))) if u.audio.size else 0.0,
+                         entry.get("text", ""), entry.get("no_speech", "?"), entry.get("vosk", "nothing"))
             if shown or entry.get("accepted"):
                 label = "SENT" if entry.get("sent") else ("WOULD SEND" if entry["accepted"] else
                                                           ("WOULD ACT " if entry["reason"] == "smart_would_act" else "ignored   "))
@@ -386,7 +390,10 @@ def run(settings: Settings) -> None:
         if away:
             log.info("Someone home: listening")
         away = False
+        dropped = segmenter.too_short
         utterance = segmenter.push(frame, vad(frame))
+        if settings.journal_all and segmenter.too_short != dropped:
+            log.info("sound      too short          %d ms of voice: not speech (250 ms needed)", segmenter.too_short_ms)
         if utterance is not None:
             try:
                 utterances.put_nowait(utterance)
