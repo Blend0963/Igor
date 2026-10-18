@@ -99,6 +99,34 @@ describe("LLMClient (Anthropic engine)", () => {
     expect(mockStream.mock.calls[0][0].max_tokens).toBe(8192);
   });
 
+  it("cuts repeated spoken text in the Anthropic stream before returning it", async () => {
+    const loop =
+      "La lumière est allumée. Tout est prêt. La lumière est allumée. Je recommence.";
+    const stream = Object.assign(
+      finalMessage({ content: [{ type: "text", text: loop }] }),
+      { abort: vi.fn() }
+    );
+    stream.on = vi.fn((event: string, callback: (textDelta: string) => void) => {
+      if (event === "text") {
+        callback("La lumière est allumée. ");
+        callback("Tout est prêt. ");
+        callback("La lumière est allumée. Je recommence.");
+      }
+      return stream;
+    }) as typeof stream.on;
+    mockStream.mockReturnValue(stream);
+    const spoken: string[] = [];
+
+    const result = await engine.chat(
+      { message: "Hi", userId: "u", isVoice: true },
+      (chunk) => spoken.push(chunk)
+    );
+
+    expect(result.response).toBe("La lumière est allumée. Tout est prêt. ");
+    expect(spoken.join("")).toBe(result.response);
+    expect(stream.abort).toHaveBeenCalledOnce();
+  });
+
   it("uses the shared spoken ceiling for voice", async () => {
     mockStream.mockReturnValue(
       finalMessage({ content: [{ type: "text", text: "Hello" }] })
