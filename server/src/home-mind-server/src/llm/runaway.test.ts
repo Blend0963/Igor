@@ -40,6 +40,24 @@ describe("SpokenGuard", () => {
     expect(run(["Bonne nuit 🌙, monsieur ✨."]).said).toBe("Bonne nuit , monsieur .");
   });
 
+  it("cuts repeated sentences in written mode without removing emoji", () => {
+    const guard = new SpokenGuard(false);
+    let said = "";
+    said += guard.push("C'est fait 🌙. ");
+    said += guard.push("Voici le détail. ");
+    said += guard.push("C'est fait 🌙. Encore.");
+    said += guard.flush();
+    expect(said).toBe("C'est fait 🌙. Voici le détail. ");
+    expect(guard.reason).toBe("repeat");
+  });
+
+  it("preserves Markdown separators in written mode", () => {
+    const guard = new SpokenGuard(false);
+    const text = "Première partie.\n\n---\n\nDeuxième partie.";
+    expect(guard.push(text) + guard.flush()).toBe(text);
+    expect(guard.stopped).toBe(false);
+  });
+
   it("does not cut on a decimal point or a time", () => {
     expect(run(["Il fait 21.5 degrés. Il est 2 h 56."]).said).toBe("Il fait 21.5 degrés. Il est 2 h 56.");
   });
