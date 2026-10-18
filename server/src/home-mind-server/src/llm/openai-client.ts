@@ -12,6 +12,7 @@ import { listFromEnv, mistralKey } from "./mistral-platform.js";
 import { isActionCommand, isSimpleRequest, mayBeOrder } from "./model-router.js";
 import { formatLiveState } from "./live-state.js";
 import { askIsOrder } from "./order-check.js";
+import { SpokenGuard } from "./runaway.js";
 import { RECENT_FILE_MESSAGES, shortenAttachedFiles } from "../files/extract.js";
 import { randomUUID } from "node:crypto";
 import { handleToolCall, extractAndStoreFacts, type ToolContext } from "./tool-handler.js";
@@ -730,6 +731,8 @@ export class OpenAIChatEngine implements IChatEngine {
 
     let text = "";
     let finishReason: string | null = null;
+    // A spoken reply is passed on sentence by sentence and cut if it loops.
+    const spoken = isVoice ? new SpokenGuard() : undefined;
     let usage: TokenUsage | undefined;
     // OpenRouter names the provider that served the request on every chunk.
     // Which one it was is the difference between a 1 s and a 3 s first token.
@@ -756,12 +759,20 @@ export class OpenAIChatEngine implements IChatEngine {
       // Provider APIs may return text as content blocks rather than a string.
       // Normalize each delta before storing or forwarding it to Home Assistant/TTS.
       if (opts.onThinking && isThinkingPart(choice.delta?.content)) opts.onThinking();
-      const chunkText = contentToText(choice.delta?.content);
+      const raw = contentToText(choice.delta?.content);
+      const chunkText = spoken ? spoken.push(raw) : raw;
       if (chunkText) {
         text += chunkText;
         if (onChunk) {
           onChunk(chunkText);
         }
+      }
+      if (spoken?.stopped) {
+        // A looping reply: the rest of the stream is not read (leaving the
+        // loop closes the request), and the turn ends on what was said.
+        console.warn(`[llm] ${model} started repeating itself (${spoken.reason}); spoken reply cut there`);
+        finishReason = "stop";
+        break;
       }
 
       // Accumulate tool call deltas
@@ -791,6 +802,12 @@ export class OpenAIChatEngine implements IChatEngine {
       if (choice.finish_reason) {
         finishReason = choice.finish_reason;
       }
+    }
+
+    const rest = spoken?.flush();
+    if (rest) {
+      text += rest;
+      onChunk?.(rest);
     }
 
     // Convert accumulated tool calls to the expected format

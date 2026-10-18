@@ -1284,6 +1284,33 @@ describe("OpenAIChatEngine", () => {
       expect(result.response).toBe("It is 21 degrees.");
     });
 
+    it("cuts a spoken reply that starts looping, and drops its emojis", async () => {
+      const loop =
+        "Le minuteur est lancé, monsieur. Bonne nuit. 🌙 --- *Je corrige :* Le minuteur est lancé, monsieur. Bonne nuit.";
+      mockCreate.mockResolvedValue(
+        makeStream([
+          ...loop.match(/.{1,9}/gs)!.map((part) => ({ choices: [{ delta: { content: part } }] })),
+          { choices: [{ delta: {}, finish_reason: "stop" }] },
+        ])
+      );
+      const spoken: string[] = [];
+
+      const result = await engine.chat({ message: "Hi", userId: "user-1", isVoice: true }, (c) => spoken.push(c));
+
+      expect(result.response.trim()).toBe("Le minuteur est lancé, monsieur. Bonne nuit.");
+      expect(spoken.join("").trim()).toBe("Le minuteur est lancé, monsieur. Bonne nuit.");
+    });
+
+    it("leaves a written reply as the model wrote it", async () => {
+      mockCreate.mockResolvedValue(
+        makeStream([{ choices: [{ delta: { content: "Fait. 🌙 --- Fait." }, finish_reason: "stop" }] }])
+      );
+
+      const result = await engine.chat({ message: "Hi", userId: "user-1" });
+
+      expect(result.response).toBe("Fait. 🌙 --- Fait.");
+    });
+
     it("asks the endpoint for a usage breakdown on every streamed call", async () => {
       mockCreate.mockResolvedValue(
         makeStream([{ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] }])
