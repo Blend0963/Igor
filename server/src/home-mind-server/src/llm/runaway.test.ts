@@ -62,3 +62,35 @@ describe("SpokenGuard", () => {
     expect(run(["Il fait 21.5 degrés. Il est 2 h 56."]).said).toBe("Il fait 21.5 degrés. Il est 2 h 56.");
   });
 });
+
+describe("SpokenGuard, reworded loops", () => {
+  it("cuts the same answer said again in other words", () => {
+    const guard = new SpokenGuard(true);
+    let said = guard.push("Le minuteur de trente minutes est lancé, monsieur. Il sonnera à 2 h 56. ");
+    said += guard.push("Le minuteur de trente minutes est bien lancé. Encore une phrase.");
+    said += guard.flush();
+    expect(said.trim()).toBe("Le minuteur de trente minutes est lancé, monsieur. Il sonnera à 2 h 56.");
+    expect(guard.reason).toBe("near_repeat");
+  });
+
+  it("cuts an aside about its own answer", () => {
+    const guard = new SpokenGuard(true);
+    let said = guard.push("Le minuteur est lancé. *Je ne peux pas m'empêcher de rajouter des émojis… je corrige :* ");
+    said += guard.push("Le minuteur est lancé.");
+    said += guard.flush();
+    expect(said.trim()).toBe("Le minuteur est lancé.");
+    expect(guard.reason).toBe("aside");
+  });
+
+  it("keeps different sentences about similar things", () => {
+    const guard = new SpokenGuard(true);
+    const text = "La température du salon est de 21 degrés. La température de la chambre est de 20 degrés.";
+    expect(guard.push(text) + guard.flush()).toBe(text);
+  });
+
+  it("leaves written replies to the exact-repeat rule only", () => {
+    const guard = new SpokenGuard(false);
+    const text = "Le minuteur de trente minutes est lancé. Le minuteur de trente minutes est bien lancé. *Note.*";
+    expect(guard.push(text) + guard.flush()).toBe(text);
+  });
+});

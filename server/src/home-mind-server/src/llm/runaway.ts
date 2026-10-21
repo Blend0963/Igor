@@ -9,6 +9,14 @@
  */
 const EMOJI = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}\u{20E3}]/gu;
 const RULE = /(^|\s)(?:-{3,}|\*{3,}|_{3,})(?=\s|$)/;
+// Spoken replies have no use for markup either: an "*aside*" ("*Je corrige :*",
+// "*C'est tout. Je m'arrête.*") is the model talking about its own answer, which
+// is how its loops go on. The reply ends where the first one opens.
+const ASIDE = /\*(?=\S)/;
+// In a spoken reply, a sentence this close to one already said (share of
+// words in common) is the same answer again, reworded.
+const NEAR_REPEAT = 0.75;
+const NEAR_REPEAT_MIN_WORDS = 5;
 // A sentence ends at . ! ? or … followed by a space or a line break.
 const SENTENCE_END = /[.!?…]+["»)\]]*\s+/;
 // Shorter sentences ("Oui.", "D'accord.") may honestly come back.
@@ -18,22 +26,35 @@ function key(sentence: string): string {
   return sentence.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
+function words(sentence: string): Set<string> {
+  return new Set(
+    sentence.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+  );
+}
+
+function likeness(a: Set<string>, b: Set<string>): number {
+  let common = 0;
+  for (const w of a) if (b.has(w)) common++;
+  return common / (a.size + b.size - common || 1);
+}
+
 export class SpokenGuard {
   private pending = "";
 
   constructor(private readonly spokenOnly = true) {}
   private readonly seen = new Set<string>();
+  private readonly said: Set<string>[] = [];
   /** True once the reply has been cut; whatever comes next is dropped. */
   stopped = false;
   /** Why it was cut, for the log. */
-  reason: "repeat" | "rule" | undefined;
+  reason: "repeat" | "near_repeat" | "rule" | "aside" | undefined;
 
   /** Text that may be passed on now. */
   push(chunk: string): string {
     if (this.stopped) return "";
     this.pending += this.spokenOnly ? chunk.replace(EMOJI, "") : chunk;
     let out = "";
-    const rule = this.spokenOnly ? RULE.exec(this.pending) : null;
+    const rule = this.spokenOnly ? (RULE.exec(this.pending) ?? ASIDE.exec(this.pending)) : null;
     const limit = rule ? rule.index : this.pending.length;
     let match: RegExpExecArray | null;
     while (!this.stopped) {
@@ -63,8 +84,10 @@ export class SpokenGuard {
 
   private cutAtRule(): string {
     const rule = RULE.exec(this.pending);
-    const before = rule ? this.pending.slice(0, rule.index) : this.pending;
-    this.stop("rule");
+    const aside = rule ? null : ASIDE.exec(this.pending);
+    const at = rule ?? aside;
+    const before = at ? this.pending.slice(0, at.index) : this.pending;
+    this.stop(rule || !aside ? "rule" : "aside");
     return this.repeats(before) ? "" : before.trimEnd();
   }
 
@@ -77,10 +100,20 @@ export class SpokenGuard {
       }
       this.seen.add(k);
     }
+    if (this.spokenOnly) {
+      const w = words(sentence);
+      if (w.size >= NEAR_REPEAT_MIN_WORDS) {
+        if (this.said.some((s) => likeness(w, s) >= NEAR_REPEAT)) {
+          this.stop("near_repeat");
+          return true;
+        }
+        this.said.push(w);
+      }
+    }
     return false;
   }
 
-  private stop(reason: "repeat" | "rule"): void {
+  private stop(reason: NonNullable<SpokenGuard["reason"]>): void {
     this.stopped = true;
     this.reason ??= reason;
     this.pending = "";

@@ -6,6 +6,7 @@ import type { IConversationStore } from "../memory/types.js";
 import { HomeAssistantClient } from "../ha/client.js";
 import { DeviceScanner } from "../ha/device-scanner.js";
 import { TopologyScanner } from "../ha/topology-scanner.js";
+import { formatScriptSection } from "../ha/script-catalog.js";
 import { buildSystemPromptText } from "./prompts.js";
 import { toolsForMode, toOpenAITools } from "./tool-definitions.js";
 import { listFromEnv, mistralKey } from "./mistral-platform.js";
@@ -205,9 +206,11 @@ export class OpenAIChatEngine implements IChatEngine {
 
     // 2. Refresh device profiles and home layout if stale, then build system prompt
     await Promise.all([this.scanner.refreshIfStale(), this.topology.refreshIfStale()]);
-    const deviceCheatSheet = this.scanner.hasProfiles()
-      ? this.scanner.formatCheatSheet()
-      : undefined;
+    // The scripts it may run, with their fields: not in any entity's state.
+    const scriptSection = formatScriptSection(await Promise.resolve().then(() => this.ha.listScripts()).catch(() => []));
+    const deviceCheatSheet = [this.scanner.hasProfiles() ? this.scanner.formatCheatSheet() : undefined, scriptSection]
+      .filter(Boolean)
+      .join("\n\n") || undefined;
     const homeLayout = this.topology.hasLayout() ? this.topology.formatSection() : undefined;
     const systemPrompt = buildSystemPromptText(factContents, scope.isThread ? "thread" : isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender);
 

@@ -53,6 +53,13 @@ it). With `[mode] name_alone = "satellite"` the satellite says the reply and
 listens itself instead (`assist_satellite.start_conversation`), as after its
 wake word; if it cannot, this ear takes the order.
 
+Igor talked about rather than to is ignored (`mention` in the journal):
+"c'est Igor l'autre jour qui a fait ça", "demande à Igor", "Igor a encore
+éteint". French marks it around the name (a word like c'est, à, de, avec,
+le, que just before it, or a third-person verb right after it with no
+comma); said to Igor, the name stands apart, first or last or between
+commas, and an order ("Igor éteins…") is always taken.
+
 Whisper sometimes pads a lone "Igor" with a word or two ("Je m'appelle
 Igor"). Such a short call (at most three words around the name, with no
 verb, room, device, question or thanks) still goes to Igor as it is, in

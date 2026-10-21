@@ -65,6 +65,26 @@ HALLUCINATIONS = (
 )
 
 
+# Igor talked about, not to (see Addressing.talks_about).
+ELIDED = ("d'", "l'", "qu'", "c'", "j'")
+BEFORE_A_MENTION = {
+    "c'est", "c'etait", "cest", "a", "de", "du", "des", "avec", "pour", "par", "chez", "sans",
+    "que", "comme", "contre", "sur", "vers", "le", "la", "les", "un", "une", "ce", "cet",
+    "son", "sa", "ton", "ta", "mon", "ma", "notre", "votre", "leur", "et", "ou", "ni",
+}
+AFTER_A_MENTION = {
+    "a", "est", "etait", "avait", "aura", "sera", "fait", "faisait", "va", "allait", "vient",
+    "il", "qui", "dit", "disait", "m'a", "t'a", "n'a", "n'est", "ne", "sait", "savait",
+    "marche", "marchait", "fonctionne", "comprend", "entend", "repond", "parle",
+}
+
+
+def _plain(text: str) -> str:
+    """Lower case, no accents, plain apostrophes, punctuation kept."""
+    text = unicodedata.normalize("NFKD", text.lower().replace("’", "'"))
+    return "".join(c for c in text if not unicodedata.combining(c))
+
+
 def normalize(text: str) -> str:
     """Lower case, no accents, single spaces, plain apostrophes."""
     text = unicodedata.normalize("NFKD", text.lower().replace("’", "'"))
@@ -124,6 +144,8 @@ class Addressing:
         if any(h in norm for h in HALLUCINATIONS):
             return Decision(False, "hallucination")
         if self.name.search(norm):
+            if self.talks_about(text):
+                return Decision(False, "mention")
             return Decision(True, "name")
         # Second chance: Whisper's small models often write the name one
         # letter off. Taken only at the start or the end of a sentence that
@@ -146,6 +168,32 @@ class Addressing:
             return Decision(True, "command")
         return Decision(False, "not_addressed")
 
+
+    def talks_about(self, text: str) -> bool:
+        """Igor named as someone talked about, not to: "c'est Igor qui a fait
+        ça", "demande à Igor", "Igor a encore éteint". French marks it around
+        the name: a word that governs it just before (c'est, à, de, avec, le,
+        que…), or a verb in the third person right after with no comma
+        between. Said to Igor, the name stands apart: first or last, between
+        commas. A sentence that is an order anyway ("Igor éteins") is kept."""
+        tokens = re.findall(r"[\w'-]+|[,.;:!?]", _plain(text))
+        at = next((i for i, t in enumerate(tokens) if self.name.search(t)), None)
+        if at is None:
+            return False
+        rest = OPENERS.sub("", self.name.sub(" ", normalize(text)).strip() + " ").strip()
+        if self._verbs.match(rest):
+            return False
+        word = tokens[at]
+        before = tokens[at - 1] if at > 0 else ""
+        after = tokens[at + 1] if at + 1 < len(tokens) else ""
+        later = tokens[at + 2] if at + 2 < len(tokens) else ""
+        if word.startswith(ELIDED):
+            return True
+        if before in BEFORE_A_MENTION:
+            return True
+        if after in AFTER_A_MENTION and not (after == "a" and later in {"quelle", "quel", "quoi", "combien"}):
+            return True
+        return False
 
     def looks_like_request(self, text: str) -> bool:
         """Could this be for the house at all: an order or a question, short
