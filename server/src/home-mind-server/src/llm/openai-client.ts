@@ -6,6 +6,7 @@ import type { IConversationStore } from "../memory/types.js";
 import { HomeAssistantClient } from "../ha/client.js";
 import { DeviceScanner } from "../ha/device-scanner.js";
 import { TopologyScanner } from "../ha/topology-scanner.js";
+import { formatScriptSection } from "../ha/script-catalog.js";
 import { buildSystemPromptText } from "./prompts.js";
 import { toolsForMode, toOpenAITools } from "./tool-definitions.js";
 import { listFromEnv, mistralKey } from "./mistral-platform.js";
@@ -205,9 +206,11 @@ export class OpenAIChatEngine implements IChatEngine {
 
     // 2. Refresh device profiles and home layout if stale, then build system prompt
     await Promise.all([this.scanner.refreshIfStale(), this.topology.refreshIfStale()]);
-    const deviceCheatSheet = this.scanner.hasProfiles()
-      ? this.scanner.formatCheatSheet()
-      : undefined;
+    // The scripts it may run, with their fields: not in any entity's state.
+    const scriptSection = formatScriptSection(await Promise.resolve().then(() => this.ha.listScripts()).catch(() => []));
+    const deviceCheatSheet = [this.scanner.hasProfiles() ? this.scanner.formatCheatSheet() : undefined, scriptSection]
+      .filter(Boolean)
+      .join("\n\n") || undefined;
     const homeLayout = this.topology.hasLayout() ? this.topology.formatSection() : undefined;
     const systemPrompt = buildSystemPromptText(factContents, scope.isThread ? "thread" : isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender);
 
@@ -317,8 +320,10 @@ export class OpenAIChatEngine implements IChatEngine {
     }
 
     // Persist only the text to conversation history (images are ephemeral to this turn).
+    let userMessageId: string | undefined;
     if (effectiveConversationId) {
       const messageId = this.conversations.storeMessage(effectiveConversationId, userId, "user", message);
+      userMessageId = messageId;
       await rememberSemantically(this.config, this.conversations, messageId, message);
     }
 
@@ -542,6 +547,17 @@ export class OpenAIChatEngine implements IChatEngine {
       console.log(`[llm] stopped by the user after ${turnText.length} characters`);
     }
 
+    // The always-on microphone sent a sentence that talked about Igor, not to
+    // it, and the model said so (NOT_FOR_ME): no answer at all, and nothing
+    // of it kept, so the room's conversation does not become Igor's.
+    if (result.silent && result.toolCalls.length === 0 && !interrupted) {
+      if (effectiveConversationId && userMessageId) {
+        await this.conversations.deleteMessagesFrom?.(effectiveConversationId, userId, userMessageId);
+      }
+      console.log(`[usage] ${promptMode} ${turnUsage.describe()} not addressed, silent model=${model}`);
+      return { response: "", toolsUsed, factsLearned: 0, notForMe: true, usage: { model, ...turnUsage.totals() } };
+    }
+
     // Files the tools produced (charts, images) that the answer does not
     // show yet go after it, streamed like the rest, and stored with it.
     // Only in a thread: a spoken answer would read the link out loud.
@@ -695,6 +711,8 @@ export class OpenAIChatEngine implements IChatEngine {
     finishReason: string | null;
     toolCalls: FunctionToolCall[];
     usage?: TokenUsage;
+    /** The model answered NOT_FOR_ME: the sentence was not said to it. */
+    silent?: boolean;
   }> {
     const effort = "effort" in opts ? opts.effort : this.config.reasoningEffort ?? (isVoice ? "none" : undefined);
     const model = opts.model ?? this.config.llmModel;
@@ -777,7 +795,8 @@ export class OpenAIChatEngine implements IChatEngine {
       }
       if (spoken.stopped) {
         // Stop consuming the provider stream as soon as repetition is detected.
-        console.warn(`[llm] ${model} response cut after repeated text (mode=${isVoice ? "voice" : "text"}, reason=${spoken.reason})`);
+        if (spoken.silent) console.log(`[llm] ${model}: not said to Igor, no answer`);
+        else console.warn(`[llm] ${model} response cut after repeated text (mode=${isVoice ? "voice" : "text"}, reason=${spoken.reason})`);
         finishReason = "stop";
         break;
       }
@@ -865,7 +884,7 @@ export class OpenAIChatEngine implements IChatEngine {
       );
     }
 
-    return { text, finishReason, toolCalls, usage };
+    return { text, finishReason, toolCalls, usage, ...(spoken.silent ? { silent: true } : {}) };
   }
 }
 

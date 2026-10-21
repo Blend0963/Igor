@@ -295,7 +295,11 @@ class IgorConversationAgent(ConversationEntity):
         elif event == "chunk":
             sensor.answer(builder.current_text)
         elif event == "done":
-            sensor.finish(builder.current_text, payload.get("actions"))
+            if payload.get("notForMe"):
+                # Not said to Igor: the tablet goes back to rest, showing nothing.
+                sensor.dismiss()
+            else:
+                sensor.finish(builder.current_text, payload.get("actions"))
 
     async def _stream_events(
         self,
@@ -597,6 +601,9 @@ class IgorConversationAgent(ConversationEntity):
             response_text = data.get("response")
             if response_text:
                 return response_text
+            if data.get("notForMe"):
+                # The always-on microphone's sentence was not said to Igor.
+                return ""
             error = data.get("error")
             if isinstance(error, dict):
                 hint = error.get("hint")

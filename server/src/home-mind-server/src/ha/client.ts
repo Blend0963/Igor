@@ -64,6 +64,16 @@ export interface CreatedAutomation {
  */
 export type ServiceResponseSupport = "none" | "optional" | "only";
 
+/** A script the assistant may run: its id, what it says it does, its fields. */
+export interface ScriptInfo {
+  id: string;
+  name?: string;
+  description?: string;
+  fields: { name: string; description?: string; required: boolean; example?: unknown }[];
+  /** It hands back a result (`service_response`). */
+  returns: boolean;
+}
+
 /** Shape HA returns when a response was requested (`?return_response`). */
 export interface ServiceCallWithResponse {
   changed_states: EntityState[];
@@ -181,6 +191,7 @@ export class HomeAssistantClient {
   // service call. Missing or failed → looked up again next time.
   private serviceResponseTTL: number = 5 * 60 * 1000;
   private serviceResponseCache: CacheEntry<Map<string, ServiceResponseSupport>> | null = null;
+  private scriptsCache: CacheEntry<ScriptInfo[]> | null = null;
 
   /**
    * @param exposure The entities the user exposed to Assist. When given, it
@@ -445,6 +456,27 @@ export class HomeAssistantClient {
     entityId?: string,
     data?: Record<string, unknown>
   ): Promise<EntityState[] | ServiceCallWithResponse> {
+    // script.turn_on on one script, or "script.<name>" written as the service:
+    // run the script itself, with its fields as data. Called that way its
+    // result comes back (turn_on returns none), and fields a model put at the
+    // top level of turn_on's data (which turn_on rejects) reach the script.
+    if (typeof service === "string" && domain === "script" && service.startsWith("script.")) service = service.slice("script.".length);
+    if (domain === "script" && service === "turn_on") {
+      const target = entityId ?? (typeof data?.entity_id === "string" ? data.entity_id : undefined);
+      if (target && /^script\.[a-z0-9_]+$/.test(target) && !target.includes(",")) {
+        const { entity_id: _ignored, variables, ...rest } = (data ?? {}) as Record<string, unknown>;
+        service = target.slice("script.".length);
+        entityId = undefined;
+        data = {
+          ...(variables && typeof variables === "object" ? (variables as Record<string, unknown>) : {}),
+          ...rest,
+        };
+      }
+    }
+
+    // "script.minuteur" run with itself as entity_id: the id is not a field.
+    if (domain === "script" && entityId === `script.${service}`) entityId = undefined;
+
     if (
       typeof domain !== "string" ||
       typeof service !== "string" ||
@@ -774,6 +806,41 @@ export class HomeAssistantClient {
       map[entry.domain] = Object.keys(entry.services ?? {});
     }
     return map;
+  }
+
+  /**
+   * The scripts the assistant may run (exposed ones, when the exposure list
+   * has an opinion), with their description and fields from Home Assistant's
+   * services catalog. Cached 10 minutes; an empty list when it cannot be read.
+   */
+  async listScripts(): Promise<ScriptInfo[]> {
+    if (this.scriptsCache && Date.now() - this.scriptsCache.timestamp < 10 * 60 * 1000) {
+      return this.scriptsCache.data;
+    }
+    type Field = { name?: string; description?: string; required?: boolean; example?: unknown };
+    type Service = { name?: string; description?: string; fields?: Record<string, Field>; response?: unknown };
+    const raw = await this.fetch<{ domain: string; services: Record<string, Service> }[]>("/api/services");
+    const entry = raw.find((e) => e.domain === "script");
+    const scripts: ScriptInfo[] = [];
+    const filtered = this.exposure && (await this.exposure.list()) !== null;
+    for (const [id, svc] of Object.entries(entry?.services ?? {})) {
+      if (SCRIPT_LIFECYCLE.has(id)) continue;
+      if (filtered && !(await this.exposure!.allows(`script.${id}`))) continue;
+      scripts.push({
+        id: `script.${id}`,
+        name: svc.name || undefined,
+        description: svc.description || undefined,
+        fields: Object.entries(svc.fields ?? {}).map(([name, f]) => ({
+          name,
+          description: f?.description || f?.name || undefined,
+          required: Boolean(f?.required),
+          example: f?.example,
+        })),
+        returns: svc.response != null,
+      });
+    }
+    this.scriptsCache = { data: scripts, timestamp: Date.now() };
+    return scripts;
   }
 
   /** Build the set of all known "domain.service" ids. */

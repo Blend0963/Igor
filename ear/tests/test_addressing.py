@@ -92,3 +92,27 @@ def test_a_name_one_letter_off(text, expected):
 ])
 def test_short_call(text, expected):
     assert name_rules.short_call(text) is expected
+
+
+@pytest.mark.parametrize("text,reason", [
+    # Talked about: ignored.
+    ("Oui, non, c'est Igor l'autre jour qui a fait ça.", "mention"),
+    ("Demande à Igor.", "mention"),
+    ("Igor a encore éteint la lumière tout seul.", "mention"),
+    ("Le truc avec Igor, c'est qu'il comprend mal.", "mention"),
+    ("Tu sais ce que Igor m'a dit ?", "mention"),
+    ("La voix d'Igor est trop grave.", "mention"),
+    ("Igor qui répond à la télé, c'est pénible.", "mention"),
+    # Talked to: taken.
+    ("Igor, éteins la lumière.", "name"),
+    ("Éteins la lumière, Igor.", "name"),
+    ("Igor éteins la lumière", "name"),
+    ("Dis Igor, quelle heure est-il ?", "name"),
+    ("Igor, à quelle heure est le rendez-vous ?", "name"),
+    ("Igor a quelle heure je me lève demain", "name"),
+    ("Igor, tu es là ?", "name"),
+    ("Igor, est-ce que tu peux fermer les volets ?", "name"),
+    ("Bonne nuit Igor.", "name"),
+])
+def test_talked_to_or_about(text, reason):
+    assert name_rules.decide(text).reason == reason

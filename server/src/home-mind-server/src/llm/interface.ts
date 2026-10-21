@@ -69,6 +69,9 @@ export interface ChatResponse {
   interrupted?: boolean;
   /** What the turn really changed in the house (llm/action-chips.ts). */
   actions?: Array<{ kind: string; label: string }>;
+  /** A sentence from the always-on microphone that was not said to Igor:
+   *  no answer is given, nothing is spoken or shown. */
+  notForMe?: boolean;
 }
 
 export type StreamCallback = (chunk: string) => void;

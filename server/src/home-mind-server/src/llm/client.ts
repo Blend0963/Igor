@@ -6,6 +6,7 @@ import type { IConversationStore } from "../memory/types.js";
 import { HomeAssistantClient } from "../ha/client.js";
 import { DeviceScanner } from "../ha/device-scanner.js";
 import { TopologyScanner } from "../ha/topology-scanner.js";
+import { formatScriptSection } from "../ha/script-catalog.js";
 import { buildSystemPrompt, type CachedSystemPrompt } from "./prompts.js";
 import { HA_TOOLS } from "./tools.js";
 import { filterTools } from "./tool-policy.js";
@@ -49,6 +50,8 @@ export class LLMClient implements IChatEngine {
   private conversations: IConversationStore;
   private extractor: IFactExtractor;
   private ha: HomeAssistantClient;
+  /** Replies the model gave as NOT_FOR_ME (llm/runaway.ts): said to no one. */
+  private readonly silentReplies = new WeakSet<Anthropic.Message>();
   private scanner: DeviceScanner;
   private topology: TopologyScanner;
   private config: Config;
@@ -111,9 +114,11 @@ export class LLMClient implements IChatEngine {
 
     // 2. Refresh device profiles and home layout if stale, then build system prompt
     await Promise.all([this.scanner.refreshIfStale(), this.topology.refreshIfStale()]);
-    const deviceCheatSheet = this.scanner.hasProfiles()
-      ? this.scanner.formatCheatSheet()
-      : undefined;
+    // The scripts it may run, with their fields: not in any entity's state.
+    const scriptSection = formatScriptSection(await Promise.resolve().then(() => this.ha.listScripts()).catch(() => []));
+    const deviceCheatSheet = [this.scanner.hasProfiles() ? this.scanner.formatCheatSheet() : undefined, scriptSection]
+      .filter(Boolean)
+      .join("\n\n") || undefined;
     const homeLayout = this.topology.hasLayout() ? this.topology.formatSection() : undefined;
     let systemPrompt = buildSystemPrompt(factContents, scope.isThread ? "thread" : isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender);
     // Retrieve distant history strictly by semantic similarity, never by keywords or recency.
@@ -171,8 +176,10 @@ export class LLMClient implements IChatEngine {
     }
 
     // Store user message in conversation history (text only; images are ephemeral)
+    let userMessageId: string | undefined;
     if (effectiveConversationId) {
       const messageId = this.conversations.storeMessage(effectiveConversationId, userId, "user", message);
+      userMessageId = messageId;
       await rememberSemantically(this.config, this.conversations, messageId, message);
     }
 
@@ -254,6 +261,14 @@ export class LLMClient implements IChatEngine {
         tools
       );
       if (forceAnswer) break;
+    }
+
+    // Not said to Igor (the model answered NOT_FOR_ME): no answer, nothing kept.
+    if (this.silentReplies.has(response) && !response.content.some((c) => c.type === "tool_use")) {
+      if (effectiveConversationId && userMessageId) {
+        await this.conversations.deleteMessagesFrom?.(effectiveConversationId, userId, userMessageId);
+      }
+      return { response: "", toolsUsed, factsLearned: 0, notForMe: true };
     }
 
     // 5. Extract final text response
@@ -366,7 +381,8 @@ export class LLMClient implements IChatEngine {
       safeText += safe;
       if (safe) onChunk?.(safe);
       if (guard.stopped) {
-        console.warn(
+        if (guard.silent) console.log(`[llm] ${this.config.llmModel}: not said to Igor, no answer`);
+        else console.warn(
           `[llm] ${this.config.llmModel} response cut after repeated text (mode=${isVoice ? "voice" : "text"}, reason=${guard.reason})`
         );
         stream.abort();
@@ -389,6 +405,12 @@ export class LLMClient implements IChatEngine {
       const rest = guard.flush();
       safeText += rest;
       if (rest) onChunk?.(rest);
+    }
+    if (guard.silent) {
+      // NOT_FOR_ME: an empty answer, and no tool call either.
+      message = { ...message, content: [], stop_reason: "end_turn" };
+      this.silentReplies.add(message);
+      return message;
     }
     if (guard.stopped) {
       // Never execute a tool call from a response cut for runaway output.

@@ -192,6 +192,11 @@ class IgorVoiceSensor(SensorEntity):
         self._write()
         self._clear = async_call_later(self.hass, CLEAR_AFTER, self._reset)
 
+    def dismiss(self) -> None:
+        """The turn was not for Igor after all: back to rest at once."""
+        self._cancel_timers()
+        self._reset()
+
     @callback
     def _reset(self, _now: Any = None) -> None:
         self._clear = None

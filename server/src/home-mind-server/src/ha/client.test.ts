@@ -658,7 +658,8 @@ describe("HomeAssistantClient and the Assist exposure list", () => {
       await client.callService("script", "turn_on", "script.good_night");
       expect(posted("script/garage_door")).toBe(false);
       expect(posted("script/good_night")).toBe(true);
-      expect(posted("script/turn_on")).toBe(true);
+      // turn_on on one script runs that script itself (its result comes back).
+      expect(posted("script/turn_on")).toBe(false);
     });
 
     it("passes a call with no target at all", async () => {
@@ -849,5 +850,71 @@ describe("HomeAssistantClient.notify channels", () => {
   it("falls back to a persistent notification without a service", async () => {
     await new HomeAssistantClient(baseConfig).notify(undefined, "T", "M");
     expect(posts[0].url).toMatch(/persistent_notification\/create$/);
+  });
+});
+
+
+describe("HomeAssistantClient and scripts", () => {
+  let sent: { url: string; body: unknown }[];
+  const catalog = [
+    { domain: "light", services: { turn_on: {} } },
+    {
+      domain: "script",
+      services: {
+        turn_on: {},
+        reload: {},
+        minuteur: {
+          name: "Minuteur",
+          description: "Lance un minuteur sur le téléphone",
+          fields: { recipient: { name: "Durée", description: "Durée en secondes", required: true, example: 300 } },
+          response: null,
+        },
+        contacts: { name: "Contacts", description: "Tous les contacts", fields: {}, response: { optional: true } },
+        secret: { name: "Secret", fields: {} },
+      },
+    },
+  ];
+  beforeEach(() => {
+    sent = [];
+    global.fetch = vi.fn(async (input: unknown, init?: { body?: string }) => {
+      const url = typeof input === "string" ? input : String(input);
+      sent.push({ url, body: init?.body ? JSON.parse(init.body) : undefined });
+      const body = url.endsWith("/api/services") ? catalog : [];
+      return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as unknown as typeof fetch;
+  });
+
+  it("lists the exposed scripts with their fields and whether they return a result", async () => {
+    const client = new HomeAssistantClient(
+      baseConfig,
+      new AssistExposure(async () => new Set(["script.minuteur", "script.contacts"]))
+    );
+    const scripts = await client.listScripts();
+    expect(scripts.map((s) => s.id)).toEqual(["script.minuteur", "script.contacts"]);
+    expect(scripts[0].fields).toEqual([{ name: "recipient", description: "Durée en secondes", required: true, example: 300 }]);
+    expect(scripts[0].returns).toBe(false);
+    expect(scripts[1].returns).toBe(true);
+  });
+
+  it("runs the script itself when asked through script.turn_on or as script.<name>", async () => {
+    const client = new HomeAssistantClient(baseConfig);
+    await client.callService("script", "turn_on", "script.minuteur", { recipient: 300 });
+    await client.callService("script", "turn_on", undefined, { entity_id: "script.minuteur", variables: { recipient: 60 } });
+    await client.callService("script", "script.minuteur", undefined, { recipient: 90 });
+    await client.callService("script", "minuteur", "script.minuteur", { recipient: 120 });
+    const runs = sent.filter((c) => c.url.includes("/api/services/script/"));
+    expect(runs.map((c) => c.url.split("/api/services/")[1])).toEqual([
+      "script/minuteur",
+      "script/minuteur",
+      "script/minuteur",
+      "script/minuteur",
+    ]);
+    expect(runs.map((c) => c.body)).toEqual([{ recipient: 300 }, { recipient: 60 }, { recipient: 90 }, { recipient: 120 }]);
+  });
+
+  it("asks a script that returns a result for it", async () => {
+    const client = new HomeAssistantClient(baseConfig);
+    await client.callService("script", "contacts");
+    expect(sent.some((c) => c.url.endsWith("/api/services/script/contacts?return_response"))).toBe(true);
   });
 });
