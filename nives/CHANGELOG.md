@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.7 — Spoken answers no longer stop mid-sentence
+
+- 0.11.6 ended a spoken reply at its first asterisk, to stop the loops that open with an aside ("*Je corrige :*"). But the model also writes bold in Markdown ("Le numéro de **Hugo Poirier** est…"), so answers stopped at "Le numéro de" or "Je ne trouve". Bold, code marks and italics inside a sentence are now simply dropped from spoken replies (the voice no longer reads them either), and only an aside that opens a sentence still ends the reply.
+
 ## 0.11.6 — Igor knows your scripts; loops cut sooner; talked about, not to
 
 - **Scripts**: the fields of a script are not in its entity's state, so Igor could see `script.minuteur` without knowing it takes a `recipient`, and it often called `script.turn_on` with the fields at the top level, which Home Assistant refuses. Every request now lists the scripts Igor may run (the exposed ones), with Home Assistant's own description of each and of its fields, and whether it returns a result. A call to `script.turn_on` on one script, or one naming `script.<name>` as the service, now runs that script itself with its fields: its result (a contact list, a converted timestamp) comes back to Igor.

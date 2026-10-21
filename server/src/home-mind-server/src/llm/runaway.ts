@@ -17,10 +17,14 @@ export const NOT_FOR_ME = "NOT_FOR_ME";
 
 const EMOJI = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}\u{20E3}]/gu;
 const RULE = /(^|\s)(?:-{3,}|\*{3,}|_{3,})(?=\s|$)/;
-// Spoken replies have no use for markup either: an "*aside*" ("*Je corrige :*",
-// "*C'est tout. Je m'arrête.*") is the model talking about its own answer, which
-// is how its loops go on. The reply ends where the first one opens.
-const ASIDE = /\*(?=\S)/;
+// Spoken replies have no use for markup: bold and code marks ("**Hugo
+// Poirier**", `__`, backticks) are dropped, and so is a lone "*" of italics
+// inside a sentence, or the voice reads them out. But an "*aside*" opening a
+// sentence ("*Je corrige :*", "*C'est tout. Je m'arrête.*") is the model
+// talking about its own answer, which is how its loops go on: the reply ends
+// there. (0.11.6 ended at any "*", which cut every answer with bold in it.)
+const BOLD = /(?<!\*)\*\*(?!\*)|__|`/g;
+const ASIDE = /(?:^|[.!?…:]\s+|\n\s*)\*(?=[^\s*])/;
 // In a spoken reply, a sentence this close to one already said (share of
 // words in common) is the same answer again, reworded.
 const NEAR_REPEAT = 0.75;
@@ -57,6 +61,7 @@ export class SpokenGuard {
   /** Why it was cut, for the log. */
   reason: "repeat" | "near_repeat" | "rule" | "aside" | "not_for_me" | undefined;
   private opened = false;
+  private heldStar = "";
 
   /** The model said the sentence was not for it: say nothing. */
   get silent(): boolean {
@@ -66,7 +71,18 @@ export class SpokenGuard {
   /** Text that may be passed on now. */
   push(chunk: string): string {
     if (this.stopped) return "";
-    this.pending += this.spokenOnly ? chunk.replace(EMOJI, "") : chunk;
+    if (this.spokenOnly) {
+      // A "*" that ended the last chunk may be the first half of "**".
+      chunk = this.heldStar + chunk;
+      this.heldStar = "";
+      this.pending = (this.pending + chunk.replace(EMOJI, "")).replace(BOLD, "");
+      if (/(?<!\*)\*$/.test(this.pending)) {
+        this.heldStar = "*";
+        this.pending = this.pending.slice(0, -1);
+      }
+    } else {
+      this.pending += chunk;
+    }
     if (this.spokenOnly && !this.opened) {
       const head = this.pending.replace(/^[\s"'«*`[(]+/, "");
       if (head.startsWith(NOT_FOR_ME)) {
@@ -78,8 +94,9 @@ export class SpokenGuard {
       this.opened = true;
     }
     let out = "";
-    const rule = this.spokenOnly ? (RULE.exec(this.pending) ?? ASIDE.exec(this.pending)) : null;
-    const limit = rule ? rule.index : this.pending.length;
+    const cut = this.spokenOnly ? this.cutPoint() : undefined;
+    const rule = cut !== undefined;
+    const limit = cut ?? this.pending.length;
     let match: RegExpExecArray | null;
     while (!this.stopped) {
       // This global regex is reused across calls; reset its cursor whenever the
@@ -90,7 +107,7 @@ export class SpokenGuard {
       const end = match.index + match[0].length;
       const sentence = this.pending.slice(0, end);
       if (this.repeats(sentence)) return out;
-      out += sentence;
+      out += this.spokenOnly ? sentence.replace(/\*/g, "") : sentence;
       this.pending = this.pending.slice(end);
       if (rule) return out + this.cutAtRule();
     }
@@ -100,6 +117,9 @@ export class SpokenGuard {
 
   /** What is left once the stream has ended. */
   flush(): string {
+    this.pending += this.heldStar;
+    this.heldStar = "";
+    if (this.spokenOnly) this.pending = this.pending.replace(/\*/g, "");
     if (this.stopped || !this.pending) return "";
     if (this.spokenOnly && !this.opened && NOT_FOR_ME.startsWith(this.pending.replace(/^[\s"'«*`[(]+/, "").trimEnd())) {
       // The whole reply was a beginning of NOT_FOR_ME ("NOT_FOR"): silence too.
@@ -112,13 +132,21 @@ export class SpokenGuard {
     return this.repeats(rest) ? "" : rest;
   }
 
+  /** Where a spoken reply must end: a "---" rule, or an aside opening a sentence. */
+  private cutPoint(): number | undefined {
+    const rule = RULE.exec(this.pending);
+    const aside = ASIDE.exec(this.pending);
+    const at = aside ? aside.index + aside[0].length - 1 : undefined;
+    if (rule && (at === undefined || rule.index <= at)) return rule.index;
+    return at;
+  }
+
   private cutAtRule(): string {
     const rule = RULE.exec(this.pending);
-    const aside = rule ? null : ASIDE.exec(this.pending);
-    const at = rule ?? aside;
-    const before = at ? this.pending.slice(0, at.index) : this.pending;
-    this.stop(rule || !aside ? "rule" : "aside");
-    return this.repeats(before) ? "" : before.trimEnd();
+    const cut = this.cutPoint();
+    const before = cut !== undefined ? this.pending.slice(0, cut) : this.pending;
+    this.stop(rule && rule.index === cut ? "rule" : "aside");
+    return this.repeats(before) ? "" : before.replace(/\*/g, "").trimEnd();
   }
 
   private repeats(sentence: string): boolean {

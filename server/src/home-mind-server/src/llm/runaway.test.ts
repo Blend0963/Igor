@@ -117,3 +117,30 @@ describe("SpokenGuard, NOT_FOR_ME", () => {
     expect(guard.push("NOT_FOR_ME") + guard.flush()).toBe("NOT_FOR_ME");
   });
 });
+
+describe("SpokenGuard, bold and italics in a spoken reply", () => {
+  const run = (chunks: string[]) => {
+    const guard = new SpokenGuard(true);
+    return { said: chunks.map((c) => guard.push(c)).join("") + guard.flush(), guard };
+  };
+
+  it("keeps the whole answer and drops the bold marks (0.11.6 cut it at the first *)", () => {
+    const text = "Le numéro de **Hugo Poirier** est le 06 12 34 56 78. Je ne trouve **pas** d'autre Hugo.";
+    for (const chunks of [[text], text.match(/.{1,3}/gs)!, text.split("")]) {
+      const { said, guard } = run(chunks);
+      expect(said).toBe("Le numéro de Hugo Poirier est le 06 12 34 56 78. Je ne trouve pas d'autre Hugo.");
+      expect(guard.stopped).toBe(false);
+    }
+  });
+
+  it("keeps a sentence that starts in bold, and italics inside a sentence", () => {
+    const { said } = run(["**Priorité** : faites vérifier le relais. C'est *très* simple."]);
+    expect(said).toBe("Priorité : faites vérifier le relais. C'est très simple.");
+  });
+
+  it("still ends at an aside that opens a sentence", () => {
+    const { said, guard } = run(["Le minuteur est lancé. *Je corrige :* Le minuteur est lancé."]);
+    expect(said.trim()).toBe("Le minuteur est lancé.");
+    expect(guard.reason).toBe("aside");
+  });
+});
