@@ -7,6 +7,14 @@
  * In written mode normal Markdown and emoji are preserved; repeated sentences
  * are still detected before they can be streamed twice.
  */
+/**
+ * What the model answers, alone, to a sentence from the always-on microphone
+ * that was not said to it ("c'est Igor qui a fait ça"): the turn then ends in
+ * silence. Spoken mode holds the first characters back until they are known
+ * not to be this, so nothing of it is ever passed on.
+ */
+export const NOT_FOR_ME = "NOT_FOR_ME";
+
 const EMOJI = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}\u{20E3}]/gu;
 const RULE = /(^|\s)(?:-{3,}|\*{3,}|_{3,})(?=\s|$)/;
 // Spoken replies have no use for markup either: an "*aside*" ("*Je corrige :*",
@@ -47,12 +55,28 @@ export class SpokenGuard {
   /** True once the reply has been cut; whatever comes next is dropped. */
   stopped = false;
   /** Why it was cut, for the log. */
-  reason: "repeat" | "near_repeat" | "rule" | "aside" | undefined;
+  reason: "repeat" | "near_repeat" | "rule" | "aside" | "not_for_me" | undefined;
+  private opened = false;
+
+  /** The model said the sentence was not for it: say nothing. */
+  get silent(): boolean {
+    return this.reason === "not_for_me";
+  }
 
   /** Text that may be passed on now. */
   push(chunk: string): string {
     if (this.stopped) return "";
     this.pending += this.spokenOnly ? chunk.replace(EMOJI, "") : chunk;
+    if (this.spokenOnly && !this.opened) {
+      const head = this.pending.replace(/^[\s"'«*`[(]+/, "");
+      if (head.startsWith(NOT_FOR_ME)) {
+        this.stop("not_for_me");
+        return "";
+      }
+      // Could still become NOT_FOR_ME: wait for more before saying anything.
+      if (NOT_FOR_ME.startsWith(head)) return "";
+      this.opened = true;
+    }
     let out = "";
     const rule = this.spokenOnly ? (RULE.exec(this.pending) ?? ASIDE.exec(this.pending)) : null;
     const limit = rule ? rule.index : this.pending.length;
@@ -77,6 +101,12 @@ export class SpokenGuard {
   /** What is left once the stream has ended. */
   flush(): string {
     if (this.stopped || !this.pending) return "";
+    if (this.spokenOnly && !this.opened && NOT_FOR_ME.startsWith(this.pending.replace(/^[\s"'«*`[(]+/, "").trimEnd())) {
+      // The whole reply was a beginning of NOT_FOR_ME ("NOT_FOR"): silence too.
+      if (this.pending.trim()) this.stop("not_for_me");
+      this.pending = "";
+      return "";
+    }
     const rest = this.pending;
     this.pending = "";
     return this.repeats(rest) ? "" : rest;

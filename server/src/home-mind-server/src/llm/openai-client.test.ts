@@ -1300,6 +1300,33 @@ describe("OpenAIChatEngine", () => {
       expect(spoken.join("").trim()).toBe("Le minuteur est lancé, monsieur. Bonne nuit.");
     });
 
+    it("stays silent, and keeps nothing, on a sentence not said to Igor", async () => {
+      mockCreate.mockResolvedValue(
+        makeStream([
+          { choices: [{ delta: { content: "NOT_" } }] },
+          { choices: [{ delta: { content: "FOR_ME" } }] },
+          { choices: [{ delta: {}, finish_reason: "stop" }] },
+        ])
+      );
+      vi.mocked(conversations.storeMessage).mockReturnValue("m1" as never);
+      const deleteMessagesFrom = vi.fn().mockReturnValue(1);
+      (conversations as unknown as { deleteMessagesFrom: unknown }).deleteMessagesFrom = deleteMessagesFrom;
+      const spoken: string[] = [];
+
+      const result = await engine.chat(
+        { message: "c'est Igor l'autre jour qui a fait ça", userId: "user-1", isVoice: true, conversationId: "mado-user:user-1" },
+        (c) => spoken.push(c)
+      );
+
+      expect(result.notForMe).toBe(true);
+      expect(result.response).toBe("");
+      expect(result.error).toBeUndefined();
+      expect(spoken.join("")).toBe("");
+      expect(deleteMessagesFrom).toHaveBeenCalledWith(expect.any(String), "user-1", "m1");
+      expect(vi.mocked(conversations.storeMessage).mock.calls.filter((c) => c[2] === "assistant")).toHaveLength(0);
+      expect(extractAndStoreFacts).not.toHaveBeenCalled();
+    });
+
     it("leaves a written reply as the model wrote it when it is not looping", async () => {
       mockCreate.mockResolvedValue(
         makeStream([{ choices: [{ delta: { content: "Fait. 🌙 --- Fait." }, finish_reason: "stop" }] }])

@@ -94,3 +94,26 @@ describe("SpokenGuard, reworded loops", () => {
     expect(guard.push(text) + guard.flush()).toBe(text);
   });
 });
+
+describe("SpokenGuard, NOT_FOR_ME", () => {
+  it("holds the start back and turns NOT_FOR_ME into silence, however it is chunked", () => {
+    for (const chunks of [["NOT_FOR_ME"], ["N", "OT_", "FOR", "_ME"], ["NOT", "_FOR_ME."], ['"NOT_FOR_ME"']]) {
+      const guard = new SpokenGuard(true);
+      const said = chunks.map((c) => guard.push(c)).join("") + guard.flush();
+      expect(said).toBe("");
+      expect(guard.silent).toBe(true);
+    }
+  });
+
+  it("lets a normal answer through, even one starting with N", () => {
+    const guard = new SpokenGuard(true);
+    const said = ["N", "on, le salon est éteint."].map((c) => guard.push(c)).join("") + guard.flush();
+    expect(said).toBe("Non, le salon est éteint.");
+    expect(guard.silent).toBe(false);
+  });
+
+  it("is a spoken-only signal: written replies keep the text", () => {
+    const guard = new SpokenGuard(false);
+    expect(guard.push("NOT_FOR_ME") + guard.flush()).toBe("NOT_FOR_ME");
+  });
+});
