@@ -438,6 +438,28 @@
     #chat-head, .head-top .wm-bow, #empty .big .wm-bow, .msg.fresh, .msg.fresh .chip, .st-bow, #btn-send.stop, .msg-act.done { animation: none !important; }
     #statusline .st-text { transition: none; }
   }
+  /* Igor writes on the page itself, like a document; only your messages stay in a bubble. */
+  #messages { padding: 20px 16px 28px; gap: 22px; }
+  #messages > .msg.assistant { width: 100%; max-width: 860px; margin-left: auto; margin-right: auto; }
+  .msg.assistant { align-self: center; background: transparent; box-shadow: none; border: 0; border-radius: 0; padding: 0 4px; font-size: 16.5px; line-height: 1.65; }
+  .msg.assistant:has(.code), .msg.assistant:has(.chart), .msg.assistant:has(.table-wrap), .msg.assistant:has(.md-img) { width: 100%; }
+  .msg.assistant p { margin: 0 0 12px; }
+  .msg.assistant h3 { font-size: 20px; } .msg.assistant h4 { font-size: 18px; } .msg.assistant h5, .msg.assistant h6 { font-size: 16.5px; }
+  .msg.assistant h3, .msg.assistant h4, .msg.assistant h5, .msg.assistant h6 { margin: 18px 0 8px; }
+  .msg.assistant ul, .msg.assistant ol { margin: 0 0 12px; padding-left: 24px; }
+  .msg.assistant li { margin: 4px 0; }
+  .msg.assistant .table-wrap { margin: 4px 0 14px; }
+  .msg.assistant table { font-size: 15px; width: 100%; }
+  .msg.assistant th, .msg.assistant td { padding: 8px 12px; }
+  .msg.assistant .code code, .msg.assistant .inline-code { font-size: 14.5px; }
+  .msg.user { width: auto; max-width: min(78%, 640px); margin-right: max(0px, calc((100% - 860px) / 2)); align-self: flex-end; font-size: 16px; line-height: 1.55; padding: 11px 16px; }
+  @media (max-width: 700px) {
+    #messages { padding: 16px 14px 24px; }
+    .msg.assistant { font-size: 16px; padding: 0 2px; }
+    .msg.user { max-width: 85%; margin-right: 0; }
+    .msg.assistant table { font-size: 14px; }
+    .msg.assistant th, .msg.assistant td { padding: 7px 9px; }
+  }
 </style>
 </head>
 <body>

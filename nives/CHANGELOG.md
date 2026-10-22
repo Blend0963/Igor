@@ -1,7 +1,8 @@
 # Changelog
 
-## 0.11.9 — Chat threads no longer stop mid-answer
+## 0.11.9 — Chat threads no longer stop mid-answer, and read like a page
 
+- **Easier to read**: in the chat panel, Igor's answers are no longer in a bubble. They take the whole width, like a page, in larger type (16.5 px, 16 px on a phone) with more space between lines, larger headings and full-width tables. Your own messages stay in a small blue bubble on the right. On a wide screen the text stays centred at a comfortable reading width.
 - A written reply was cut as soon as one of its sentences came back word for word: the guard against loops, made for the voice, also ran in chat threads, where a table with two identical cells ("Bon rapport qualité-prix.") or a list with a step said twice is normal. The reply stopped mid-table, and that cut version was what was saved. In threads and typed Assist, only a real loop is cut now: three sentences copied again in the same order, never table rows or code. Spoken replies keep the stricter guard.
 - A thread reply may now use 16,384 tokens whether or not it reasons first (8,192 before), and when it still reaches that limit Igor goes on by itself, up to three times, into the same message. This happens on the server, so it finishes even if you leave the page.
 
