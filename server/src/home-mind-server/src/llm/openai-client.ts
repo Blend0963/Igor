@@ -64,6 +64,11 @@ function openAIToolsFor(mode: "voice" | "text" | "thread", turn: TurnPolicy = {}
 
 /** Output ceiling of a thread turn that reasons first: the thinking is billed from it too. */
 export const THREAD_REASONING_OUTPUT_CAP = 16384;
+/** How many times a thread reply that hit the output cap is continued. */
+export const THREAD_CONTINUATIONS = 3;
+const CONTINUE_INSTRUCTION =
+  "Your previous message was cut off by the length limit. Continue it exactly where it stopped " +
+  "(mid-sentence, mid-table or mid-code-block if needed), without repeating anything and without any introduction.";
 
 /** True when a content part is a reasoning block (Mistral's "thinking" chunks). */
 function isThinkingPart(content: unknown): boolean {
@@ -559,6 +564,17 @@ export class OpenAIChatEngine implements IChatEngine {
         turnUsage.add(result.usage);
         if (forceAnswer) break;
       }
+      // A thread reply that reached the output cap goes on by itself, as one
+      // message: a long table or text must not stop halfway.
+      for (let more = 0; scope.isThread && more < THREAD_CONTINUATIONS; more++) {
+        if (result.finishReason !== "length" || result.toolCalls.length || !result.text.trim()) break;
+        const sofar = result.text;
+        console.log(`[llm] thread reply hit the output cap after ${sofar.length} characters; continuing (${more + 1}/${THREAD_CONTINUATIONS})`);
+        messages.push({ role: "assistant", content: sofar }, { role: "user", content: CONTINUE_INSTRUCTION });
+        const next = await call(true);
+        turnUsage.add(next.usage);
+        result = { ...next, text: sofar + next.text };
+      }
     } catch (error) {
       if (!signal?.aborted) throw error;
       // Stopped by the user: keep what this turn had written.
@@ -759,7 +775,7 @@ export class OpenAIChatEngine implements IChatEngine {
   }> {
     const effort = "effort" in opts ? opts.effort : this.config.reasoningEffort ?? (isVoice ? "none" : undefined);
     const model = opts.model ?? this.config.llmModel;
-    const cap = this.maxOutputTokens(isVoice, Boolean(opts.isThread && effort && effort !== "none"));
+    const cap = this.maxOutputTokens(isVoice, Boolean(opts.isThread));
     const tools = opts.tools ?? openAIToolsFor(isVoice ? "voice" : "text");
     const startedAt = Date.now();
     const stream = await withTokenCap(model, cap, (capParam) =>

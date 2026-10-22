@@ -40,15 +40,27 @@ describe("SpokenGuard", () => {
     expect(run(["Bonne nuit 🌙, monsieur ✨."]).said).toBe("Bonne nuit , monsieur .");
   });
 
-  it("cuts repeated sentences in written mode without removing emoji", () => {
+  it("keeps a written phrase said again: table cells, list steps, headings", () => {
+    const samples = [
+      "Voici le comparatif.\n\n| Modèle | Prix | Avis |\n|---|---|---|\n| A | 10 €. | Bon rapport qualité-prix. |\n| B | 12 €. | Bon rapport qualité-prix. |\n\nEn résumé, prenez A 🌙.",
+      "Étapes :\n1. Ouvrez les paramètres.\n2. Cliquez sur Enregistrer.\n3. Ouvrez les paramètres.\n4. Fin.",
+      "## Lundi\nAucun rendez-vous prévu.\n\n## Mardi\nAucun rendez-vous prévu.\n\nVoilà pour la semaine.",
+      "```js\nlog(\"Valeur lue. \");\nlog(\"Valeur lue. \");\nlog(\"Valeur lue. \");\nlog(\"Valeur lue. \");\n```\nC'est tout.",
+    ];
+    for (const text of samples) {
+      const guard = new SpokenGuard(false);
+      const said = text.match(/.{1,7}/gs)!.map((c) => guard.push(c)).join("") + guard.flush();
+      expect(said).toBe(text);
+      expect(guard.stopped).toBe(false);
+    }
+  });
+
+  it("cuts a written reply that starts over, three sentences in the same order", () => {
     const guard = new SpokenGuard(false);
-    let said = "";
-    said += guard.push("La lumière est allumée 🌙. ");
-    said += guard.push("Voici le détail complet. ");
-    said += guard.push("La lumière est allumée 🌙. Encore.");
-    said += guard.flush();
-    expect(said).toBe("La lumière est allumée 🌙. Voici le détail complet. ");
-    expect(guard.reason).toBe("repeat");
+    const block = "La lumière est allumée. Le chauffage est à 20 degrés. Les volets sont fermés. ";
+    const said = [block, "Voici le détail complet. ", block, block].map((c) => guard.push(c)).join("") + guard.flush();
+    expect(said).toBe(`${block}Voici le détail complet. La lumière est allumée. Le chauffage est à 20 degrés. `);
+    expect(guard.reason).toBe("loop");
   });
 
   it("preserves Markdown separators in written mode", () => {
@@ -88,7 +100,7 @@ describe("SpokenGuard, reworded loops", () => {
     expect(guard.push(text) + guard.flush()).toBe(text);
   });
 
-  it("leaves written replies to the exact-repeat rule only", () => {
+  it("leaves near repeats alone in written replies", () => {
     const guard = new SpokenGuard(false);
     const text = "Le minuteur de trente minutes est lancé. Le minuteur de trente minutes est bien lancé. *Note.*";
     expect(guard.push(text) + guard.flush()).toBe(text);

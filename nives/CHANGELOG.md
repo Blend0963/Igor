@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.9 — Chat threads no longer stop mid-answer
+
+- A written reply was cut as soon as one of its sentences came back word for word: the guard against loops, made for the voice, also ran in chat threads, where a table with two identical cells ("Bon rapport qualité-prix.") or a list with a step said twice is normal. The reply stopped mid-table, and that cut version was what was saved. In threads and typed Assist, only a real loop is cut now: three sentences copied again in the same order, never table rows or code. Spoken replies keep the stricter guard.
+- A thread reply may now use 16,384 tokens whether or not it reasons first (8,192 before), and when it still reaches that limit Igor goes on by itself, up to three times, into the same message. This happens on the server, so it finishes even if you leave the page.
+
 ## 0.11.8 — Talked about, Igor really stays silent
 
 - 0.11.6 asked the main model to answer a code word (NOT_FOR_ME) when a sentence from the always-on microphone talked about Igor rather than to it. Mistral did not keep to it: it often said instead, sometimes in English, that the sentence was not for it. Now a separate, very short call to the memory model (`extraction_model`, ministral-8b here) decides first, and can only answer yes or no. When the sentence was not said to Igor, the main model is never called: no answer, no voice, nothing kept or learned. Only spoken sentences where the name comes after their opening are checked ("c'est Igor qui a éteint", "éteins le salon, Igor"); "Igor, allume le salon" goes straight through, with no added wait. If the check fails or hesitates, Igor answers as before. Cost: a few hundred tokens on the small model, about a third of a second.

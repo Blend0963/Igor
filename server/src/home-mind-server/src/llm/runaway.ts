@@ -4,8 +4,8 @@
  * The guard buffers one sentence at a time so a repeated sentence is never
  * streamed twice. In spoken mode it also drops emoji (TTS often reads their
  * names) and stops at self-correction separators that commonly precede loops.
- * In written mode normal Markdown and emoji are preserved; repeated sentences
- * are still detected before they can be streamed twice.
+ * In written mode normal Markdown and emoji are preserved, and only a run of
+ * three sentences copied again in order is cut (see loops()).
  */
 /**
  * What the model answers, alone, to a sentence from the always-on microphone
@@ -33,6 +33,8 @@ const NEAR_REPEAT_MIN_WORDS = 5;
 const SENTENCE_END = /[.!?…]+["»)\]]*\s+/;
 // Shorter sentences ("Oui.", "D'accord.") may honestly come back.
 const MIN_REPEAT_LENGTH = 12;
+// In a written reply, this many sentences said again in the same order is a loop.
+const WRITTEN_LOOP_RUN = 3;
 
 function key(sentence: string): string {
   return sentence.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]+/gu, "");
@@ -56,10 +58,13 @@ export class SpokenGuard {
   constructor(private readonly spokenOnly = true) {}
   private readonly seen = new Set<string>();
   private readonly said: Set<string>[] = [];
+  /** Written mode: the sentences so far, and whether a code block is open. */
+  private readonly written: string[] = [];
+  private inCode = false;
   /** True once the reply has been cut; whatever comes next is dropped. */
   stopped = false;
   /** Why it was cut, for the log. */
-  reason: "repeat" | "near_repeat" | "rule" | "aside" | "not_for_me" | undefined;
+  reason: "repeat" | "near_repeat" | "loop" | "rule" | "aside" | "not_for_me" | undefined;
   private opened = false;
   private heldStar = "";
 
@@ -162,6 +167,7 @@ export class SpokenGuard {
   }
 
   private repeats(sentence: string): boolean {
+    if (!this.spokenOnly) return this.loops(sentence);
     const k = key(sentence);
     if (k.length >= MIN_REPEAT_LENGTH) {
       if (this.seen.has(k)) {
@@ -178,6 +184,31 @@ export class SpokenGuard {
           return true;
         }
         this.said.push(w);
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Written replies legitimately say a phrase again: a table cell, a list
+   * step, a heading under each day. Only a run of sentences copied again in
+   * the same order is a loop, and table rows and code never count.
+   */
+  private loops(sentence: string): boolean {
+    const fences = sentence.split("```").length - 1;
+    const inCode = this.inCode || fences > 0;
+    if (fences % 2) this.inCode = !this.inCode;
+    const k = key(sentence);
+    if (inCode || sentence.includes("|") || k.length < MIN_REPEAT_LENGTH) return false;
+    const run = this.written;
+    run.push(k);
+    const n = run.length;
+    if (n < WRITTEN_LOOP_RUN * 2) return false;
+    const tail = run.slice(n - WRITTEN_LOOP_RUN).join("\n");
+    for (let i = 0; i + WRITTEN_LOOP_RUN <= n - WRITTEN_LOOP_RUN; i++) {
+      if (run.slice(i, i + WRITTEN_LOOP_RUN).join("\n") === tail) {
+        this.stop("loop");
+        return true;
       }
     }
     return false;
