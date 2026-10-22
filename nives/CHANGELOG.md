@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.10 — Thread answers appear as they are written
+
+- A thread answer could look stuck, for example on "Je vous recommande donc :" just before a table. The server held written text back until the next full stop, to check it for loops, and a table has none: nothing more appeared until the whole answer was over. Written answers (threads and typed Assist) are now passed on as they come, and only watched for a loop. Spoken answers are unchanged.
+
 ## 0.11.9 — Chat threads no longer stop mid-answer, and read like a page
 
 - **Easier to read**: in the chat panel, Igor's answers are no longer in a bubble. They take the whole width, like a page, in larger type (16.5 px, 16 px on a phone) with more space between lines, larger headings and full-width tables. Your own messages stay in a small blue bubble on the right. On a wide screen the text stays centred at a comfortable reading width.

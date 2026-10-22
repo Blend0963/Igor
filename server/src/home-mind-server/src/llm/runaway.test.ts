@@ -55,11 +55,18 @@ describe("SpokenGuard", () => {
     }
   });
 
+  it("shows a written reply as it comes, a table before any sentence end", () => {
+    const guard = new SpokenGuard(false);
+    const chunks = ["Je vous recommande donc :\n\n| Offre | Prix |\n", "|---|---|\n| Octopus | 0,219 € |"];
+    expect(chunks.map((c) => guard.push(c))).toEqual(chunks);
+    expect(guard.flush()).toBe("");
+  });
+
   it("cuts a written reply that starts over, three sentences in the same order", () => {
     const guard = new SpokenGuard(false);
     const block = "La lumière est allumée. Le chauffage est à 20 degrés. Les volets sont fermés. ";
     const said = [block, "Voici le détail complet. ", block, block].map((c) => guard.push(c)).join("") + guard.flush();
-    expect(said).toBe(`${block}Voici le détail complet. La lumière est allumée. Le chauffage est à 20 degrés. `);
+    expect(said).toBe(`${block}Voici le détail complet. `);
     expect(guard.reason).toBe("loop");
   });
 

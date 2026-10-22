@@ -167,7 +167,7 @@ describe("OpenAIChatEngine", () => {
     expect(userMsg.content).toBe("Hello");
   });
 
-  it("buffers text deltas until a complete sentence can be checked", async () => {
+  it("passes written text deltas on as they come", async () => {
     mockCreate.mockResolvedValue(
       makeStream([
         { choices: [{ delta: { content: "A" }, finish_reason: null }] },
@@ -181,7 +181,7 @@ describe("OpenAIChatEngine", () => {
       chunks.push(chunk)
     );
 
-    expect(chunks).toEqual(["AB"]);
+    expect(chunks).toEqual(["A", "B"]);
   });
 
   it("accumulates tool call deltas across chunks", async () => {
