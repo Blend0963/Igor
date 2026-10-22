@@ -105,6 +105,13 @@ describe("SpokenGuard, NOT_FOR_ME", () => {
     }
   });
 
+  it("says nothing more once NOT_FOR_ME shows up later in the reply", () => {
+    const guard = new SpokenGuard(true);
+    const said = ["Cette phrase ne m'est pas adress", "ée. NOT_FOR", "_ME"].map((c) => guard.push(c)).join("") + guard.flush();
+    expect(said).toBe("");
+    expect(guard.silent).toBe(true);
+  });
+
   it("lets a normal answer through, even one starting with N", () => {
     const guard = new SpokenGuard(true);
     const said = ["N", "on, le salon est éteint."].map((c) => guard.push(c)).join("") + guard.flush();

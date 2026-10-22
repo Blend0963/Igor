@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.8 — Talked about, Igor really stays silent
+
+- 0.11.6 asked the main model to answer a code word (NOT_FOR_ME) when a sentence from the always-on microphone talked about Igor rather than to it. Mistral did not keep to it: it often said instead, sometimes in English, that the sentence was not for it. Now a separate, very short call to the memory model (`extraction_model`, ministral-8b here) decides first, and can only answer yes or no. When the sentence was not said to Igor, the main model is never called: no answer, no voice, nothing kept or learned. Only spoken sentences where the name comes after their opening are checked ("c'est Igor qui a éteint", "éteins le salon, Igor"); "Igor, allume le salon" goes straight through, with no added wait. If the check fails or hesitates, Igor answers as before. Cost: a few hundred tokens on the small model, about a third of a second.
+- The NOT_FOR_ME instruction is gone from the main prompt. If you added a NOT_FOR_ME sentence to your own `custom_prompt_voice`, remove it. A spoken reply that still contains the code anywhere is cut to silence.
+
 ## 0.11.7 — Spoken answers no longer stop mid-sentence
 
 - 0.11.6 ended a spoken reply at its first asterisk, to stop the loops that open with an aside ("*Je corrige :*"). But the model also writes bold in Markdown ("Le numéro de **Hugo Poirier** est…"), so answers stopped at "Le numéro de" or "Je ne trouve". Bold, code marks and italics inside a sentence are now simply dropped from spoken replies (the voice no longer reads them either), and only an aside that opens a sentence still ends the reply.

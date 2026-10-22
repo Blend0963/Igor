@@ -13,6 +13,7 @@ import { listFromEnv, mistralKey } from "./mistral-platform.js";
 import { isActionCommand, isSimpleRequest, mayBeOrder, selectThreadReasoning } from "./model-router.js";
 import { formatLiveState } from "./live-state.js";
 import { askIsOrder } from "./order-check.js";
+import { ADDRESSEE_INSTRUCTIONS, addresseeQuestion, checkAddressee, needsAddresseeCheck } from "./addressee-check.js";
 import { SpokenGuard } from "./runaway.js";
 import { RECENT_FILE_MESSAGES, shortenAttachedFiles } from "../files/extract.js";
 import { randomUUID } from "node:crypto";
@@ -190,6 +191,14 @@ export class OpenAIChatEngine implements IChatEngine {
       actions: [],
     };
 
+    // 0. A spoken sentence that names Igor after its opening may only talk
+    // about it ("c'est Igor qui a éteint"): a small call decides, alongside
+    // the memory loading below, before the main model is ever called.
+    const addressee =
+      isVoice && !scope.isThread && !request.unattended && needsAddresseeCheck(message)
+        ? checkAddressee((signal) => this.askAddressee(message, signal), request.signal)
+        : undefined;
+
     // 1. Load user's memory
     const facts = await this.memory.getFactsWithinTokenLimit(
       scope.factBucket,
@@ -317,6 +326,17 @@ export class OpenAIChatEngine implements IChatEngine {
       });
     } else {
       messages.push({ role: "user", content: message });
+    }
+
+    if (addressee) {
+      const verdict = await addressee;
+      if (!verdict.forMe) {
+        // Not said to Igor: nothing answered, spoken or kept.
+        const usage = new UsageTally();
+        usage.add(verdict.usage);
+        console.log(`[addressee] not for Igor, main model not called: ${message.slice(0, 80)}`);
+        return { response: "", toolsUsed, factsLearned: 0, notForMe: true, usage: { model: this.addresseeModel(), ...usage.totals() } };
+      }
     }
 
     // Persist only the text to conversation history (images are ephemeral to this turn).
@@ -682,6 +702,29 @@ export class OpenAIChatEngine implements IChatEngine {
       return { type: "image_url", image_url: url } as unknown as OpenAI.ChatCompletionContentPartImage;
     }
     return { type: "image_url", image_url: { url, detail: "low" } };
+  }
+
+  /** The small model that tells a sentence said to Igor from one about it. */
+  private addresseeModel(): string {
+    return this.config.extractionModel ?? this.config.fastModel ?? this.config.llmModel;
+  }
+
+  private async askAddressee(message: string, signal: AbortSignal): Promise<{ text: string; usage?: TokenUsage }> {
+    const response = await this.client.chat.completions.create(
+      {
+        model: this.addresseeModel(),
+        temperature: 0,
+        max_tokens: 16,
+        // Mistral's JSON mode: the reply can only be the verdict.
+        ...(this.isMistral() ? { response_format: { type: "json_object" as const } } : {}),
+        messages: [
+          { role: "system", content: ADDRESSEE_INSTRUCTIONS },
+          { role: "user", content: addresseeQuestion(message) },
+        ],
+      },
+      { signal }
+    );
+    return { text: response.choices[0]?.message?.content ?? "", usage: readUsage(response.usage) };
   }
 
   /** Mistral rejects stream_options on its OpenAI-compatible chat endpoint. */

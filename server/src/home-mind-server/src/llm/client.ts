@@ -14,12 +14,15 @@ import { randomUUID } from "node:crypto";
 import { handleToolCall, extractAndStoreFacts, type ToolContext } from "./tool-handler.js";
 import { describeLongBatch } from "./long-task.js";
 import { SpokenGuard } from "./runaway.js";
+import { ADDRESSEE_INSTRUCTIONS, addresseeQuestion, checkAddressee, needsAddresseeCheck } from "./addressee-check.js";
 import { recallSemantically, rememberSemantically } from "./semantic-recall.js";
 import { RECALL_LIMIT, resolveMemoryScope } from "../memory/memory-scope.js";
 import { toStreamEvents } from "./interface.js";
 import {
   readUsage,
   describeUsage,
+  UsageTally,
+  type TokenUsage,
   WRITTEN_OUTPUT_CAP,
   VOICE_OUTPUT_CAP,
   TRUNCATION_NOTICE,
@@ -98,6 +101,13 @@ export class LLMClient implements IChatEngine {
     // suppressExtraction back onto it, so per-call literals would drop the flag.
     const toolCtx: ToolContext = { conversationId: effectiveConversationId, turnId, userId: scope.factBucket, memory: this.memory, ownerId: userId, isThread: scope.isThread, unattended: request.unattended === true, actions: [] };
 
+    // 0. A spoken sentence that names Igor after its opening may only talk
+    // about it: a small call decides before the main model is called.
+    const addressee =
+      isVoice && !scope.isThread && !request.unattended && needsAddresseeCheck(message)
+        ? checkAddressee((signal) => this.askAddressee(message, signal), request.signal)
+        : undefined;
+
     // 1. Load user's memory (pass current message as context for Shodh's proactive retrieval)
     const facts = await this.memory.getFactsWithinTokenLimit(
       scope.factBucket,
@@ -173,6 +183,17 @@ export class LLMClient implements IChatEngine {
       });
     } else {
       messages.push({ role: "user", content: message });
+    }
+
+    if (addressee) {
+      const verdict = await addressee;
+      if (!verdict.forMe) {
+        // Not said to Igor: nothing answered, spoken or kept.
+        const usage = new UsageTally();
+        usage.add(verdict.usage);
+        console.log(`[addressee] not for Igor, main model not called: ${message.slice(0, 80)}`);
+        return { response: "", toolsUsed, factsLearned: 0, notForMe: true, usage: { model: this.addresseeModel(), ...usage.totals() } };
+      }
     }
 
     // Store user message in conversation history (text only; images are ephemeral)
@@ -347,6 +368,26 @@ export class LLMClient implements IChatEngine {
    */
 
   /** Ceiling on one reply; see WRITTEN_OUTPUT_CAP for why it is what it is. */
+  /** The small model that tells a sentence said to Igor from one about it. */
+  private addresseeModel(): string {
+    return this.config.extractionModel ?? this.config.llmModel;
+  }
+
+  private async askAddressee(message: string, signal: AbortSignal): Promise<{ text: string; usage?: TokenUsage }> {
+    const response = await this.anthropic.messages.create(
+      {
+        model: this.addresseeModel(),
+        max_tokens: 16,
+        temperature: 0,
+        system: ADDRESSEE_INSTRUCTIONS,
+        messages: [{ role: "user", content: addresseeQuestion(message) }],
+      },
+      { signal }
+    );
+    const text = response.content.map((block) => (block.type === "text" ? block.text : "")).join("");
+    return { text, usage: readUsage(response.usage) };
+  }
+
   private maxOutputTokens(isVoice: boolean): number {
     return this.config.maxOutputTokens ?? (isVoice ? VOICE_OUTPUT_CAP : WRITTEN_OUTPUT_CAP);
   }
