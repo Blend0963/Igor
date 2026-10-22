@@ -1314,7 +1314,7 @@ describe("OpenAIChatEngine", () => {
       const spoken: string[] = [];
 
       const result = await engine.chat(
-        { message: "c'est Igor l'autre jour qui a fait ça", userId: "user-1", isVoice: true, conversationId: "mado-user:user-1" },
+        { message: "Igor, euh, non rien", userId: "user-1", isVoice: true, conversationId: "mado-user:user-1" },
         (c) => spoken.push(c)
       );
 
@@ -1325,6 +1325,58 @@ describe("OpenAIChatEngine", () => {
       expect(deleteMessagesFrom).toHaveBeenCalledWith(expect.any(String), "user-1", "m1");
       expect(vi.mocked(conversations.storeMessage).mock.calls.filter((c) => c[2] === "assistant")).toHaveLength(0);
       expect(extractAndStoreFacts).not.toHaveBeenCalled();
+    });
+
+    it("never calls the main model for a sentence a small check finds is only about Igor", async () => {
+      mockCreate.mockResolvedValueOnce({
+        choices: [{ message: { content: '{"pour_igor": false}' } }],
+        usage: { prompt_tokens: 300, completion_tokens: 8 },
+      });
+      const spoken: string[] = [];
+
+      const result = await engine.chat(
+        { message: "c'est Igor l'autre jour qui a fait ça", userId: "user-1", isVoice: true, conversationId: "mado-user:user-1" },
+        (c) => spoken.push(c)
+      );
+
+      expect(result.notForMe).toBe(true);
+      expect(result.response).toBe("");
+      expect(spoken.join("")).toBe("");
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+      const check = mockCreate.mock.calls[0][0] as { max_tokens: number; stream?: boolean; messages: Array<{ content: string }> };
+      expect(check.max_tokens).toBeLessThanOrEqual(16);
+      expect(check.stream).toBeUndefined();
+      expect(check.messages[1].content).toContain("c'est Igor l'autre jour qui a fait ça");
+      expect(conversations.storeMessage).not.toHaveBeenCalled();
+      expect(extractAndStoreFacts).not.toHaveBeenCalled();
+    });
+
+    it("answers normally when the check finds the sentence is said to Igor", async () => {
+      mockCreate
+        .mockResolvedValueOnce({ choices: [{ message: { content: '{"pour_igor": true}' } }] })
+        .mockResolvedValueOnce(
+          makeStream([{ choices: [{ delta: { content: "Il est midi." }, finish_reason: "stop" }] }])
+        );
+
+      const result = await engine.chat({ message: "quelle heure est-il, Igor ?", userId: "user-1", isVoice: true });
+
+      expect(result.notForMe).toBeUndefined();
+      expect(result.response).toBe("Il est midi.");
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+    });
+
+    it("answers when the check fails, and skips it when the name opens the sentence", async () => {
+      mockCreate
+        .mockRejectedValueOnce(new Error("timeout"))
+        .mockResolvedValue(makeStream([{ choices: [{ delta: { content: "Oui." }, finish_reason: "stop" }] }]));
+
+      const failed = await engine.chat({ message: "tu sais quoi Igor ?", userId: "user-1", isVoice: true });
+      expect(failed.response).toBe("Oui.");
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+
+      mockCreate.mockClear();
+      await engine.chat({ message: "Igor, quelle heure est-il ?", userId: "user-1", isVoice: true });
+      expect(mockCreate).toHaveBeenCalledTimes(1);
     });
 
     it("leaves a written reply as the model wrote it when it is not looping", async () => {
