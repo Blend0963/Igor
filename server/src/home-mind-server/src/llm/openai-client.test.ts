@@ -1389,21 +1389,38 @@ describe("OpenAIChatEngine", () => {
       expect(result.response).toBe("Fait. 🌙 --- Fait.");
     });
 
-    it("cuts a repeated sentence in written chat before it is streamed twice", async () => {
+    it("keeps a written reply whose sentence comes back once", async () => {
       const chunks: string[] = [];
       mockCreate.mockResolvedValue(
         makeStream([
           { choices: [{ delta: { content: "J'ai trouvé le dépôt. " }, finish_reason: null }] },
           { choices: [{ delta: { content: "Voici le résultat. " }, finish_reason: null }] },
-          { choices: [{ delta: { content: "J'ai trouvé le dépôt. Et je recommence." }, finish_reason: null }] },
+          { choices: [{ delta: { content: "J'ai trouvé le dépôt. Et voilà." }, finish_reason: null }] },
           { choices: [{ delta: {}, finish_reason: "stop" }] },
         ])
       );
 
       const result = await engine.chat({ message: "Hi", userId: "user-1" }, (c) => chunks.push(c));
 
-      expect(result.response).toBe("J'ai trouvé le dépôt. Voici le résultat. ");
+      expect(result.response).toBe("J'ai trouvé le dépôt. Voici le résultat. J'ai trouvé le dépôt. Et voilà.");
       expect(chunks.join("")).toBe(result.response);
+    });
+
+    it("continues a thread reply that hit the output cap, as one message", async () => {
+      const chunks: string[] = [];
+      mockCreate
+        .mockResolvedValueOnce(makeStream([{ choices: [{ delta: { content: "| A | 1 |\n| B" }, finish_reason: "length" }] }]))
+        .mockResolvedValueOnce(makeStream([{ choices: [{ delta: { content: " | 2 |\n\nFin." }, finish_reason: "stop" }] }]));
+
+      const result = await engine.chat({ message: "Un tableau", userId: "user-1", conversationId: "mado-thread:t1" }, (c) => chunks.push(c));
+
+      expect(result.response).toBe("| A | 1 |\n| B | 2 |\n\nFin.");
+      expect(chunks.join("")).toBe(result.response);
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+      const second = mockCreate.mock.calls[1][0] as { messages: Array<{ role: string; content: unknown }>; max_tokens?: number; max_completion_tokens?: number };
+      expect(second.messages.at(-2)).toEqual({ role: "assistant", content: "| A | 1 |\n| B" });
+      expect(second.messages.at(-1)?.role).toBe("user");
+      expect(second.max_tokens ?? second.max_completion_tokens).toBe(16384);
     });
 
     it("asks the endpoint for a usage breakdown on every streamed call", async () => {
