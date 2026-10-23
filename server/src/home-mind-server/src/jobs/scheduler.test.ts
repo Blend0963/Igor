@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { Scheduler, nextRun, parseWhen, parseDays, notificationText, zonedTime, relativeTime, formatLocal, conditionMet, TASKS_THREAD } from "./scheduler.js";
+import { Scheduler, nextRun, parseWhen, parseDays, notificationText, notificationParts, zonedTime, relativeTime, formatLocal, conditionMet, TASKS_THREAD } from "./scheduler.js";
 import { InMemoryConversationStore } from "../memory/conversation-memory.js";
 import type { IChatEngine } from "../llm/interface.js";
 
@@ -28,6 +28,16 @@ describe("schedule arithmetic", () => {
 
   it("turns an answer into a plain notification", () => {
     expect(notificationText("## Météo\n**Soleil** et ![x](api/media/1) [lien](https://a)\n```chart\n{}\n```")).toBe("Météo\nSoleil et  lien");
+  });
+
+  it("splits a long answer into whole notifications instead of cutting it", () => {
+    const briefing = Array.from({ length: 18 }, (_, i) => `Information numéro ${i + 1} : la tempête traverse le pays et les départements restent en vigilance orange ce jeudi.`).join(" ");
+    const parts = notificationParts(briefing);
+    expect(parts.length).toBe(2);
+    for (const part of parts) expect(part.length).toBeLessThanOrEqual(1500);
+    expect(parts.join(" ")).toBe(briefing);
+    expect(parts[0]).toMatch(/jeudi\.$/);
+    expect(notificationParts("Court.")).toEqual(["Court."]);
   });
 });
 

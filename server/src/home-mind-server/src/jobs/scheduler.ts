@@ -253,6 +253,28 @@ export function notificationText(text: string, max = 900): string {
   return plain.length > max ? `${plain.slice(0, max - 1)}…` : plain;
 }
 
+/**
+ * A long answer as several notifications, each short enough for every
+ * channel (a phone notification payload is about 4 KB, Telegram 4096
+ * characters), cut between paragraphs, else sentences, else words. Cutting
+ * one notification at 900 characters lost the end of every morning briefing.
+ */
+export function notificationParts(text: string, max = 1500, most = 4): string[] {
+  let rest = notificationText(text, Number.POSITIVE_INFINITY);
+  const parts: string[] = [];
+  while (rest.length > max && parts.length < most - 1) {
+    const window = rest.slice(0, max + 1);
+    const at = [/\n\s*\n(?=[^\n]*$)/, /[.!?…](?=\s[^.!?…]*$)/, /\s(?=\S*$)/]
+      .map((re) => re.exec(window))
+      .find((m) => m && m.index >= max / 2);
+    const cut = at ? at.index + (at[0].trim() ? at[0].length : 0) : max;
+    parts.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  if (rest) parts.push(rest.length > max ? `${rest.slice(0, max - 1)}…` : rest);
+  return parts;
+}
+
 export class Scheduler {
   private tasks: ScheduledTask[] = [];
   private timer?: NodeJS.Timeout;
@@ -462,7 +484,11 @@ export class Scheduler {
     });
     await this.ensureTitle(thread, task.userId, task.builtin ? "Résumé du matin" : "Rappels et tâches");
     if (response.response.trim()) {
-      await this.deps.notify(task.builtin ? "☀️ Résumé du matin" : "Igor", notificationText(response.response));
+      const title = task.builtin ? "☀️ Résumé du matin" : "Igor";
+      const parts = notificationParts(response.response);
+      for (const [i, part] of parts.entries()) {
+        await this.deps.notify(parts.length > 1 ? `${title} (${i + 1}/${parts.length})` : title, part);
+      }
     }
   }
 

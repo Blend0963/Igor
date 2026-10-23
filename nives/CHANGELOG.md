@@ -1,7 +1,8 @@
 # Changelog
 
-## 0.11.10 — Thread answers appear as they are written
+## 0.11.10 — Thread answers appear as they are written; the whole morning briefing
 
+- **Morning briefing cut off**: a scheduled answer was sent as one phone notification cut at 900 characters, so a full briefing always ended mid-sentence ("Maison : Tout est en ordre, mais la lumi…"). It is now sent whole, in as many notifications as needed (up to four of 1,500 characters, "☀️ Résumé du matin (1/2)", "(2/2)"), each cut between paragraphs or sentences. The full text is still in the "Résumé du matin" thread.
 - A thread answer could look stuck, for example on "Je vous recommande donc :" just before a table. The server held written text back until the next full stop, to check it for loops, and a table has none: nothing more appeared until the whole answer was over. Written answers (threads and typed Assist) are now passed on as they come, and only watched for a loop. Spoken answers are unchanged.
 
 ## 0.11.9 — Chat threads no longer stop mid-answer, and read like a page
