@@ -24,7 +24,10 @@ const RULE = /(^|\s)(?:-{3,}|\*{3,}|_{3,})(?=\s|$)/;
 // talking about its own answer, which is how its loops go on: the reply ends
 // there. (0.11.6 ended at any "*", which cut every answer with bold in it.)
 const BOLD = /(?<!\*)\*\*(?!\*)|__|`/g;
-const ASIDE = /(?:^|[.!?…:]\s+|\n\s*)\*(?=[^\s*])/;
+// Only at a sentence's start: right after a colon or a line that does not
+// end a sentence ("Résultat : *Octopus Eco* est…", "allumées :\n*Salon*"),
+// a "*" is emphasis inside the answer, and cutting there stopped it.
+const ASIDE = /(?:^|[.!?…]["»)\]]*\s+)\*(?=[^\s*])/;
 // In a spoken reply, a sentence this close to one already said (share of
 // words in common) is the same answer again, reworded.
 const NEAR_REPEAT = 0.75;
@@ -33,6 +36,8 @@ const NEAR_REPEAT_MIN_WORDS = 5;
 const SENTENCE_END = /[.!?…]+["»)\]]*\s+/;
 // Shorter sentences ("Oui.", "D'accord.") may honestly come back.
 const MIN_REPEAT_LENGTH = 12;
+// Where a written reply's sentences and lines end, for the loop watch.
+const WRITTEN_BREAK = /[.!?…]+["»)\]]*\s+|\n/;
 // In a written reply, this many sentences said again in the same order is a loop.
 const WRITTEN_LOOP_RUN = 3;
 
@@ -76,6 +81,7 @@ export class SpokenGuard {
   /** Text that may be passed on now. */
   push(chunk: string): string {
     if (this.stopped) return "";
+    if (!this.spokenOnly) return this.passWritten(chunk);
     if (this.spokenOnly) {
       // A "*" that ended the last chunk may be the first half of "**".
       chunk = this.heldStar + chunk;
@@ -127,8 +133,30 @@ export class SpokenGuard {
     return out;
   }
 
+  /**
+   * A written reply is shown as it comes: holding it to the next sentence end
+   * hid a whole table (it has none) until the reply was over, and the thread
+   * looked stuck. Its finished sentences and lines are only watched for a loop.
+   */
+  private passWritten(chunk: string): string {
+    this.pending += chunk;
+    let match: RegExpExecArray | null;
+    while ((match = WRITTEN_BREAK.exec(this.pending))) {
+      const end = match.index + match[0].length;
+      if (this.loops(this.pending.slice(0, end))) return "";
+      this.pending = this.pending.slice(end);
+    }
+    return chunk;
+  }
+
   /** What is left once the stream has ended. */
   flush(): string {
+    if (!this.spokenOnly) {
+      // Already passed on as it came; only the last sentence is still to watch.
+      if (!this.stopped && this.pending) this.loops(this.pending);
+      this.pending = "";
+      return "";
+    }
     this.pending += this.heldStar;
     this.heldStar = "";
     if (this.spokenOnly) this.pending = this.pending.replace(/\*/g, "");

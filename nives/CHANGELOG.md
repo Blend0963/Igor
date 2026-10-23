@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.10 — Thread answers appear as they are written; the whole morning briefing; no stop after a colon
+
+- **Spoken answer stopping after a colon**: an answer like "Résultat : *Octopus Eco* est le moins cher" stopped at "Résultat :". The model's italics right after a colon were taken for an aside about itself ("*Je corrige :*"), which ends the reply. Only an italic opening a sentence (after a full stop, a question mark…) still does; after a colon it is emphasis and is simply not read.
+- **Morning briefing cut off**: a scheduled answer was sent as one phone notification cut at 900 characters, so a full briefing always ended mid-sentence ("Maison : Tout est en ordre, mais la lumi…"). It is now sent whole, in as many notifications as needed (up to four of 1,500 characters, "☀️ Résumé du matin (1/2)", "(2/2)"), each cut between paragraphs or sentences. The full text is still in the "Résumé du matin" thread.
+- A thread answer could look stuck, for example on "Je vous recommande donc :" just before a table. The server held written text back until the next full stop, to check it for loops, and a table has none: nothing more appeared until the whole answer was over. Written answers (threads and typed Assist) are now passed on as they come, and only watched for a loop. Spoken answers are unchanged.
+
 ## 0.11.9 — Chat threads no longer stop mid-answer, and read like a page
 
 - **Easier to read**: in the chat panel, Igor's answers are no longer in a bubble. They take the whole width, like a page, in larger type (16.5 px, 16 px on a phone) with more space between lines, larger headings and full-width tables. Your own messages stay in a small blue bubble on the right. On a wide screen the text stays centred at a comfortable reading width.
