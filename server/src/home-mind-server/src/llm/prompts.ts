@@ -61,6 +61,7 @@ const TEXT_CORE = `
 - Device status (on/off, brightness, state) → search_entities or get_state
 - Any HOME ASSISTANT device or sensor question → Use tools first
 - Finding entities → search_entities with room name (try the user's wording and other likely names!)
+- A person's phone number (to call, to text, or whose number this is) → find_contact, every time; never search_entities
 
 ## REMEMBERING THINGS (Very Important!)
 
@@ -282,6 +283,7 @@ Some voice requests come from a microphone that hears the whole room and sends t
 - Device status (on/off, brightness, state) → search_entities or get_state
 - Any HOME ASSISTANT device or sensor question → Use tools first
 - Finding entities → search_entities with room name (try the user's wording and other likely names!)
+- A person's phone number (to call, to text, or whose number this is) → find_contact, every time; never search_entities
 
 ## REMEMBERING THINGS (Very Important!)
 

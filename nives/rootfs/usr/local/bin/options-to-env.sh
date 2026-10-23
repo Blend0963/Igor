@@ -95,6 +95,7 @@ EXTRACTION_MODEL=$(jq -r '.extraction_model // ""' "$OPTIONS")
 # `// ""` would turn an explicit "off" into "", so test for null instead.
 EXTRACTION_GATE=$(jq -r 'if .extraction_gate == null then "" else .extraction_gate end' "$OPTIONS")
 MEMORY_LEARNING=$(jq -r 'if .memory_learning == null then "" else .memory_learning end' "$OPTIONS")
+CONTACTS_SCRIPT=$(jq -r 'if .contacts_script == null then "" else .contacts_script end' "$OPTIONS")
 # `// ""` would turn an explicit false into "", so test for null instead.
 LAYOUT_FROM_EXPOSED=$(jq -r 'if .layout_from_exposed == null then "" else (.layout_from_exposed|tostring) end' "$OPTIONS")
 TOOLS_FROM_EXPOSED=$(jq -r 'if .tools_from_exposed == null then "" else (.tools_from_exposed|tostring) end' "$OPTIONS")
@@ -315,6 +316,7 @@ write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$EXTRACTION_MODEL" ] && write_env "EXTRACTION_MODEL" "$EXTRACTION_MODEL"
 [ -n "$EXTRACTION_GATE" ] && write_env "EXTRACTION_GATE" "$EXTRACTION_GATE"
 [ -n "$MEMORY_LEARNING" ] && write_env "MEMORY_LEARNING" "$MEMORY_LEARNING"
+[ -n "$CONTACTS_SCRIPT" ] && write_env "CONTACTS_SCRIPT" "$CONTACTS_SCRIPT"
 [ -n "$LAYOUT_FROM_EXPOSED" ] && write_env "LAYOUT_FROM_EXPOSED" "$LAYOUT_FROM_EXPOSED"
 [ -n "$TOOLS_FROM_EXPOSED" ] && write_env "TOOLS_FROM_EXPOSED" "$TOOLS_FROM_EXPOSED"
 [ -n "$LAYOUT_DOMAINS" ] && write_env "LAYOUT_DOMAINS" "$LAYOUT_DOMAINS"

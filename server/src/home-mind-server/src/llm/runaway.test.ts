@@ -171,10 +171,10 @@ describe("SpokenGuard, bold and italics in a spoken reply", () => {
   };
 
   it("keeps the whole answer and drops the bold marks (0.11.6 cut it at the first *)", () => {
-    const text = "Le numéro de **Hugo Poirier** est le 06 12 34 56 78. Je ne trouve **pas** d'autre Hugo.";
+    const text = "Le numéro de **Jean Martin** est le 06 12 34 56 78. Je ne trouve **pas** d'autre Jean.";
     for (const chunks of [[text], text.match(/.{1,3}/gs)!, text.split("")]) {
       const { said, guard } = run(chunks);
-      expect(said).toBe("Le numéro de Hugo Poirier est le 06 12 34 56 78. Je ne trouve pas d'autre Hugo.");
+      expect(said).toBe("Le numéro de Jean Martin est le 06 12 34 56 78. Je ne trouve pas d'autre Jean.");
       expect(guard.stopped).toBe(false);
     }
   });

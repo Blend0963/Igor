@@ -248,6 +248,13 @@ configuration:
       words ("remember that…", "retiens que…"), and only that. "auto": it also
       keeps whatever it finds worth remembering in any conversation, chat
       threads included.
+  contacts_script:
+    name: Contacts script
+    description: >-
+      The Home Assistant script that returns your phone contacts (for example
+      script.contacts_recuperer_tous_les_contacts). Igor searches it itself for
+      the person to call or text. Empty = the first exposed script with
+      "contact" in its id.
   layout_from_exposed:
     name: Room map from exposed entities
     description: >-
