@@ -242,6 +242,14 @@ configuration:
       ce qui peut contenir une information (une préférence, « souviens-toi… »,
       une correction) est toujours relu. « off » = toujours relire, au prix
       d'un appel de plus par échange.
+  memory_learning:
+    name: Ce qu'Igor retient de vous
+    description: >-
+      « explicit » (par défaut) : Igor ne retient que ce que vous lui demandez
+      de retenir, en toutes lettres (« retiens que… », « souviens-toi que… »,
+      « n'oublie pas que… »), et seulement cela. « auto » : il retient aussi
+      ce qu'il juge utile dans toute conversation, fils de discussion
+      compris.
   layout_from_exposed:
     name: Plan de la maison depuis les entités exposées
     description: >-

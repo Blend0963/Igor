@@ -241,6 +241,13 @@ configuration:
       might carry a fact — a preference, "remember...", a correction — is
       always extracted. Turn this off to always run the memory pass, at the
       cost of one extra API call per turn.
+  memory_learning:
+    name: What Igor remembers about you
+    description: >-
+      "explicit" (default): Igor only remembers what you ask it to remember in
+      words ("remember that…", "retiens que…"), and only that. "auto": it also
+      keeps whatever it finds worth remembering in any conversation, chat
+      threads included.
   layout_from_exposed:
     name: Room map from exposed entities
     description: >-

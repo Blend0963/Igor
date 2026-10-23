@@ -240,3 +240,34 @@ export function extractionGateReason(userMessage: string): string | null {
   return null;
 }
 
+
+/**
+ * MEMORY_LEARNING: "explicit" (default) stores a memory only when the person
+ * asks for it in words ("retiens que…", "remember that…"); "auto" lets the
+ * memory pass learn from every turn the gate above lets through. Automatic
+ * learning filled the memory with whatever was discussed in chat threads,
+ * which then came back in unrelated spoken answers.
+ */
+export function memoryLearningExplicit(): boolean {
+  return (process.env.MEMORY_LEARNING ?? "").trim().toLowerCase() !== "auto";
+}
+
+// Asking, in words, for something to be kept. "Rappelle-moi de…" is a
+// reminder, not a memory, and is deliberately absent.
+const EXPLICIT_MEMORY_REQUESTS: RegExp[] = [
+  /\bretien[st]?\b/, /\bretenir\b/,
+  /\bsouviens? (toi|vous)\b/, /\bsouvenez vous\b/, /\bte souvenir\b/,
+  /\bmemoris/, /\bmemoriz/,
+  /\bn'?oublie(z)? (pas|jamais)\b/,
+  /\bgarde(z)? (le |ca |cela |bien )?(en memoire|en tete)\b/,
+  /\b(note|notez|enregistre|enregistrez) (que|ca|cela|bien|le|la|dans ta memoire|dans votre memoire)\b/,
+  /\b(apprends|sache|sachez) que\b/,
+  /\bremember\b/, /\bkeep in mind\b/, /\bdon'?t forget\b/, /\bdo not forget\b/,
+  /\bnote (that|this|it)\b/, /\bsave (this|that|it)\b/, /\bmemorize\b/,
+];
+
+/** Does the message ask, in words, for something to be remembered? */
+export function asksToRemember(userMessage: string): boolean {
+  const normalized = normalize(userMessage);
+  return EXPLICIT_MEMORY_REQUESTS.some((re) => re.test(normalized));
+}
