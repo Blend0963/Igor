@@ -519,15 +519,22 @@ export class ShodhMemoryStore {
    * Clear all facts for a user
    */
   async clearUserFacts(userId: string): Promise<number> {
-    const facts = await this.getFacts(userId);
+    // One read returns at most 1000 facts: read again until none is left, or
+    // until a pass deletes nothing (facts that refuse to go would loop).
     let deleted = 0;
-    for (const fact of facts) {
-      try {
-        await this.shodh.forget(userId, fact.id);
-        deleted++;
-      } catch {
-        // Ignore individual failures
+    for (let pass = 0; pass < 20; pass++) {
+      const facts = await this.getFacts(userId, 1000);
+      let gone = 0;
+      for (const fact of facts) {
+        try {
+          await this.shodh.forget(userId, fact.id);
+          gone++;
+        } catch {
+          // Ignore individual failures
+        }
       }
+      deleted += gone;
+      if (facts.length === 0 || gone === 0) break;
     }
     return deleted;
   }

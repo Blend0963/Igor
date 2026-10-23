@@ -3091,7 +3091,7 @@
         api("api/memory/" + USER_ID).then(function (res) { return res.json(); }).then(function (data) {
           var facts = (data && data.facts) || [];
           list.textContent = "";
-          if (!facts.length) list.appendChild(note("Rien pour l'instant. Igor apprend au fil des conversations, ou ajoutez un souvenir ci-dessous."));
+          if (!facts.length) list.appendChild(note("Rien pour l'instant. Igor retient ce que vous lui demandez de retenir (« retiens que… »), ou ajoutez un souvenir ci-dessous."));
           facts.sort(function (a, b) { return String(a.category).localeCompare(String(b.category)); }).forEach(function (f) {
             var item = document.createElement("div");
             item.className = "pm-item";
@@ -3150,8 +3150,21 @@
       }));
       form.appendChild(content);
       form.appendChild(row);
+      // Everything at once, after an explicit yes: what was learned by
+      // mistake can then be taught again on purpose.
+      var wipe = document.createElement("div");
+      wipe.className = "pm-row";
+      wipe.appendChild(button("Tout effacer", "danger", function () {
+        if (!window.confirm("Effacer tous les souvenirs d'Igor ? Cette action est définitive.")) return;
+        list.textContent = "Effacement…";
+        api("api/memory/" + USER_ID, { method: "DELETE" })
+          .then(function (res) { return res.json(); })
+          .then(function (data) { setStatus((data && data.deleted) + " souvenirs effacés."); load(); })
+          .catch(function (err) { setStatus("Mémoire non effacée : " + err.message, true); load(); });
+      }));
       body.appendChild(list);
       body.appendChild(form);
+      body.appendChild(wipe);
       load();
     });
   });

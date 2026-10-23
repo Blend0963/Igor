@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.11 — Igor remembers only what you ask it to
+
+- **Memory on request**: Igor used to learn by itself from almost every exchange, chat threads included, so its memory filled with whatever had been discussed, and that came back in unrelated spoken answers. It now remembers only what you ask it to remember in words ("retiens que…", "souviens-toi que…", "mémorise…", "n'oublie pas que…", "garde en mémoire…", "note que…"), and only that. "Rappelle-moi de…" stays a reminder and no longer touches the memory. Forgetting works as before ("oublie que…", confirmed first). The new option `memory_learning: auto` brings the old behaviour back.
+- **Wipe the memory**: the memory page of the panel has a "Tout effacer" button (asks first). It now really erases everything: clearing used to stop after the first 100 memories.
+
 ## 0.11.10 — Thread answers appear as they are written; the whole morning briefing; no stop after a colon
 
 - **Spoken answer stopping after a colon**: an answer like "Résultat : *Octopus Eco* est le moins cher" stopped at "Résultat :". The model's italics right after a colon were taken for an aside about itself ("*Je corrige :*"), which ends the reply. Only an italic opening a sentence (after a full stop, a question mark…) still does; after a colon it is emphasis and is simply not read.

@@ -609,6 +609,10 @@ describe("filterExtractedFacts", () => {
 });
 
 describe("extractAndStoreFacts", () => {
+  // These cover automatic learning; "on request only" has its own block.
+  beforeEach(() => { process.env.MEMORY_LEARNING = "auto"; });
+  afterEach(() => { delete process.env.MEMORY_LEARNING; });
+
   let memory: IMemoryStore;
   let extractor: IFactExtractor;
 
@@ -1040,6 +1044,10 @@ describe("handleToolCall forget_memory", () => {
 });
 
 describe("extractAndStoreFacts forget filtering", () => {
+  // These cover automatic learning; "on request only" has its own block.
+  beforeEach(() => { process.env.MEMORY_LEARNING = "auto"; });
+  afterEach(() => { delete process.env.MEMORY_LEARNING; });
+
   let memory: IMemoryStore;
   let extractor: IFactExtractor;
 
@@ -1192,6 +1200,10 @@ describe("handleToolCall forget_memory — previewed memory vanishes before conf
 });
 
 describe("extractAndStoreFacts — one-word value swap survives (live 2.4.16 regression)", () => {
+  // These cover automatic learning; "on request only" has its own block.
+  beforeEach(() => { process.env.MEMORY_LEARNING = "auto"; });
+  afterEach(() => { delete process.env.MEMORY_LEARNING; });
+
   it("keeps the new canary word while dropping a restatement of the old one", async () => {
     const memory = {
       getFacts: vi.fn().mockResolvedValue([]),
@@ -1244,5 +1256,25 @@ describe("withIgorPrefix", () => {
     expect(withIgorPrefix("Igor: Porch light")).toBe("Igor: Porch light");
     expect(withIgorPrefix("MaDo: Porch light")).toBe("Igor: Porch light");
     expect(withIgorPrefix("mado:Porch light")).toBe("Igor: Porch light");
+  });
+});
+
+describe("extractAndStoreFacts, on request only (the default)", () => {
+  const memory = { getFacts: vi.fn().mockResolvedValue([]), addFacts: vi.fn().mockResolvedValue(["f1"]), addFact: vi.fn(), deleteFact: vi.fn() } as unknown as IMemoryStore;
+  const extract = vi.fn().mockResolvedValue([{ content: "User prefers 20°C in the bedroom", category: "preference", confidence: 0.9, replaces: [] }]);
+  const extractor = { extract } as unknown as IFactExtractor;
+  beforeEach(() => { delete process.env.MEMORY_LEARNING; extract.mockClear(); });
+
+  it("learns nothing from a conversation that does not ask to remember", async () => {
+    for (const message of ["J'adore la cuisine japonaise, donne-moi une recette de ramen", "Je travaille sur un projet en Python, aide-moi", "Rappelle-moi de sortir les poubelles mardi"]) {
+      expect(await extractAndStoreFacts(memory, extractor, "u", message, "Voici…")).toBe(0);
+    }
+    expect(extract).not.toHaveBeenCalled();
+  });
+
+  it("learns what it was asked to remember, and only that", async () => {
+    await extractAndStoreFacts(memory, extractor, "u", "Retiens que je préfère 20 degrés dans la chambre", "C'est noté.");
+    expect(extract).toHaveBeenCalledTimes(1);
+    expect(extract.mock.calls[0][0]).toContain("store ONLY what this message explicitly asks to remember");
   });
 });

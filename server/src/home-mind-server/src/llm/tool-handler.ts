@@ -23,7 +23,7 @@ import {
   factsForExtraction,
 } from "../memory/fact-resolution.js";
 import type { Fact } from "../memory/types.js";
-import { extractionGateReason } from "../memory/extraction-gate.js";
+import { asksToRemember, extractionGateReason, memoryLearningExplicit } from "../memory/extraction-gate.js";
 import { handlePlatformTool, PLATFORM_TOOL_NAMES } from "./platform-tools.js";
 import { createFile, type FileSpec } from "../files/create.js";
 import { getConfigDir, handleHomeTool, HOME_TOOL_NAMES } from "./home-tools.js";
@@ -663,7 +663,18 @@ export async function extractAndStoreFacts(
   // can carry the replacement fact ("forget my name is X — my name is now
   // Y"), which extraction must see so the target can be filtered out and
   // the replacement stored.
-  if (forgetTargets === undefined || forgetTargets.length === 0) {
+  // On request only (the default): a turn that does not ask in words for
+  // something to be remembered teaches nothing, and one that does keeps only
+  // what it asked for.
+  const explicit = memoryLearningExplicit();
+  if (explicit) {
+    if (!asksToRemember(userMessage)) {
+      console.debug(`[memory] extraction skipped for ${userId}: no request to remember (${userMessage.slice(0, 80)})`);
+      return 0;
+    }
+    userMessage +=
+      "\n\n[Memory rule: store ONLY what this message explicitly asks to remember, nothing else from the conversation.]";
+  } else if (forgetTargets === undefined || forgetTargets.length === 0) {
     const gateReason = extractionGateReason(userMessage);
     if (gateReason !== null) {
       console.debug(
