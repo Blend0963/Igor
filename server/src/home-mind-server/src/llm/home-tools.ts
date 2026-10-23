@@ -1,10 +1,11 @@
 /**
  * Handlers of the 0.8 home tools (definitions in tool-definitions.ts):
- * look_at_camera, get_statistics, and the scheduling tools.
+ * look_at_camera, get_statistics, the scheduling tools, and find_contact.
  */
 
 import type { HomeAssistantClient } from "../ha/client.js";
 import { getVision } from "./vision.js";
+import { findContact } from "./contacts.js";
 import { getMediaStore, mediaLink } from "./media-store.js";
 import { readConfigFile } from "../ha/config-files.js";
 import {
@@ -20,6 +21,7 @@ import {
 } from "../jobs/scheduler.js";
 
 export const HOME_TOOL_NAMES = new Set([
+  "find_contact",
   "look_at_camera",
   "get_statistics",
   "schedule_task",
@@ -68,6 +70,9 @@ export async function handleHomeTool(
   const str = (k: string) => (typeof input[k] === "string" ? (input[k] as string).trim() : "");
 
   switch (name) {
+    case "find_contact":
+      return findContact(ha, str("query"));
+
     case "look_at_camera": {
       const entityId = str("entity_id");
       const vision = getVision();

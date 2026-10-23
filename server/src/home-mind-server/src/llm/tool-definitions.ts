@@ -353,6 +353,22 @@ export function connectorTool(connectors: string[]): ToolDefinition {
  */
 export const HOME_EXTRA_TOOLS: ToolDefinition[] = [
   {
+    name: "find_contact",
+    description:
+      "Find a person in the user's phone contacts and get their phone numbers: ALWAYS use this before calling or " +
+      "texting someone, and to tell whose an unknown number is. Pass the name as heard (\"Jean Martin\", \"jean\", " +
+      "\"Martin Jean\", misspellings are fine) or the number. The server searches the whole list and returns only the " +
+      "matching contacts with their numbers. Never use search_entities or get_entities for a person, and never take a " +
+      "number from memory or from an earlier answer: call this again.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "The name as heard, or a phone number." },
+      },
+      required: ["query"],
+    },
+  },
+  {
     name: "look_at_camera",
     description:
       "Take a snapshot from a Home Assistant camera (camera.* entity) and look at it: who or what is at the door, " +

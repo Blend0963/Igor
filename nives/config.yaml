@@ -1,5 +1,5 @@
 name: "Igor"
-version: "0.11.11"
+version: "0.11.12"
 slug: "mado"
 description: "In Igor we trust. L'assistant IA de la maison, avec sa mémoire"
 url: "https://github.com/Blend0963/MaDo"
@@ -122,6 +122,10 @@ schema:
   # you ask it to remember in words ("retiens que…"); "auto" also what it
   # picks up from any conversation.
   memory_learning: "list(explicit|auto)?"
+  # The Home Assistant script that returns the phone contacts (find_contact).
+  # Unset = the first exposed script with "contact" in its id that returns a
+  # result.
+  contacts_script: "str?"
   # Remembered facts sent with each request, in tokens. Unset = 1500.
   memory_token_limit: "int(200,8000)?"
   # All three absent from `options:` for the same reason as max_output_tokens:

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.12 — Igor finds your contacts itself
+
+- **Calling or texting someone**: Igor was handed the whole contact list and asked to read it, and on "appelle Jean Martin" it searched the house's devices instead, then said the contact did not exist although it was on the list it had just shown. A new tool, find_contact, has the add-on search the list itself: it runs your contacts script, finds the person whatever the spelling, accents or order of first and last name, and gives Igor only the matching contacts with their numbers. It also tells whose an unknown number is. The script is found by itself (the first exposed script with "contact" in its id that returns a result) or set with the new option `contacts_script`.
+
 ## 0.11.11 — Igor remembers only what you ask it to
 
 - **Memory on request**: Igor used to learn by itself from almost every exchange, chat threads included, so its memory filled with whatever had been discussed, and that came back in unrelated spoken answers. It now remembers only what you ask it to remember in words ("retiens que…", "souviens-toi que…", "mémorise…", "n'oublie pas que…", "garde en mémoire…", "note que…"), and only that. "Rappelle-moi de…" stays a reminder and no longer touches the memory. Forgetting works as before ("oublie que…", confirmed first). The new option `memory_learning: auto` brings the old behaviour back.
@@ -24,7 +28,7 @@
 
 ## 0.11.7 — Spoken answers no longer stop mid-sentence
 
-- 0.11.6 ended a spoken reply at its first asterisk, to stop the loops that open with an aside ("*Je corrige :*"). But the model also writes bold in Markdown ("Le numéro de **Hugo Poirier** est…"), so answers stopped at "Le numéro de" or "Je ne trouve". Bold, code marks and italics inside a sentence are now simply dropped from spoken replies (the voice no longer reads them either), and only an aside that opens a sentence still ends the reply.
+- 0.11.6 ended a spoken reply at its first asterisk, to stop the loops that open with an aside ("*Je corrige :*"). But the model also writes bold in Markdown ("Le numéro de **Jean Martin** est…"), so answers stopped at "Le numéro de" or "Je ne trouve". Bold, code marks and italics inside a sentence are now simply dropped from spoken replies (the voice no longer reads them either), and only an aside that opens a sentence still ends the reply.
 
 ## 0.11.6 — Igor knows your scripts; loops cut sooner; talked about, not to
 

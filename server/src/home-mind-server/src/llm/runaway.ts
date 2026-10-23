@@ -18,7 +18,7 @@ export const NOT_FOR_ME = "NOT_FOR_ME";
 const EMOJI = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}\u{20E3}]/gu;
 const RULE = /(^|\s)(?:-{3,}|\*{3,}|_{3,})(?=\s|$)/;
 // Spoken replies have no use for markup: bold and code marks ("**Hugo
-// Poirier**", `__`, backticks) are dropped, and so is a lone "*" of italics
+// Martin**", `__`, backticks) are dropped, and so is a lone "*" of italics
 // inside a sentence, or the voice reads them out. But an "*aside*" opening a
 // sentence ("*Je corrige :*", "*C'est tout. Je m'arrête.*") is the model
 // talking about its own answer, which is how its loops go on: the reply ends
