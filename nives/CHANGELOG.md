@@ -1,7 +1,8 @@
 # Changelog
 
-## 0.11.10 — Thread answers appear as they are written; the whole morning briefing
+## 0.11.10 — Thread answers appear as they are written; the whole morning briefing; no stop after a colon
 
+- **Spoken answer stopping after a colon**: an answer like "Résultat : *Octopus Eco* est le moins cher" stopped at "Résultat :". The model's italics right after a colon were taken for an aside about itself ("*Je corrige :*"), which ends the reply. Only an italic opening a sentence (after a full stop, a question mark…) still does; after a colon it is emphasis and is simply not read.
 - **Morning briefing cut off**: a scheduled answer was sent as one phone notification cut at 900 characters, so a full briefing always ended mid-sentence ("Maison : Tout est en ordre, mais la lumi…"). It is now sent whole, in as many notifications as needed (up to four of 1,500 characters, "☀️ Résumé du matin (1/2)", "(2/2)"), each cut between paragraphs or sentences. The full text is still in the "Résumé du matin" thread.
 - A thread answer could look stuck, for example on "Je vous recommande donc :" just before a table. The server held written text back until the next full stop, to check it for loops, and a table has none: nothing more appeared until the whole answer was over. Written answers (threads and typed Assist) are now passed on as they come, and only watched for a loop. Spoken answers are unchanged.
 

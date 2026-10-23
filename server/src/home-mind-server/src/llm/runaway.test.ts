@@ -144,6 +144,26 @@ describe("SpokenGuard, NOT_FOR_ME", () => {
   });
 });
 
+describe("SpokenGuard, a spoken reply going on after a colon", () => {
+  it("keeps emphasis right after a colon or a line that ends with one", () => {
+    for (const [text, said] of [
+      ["Résultat : *Octopus Eco* est le moins cher.", "Résultat : Octopus Eco est le moins cher."],
+      ["Trois lampes sont allumées :\n*Salon*, *Cuisine* et *Bureau*.", "Trois lampes sont allumées :\nSalon, Cuisine et Bureau."],
+    ]) {
+      const guard = new SpokenGuard(true);
+      expect(text.match(/.{1,5}/gs)!.map((c) => guard.push(c)).join("") + guard.flush()).toBe(said);
+      expect(guard.stopped).toBe(false);
+    }
+  });
+
+  it("still ends a reply at an aside opening a sentence", () => {
+    const guard = new SpokenGuard(true);
+    const said = ["Minuteur lancé. ", "*Je corrige :* Minuteur lancé."].map((c) => guard.push(c)).join("") + guard.flush();
+    expect(said.trim()).toBe("Minuteur lancé.");
+    expect(guard.reason).toBe("aside");
+  });
+});
+
 describe("SpokenGuard, bold and italics in a spoken reply", () => {
   const run = (chunks: string[]) => {
     const guard = new SpokenGuard(true);

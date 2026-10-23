@@ -24,7 +24,10 @@ const RULE = /(^|\s)(?:-{3,}|\*{3,}|_{3,})(?=\s|$)/;
 // talking about its own answer, which is how its loops go on: the reply ends
 // there. (0.11.6 ended at any "*", which cut every answer with bold in it.)
 const BOLD = /(?<!\*)\*\*(?!\*)|__|`/g;
-const ASIDE = /(?:^|[.!?…:]\s+|\n\s*)\*(?=[^\s*])/;
+// Only at a sentence's start: right after a colon or a line that does not
+// end a sentence ("Résultat : *Octopus Eco* est…", "allumées :\n*Salon*"),
+// a "*" is emphasis inside the answer, and cutting there stopped it.
+const ASIDE = /(?:^|[.!?…]["»)\]]*\s+)\*(?=[^\s*])/;
 // In a spoken reply, a sentence this close to one already said (share of
 // words in common) is the same answer again, reworded.
 const NEAR_REPEAT = 0.75;
