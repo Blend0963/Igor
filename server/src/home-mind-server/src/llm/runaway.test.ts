@@ -190,3 +190,27 @@ describe("SpokenGuard, bold and italics in a spoken reply", () => {
     expect(guard.reason).toBe("aside");
   });
 });
+
+describe("SpokenGuard, a spoken reply kept short", () => {
+  const say = (text: string, max?: number) => {
+    const guard = new SpokenGuard(true, false, max);
+    return { said: text.match(/.{1,6}/gs)!.map((c) => guard.push(c)).join("") + guard.flush(), guard };
+  };
+
+  it("ends after whole sentences, never in the middle of one, and reads no list numbers", () => {
+    const reply =
+      "Oui, c'est une très mauvaise idée. Voici pourquoi :\n\n1. Choc thermique : le fond peut se déformer. " +
+      "2. Altération : l'acier s'affaiblit avec le temps. 3. Sécurité : la vapeur brûle";
+    const { said, guard } = say(reply, 3);
+    expect(said).toBe(
+      "Oui, c'est une très mauvaise idée. Voici pourquoi :\n\nChoc thermique : le fond peut se déformer. Altération : l'acier s'affaiblit avec le temps. "
+    );
+    expect(guard.reason).toBe("length");
+  });
+
+  it("says a short reply whole, and a long one when there is no limit", () => {
+    expect(say("Oui. Ça peut la déformer.", 3).said).toBe("Oui. Ça peut la déformer.");
+    const long = "Un. Deux. Trois. Quatre. Cinq.";
+    expect(say(long).said).toBe(long);
+  });
+});

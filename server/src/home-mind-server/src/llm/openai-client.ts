@@ -13,7 +13,7 @@ import { listFromEnv, mistralKey } from "./mistral-platform.js";
 import { isActionCommand, isSimpleRequest, mayBeOrder, selectThreadReasoning } from "./model-router.js";
 import { formatLiveState } from "./live-state.js";
 import { askIsOrder } from "./order-check.js";
-import { BRIEFING_HISTORY, BRIEFING_THREAD_ID, leanMode } from "./lean.js";
+import { BRIEFING_HISTORY, BRIEFING_THREAD_ID, leanMode, SPOKEN_LENGTH_REMINDER, spokenSentenceCap } from "./lean.js";
 import { ADDRESSEE_INSTRUCTIONS, addresseeQuestion, checkAddressee, needsAddresseeCheck } from "./addressee-check.js";
 import { SpokenGuard } from "./runaway.js";
 import { RECENT_FILE_MESSAGES, shortenAttachedFiles } from "../files/extract.js";
@@ -339,6 +339,12 @@ export class OpenAIChatEngine implements IChatEngine {
     const live = liveStates ? formatLiveState(liveStates) : undefined;
     if (live) volatileSystemPrompt = volatileSystemPrompt ? `${volatileSystemPrompt}\n\n${live}` : live;
 
+    // A spoken reply is short: said last, right before the person's words.
+    const sentenceCap = isVoice && !scope.isThread ? spokenSentenceCap(message) : undefined;
+    if (sentenceCap !== undefined) {
+      volatileSystemPrompt = volatileSystemPrompt ? `${volatileSystemPrompt}\n\n${SPOKEN_LENGTH_REMINDER}` : SPOKEN_LENGTH_REMINDER;
+    }
+
     // The volatile context goes after the history, right before the current
     // user message: everything before it is stable or append-only, so the
     // provider can cache it. Mid-conversation system messages are valid on
@@ -465,6 +471,7 @@ export class OpenAIChatEngine implements IChatEngine {
           signal,
           toolChoice,
           isThread: scope.isThread,
+          maxSentences: sentenceCap,
           onThinking: () => {
             if (thinkingShown) return;
             thinkingShown = true;
@@ -800,6 +807,8 @@ export class OpenAIChatEngine implements IChatEngine {
       model?: string;
       signal?: AbortSignal;
       isThread?: boolean;
+      /** Spoken replies: the most whole sentences read out (llm/lean.ts). */
+      maxSentences?: number;
       onThinking?: () => void;
       /** "required": the model must call a tool on this call. */
       toolChoice?: "required";
@@ -855,7 +864,7 @@ export class OpenAIChatEngine implements IChatEngine {
     let finishReason: string | null = null;
     // Guard every reply. Spoken mode additionally strips emoji and separators;
     // written mode preserves both while still stopping repeated sentences.
-    const spoken = new SpokenGuard(isVoice, !leanMode());
+    const spoken = new SpokenGuard(isVoice, !leanMode(), opts.maxSentences);
     let usage: TokenUsage | undefined;
     // OpenRouter names the provider that served the request on every chunk.
     // Which one it was is the difference between a 1 s and a 3 s first token.
@@ -894,6 +903,7 @@ export class OpenAIChatEngine implements IChatEngine {
       if (spoken.stopped) {
         // Stop consuming the provider stream as soon as repetition is detected.
         if (spoken.silent) console.log(`[llm] ${model}: not said to Igor, no answer`);
+        else if (spoken.reason === "length") console.log(`[llm] ${model}: spoken reply ended after ${opts.maxSentences} sentences`);
         else console.warn(`[llm] ${model} response cut after repeated text (mode=${isVoice ? "voice" : "text"}, reason=${spoken.reason})`);
         finishReason = "stop";
         break;

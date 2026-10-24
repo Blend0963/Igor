@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.15 — Spoken answers stay short
+
+- A spoken (or typed Assist) answer could turn into a numbered list of several paragraphs, on a "why" question for instance: the persona's "two short sentences" sits thousands of words before the question, and the model forgot it.
+  - The rule is now repeated right before your words, where the model heeds it best: two short sentences, no list.
+  - As a safety net, a spoken answer stops after three whole sentences. It always ends on a finished sentence, never in the middle of one, and list numbers and bullets are no longer read out.
+  - "Détaille", "explique-moi en détail", "les étapes", "liste-moi", and anything about an SMS or a message to read back, lift both.
+  - Chat threads are not concerned.
+
 ## 0.11.14 — The house watch: your sensors, plain alerts, told once
 
 - **Choose what is watched**: two new options. `watch_entities` (only these are watched, when filled) and `watch_exclude` (never these), comma-separated, with `*` for "anything" (`binary_sensor.car_*`, `sensor.*_processor_*`).

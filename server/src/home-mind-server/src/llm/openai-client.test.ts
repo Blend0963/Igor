@@ -832,6 +832,17 @@ describe("OpenAIChatEngine", () => {
       expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-thread:morning-briefing", 2);
     });
 
+    it("reminds a spoken turn to stay short, right before the person's words, unless detail is asked", async () => {
+      answer();
+      await engine.chat({ message: "Pourquoi le ciel est bleu ?", userId: "user-1", isVoice: true });
+      const msgs = mockCreate.mock.calls[0][0].messages as Array<{ role: string; content: string }>;
+      expect(msgs.at(-2)?.content).toContain("at most two short sentences");
+      mockCreate.mockClear();
+      answer();
+      await engine.chat({ message: "Explique-moi en détail pourquoi le ciel est bleu", userId: "user-1", isVoice: true });
+      expect(JSON.stringify(mockCreate.mock.calls[0][0].messages)).not.toContain("at most two short sentences");
+    });
+
     it("never routes to FAST_MODEL", async () => {
       config.fastModel = "mistral-small-latest";
       answer();

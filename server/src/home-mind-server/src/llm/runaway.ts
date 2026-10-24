@@ -32,6 +32,10 @@ const ASIDE = /(?:^|[.!?…]["»)\]]*\s+)\*(?=[^\s*])/;
 // words in common) is the same answer again, reworded.
 const NEAR_REPEAT = 0.75;
 const NEAR_REPEAT_MIN_WORDS = 5;
+// A list's numbers and bullets ("1. ", "- ", "• ") at the start of a line,
+// or a number right after a finished sentence ("…déformer. 2. Altération"):
+// not read out, and "1." is no sentence end.
+const LIST_MARK = /(^|\n|[.!?…][ \t]+)[ \t]*(?:\d{1,2}[.)]|[-•*])[ \t]+/g;
 // A sentence ends at . ! ? or … followed by a space or a line break.
 const SENTENCE_END = /[.!?…]+["»)\]]*\s+/;
 // Shorter sentences ("Oui.", "D'accord.") may honestly come back.
@@ -67,8 +71,15 @@ export class SpokenGuard {
    */
   constructor(
     private readonly spokenOnly = true,
-    private readonly holdNotForMe = true
+    private readonly holdNotForMe = true,
+    /**
+     * Spoken replies: the most whole sentences said. The reply ends on a
+     * finished sentence, never mid-way; what follows is not read. Undefined:
+     * no limit (an SMS read back, "détaillez").
+     */
+    private readonly maxSentences?: number
   ) {}
+  private saidCount = 0;
   private readonly seen = new Set<string>();
   private readonly said: Set<string>[] = [];
   /** Written mode: the sentences so far, and whether a code block is open. */
@@ -77,7 +88,7 @@ export class SpokenGuard {
   /** True once the reply has been cut; whatever comes next is dropped. */
   stopped = false;
   /** Why it was cut, for the log. */
-  reason: "repeat" | "near_repeat" | "loop" | "rule" | "aside" | "not_for_me" | undefined;
+  reason: "repeat" | "near_repeat" | "loop" | "rule" | "aside" | "not_for_me" | "length" | undefined;
   private opened = false;
   private heldStar = "";
 
@@ -94,7 +105,7 @@ export class SpokenGuard {
       // A "*" that ended the last chunk may be the first half of "**".
       chunk = this.heldStar + chunk;
       this.heldStar = "";
-      this.pending = (this.pending + chunk.replace(EMOJI, "")).replace(BOLD, "");
+      this.pending = (this.pending + chunk.replace(EMOJI, "")).replace(BOLD, "").replace(LIST_MARK, "$1");
       if (/(?<!\*)\*$/.test(this.pending)) {
         this.heldStar = "*";
         this.pending = this.pending.slice(0, -1);
@@ -132,8 +143,13 @@ export class SpokenGuard {
       // A spoken sentence waits until what follows it cannot be NOT_FOR_ME.
       if (this.spokenOnly && this.holdNotForMe && NOT_FOR_ME.startsWith(this.pending.slice(end).trimStart().slice(0, NOT_FOR_ME.length))) break;
       const sentence = this.pending.slice(0, end);
+      if (this.spokenOnly && this.maxSentences !== undefined && this.saidCount >= this.maxSentences) {
+        this.stop("length");
+        return out;
+      }
       if (this.repeats(sentence)) return out;
       out += this.spokenOnly ? sentence.replace(/\*/g, "") : sentence;
+      if (this.spokenOnly && sentence.trim()) this.saidCount++;
       this.pending = this.pending.slice(end);
       if (rule) return out + this.cutAtRule();
     }
@@ -182,6 +198,10 @@ export class SpokenGuard {
     }
     const rest = this.pending;
     this.pending = "";
+    if (this.maxSentences !== undefined && this.saidCount >= this.maxSentences && rest.trim()) {
+      this.stop("length");
+      return "";
+    }
     return this.repeats(rest) ? "" : rest;
   }
 
