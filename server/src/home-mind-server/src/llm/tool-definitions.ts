@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { leanMode, VOICE_LEAN_DROPPED } from "./lean.js";
 import type OpenAI from "openai";
 
 export interface ToolDefinition {
@@ -592,11 +593,16 @@ export function toolsForMode(mode: "voice" | "text" | "thread", platform: Platfo
     ...(mode === "voice" ? [] : CONFIG_TOOLS),
     ...(mode === "thread" ? [CREATE_FILE_TOOL] : []),
   ];
-  if (!platform.enabled) return [...TOOL_DEFINITIONS, ...extra];
+  if (!platform.enabled) return leanVoice(mode, [...TOOL_DEFINITIONS, ...extra]);
   if (mode === "thread") extra.push(RUN_CODE_TOOL, GENERATE_IMAGE_TOOL);
   if (platform.libraryIds.length) extra.push(SEARCH_DOCUMENTS_TOOL);
   if (mode === "thread" && platform.connectors.length) extra.push(connectorTool(platform.connectors));
-  return [...TOOL_DEFINITIONS, ...extra];
+  return leanVoice(mode, [...TOOL_DEFINITIONS, ...extra]);
+}
+
+/** A spoken turn in lean mode does without the tools in VOICE_LEAN_DROPPED (llm/lean.ts). */
+function leanVoice(mode: "voice" | "text" | "thread", tools: ToolDefinition[]): ToolDefinition[] {
+  return mode === "voice" && leanMode() ? tools.filter((t) => !VOICE_LEAN_DROPPED.has(t.name)) : tools;
 }
 
 export function toAnthropicTools(tools: ToolDefinition[]): Anthropic.Tool[] {

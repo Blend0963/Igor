@@ -13,6 +13,7 @@ import { listFromEnv, mistralKey } from "./mistral-platform.js";
 import { isActionCommand, isSimpleRequest, mayBeOrder, selectThreadReasoning } from "./model-router.js";
 import { formatLiveState } from "./live-state.js";
 import { askIsOrder } from "./order-check.js";
+import { BRIEFING_HISTORY, BRIEFING_THREAD_ID, leanMode } from "./lean.js";
 import { ADDRESSEE_INSTRUCTIONS, addresseeQuestion, checkAddressee, needsAddresseeCheck } from "./addressee-check.js";
 import { SpokenGuard } from "./runaway.js";
 import { RECENT_FILE_MESSAGES, shortenAttachedFiles } from "../files/extract.js";
@@ -22,7 +23,7 @@ import { withTokenCap } from "./token-cap.js";
 import { withReasoningEffort, type ReasoningEffort } from "./reasoning-effort.js";
 import { describeLongBatch } from "./long-task.js";
 import { recallSemantically, rememberSemantically } from "./semantic-recall.js";
-import { RECALL_LIMIT, resolveMemoryScope } from "../memory/memory-scope.js";
+import { DEFAULT_MESSAGE_CAP, RECALL_LIMIT, resolveMemoryScope } from "../memory/memory-scope.js";
 import { withPromptCacheKey } from "./prompt-cache-key.js";
 import {
   readUsage,
@@ -193,6 +194,7 @@ export class OpenAIChatEngine implements IChatEngine {
       ownerId: userId,
       isThread: scope.isThread,
       unattended: request.unattended === true,
+      noLongTermMemory: !scope.facts,
       actions: [],
     };
 
@@ -204,12 +206,51 @@ export class OpenAIChatEngine implements IChatEngine {
         ? checkAddressee((signal) => this.askAddressee(message, signal), request.signal)
         : undefined;
 
-    // 1. Load user's memory
-    const facts = await this.memory.getFactsWithinTokenLimit(
-      scope.factBucket,
-      this.config.memoryTokenLimit,
-      message
-    );
+    // 1-3. Everything the prompt needs, read at once: none of these reads
+    // depends on another, and run one after the other they cost a second
+    // before the model was even called. In lean mode (llm/lean.ts) some are
+    // skipped altogether.
+    const lean = leanMode();
+    const startedAt = Date.now();
+    const timing: Record<string, number> = {};
+    const timed = <T>(name: string, work: () => Promise<T> | T): Promise<T> =>
+      Promise.resolve()
+        .then(work)
+        .finally(() => {
+          timing[name] = Date.now() - startedAt;
+        });
+    // Lean: Assist reads its whole stored conversation instead of searching
+    // it by meaning, and the morning briefing only its last messages.
+    const historyWindow = !lean
+      ? scope.historyWindow
+      : effectiveConversationId === BRIEFING_THREAD_ID
+        ? BRIEFING_HISTORY
+        : scope.isThread
+          ? scope.historyWindow
+          : DEFAULT_MESSAGE_CAP;
+    const useRecall = !lean || scope.isThread;
+    const [facts, , scripts, storedHistory, recalled, liveStates] = await Promise.all([
+      scope.facts
+        ? timed("memory", () =>
+            // Lean: by tag only; Shodh's proactive search took ≈ 420 ms.
+            this.memory.getFactsWithinTokenLimit(scope.factBucket, this.config.memoryTokenLimit, lean ? undefined : message)
+          )
+        : [],
+      timed("house", () => Promise.all([this.scanner.refreshIfStale(), this.topology.refreshIfStale()])),
+      // The scripts it may run, with their fields: not in any entity's state.
+      timed("scripts", () => this.ha.listScripts()).catch(() => []),
+      timed("history", () => this.conversations.getConversationHistory(effectiveConversationId, historyWindow)),
+      useRecall
+        ? timed("recall", () =>
+            recallSemantically(this.config, this.conversations, userId, message, RECALL_LIMIT + historyWindow, scope.recall)
+          )
+        : [],
+      // What is on or open right now (llm/live-state.ts).
+      timed("live", () => this.ha.getEntities()).catch((error) => {
+        console.warn(`[live-state] could not read the states: ${error instanceof Error ? error.message : error}`);
+        return undefined;
+      }),
+    ]);
     const factContents = facts.map((f) => f.content);
     if (this.config.logLevel === "debug") {
       const approxTokens = Math.ceil(factContents.join(" ").length / 4);
@@ -218,17 +259,14 @@ export class OpenAIChatEngine implements IChatEngine {
       );
     }
 
-    // 2. Refresh device profiles and home layout if stale, then build system prompt
-    await Promise.all([this.scanner.refreshIfStale(), this.topology.refreshIfStale()]);
-    // The scripts it may run, with their fields: not in any entity's state.
-    const scriptSection = formatScriptSection(await Promise.resolve().then(() => this.ha.listScripts()).catch(() => []));
+    const scriptSection = formatScriptSection(scripts);
     const deviceCheatSheet = [this.scanner.hasProfiles() ? this.scanner.formatCheatSheet() : undefined, scriptSection]
       .filter(Boolean)
       .join("\n\n") || undefined;
     const homeLayout = this.topology.hasLayout() ? this.topology.formatSection() : undefined;
-    const systemPrompt = buildSystemPromptText(factContents, scope.isThread ? "thread" : isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender);
+    const systemPrompt = buildSystemPromptText(factContents, scope.isThread ? "thread" : isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender, scope.facts);
 
-    // 2b. Split the system prompt for prefix caching (#66 follow-up).
+    // Split the system prompt for prefix caching (#66 follow-up).
     //
     // Providers with automatic prompt caching (Mistral, OpenAI, OpenRouter)
     // reuse the longest UNCHANGED request prefix. buildSystemPromptText is
@@ -253,18 +291,13 @@ export class OpenAIChatEngine implements IChatEngine {
     const markerIndex = systemPrompt.indexOf(CACHE_MARKER);
     const stableSystemPrompt = markerIndex === -1 ? systemPrompt : systemPrompt.slice(0, markerIndex);
     let volatileSystemPrompt = markerIndex === -1 ? "" : systemPrompt.slice(markerIndex + 2);
-    // 3. Load conversation history, then recall what lies beyond it. The
-    // history comes first so that recall can skip what the model is about to
-    // read anyway: the same message twice is paid twice.
     const messages: OpenAI.ChatCompletionMessageParam[] = [
       { role: "system", content: stableSystemPrompt },
     ];
 
     // A thread id is chosen by the caller, so only this user's own turns in
     // it are history; another user's thread under the same id stays theirs.
-    const history = (
-      await this.conversations.getConversationHistory(effectiveConversationId, scope.historyWindow)
-    ).filter((msg) => msg.userId === userId);
+    const history = storedHistory.filter((msg) => msg.userId === userId);
     history.forEach((msg, index) => {
       // Files attached long ago keep only an excerpt (see files/extract.ts).
       const old = index < history.length - RECENT_FILE_MESSAGES;
@@ -279,11 +312,10 @@ export class OpenAIChatEngine implements IChatEngine {
       messages.push({ role: msg.role, content: `${prefix}${content}` });
     });
 
-    // Retrieve distant history strictly by semantic similarity, never by keywords or recency.
+    // Distant history, strictly by semantic similarity, never by keywords or
+    // recency; what the history above already holds is not sent twice.
     const inHistory = new Set(history.map((msg) => msg.id));
-    const semanticMessages = (
-      await recallSemantically(this.config, this.conversations, userId, message, RECALL_LIMIT + inHistory.size, scope.recall)
-    )
+    const semanticMessages = recalled
       .filter((msg) => !inHistory.has(msg.id))
       .slice(0, RECALL_LIMIT);
     if (semanticMessages.length > 0) {
@@ -304,12 +336,8 @@ export class OpenAIChatEngine implements IChatEngine {
 
     // What is on or open right now, read from Home Assistant (llm/live-state.ts).
     // Volatile, so it joins the message after the history.
-    try {
-      const live = formatLiveState(await this.ha.getEntities());
-      if (live) volatileSystemPrompt = volatileSystemPrompt ? `${volatileSystemPrompt}\n\n${live}` : live;
-    } catch (error) {
-      console.warn(`[live-state] could not read the states: ${error instanceof Error ? error.message : error}`);
-    }
+    const live = liveStates ? formatLiveState(liveStates) : undefined;
+    if (live) volatileSystemPrompt = volatileSystemPrompt ? `${volatileSystemPrompt}\n\n${live}` : live;
 
     // The volatile context goes after the history, right before the current
     // user message: everything before it is stable or append-only, so the
@@ -349,17 +377,22 @@ export class OpenAIChatEngine implements IChatEngine {
     if (effectiveConversationId) {
       const messageId = this.conversations.storeMessage(effectiveConversationId, userId, "user", message);
       userMessageId = messageId;
-      await rememberSemantically(this.config, this.conversations, messageId, message);
+      // Only recall reads these vectors: none in lean Assist, and a thread
+      // needs this one only from its next turn on, so it is not waited for.
+      if (!lean) await rememberSemantically(this.config, this.conversations, messageId, message);
+      else if (scope.isThread) void rememberSemantically(this.config, this.conversations, messageId, message);
     }
 
     // 5. Stream and handle tool call loop
+    const modelStartedAt = Date.now();
+    let firstTextAt = 0;
     events.onTurn?.();
     // One prompt-cache key per conversation style and memory bucket: those
     // decide the opening of the prompt, which is what the cache stores.
     const promptMode = scope.isThread ? "thread" : isVoice ? "voice" : "text";
     const cacheKey = `igor:${promptMode}:${scope.factBucket}`;
     const turnUsage = new UsageTally();
-    const tools = openAIToolsFor(promptMode, { unattended: request.unattended === true });
+    const tools = openAIToolsFor(promptMode, { unattended: request.unattended === true, noMemory: !scope.facts });
     // A thread reasons first (Mistral Large 4's hybrid mode, THREAD_REASONING);
     // spoken answers never do: thinking only adds silence and output tokens.
     // A plain command or a quick state question goes to FAST_MODEL when one
@@ -367,7 +400,7 @@ export class OpenAIChatEngine implements IChatEngine {
     // on the main model.
     // A model or thinking level picked in the panel wins over both.
     const fastModel =
-      !request.model && this.config.fastModel && isSimpleRequest({ message, hasImages: Boolean(request.images?.length) })
+      !lean && !request.model && this.config.fastModel && isSimpleRequest({ message, hasImages: Boolean(request.images?.length) })
         ? this.config.fastModel
         : undefined;
     let model = request.model ?? fastModel ?? this.config.llmModel;
@@ -398,7 +431,7 @@ export class OpenAIChatEngine implements IChatEngine {
     const knownOrder = isActionCommand(message);
     const lastReply = [...history].reverse().find((msg) => msg.role === "assistant")?.content;
     const orderCheck =
-      !knownOrder && !request.images?.length && mayBeOrder(message)
+      !lean && !knownOrder && !request.images?.length && mayBeOrder(message)
         ? askIsOrder(this.client, this.config.fastModel ?? this.config.llmModel, message, lastReply, signal).catch((error) => {
             if (!signal?.aborted) console.warn(`[route] order check failed (${error instanceof Error ? error.message : error})`);
             return { order: false, usage: undefined };
@@ -417,6 +450,7 @@ export class OpenAIChatEngine implements IChatEngine {
       }
     });
     const sink = (chunk: string) => {
+      if (!firstTextAt && chunk.trim()) firstTextAt = Date.now();
       turnText += chunk;
       if (holding) held += chunk;
       else onChunk?.(chunk);
@@ -604,6 +638,11 @@ export class OpenAIChatEngine implements IChatEngine {
       : result.text + extraMedia;
 
     console.log(`[usage] ${promptMode} ${turnUsage.describe()} tools=${toolsUsed.length} model=${model}`);
+    console.log(
+      `[timing] ${promptMode} ${Object.entries(timing).map(([k, v]) => `${k}=${v}ms`).join(" ")} ` +
+        `model_start=${modelStartedAt - startedAt}ms first_text=${firstTextAt ? `${firstTextAt - startedAt}ms` : "none"} ` +
+        `total=${Date.now() - startedAt}ms${lean ? " lean" : ""}`
+    );
 
     // 6. Store assistant response
     if (effectiveConversationId && responseText) {
@@ -614,7 +653,7 @@ export class OpenAIChatEngine implements IChatEngine {
     // 7. Extract and store facts (fire-and-forget). Memories a forget_memory
     // call touched this turn are filtered out of the extraction so they can't
     // be re-learned from the "forget that X" transcript.
-    if (!interrupted) {
+    if (!interrupted && scope.facts) {
       extractAndStoreFacts(
         this.memory,
         this.extractor,
@@ -816,7 +855,7 @@ export class OpenAIChatEngine implements IChatEngine {
     let finishReason: string | null = null;
     // Guard every reply. Spoken mode additionally strips emoji and separators;
     // written mode preserves both while still stopping repeated sentences.
-    const spoken = new SpokenGuard(isVoice);
+    const spoken = new SpokenGuard(isVoice, !leanMode());
     let usage: TokenUsage | undefined;
     // OpenRouter names the provider that served the request on every chunk.
     // Which one it was is the difference between a 1 s and a 3 s first token.

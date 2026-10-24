@@ -511,6 +511,16 @@ export type CachedSystemPrompt = Anthropic.MessageCreateParams["system"];
  * Build system prompt with caching support.
  * Returns an array of content blocks where the static part is marked for caching.
  */
+/**
+ * What a thread with thread_memory "off" is told instead of the user's
+ * memories: it has none, and asking it to remember must not be answered with
+ * a "noted" that nothing backs.
+ */
+const NO_THREAD_MEMORY =
+  "None: this chat thread has no long-term memory, only its own conversation. If asked to remember something, " +
+  "say it stays in this thread's conversation, and that lasting memories are given to Igor by voice (Assist); " +
+  "never claim it was saved.";
+
 export function buildSystemPrompt(
   facts: string[],
   isVoice: boolean | PromptMode = false,
@@ -518,10 +528,13 @@ export function buildSystemPrompt(
   deviceCheatSheet?: string,
   homeLayout?: string,
   language?: string,
-  voiceGender?: "female" | "male"
+  voiceGender?: "female" | "male",
+  /** False for a thread without long-term memory (thread_memory "off"). */
+  withMemory = true
 ): CachedSystemPrompt {
-  const factsText =
-    facts.length > 0 ? facts.map((f) => `- ${f}`).join("\n") : "No memories yet.";
+  const factsText = !withMemory
+    ? NO_THREAD_MEMORY
+    : facts.length > 0 ? facts.map((f) => `- ${f}`).join("\n") : "No memories yet.";
 
   const { display: dateTimeStr, iso: isoTimestamp, localMidnightIso } = formatDateTimeWithOffset();
 
@@ -589,10 +602,13 @@ export function buildSystemPromptText(
   deviceCheatSheet?: string,
   homeLayout?: string,
   language?: string,
-  voiceGender?: "female" | "male"
+  voiceGender?: "female" | "male",
+  /** False for a thread without long-term memory (thread_memory "off"). */
+  withMemory = true
 ): string {
-  const factsText =
-    facts.length > 0 ? facts.map((f) => `- ${f}`).join("\n") : "No memories yet.";
+  const factsText = !withMemory
+    ? NO_THREAD_MEMORY
+    : facts.length > 0 ? facts.map((f) => `- ${f}`).join("\n") : "No memories yet.";
 
   const { display: dateTimeStr, iso: isoTimestamp, localMidnightIso } = formatDateTimeWithOffset();
 

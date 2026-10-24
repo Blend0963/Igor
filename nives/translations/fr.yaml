@@ -73,10 +73,11 @@ configuration:
   thread_memory:
     name: Mémoire des fils
     description: >-
-      Ce que les fils de discussion savent de vous. « shared » (par défaut) :
-      une seule mémoire pour Assist et tous les fils. « isolated » : chaque fil
-      ne retient que ce qui y a été dit. Dans les deux cas, la conversation
-      d'un fil reste la sienne.
+      Ce que les fils de discussion savent de vous. « off » (par défaut) :
+      aucun souvenir, chaque fil n'a que sa propre conversation, et la
+      mémoire appartient à la voix seule. « shared » : une seule mémoire pour
+      Assist et tous les fils. « isolated » : chaque fil a sa propre mémoire.
+      Dans tous les cas, la conversation d'un fil reste la sienne.
   speech_to_text:
     name: Micro du panneau (reconnaissance vocale)
     description: >-
@@ -257,6 +258,15 @@ configuration:
       exemple script.contacts_recuperer_tous_les_contacts). Igor y cherche
       lui-même la personne à appeler ou à qui écrire. Vide = le premier
       script exposé dont le nom contient « contact ».
+  lean_mode:
+    name: Requêtes allégées
+    description: >-
+      Activé par défaut. Igor saute les étapes qui coûtaient du temps sans
+      assez servir : recherche « intelligente » dans la mémoire, recherche
+      par le sens dans les anciens messages pour la voix (elle relit à la
+      place ses 20 derniers messages), modèle rapide, vérification d'ordre
+      par un second modèle, six outils inutiles à l'oral. Désactivez pour
+      tout remettre comme avant.
   layout_from_exposed:
     name: Plan de la maison depuis les entités exposées
     description: >-

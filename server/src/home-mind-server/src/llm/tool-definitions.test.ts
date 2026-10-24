@@ -133,7 +133,16 @@ describe("toolsForMode", () => {
     const cfg = CONFIG_TOOLS.map((t) => t.name);
     expect(names(toolsForMode("thread", off))).toEqual([...names(TOOL_DEFINITIONS), ...home, ...cfg, "create_file"]);
     expect(names(toolsForMode("text", off))).toEqual([...names(TOOL_DEFINITIONS), ...home, ...cfg]);
+    process.env.LEAN_MODE = "off";
     expect(names(toolsForMode("voice", off))).toEqual([...names(TOOL_DEFINITIONS), ...home]);
+    delete process.env.LEAN_MODE;
+    // Lean mode (the default) leaves out what a spoken answer has no use for.
+    const lean = names(toolsForMode("voice", off));
+    for (const dropped of ["get_statistics", "list_services", "list_automations", "update_automation", "delete_automation", "send_notification"]) {
+      expect(lean).not.toContain(dropped);
+      expect(names(toolsForMode("text", off))).toContain(dropped);
+    }
+    expect(lean).toEqual(expect.arrayContaining(["call_service", "create_automation", "find_contact", "schedule_task"]));
   });
 
   it("gives threads the code interpreter and images, Assist neither", () => {

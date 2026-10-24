@@ -109,6 +109,7 @@ describe("OpenAIChatEngine", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    delete process.env.LEAN_MODE;
   });
 
   it("accumulates text from stream deltas", async () => {
@@ -571,6 +572,10 @@ describe("OpenAIChatEngine", () => {
   });
 
   describe("fast model and stop (v0.8.0)", () => {
+    // The full path, as with lean_mode: false (lean mode has its own tests).
+    beforeEach(() => { process.env.LEAN_MODE = "off"; });
+    afterEach(() => { delete process.env.LEAN_MODE; });
+
     const reply = (text = "ok") => makeStream([{ choices: [{ delta: { content: text }, finish_reason: "stop" }] }]);
 
     it("sends a plain command to FAST_MODEL without reasoning, the rest to the main model", async () => {
@@ -805,7 +810,52 @@ describe("OpenAIChatEngine", () => {
     expect(sent).not.toContain("1234");
   });
 
+  describe("lean mode (the default)", () => {
+    const answer = () =>
+      mockCreate.mockResolvedValue(
+        makeStream([
+          { choices: [{ delta: { content: "ok" }, finish_reason: null }] },
+          { choices: [{ delta: {}, finish_reason: "stop" }] },
+        ])
+      );
+
+    it("gives Assist its whole stored conversation and reads facts by tag only", async () => {
+      answer();
+      await engine.chat({ message: "hello", userId: "user-1", isVoice: true });
+      expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-user:user-1", 20);
+      expect(memory.getFactsWithinTokenLimit).toHaveBeenCalledWith("user-1", 1500, undefined);
+    });
+
+    it("reads the morning briefing's last two messages only", async () => {
+      answer();
+      await engine.chat({ message: "résumé", userId: "user-1", conversationId: "mado-thread:morning-briefing", unattended: true });
+      expect(conversations.getConversationHistory).toHaveBeenCalledWith("mado-thread:morning-briefing", 2);
+    });
+
+    it("never routes to FAST_MODEL", async () => {
+      config.fastModel = "mistral-small-latest";
+      answer();
+      await engine.chat({ message: "allume la lumière du salon", userId: "user-1", isVoice: true });
+      expect(mockCreate.mock.calls[0][0].model).toBe("gpt-4o-mini");
+    });
+
+    it("leaves a thread without long-term memory when thread memory is off", async () => {
+      config.threadMemory = "off";
+      answer();
+      await engine.chat({ message: "retiens que j'aime le thé", userId: "user-1", conversationId: "mado-thread:abc" });
+      expect(memory.getFactsWithinTokenLimit).not.toHaveBeenCalled();
+      expect(extractAndStoreFacts).not.toHaveBeenCalled();
+      const sent = mockCreate.mock.calls[0][0] as { tools: Array<{ function: { name: string } }>; messages: Array<{ content: unknown }> };
+      expect(sent.tools.map((t) => t.function.name)).not.toContain("forget_memory");
+      expect(JSON.stringify(sent.messages)).toContain("this chat thread has no long-term memory");
+    });
+  });
+
   describe("memory isolation between Assist and panel threads", () => {
+    // The full path, as with lean_mode: false (lean mode has its own tests).
+    beforeEach(() => { process.env.LEAN_MODE = "off"; });
+    afterEach(() => { delete process.env.LEAN_MODE; });
+
     const answer = () =>
       mockCreate.mockResolvedValue(
         makeStream([
@@ -865,6 +915,7 @@ describe("OpenAIChatEngine", () => {
   });
 
   it("loads conversation history when conversationId provided", async () => {
+    process.env.LEAN_MODE = "off";
     (conversations.getConversationHistory as ReturnType<typeof vi.fn>).mockReturnValue([
       { userId: "user-1", role: "user", content: "previous question" },
       { userId: "user-1", role: "assistant", content: "previous answer" },

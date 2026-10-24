@@ -48,6 +48,8 @@ export function withIgorPrefix(alias: string): string {
 }
 export interface ToolContext {
   conversationId?: string;
+  /** A thread without long-term memory (thread_memory "off"). */
+  noLongTermMemory?: boolean;
   /** A nonce unique to this assistant turn (one per chat() call). */
   turnId?: string;
   /** The requesting user — required for memory tools. */
@@ -178,7 +180,7 @@ export async function handleToolCall(
   try {
     let result: unknown;
 
-    const refusal = toolRefusal(toolName, { unattended: ctx?.unattended });
+    const refusal = toolRefusal(toolName, { unattended: ctx?.unattended, noMemory: ctx?.noLongTermMemory });
     if (refusal) {
       console.log(`[tool] ${toolName} refused: ${refusal}`);
       return { error: refusal };

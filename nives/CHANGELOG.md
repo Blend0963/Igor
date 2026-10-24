@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.13 — Lean requests; chat threads without memory
+
+- **Lean requests** (new option `lean_mode`, on by default). After an audit of every step a request goes through, the ones that cost time without paying for it are switched off. They are all still in the add-on: `lean_mode: false` brings each of them back.
+  - The memory is read simply instead of through Shodh's "smart" search, which took about 420 ms a request.
+  - The voice no longer searches its old messages by meaning (two Mistral calls a request): it reads its whole stored conversation, its last 20 messages, instead of 12. Nothing it could find before is lost. Threads keep that search, and no longer wait for it to store a message.
+  - What is left is read all at once rather than one step after another.
+  - The fast model and the second model that checked whether a sentence was an order are no longer used. A sentence starting with an order verb is still checked, without an extra call.
+  - Spoken answers no longer wait to rule out the "not for me" code, which nothing produces since 0.11.8.
+  - Six tools of no use in a spoken answer are no longer sent with each voice request: long-term statistics, the services list, listing, changing and deleting automations, sending a notification. They stay in threads and typed Assist.
+  - The morning briefing reads its last 2 messages instead of 20.
+  - A `[timing]` line in the add-on log gives, for each request, how long each step took and when the first word came.
+- **Chat threads without memory**: the new value `thread_memory: off`, now the default, gives each thread its own conversation and nothing else. A thread neither reads nor writes the memory, so nothing said in a thread reaches the voice any more, and the voice keeps its own memory. Asked to remember something, a thread says it stays in its conversation and that lasting memories are given by voice. If your configuration says `thread_memory: shared`, change it to `off` (or remove the line).
+
 ## 0.11.12 — Igor finds your contacts itself
 
 - **Calling or texting someone**: Igor was handed the whole contact list and asked to read it, and on "appelle Jean Martin" it searched the house's devices instead, then said the contact did not exist although it was on the list it had just shown. A new tool, find_contact, has the add-on search the list itself: it runs your contacts script, finds the person whatever the spelling, accents or order of first and last name, and gives Igor only the matching contacts with their numbers. It also tells whose an unknown number is. The script is found by itself (the first exposed script with "contact" in its id that returns a result) or set with the new option `contacts_script`.

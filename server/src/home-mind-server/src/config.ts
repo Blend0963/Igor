@@ -109,7 +109,7 @@ const ConfigSchema = z
     // Long-term facts of chat-panel threads: shared with Assist and the other
     // threads (default), or kept per thread. Conversation history is per
     // thread either way. See memory/memory-scope.ts.
-    threadMemory: z.enum(["shared", "isolated"]).default("shared"),
+    threadMemory: z.enum(["shared", "isolated", "off"]).default("off"),
 
     // Per-entity device capability overrides (JSON, for devices with incorrect HA-reported modes)
     deviceOverrides: z.string().optional(),

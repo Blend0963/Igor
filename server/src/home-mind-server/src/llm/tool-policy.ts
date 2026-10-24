@@ -41,6 +41,8 @@ export function getConfigEdits(): ConfigEdits {
 
 export interface TurnPolicy {
   unattended?: boolean;
+  /** A thread without long-term memory (thread_memory "off"): nothing to forget. */
+  noMemory?: boolean;
 }
 
 /** Why a tool is not available in this turn, or undefined when it is. */
@@ -50,6 +52,9 @@ export function toolRefusal(name: string, turn: TurnPolicy = {}): string | undef
   }
   if (AUTOMATION_WRITE_TOOLS.has(name) && configEdits === "off") {
     return "Changing automations is turned off in the add-on options (config_edits). Tell the user what to change instead.";
+  }
+  if (turn.noMemory && name === "forget_memory") {
+    return "This chat thread has no long-term memory: memories are kept and forgotten by voice (Assist).";
   }
   if (turn.unattended && NEEDS_A_PERSON.has(name)) {
     return "This run has nobody to confirm with (a scheduled task or an automatic request), so this tool is not available. Report what should be done instead; the user can ask for it in a conversation.";
