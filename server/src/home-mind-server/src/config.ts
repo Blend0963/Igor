@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+/** "a, b ,c" → ["a", "b", "c"]; nothing → undefined. */
+const splitList = (v: string | undefined): string[] | undefined => {
+  const items = (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  return items.length ? items : undefined;
+};
+
 const ConfigSchema = z
   .object({
     // Server
@@ -63,6 +69,10 @@ const ConfigSchema = z
       .default("22:00-07:00"),
     watchMaxPerDay: z.coerce.number().int().min(1).max(50).default(5),
     watchLivelyTime: z.string().regex(/^\d{1,2}:\d{2}$/, "WATCH_LIVELY_TIME must be HH:MM").optional(),
+    // Entity ids or patterns ("sensor.*_battery"), comma-separated: only
+    // these are watched when any is given; never these.
+    watchEntities: z.string().optional().transform(splitList),
+    watchExclude: z.string().optional().transform(splitList),
     // Where Igor may read Home Assistant's YAML (read_config_file); the
     // add-on maps the configuration folder here. Absent = no file access.
     haConfigDir: z.string().default("/config"),
@@ -225,6 +235,8 @@ export function loadConfig(): Config {
     watchQuietHours: emptyToUndefined(process.env.WATCH_QUIET_HOURS),
     watchMaxPerDay: emptyToUndefined(process.env.WATCH_MAX_PER_DAY),
     watchLivelyTime: emptyToUndefined(process.env.WATCH_LIVELY_TIME),
+    watchEntities: emptyToUndefined(process.env.WATCH_ENTITIES),
+    watchExclude: emptyToUndefined(process.env.WATCH_EXCLUDE),
     haConfigDir: emptyToUndefined(process.env.HA_CONFIG_DIR),
     ollamaBaseUrl: emptyToUndefined(process.env.OLLAMA_BASE_URL),
     haUrl: process.env.HA_URL,

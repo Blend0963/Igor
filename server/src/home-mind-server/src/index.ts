@@ -29,6 +29,7 @@ import { WorkspaceStore } from "./memory/workspace-store.js";
 import { configureVision, createVisionDescriber } from "./llm/vision.js";
 import { Scheduler, setScheduler } from "./jobs/scheduler.js";
 import { HouseWatch, houseContext } from "./jobs/house-watch.js";
+import { leanMode } from "./llm/lean.js";
 import { createOneShot } from "./llm/one-shot.js";
 import { setConfigDir } from "./llm/home-tools.js";
 import { setConfigEdits } from "./llm/tool-policy.js";
@@ -272,6 +273,9 @@ const houseWatch = new HouseWatch(
     maxPerDay: config.watchMaxPerDay,
     livelyTime: config.watchLivelyTime,
     intervalMinutes: 5,
+    include: config.watchEntities,
+    exclude: config.watchExclude,
+    plain: leanMode(),
   }
 );
 houseWatch.start();

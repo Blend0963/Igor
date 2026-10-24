@@ -91,6 +91,8 @@ CONFIG_EDITS=$(jq -r '.config_edits // ""' "$OPTIONS")
 WATCH_QUIET_HOURS=$(jq -r '.watch_quiet_hours // ""' "$OPTIONS")
 WATCH_MAX_PER_DAY=$(jq -r '.watch_max_per_day // ""' "$OPTIONS")
 WATCH_LIVELY_TIME=$(jq -r '.watch_lively_time // ""' "$OPTIONS")
+WATCH_ENTITIES=$(jq -r '.watch_entities // ""' "$OPTIONS")
+WATCH_EXCLUDE=$(jq -r '.watch_exclude // ""' "$OPTIONS")
 EXTRACTION_MODEL=$(jq -r '.extraction_model // ""' "$OPTIONS")
 # `// ""` would turn an explicit "off" into "", so test for null instead.
 EXTRACTION_GATE=$(jq -r 'if .extraction_gate == null then "" else .extraction_gate end' "$OPTIONS")
@@ -314,6 +316,8 @@ write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$WATCH_QUIET_HOURS" ] && write_env "WATCH_QUIET_HOURS" "$WATCH_QUIET_HOURS"
 [ -n "$WATCH_MAX_PER_DAY" ] && write_env "WATCH_MAX_PER_DAY" "$WATCH_MAX_PER_DAY"
 [ -n "$WATCH_LIVELY_TIME" ] && write_env "WATCH_LIVELY_TIME" "$WATCH_LIVELY_TIME"
+[ -n "$WATCH_ENTITIES" ] && write_env "WATCH_ENTITIES" "$WATCH_ENTITIES"
+[ -n "$WATCH_EXCLUDE" ] && write_env "WATCH_EXCLUDE" "$WATCH_EXCLUDE"
 [ -n "$EXTRACTION_MODEL" ] && write_env "EXTRACTION_MODEL" "$EXTRACTION_MODEL"
 [ -n "$EXTRACTION_GATE" ] && write_env "EXTRACTION_GATE" "$EXTRACTION_GATE"
 [ -n "$MEMORY_LEARNING" ] && write_env "MEMORY_LEARNING" "$MEMORY_LEARNING"
