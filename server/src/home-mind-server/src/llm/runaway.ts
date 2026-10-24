@@ -60,7 +60,15 @@ function likeness(a: Set<string>, b: Set<string>): number {
 export class SpokenGuard {
   private pending = "";
 
-  constructor(private readonly spokenOnly = true) {}
+  /**
+   * `holdNotForMe`: hold a spoken reply's start, and each finished sentence,
+   * until it cannot be NOT_FOR_ME. Off in lean mode (llm/lean.ts): nothing
+   * asks the model for that code since the addressee check (0.11.8).
+   */
+  constructor(
+    private readonly spokenOnly = true,
+    private readonly holdNotForMe = true
+  ) {}
   private readonly seen = new Set<string>();
   private readonly said: Set<string>[] = [];
   /** Written mode: the sentences so far, and whether a code block is open. */
@@ -94,7 +102,7 @@ export class SpokenGuard {
     } else {
       this.pending += chunk;
     }
-    if (this.spokenOnly && !this.opened) {
+    if (this.spokenOnly && !this.opened && this.holdNotForMe) {
       const head = this.pending.replace(/^[\s"'«*`[(]+/, "");
       if (head.startsWith(NOT_FOR_ME)) {
         this.stop("not_for_me");
@@ -122,7 +130,7 @@ export class SpokenGuard {
       if (!match) break;
       const end = match.index + match[0].length;
       // A spoken sentence waits until what follows it cannot be NOT_FOR_ME.
-      if (this.spokenOnly && NOT_FOR_ME.startsWith(this.pending.slice(end).trimStart().slice(0, NOT_FOR_ME.length))) break;
+      if (this.spokenOnly && this.holdNotForMe && NOT_FOR_ME.startsWith(this.pending.slice(end).trimStart().slice(0, NOT_FOR_ME.length))) break;
       const sentence = this.pending.slice(0, end);
       if (this.repeats(sentence)) return out;
       out += this.spokenOnly ? sentence.replace(/\*/g, "") : sentence;
@@ -161,7 +169,7 @@ export class SpokenGuard {
     this.heldStar = "";
     if (this.spokenOnly) this.pending = this.pending.replace(/\*/g, "");
     if (this.stopped || !this.pending) return "";
-    if (this.spokenOnly && !this.opened && NOT_FOR_ME.startsWith(this.pending.replace(/^[\s"'«*`[(]+/, "").trimEnd())) {
+    if (this.spokenOnly && !this.opened && this.holdNotForMe && NOT_FOR_ME.startsWith(this.pending.replace(/^[\s"'«*`[(]+/, "").trimEnd())) {
       // The whole reply was a beginning of NOT_FOR_ME ("NOT_FOR"): silence too.
       if (this.pending.trim()) this.stop("not_for_me");
       this.pending = "";

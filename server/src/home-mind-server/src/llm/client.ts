@@ -14,6 +14,7 @@ import { randomUUID } from "node:crypto";
 import { handleToolCall, extractAndStoreFacts, type ToolContext } from "./tool-handler.js";
 import { describeLongBatch } from "./long-task.js";
 import { SpokenGuard } from "./runaway.js";
+import { leanMode } from "./lean.js";
 import { ADDRESSEE_INSTRUCTIONS, addresseeQuestion, checkAddressee, needsAddresseeCheck } from "./addressee-check.js";
 import { recallSemantically, rememberSemantically } from "./semantic-recall.js";
 import { RECALL_LIMIT, resolveMemoryScope } from "../memory/memory-scope.js";
@@ -99,7 +100,7 @@ export class LLMClient implements IChatEngine {
     const turnId = randomUUID(); // nonce for this turn — powers the automation confirmation gate
     // ONE shared context for the whole turn — forget_memory writes
     // suppressExtraction back onto it, so per-call literals would drop the flag.
-    const toolCtx: ToolContext = { conversationId: effectiveConversationId, turnId, userId: scope.factBucket, memory: this.memory, ownerId: userId, isThread: scope.isThread, unattended: request.unattended === true, actions: [] };
+    const toolCtx: ToolContext = { conversationId: effectiveConversationId, turnId, userId: scope.factBucket, memory: this.memory, ownerId: userId, isThread: scope.isThread, unattended: request.unattended === true, noLongTermMemory: !scope.facts, actions: [] };
 
     // 0. A spoken sentence that names Igor after its opening may only talk
     // about it: a small call decides before the main model is called.
@@ -109,11 +110,10 @@ export class LLMClient implements IChatEngine {
         : undefined;
 
     // 1. Load user's memory (pass current message as context for Shodh's proactive retrieval)
-    const facts = await this.memory.getFactsWithinTokenLimit(
-      scope.factBucket,
-      this.config.memoryTokenLimit,
-      message
-    );
+    // A thread without long-term memory reads none; lean mode reads by tag only.
+    const facts = scope.facts
+      ? await this.memory.getFactsWithinTokenLimit(scope.factBucket, this.config.memoryTokenLimit, leanMode() ? undefined : message)
+      : [];
     const factContents = facts.map((f) => f.content);
     if (this.config.logLevel === "debug") {
       const approxTokens = Math.ceil(factContents.join(" ").length / 4);
@@ -130,7 +130,7 @@ export class LLMClient implements IChatEngine {
       .filter(Boolean)
       .join("\n\n") || undefined;
     const homeLayout = this.topology.hasLayout() ? this.topology.formatSection() : undefined;
-    let systemPrompt = buildSystemPrompt(factContents, scope.isThread ? "thread" : isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender);
+    let systemPrompt = buildSystemPrompt(factContents, scope.isThread ? "thread" : isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender, scope.facts);
     // Retrieve distant history strictly by semantic similarity, never by keywords or recency.
     const semanticMessages = await recallSemantically(this.config, this.conversations, userId, message, RECALL_LIMIT, scope.recall);
     if (semanticMessages.length > 0) {
@@ -205,7 +205,7 @@ export class LLMClient implements IChatEngine {
     }
 
     events.onTurn?.();
-    const tools = filterTools(HA_TOOLS, { unattended: request.unattended === true });
+    const tools = filterTools(HA_TOOLS, { unattended: request.unattended === true, noMemory: !scope.facts });
     let response = await this.streamMessage(
       systemPrompt,
       messages,
@@ -305,14 +305,16 @@ export class LLMClient implements IChatEngine {
     // 7. Extract and store new facts (async, don't block response). Memories a
     // forget_memory call touched this turn are filtered out of the extraction
     // so they can't be re-learned from the "forget that X" transcript.
-    extractAndStoreFacts(
-      this.memory,
-      this.extractor,
-      scope.factBucket,
-      message,
-      responseText,
-      toolCtx.forgetTargets
-    ).catch((err) => console.error("Fact extraction failed:", err));
+    if (scope.facts) {
+      extractAndStoreFacts(
+        this.memory,
+        this.extractor,
+        scope.factBucket,
+        message,
+        responseText,
+        toolCtx.forgetTargets
+      ).catch((err) => console.error("Fact extraction failed:", err));
+    }
 
     // 8. Nothing usable came back: say why, so the integration can show a real
     // hint instead of "I received your request but got no response."
@@ -414,7 +416,7 @@ export class LLMClient implements IChatEngine {
 
     // Guard the stream before text reaches Assist/TTS. Buffering by sentence
     // means a repeated sentence is never spoken or stored twice.
-    const guard = new SpokenGuard(isVoice);
+    const guard = new SpokenGuard(isVoice, !leanMode());
     let safeText = "";
     stream.on("text", (textDelta) => {
       if (guard.stopped) return;

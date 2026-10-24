@@ -1,5 +1,5 @@
 name: "Igor"
-version: "0.11.12"
+version: "0.11.13"
 slug: "mado"
 description: "In Igor we trust. L'assistant IA de la maison, avec sa mémoire"
 url: "https://github.com/Blend0963/MaDo"
@@ -60,7 +60,7 @@ schema:
   # Long-term facts in chat threads. Unset = shared with Assist and the
   # other threads; "isolated" gives each thread its own. History is per
   # thread either way.
-  thread_memory: "list(shared|isolated)?"
+  thread_memory: "list(off|shared|isolated)?"
   # Speech-to-text for the chat panel's microphone (Voxtral on Mistral's
   # API). Unset = on whenever a Mistral key is available (the web-search key,
   # or the chat key when the provider is Mistral); "off" disables it.
@@ -126,6 +126,9 @@ schema:
   # Unset = the first exposed script with "contact" in its id that returns a
   # result.
   contacts_script: "str?"
+  # Lean request path (default on): the steps judged not worth their time are
+  # skipped (see CHANGELOG 0.11.13). false brings every one of them back.
+  lean_mode: "bool?"
   # Remembered facts sent with each request, in tokens. Unset = 1500.
   memory_token_limit: "int(200,8000)?"
   # All three absent from `options:` for the same reason as max_output_tokens:

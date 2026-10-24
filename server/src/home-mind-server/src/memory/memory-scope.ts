@@ -52,6 +52,8 @@ export interface MemoryScope {
   conversationId: string;
   /** The long-term fact bucket (Shodh user id) for recall, extraction and forget_memory. */
   factBucket: string;
+  /** False for a thread with thread_memory "off": no fact is read, learned or forgotten. */
+  facts: boolean;
   /** What semantic recall may search. */
   recall: RecallScope;
   isThread: boolean;
@@ -83,8 +85,10 @@ export function threadFactBucket(userId: string, conversationId: string): string
  *   thread's own.
  * - isolated: a bucket per thread, so a thread neither sees nor feeds what
  *   Assist and the other threads remember.
+ * - off: a thread has no long-term memory at all, only its own conversation;
+ *   what is remembered belongs to Assist (the voice) alone.
  */
-export type ThreadMemory = "shared" | "isolated";
+export type ThreadMemory = "shared" | "isolated" | "off";
 
 export function resolveMemoryScope(
   userId: string,
@@ -95,6 +99,7 @@ export function resolveMemoryScope(
     return {
       conversationId,
       factBucket: threadMemory === "isolated" ? threadFactBucket(userId, conversationId) : userId,
+      facts: threadMemory !== "off",
       recall: { conversationId },
       isThread: true,
       historyWindow: HISTORY_WINDOW.thread,
@@ -105,6 +110,7 @@ export function resolveMemoryScope(
   return {
     conversationId: `mado-user:${userId}`,
     factBucket: userId,
+    facts: true,
     recall: { excludeConversationPrefix: THREAD_PREFIX },
     isThread: false,
     historyWindow: HISTORY_WINDOW.assist,

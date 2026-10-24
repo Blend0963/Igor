@@ -72,13 +72,13 @@ configuration:
       most relevant first. Every request pays for it, so lower is cheaper.
       Leave empty for 1500, which holds a few dozen facts.
   thread_memory:
-    name: Thread Memory
+    name: Thread memory
     description: >-
-      What chat threads remember about you. "shared" (default): one memory for
-      Assist and every thread, so what you told the voice assistant is known in
-      the threads and the other way round. "isolated": each thread remembers
-      only what was said in it. Either way a thread's conversation stays its
-      own; other threads and Assist conversations are never mixed into it.
+      What chat threads know about you. "off" (default): no memories, each
+      thread only has its own conversation, and memory belongs to the voice
+      alone. "shared": one memory for Assist and every thread. "isolated":
+      each thread has a memory of its own. Either way a thread's conversation
+      stays its own.
   speech_to_text:
     name: Speech-to-Text (Panel Microphone)
     description: >-
@@ -255,6 +255,14 @@ configuration:
       script.contacts_recuperer_tous_les_contacts). Igor searches it itself for
       the person to call or text. Empty = the first exposed script with
       "contact" in its id.
+  lean_mode:
+    name: Lean requests
+    description: >-
+      On by default. Igor skips the steps that cost time without paying for
+      it: the "smart" memory search, the meaning-based search of old messages
+      for the voice (it reads its last 20 messages instead), the fast model,
+      the second model that checked for orders, six tools of no use in a
+      spoken answer. Turn it off to bring everything back.
   layout_from_exposed:
     name: Room map from exposed entities
     description: >-

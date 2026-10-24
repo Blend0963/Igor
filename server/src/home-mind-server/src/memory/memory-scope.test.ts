@@ -6,6 +6,7 @@ describe("resolveMemoryScope", () => {
     expect(resolveMemoryScope("alice", "mado-thread:t1")).toEqual({
       conversationId: "mado-thread:t1",
       factBucket: "alice",
+      facts: true,
       recall: { conversationId: "mado-thread:t1" },
       isThread: true,
       historyWindow: 20,
@@ -19,6 +20,13 @@ describe("resolveMemoryScope", () => {
     expect(scope.recall).toEqual({ conversationId: "mado-thread:t1" });
   });
 
+  it("gives a thread no long-term memory when thread memory is off", () => {
+    const scope = resolveMemoryScope("alice", "mado-thread:t1", "off");
+    expect(scope.facts).toBe(false);
+    expect(scope.recall).toEqual({ conversationId: "mado-thread:t1" });
+    expect(resolveMemoryScope("alice", undefined, "off").facts).toBe(true);
+  });
+
   it("never changes Assist, whatever the thread setting", () => {
     expect(resolveMemoryScope("alice", "01HXYZ", "isolated").factBucket).toBe("alice");
   });
@@ -28,6 +36,7 @@ describe("resolveMemoryScope", () => {
       expect(resolveMemoryScope("alice", conversationId)).toEqual({
         conversationId: "mado-user:alice",
         factBucket: "alice",
+        facts: true,
         recall: { excludeConversationPrefix: "mado-thread:" },
         isThread: false,
         historyWindow: 12,
