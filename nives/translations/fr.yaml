@@ -267,6 +267,18 @@ configuration:
       place ses 20 derniers messages), modèle rapide, vérification d'ordre
       par un second modèle, six outils inutiles à l'oral. Désactivez pour
       tout remettre comme avant.
+  watch_entities:
+    name: Veille — entités surveillées
+    description: >-
+      Facultatif. Les entités que la veille surveille, séparées par des
+      virgules, avec * pour « n'importe quoi » (binary_sensor.fuite_*,
+      lock.porte_entree). Remplie, seules celles-ci sont surveillées ; vide,
+      tout ce que house_watch couvre.
+  watch_exclude:
+    name: Veille — entités ignorées
+    description: >-
+      Les entités que la veille ne regarde jamais, séparées par des virgules,
+      avec * possible (binary_sensor.voiture_*, sensor.*_processor_*).
   layout_from_exposed:
     name: Plan de la maison depuis les entités exposées
     description: >-

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.14 — The house watch: your sensors, plain alerts, told once
+
+- **Choose what is watched**: two new options. `watch_entities` (only these are watched, when filled) and `watch_exclude` (never these), comma-separated, with `*` for "anything" (`binary_sensor.car_*`, `sensor.*_processor_*`).
+- **Plain alerts** (with `lean_mode`, the default): an alert is sent exactly as the check found it ("Fuite cuisine : humidité ou eau détecté(e) depuis 3 min."), no longer reworded by the model, which once turned a rain sensor where the car is parked into "it is raining inside the car". One model call less per alert. Safety classes are now said in words (humidité ou eau, fumée, gaz…) instead of "moisture".
+- **Told once while it lasts** (with `lean_mode`): an alert is not sent again every hour while the sensor stays on; it comes back only after the sensor went back to normal and is triggered again.
+
 ## 0.11.13 — Lean requests; chat threads without memory
 
 - **Lean requests** (new option `lean_mode`, on by default). After an audit of every step a request goes through, the ones that cost time without paying for it are switched off. They are all still in the add-on: `lean_mode: false` brings each of them back.

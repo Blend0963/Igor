@@ -47,6 +47,15 @@ const AWAY_LIGHTS_MINUTES = 15;
 const TRACE_CHECK_MS = 30 * 60_000;
 
 const SAFETY_CLASSES = new Set(["moisture", "smoke", "gas", "carbon_monoxide", "safety", "heat"]);
+/** What each safety class means, said plainly in the alert. */
+const SAFETY_WORDS: Record<string, string> = {
+  moisture: "humidité ou eau",
+  smoke: "fumée",
+  gas: "gaz",
+  carbon_monoxide: "monoxyde de carbone",
+  safety: "problème de sécurité",
+  heat: "chaleur excessive",
+};
 const OPENING_CLASSES = new Set(["door", "window", "garage_door", "opening"]);
 const WATCHED_DOMAINS = new Set([
   "light", "switch", "climate", "lock", "cover", "binary_sensor", "sensor", "camera",
@@ -90,7 +99,7 @@ export function findIssues(states: EntityState[], now: Date, seenAvailable: Set<
 
     if (domain === "binary_sensor" && s.state === "on") {
       if (SAFETY_CLASSES.has(cls)) {
-        out.push({ key: `alarm:${s.entity_id}`, level: "urgent", text: `${name} (${cls}) est en alerte depuis ${sinceText(s.last_changed, now)}.` });
+        out.push({ key: `alarm:${s.entity_id}`, level: "urgent", text: `${name} : ${SAFETY_WORDS[cls] ?? cls} détecté(e) depuis ${sinceText(s.last_changed, now)}.` });
       } else if (OPENING_CLASSES.has(cls) && minutesSince(s.last_changed, now) >= OPEN_MINUTES) {
         out.push({ key: `open:${s.entity_id}`, level: "warn", text: `${name} est ouverte depuis ${sinceText(s.last_changed, now)}.` });
       } else if (cls === "battery") {
@@ -122,6 +131,28 @@ export function findIssues(states: EntityState[], now: Date, seenAvailable: Set<
     });
   }
   return out;
+}
+
+/** "binary_sensor.fuite_*" → a test of one entity id; "*" stands for anything. */
+function patternTest(pattern: string): (id: string) => boolean {
+  const re = new RegExp(`^${pattern.trim().toLowerCase().split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
+  return (id) => re.test(id.toLowerCase());
+}
+
+/**
+ * The entities the watch looks at: only those WATCH_ENTITIES names when it
+ * names any, never those WATCH_EXCLUDE names. People and weather are always
+ * read: they are context ("everyone is away"), never an alert themselves.
+ */
+export function watchedStates(states: EntityState[], include: string[] = [], exclude: string[] = []): EntityState[] {
+  const inc = include.filter((p) => p.trim()).map(patternTest);
+  const exc = exclude.filter((p) => p.trim()).map(patternTest);
+  return states.filter((s) => {
+    const domain = domainOf(s.entity_id);
+    if (domain === "person" || domain === "weather") return true;
+    if (exc.some((t) => t(s.entity_id))) return false;
+    return inc.length === 0 || inc.some((t) => t(s.entity_id));
+  });
 }
 
 /** Automations whose recent runs ended in an error, one flag per automation. */
@@ -178,6 +209,16 @@ export interface HouseWatchOptions {
   /** HH:MM of the daily "anything useful to say?" check; undefined = never. */
   livelyTime?: string;
   intervalMinutes: number;
+  /** Entity ids or patterns ("binary_sensor.fuite_*"): when given, only these are watched. */
+  include?: string[];
+  /** Entity ids or patterns never watched. */
+  exclude?: string[];
+  /**
+   * Plain alerts (lean mode): the finding is sent as written, never reworded
+   * by the model, and a finding is told once while it lasts, not again every
+   * cooldown. Off: the model judges and words each alert, as before 0.11.14.
+   */
+  plain?: boolean;
 }
 
 export interface HouseWatchDeps {
@@ -276,7 +317,7 @@ export class HouseWatch {
       const quiet = inQuietHours(this.options.quietHours, local.h, local.mi);
       const capped = this.memo.sentToday >= this.options.maxPerDay;
 
-      const states = await this.deps.readStates(this.options.mode === "all");
+      const states = watchedStates(await this.deps.readStates(this.options.mode === "all"), this.options.include, this.options.exclude);
       const findings = findIssues(states, now, this.seen);
       if (this.deps.readTraces && now.getTime() - this.lastTraceCheck >= TRACE_CHECK_MS) {
         this.lastTraceCheck = now.getTime();
@@ -291,6 +332,15 @@ export class HouseWatch {
       // A warning that went away may be told again when it comes back.
       const present = new Set(findings.map((f) => f.key));
       for (const [key, entry] of Object.entries(this.memo.notified)) {
+        if (this.options.plain) {
+          // Told once while it lasts: told again only after it went away.
+          // A failed automation's flag lasts a day (its traces' window).
+          const gone = key.startsWith("automation:")
+            ? now.getTime() - new Date(entry.at).getTime() > COOLDOWN_MS.info
+            : !present.has(key);
+          if (gone) delete this.memo.notified[key];
+          continue;
+        }
         const expired = now.getTime() - new Date(entry.at).getTime() > COOLDOWN_MS[entry.level];
         if (expired || (!present.has(key) && entry.level !== "info" && !key.startsWith("automation:"))) delete this.memo.notified[key];
       }
@@ -328,7 +378,7 @@ export class HouseWatch {
     const urgent = due.some((f) => f.level === "urgent");
     const flagged = due.map((f) => `- [${f.level}] ${f.text}`).join("\n");
     let verdict: { notify: boolean; title: string; message: string } | undefined;
-    if (this.deps.judge) {
+    if (this.deps.judge && !this.options.plain) {
       const lang = await this.deps.language();
       const raw = await this.deps.judge(JUDGE_SYSTEM(lang), `Flagged:\n${flagged}\n\nContext:\n${await this.contextLines(states, now)}`, 400);
       verdict = parseVerdict(raw);

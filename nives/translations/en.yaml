@@ -263,6 +263,17 @@ configuration:
       for the voice (it reads its last 20 messages instead), the fast model,
       the second model that checked for orders, six tools of no use in a
       spoken answer. Turn it off to bring everything back.
+  watch_entities:
+    name: House watch — watched entities
+    description: >-
+      Optional. The entities the house watch looks at, comma-separated, with *
+      for "anything" (binary_sensor.fuite_*, lock.front_door). When filled,
+      only these are watched; empty, everything house_watch covers.
+  watch_exclude:
+    name: House watch — ignored entities
+    description: >-
+      Entities the house watch never looks at, comma-separated, * allowed
+      (binary_sensor.car_*, sensor.*_processor_*).
   layout_from_exposed:
     name: Room map from exposed entities
     description: >-

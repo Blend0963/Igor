@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { HouseWatch, findIssues, findFailedAutomations, inQuietHours, parseVerdict, WATCH_THREAD } from "./house-watch.js";
+import { HouseWatch, findIssues, findFailedAutomations, inQuietHours, parseVerdict, watchedStates, WATCH_THREAD } from "./house-watch.js";
 import { InMemoryConversationStore } from "../memory/conversation-memory.js";
 import type { EntityState } from "../ha/client.js";
 
@@ -168,5 +168,49 @@ describe("HouseWatch", () => {
     const { watch, notify } = setup([st("binary_sensor.fumee", "on", { device_class: "smoke" })], undefined, { mode: "off" });
     await watch.check(NOW);
     expect(notify).not.toHaveBeenCalled();
+  });
+});
+
+describe("choosing what is watched, and plain alerts", () => {
+  const rainAtTheCar = st("binary_sensor.voiture_pluie", "on", { device_class: "moisture", friendly_name: "Pluie voiture" }, 120);
+  const leak = st("binary_sensor.fuite_cuisine", "on", { device_class: "moisture", friendly_name: "Fuite cuisine" }, 3);
+  const person = st("person.alex", "not_home");
+
+  it("watches only the listed entities, never the excluded ones, and always reads people", () => {
+    const states = [rainAtTheCar, leak, person, st("sensor.cpu_temp", "80", { device_class: "temperature", unit_of_measurement: "°C" })];
+    expect(watchedStates(states, [], ["binary_sensor.voiture_*", "sensor.cpu_*"]).map((s) => s.entity_id)).toEqual(["binary_sensor.fuite_cuisine", "person.alex"]);
+    expect(watchedStates(states, ["binary_sensor.fuite_*"]).map((s) => s.entity_id)).toEqual(["binary_sensor.fuite_cuisine", "person.alex"]);
+    expect(watchedStates(states)).toHaveLength(4);
+  });
+
+  it("says a safety alarm in plain words", () => {
+    expect(findIssues([leak], NOW, new Set())[0].text).toBe("Fuite cuisine : humidité ou eau détecté(e) depuis 3 min.");
+  });
+
+  it("sends the finding as written, once while it lasts, and again only after it went away", async () => {
+    const notify = vi.fn().mockResolvedValue(undefined);
+    const judge = vi.fn();
+    let states = [leak];
+    const watch = new HouseWatch(
+      { readStates: async () => states, judge, notify, userId: "default", timeZone: async () => "Europe/Paris", language: async () => "fr" },
+      { mode: "on", quietHours: "22:00-07:00", maxPerDay: 5, intervalMinutes: 5, plain: true, exclude: ["binary_sensor.voiture_*"] }
+    );
+    const at = (h: number) => new Date(NOW.getTime() + h * 3_600_000);
+    await watch.check(NOW);
+    await watch.check(at(2));
+    await watch.check(at(5));
+    expect(judge).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith("🚨 Alerte maison", "Fuite cuisine : humidité ou eau détecté(e) depuis 3 min.");
+
+    states = [{ ...leak, state: "off" }];
+    await watch.check(at(6));
+    states = [leak];
+    await watch.check(at(7));
+    expect(notify).toHaveBeenCalledTimes(2);
+
+    states = [rainAtTheCar];
+    await watch.check(at(8));
+    expect(notify).toHaveBeenCalledTimes(2);
   });
 });
