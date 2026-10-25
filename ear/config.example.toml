@@ -57,6 +57,15 @@ language = "fr"
 cpu_threads = 2      # used only on the CPU fallback
 # hotwords = "Igor"  # words Whisper should expect; by default the [name] names
 beam_size = 0        # 0: 5 on a GPU (hears the name better), 1 on a CPU
+# A whisper.cpp server (whisper-server, built with Vulkan or CUDA) does the
+# transcription instead of faster-whisper: any GPU it supports, AMD included.
+# Igor falls back to faster-whisper when the server does not answer.
+# whisper_url = "http://127.0.0.1:8178"
+# true: the text heard here goes straight to the Assist pipeline's intent
+# step, without its own speech-to-text (a second transcription, in the
+# cloud perhaps, saved). Worth it with a fast local model (a GPU). Other
+# devices keep their own pipeline.
+# send_text = true
 
 [home_assistant]
 # Needed for act mode; also used in observation mode to stay quiet while
@@ -105,3 +114,10 @@ media_players = []         # for "players": e.g. ["media_player.nvidia_shield"]
 #   "closed": nothing is heard, not even the name, in either mode; Igor still
 #             hears the answer to a question it has just asked
 when_media = "name"
+# Sound card input that carries the television's own sound (for a video
+# projector or a box wired into the sound card: `pactl list short sources`).
+# While sound plays, a sentence naming Igor is compared with what this input
+# says at the same moment: the words found in both are the television's and
+# are dropped, and only what follows the name is kept. Needs a fast local
+# transcription (whisper_url or a GPU) and word timestamps (whisper_url).
+# tv_source = "alsa_input.pci-0000_06_10.0.analog-stereo"

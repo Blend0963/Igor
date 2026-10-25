@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import difflib
 import logging
+import re
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -35,6 +36,7 @@ from typing import Callable
 import numpy as np
 
 from .addressing import HALLUCINATIONS, Addressing, normalize
+from .reference import merge_parts, tv_flags
 from .spotter import Spot
 
 log = logging.getLogger("igor-ear")
@@ -46,6 +48,11 @@ GAP = np.zeros(RATE // 5, dtype=np.float32)  # 0.2 s between "Igor" and the orde
 LONG_S = 16.0
 HEAD_S = 8.0
 TAIL_S = 6.0
+
+# Among a television's voices, an order is cut at the first pause this long
+# between words (seconds), and after this many words.
+ORDER_PAUSE = 1.2
+ORDER_WORDS = 20
 
 # "Éteins la lumière… Igor": with a pause before the name, the order is the
 # sentence before. It is joined in when it ended this short a time before.
@@ -98,6 +105,8 @@ class Listener:
         judge_allowed: Callable[[], bool] = lambda: True,
         judge_acts: bool = False,
         spotter: Callable[[np.ndarray], Spot] | None = None,
+        tv: Callable[[float, float], list] | None = None,
+        tv_active: Callable[[], bool] = lambda: False,
     ) -> None:
         self.stt, self.rules, self.act, self.busy = stt, rules, act, busy
         self.followup, self.followup_seconds, self.name_wait = followup, followup_seconds, name_wait
@@ -117,6 +126,10 @@ class Listener:
         # A second ear for the name (Vosk, on the CPU), run while Whisper
         # transcribes on the GPU.
         self.spotter = spotter
+        # While a television sounds (`tv_active`), `tv(t0, t1)` gives the words
+        # (text, start, end, normalized) it said between two moments, the times
+        # counted from t0: they are compared with what the microphone heard.
+        self.tv, self.tv_active = tv, tv_active
         self._spotting = ThreadPoolExecutor(1, "spotter") if spotter is not None else None
         self._recent: deque[tuple[float, str]] = deque(maxlen=CONTEXT_SENTENCES)
         # What Igor said aloud lately, to know its own voice if it comes back.
@@ -130,7 +143,7 @@ class Listener:
         self._conversation: str | None = None
 
     def _hear(self, audio: np.ndarray):
-        if len(audio) <= LONG_S * RATE:
+        if len(audio) <= LONG_S * RATE or getattr(self.stt, "full", False):
             return self.stt(audio)
         head = self.stt(audio[: int(HEAD_S * RATE)])
         tail = self.stt(audio[-int(TAIL_S * RATE):])
@@ -139,6 +152,57 @@ class Listener:
         head.no_speech = min(head.no_speech, tail.no_speech)
         head.logprob = max(head.logprob, tail.logprob)
         return head
+
+    def _tv_flags(self, mic, window):
+        """Which of the microphone's words the television said too, or None
+        when it was not compared (no reference, nothing heard there)."""
+        if self.tv is None or window is None:
+            return None
+        try:
+            tvw = self.tv(window[0], window[1])
+        except Exception as err:  # noqa: BLE001 - the plain cut then
+            log.warning("Television reference failed: %s", err)
+            return None
+        if not tvw:
+            log.info("TV skipped: nothing heard on the reference")
+            return None
+        names = {i for i, w in enumerate(mic) if self.rules.name.search(w[3])}
+        flags = tv_flags(mic, tvw, keep=names)
+        log.info("TV:  %s", " ".join(w[0] for w in tvw))
+        log.info("MIC: %s", " ".join(f"[[{w[0]}]]" if f else w[0] for w, f in zip(mic, flags)))
+        return flags
+
+    def _around_name(self, heard, window):
+        """(start, end, text) of the order among a television's voices: from
+        the word "Igor" to the first word the television says too, a pause
+        (ORDER_PAUSE) or the end of the sentence; when the name closes the
+        sentence, the order came before it. None when it cannot be cut."""
+        parts = getattr(heard, "parts", None) or []
+        mic = merge_parts(parts)
+        if not mic:
+            return None
+        found = [i for i, w in enumerate(mic) if self.rules.name.search(w[3])]
+        if not found:
+            return None
+        k = found[-1]
+        flags = self._tv_flags(mic, window) or [False] * len(mic)
+        flags[k] = False
+        end_mark = re.compile(r"[.?!…]$")
+        kept = [k]
+        for i in range(k + 1, len(mic)):
+            if flags[i] or mic[i][1] - mic[i - 1][2] > ORDER_PAUSE:
+                break
+            kept.append(i)
+            if (end_mark.search(mic[i][0]) and len(kept) >= 3) or len(kept) >= ORDER_WORDS:
+                break
+        if len(kept) == 1:  # the name closes the sentence: the order came before it
+            back: list[int] = []
+            for i in range(k - 1, -1, -1):
+                if flags[i] or end_mark.search(mic[i][0]) or len(back) >= ORDER_WORDS - 6 or mic[i + 1][1] - mic[i][2] > ORDER_PAUSE:
+                    break
+                back.append(i)
+            kept = list(reversed(back)) + kept
+        return mic[kept[0]][1], mic[kept[-1]][2], " ".join(mic[i][0] for i in kept)
 
     def rearm(self) -> None:
         """Igor has finished its "Oui ?": the order is waited for from now."""
@@ -232,10 +296,13 @@ class Listener:
         return (audio, text) if 0 <= start - end <= PREVIOUS_GAP else None
 
     def handle(self, audio: np.ndarray, more: Callable[[], np.ndarray | None] | None = None,
-               start: float | None = None, end: float | None = None) -> dict:
+               start: float | None = None, end: float | None = None,
+               window: tuple[float, float] | None = None) -> dict:
         """One utterance. `more()` returns the next part of the same speech,
         if the speaker went on after a short pause, else None. `start` and
-        `end` are on the stream's clock (seconds of audio read)."""
+        `end` are on the stream's clock (seconds of audio read); `window`
+        is the same sentence on time.monotonic(), to find the television's
+        sound of that moment."""
         previous, self._previous = self._previous, None
         entry: dict = {
             "time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -264,6 +331,20 @@ class Listener:
             except Exception as err:  # noqa: BLE001 - Whisper alone then
                 entry["vosk_error"] = str(err)
         text = self._with_spotted_name(heard.text, spot, entry)
+        # A television is sounding: one long utterance holds the order among its
+        # voices. Cut it to the order (the words the television says too are
+        # dropped), and join nothing from before or after: those are its voices.
+        tv_on = self.tv_active() and bool(self.rules.name.search(normalize(text)))
+        if tv_on:
+            crop = self._around_name(heard, window)
+            parts = getattr(heard, "parts", None) or []
+            log.info("Cut: %d pieces, %d words -> %s", len(parts), sum(len(q[3]) for q in parts if len(q) > 3),
+                     "none" if crop is None else f"{crop[0]:.1f}-{crop[1]:.1f}s of {len(audio) / RATE:.1f}s")
+            if crop is not None and (crop[1] - crop[0]) < len(audio) / RATE - 0.4:
+                a, b, text = crop
+                audio = audio[max(0, int((a - 0.3) * RATE)): int((b + 0.3) * RATE)]
+                entry["cropped_s"] = round(len(audio) / RATE, 2)
+            more, start = None, None
         now = self.clock()
         entry["stt_s"] = round(heard.seconds, 2)
         # Silence or noise is dropped. A doubtful transcription (low log

@@ -214,9 +214,17 @@ def run(settings: Settings) -> None:
 
     def act(audio: np.ndarray, conversation: str | None) -> Outcome:
         pcm = (np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes()
+        text = None
+        if settings.send_text:
+            # The words are heard here, on a fast local model: the pipeline
+            # starts at its intent step, with no speech-to-text of its own.
+            try:
+                text = stt(audio).text.strip() or None
+            except Exception as err:  # noqa: BLE001 - the audio goes instead
+                log.warning("Local transcription failed (%s): sending the audio", err)
         try:
             r = ha.run_pipeline(settings.ha_url, settings.ha_token, pcm, settings.pipeline or None,
-                                conversation, device_id)
+                                conversation, device_id, text=text)
         except Exception as err:  # noqa: BLE001
             return Outcome(error=str(err))
         if r.speech:
@@ -274,7 +282,23 @@ def run(settings: Settings) -> None:
 
     vad, segmenter = Vad(), Segmenter()
     stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords,
-                      settings.beam_size)
+                      settings.beam_size, settings.whisper_url)
+    tv_words = None
+    if settings.tv_source:
+        from .reference import Reference, merge_parts
+
+        reference = Reference(settings.tv_source)
+        reference.start()
+        log.info("Television reference: %s", settings.tv_source)
+
+        def tv_words(t0: float, t1: float) -> list:
+            """What the television said between two moments (time.monotonic()),
+            with 2 s more on each side; times counted from t0."""
+            clip = reference.audio(t0 - 2.0, t1 + 2.0)
+            if clip is None or len(clip) < 8000:
+                return []
+            return [(a, b - 2.0, c - 2.0, n) for (a, b, c, n) in merge_parts(stt(clip).parts)]
+
     listener = Listener(
         stt,
         Addressing(extra_targets=settings.extra_targets, names=settings.names),
@@ -290,6 +314,8 @@ def run(settings: Settings) -> None:
         judge_allowed=lambda: not media_sounding(),
         judge_acts=settings.smart_act,
         spotter=make_spotter(settings),
+        tv=tv_words,
+        tv_active=lambda: media_sounding(unknown=False),
     )
     utterances: queue.Queue[Utterance] = queue.Queue(maxsize=8)
     pending: deque[Utterance] = deque()
@@ -327,8 +353,12 @@ def run(settings: Settings) -> None:
                     return None
 
             faulthandler.dump_traceback_later(STUCK_AFTER)
+            # The same sentence on time.monotonic(): the stream clock runs at the
+            # pace of the audio read, so its lag behind now is the same for all.
+            now, read = time.monotonic(), segmenter.now
+            window = (now - (read - u.start), now - (read - u.end))
             try:
-                entry = listener.handle(u.audio, more, u.start, u.end)
+                entry = listener.handle(u.audio, more, u.start, u.end, window)
             except Exception:  # noqa: BLE001 - one bad sentence must not stop the ear
                 log.exception("A sentence could not be handled; listening on")
                 continue
@@ -422,7 +452,7 @@ def bench(settings: Settings, seconds: float) -> None:
     print(f"Loading the model ({settings.model}, {settings.device})…", flush=True)
     t0 = time.monotonic()
     stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords,
-                      settings.beam_size)
+                      settings.beam_size, settings.whisper_url)
     print(f"Ready on {stt.device} (beam {stt.beam_size}) in {time.monotonic() - t0:.1f}s")
     print(f"Speak now: recording {seconds:.0f}s from {settings.source}…", flush=True)
     vad, chunks, probs = Vad(), [], []

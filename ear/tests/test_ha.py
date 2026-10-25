@@ -142,3 +142,41 @@ def test_start_conversation(server):
     assert path == "/api/services/assist_satellite/start_conversation" and agent == "igor-ear"
     assert body == {"entity_id": "assist_satellite.vm", "start_message": "Que puis-je pour vous ?",
                     "preannounce": False}
+
+
+class FakeConnection:
+    """A websocket that records what is sent and plays back a pipeline run."""
+
+    def __init__(self, messages):
+        self.sent, self._messages, self.closed = [], [json.dumps(m) for m in messages], False
+
+    def send(self, data):
+        self.sent.append(data)
+
+    def recv(self, timeout=None):
+        return self._messages.pop(0)
+
+    def close(self):
+        self.closed = True
+
+
+def test_pipeline_from_text_starts_at_intent_and_sends_no_audio():
+    run = [
+        {"id": 1, "type": "result", "success": True, "result": None},
+        {"id": 1, "type": "event", "event": {"type": "run-start", "data": {}}},
+        {"id": 1, "type": "event", "event": {"type": "intent-end", "data": {"intent_output": {
+            "conversation_id": "c-1", "continue_conversation": False,
+            "response": {"speech": {"plain": {"speech": "Il est 20 h."}}}}}}},
+        {"id": 1, "type": "event", "event": {"type": "run-end", "data": None}},
+    ]
+    conn = FakeConnection(run)
+    real, ha.connect = ha.connect, lambda url, token, timeout=10: conn
+    try:
+        r = ha.run_pipeline("http://x", "t", b"\0" * 64000, text="Igor quelle heure est-il ?")
+    finally:
+        ha.connect = real
+    request = json.loads(conn.sent[0])
+    assert request["start_stage"] == "intent" and request["input"] == {"text": "Igor quelle heure est-il ?"}
+    assert len(conn.sent) == 1                      # the audio was not sent
+    assert r.heard == "Igor quelle heure est-il ?" and r.speech == "Il est 20 h." and not r.error
+    assert conn.closed
