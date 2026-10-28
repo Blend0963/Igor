@@ -51,6 +51,12 @@ const ConfigSchema = z
     // Cheaper model for plain commands and quick state questions
     // (llm/model-router.ts). Unset = every request on the main model.
     fastModel: z.string().optional(),
+    // The house's own model for Assist (llm/local-llm.ts): llama.cpp's server
+    // on the audio VM. Unset = Assist on the main model, as before.
+    localLlmUrl: z.string().url("LOCAL_LLM_URL must be a URL like http://192.168.1.20:8180").optional(),
+    localLlmKey: z.string().optional(),
+    // llama.cpp serves one model whatever the name; it shows in the logs and usage.
+    localLlmModel: z.string().default("qwen3-8b"),
     // Reminders, scheduled tasks and the morning briefing (jobs/scheduler.ts).
     // Notify service for them ("mobile_app_pixel"); unset = a persistent
     // notification in Home Assistant.
@@ -227,6 +233,9 @@ export function loadConfig(): Config {
     threadReasoning: emptyToUndefined(process.env.THREAD_REASONING),
     extractionModel: emptyToUndefined(process.env.EXTRACTION_MODEL),
     fastModel: emptyToUndefined(process.env.FAST_MODEL),
+    localLlmUrl: emptyToUndefined(process.env.LOCAL_LLM_URL),
+    localLlmKey: emptyToUndefined(process.env.LOCAL_LLM_KEY),
+    localLlmModel: emptyToUndefined(process.env.LOCAL_LLM_MODEL),
     notifyService: emptyToUndefined(process.env.NOTIFY_SERVICE),
     dailyBriefingTime: emptyToUndefined(process.env.DAILY_BRIEFING_TIME),
     dailyBriefingPrompt: emptyToUndefined(process.env.DAILY_BRIEFING_PROMPT),

@@ -124,6 +124,19 @@ configuration:
       Sert seulement à l'estimation affichée avant de lire un PDF scanné avec
       l'OCR de Mistral, en dollars pour 1000 pages. Vide = 4. Les PDF qui
       contiennent du texte sont lus gratuitement sur l'add-on, sans OCR.
+  local_llm_url:
+    name: Modèle local (adresse)
+    description: >-
+      L'adresse du modèle qui tourne chez vous, sur la VM audio (installé par
+      ear/tools/llm/install.sh), par exemple http://192.168.1.20:8180/v1.
+      Rempli, Assist et la voix répondent avec lui, et rien de ce que vous
+      dites n'est envoyé au modèle en ligne. S'il ne répond pas, Igor le dit,
+      sans passer par le cloud. Les fils de discussion restent sur le modèle
+      principal. Vide = Assist sur le modèle principal.
+  local_llm_key:
+    name: Modèle local (clé)
+    description: >-
+      La clé du modèle local, dans ~/.config/igor-llm/api-key sur la VM.
   fast_model:
     name: Modèle rapide (ordres simples)
     description: >-

@@ -25,6 +25,8 @@ import { describeLongBatch } from "./long-task.js";
 import { recallSemantically, rememberSemantically } from "./semantic-recall.js";
 import { DEFAULT_MESSAGE_CAP, RECALL_LIMIT, resolveMemoryScope } from "../memory/memory-scope.js";
 import { withPromptCacheKey } from "./prompt-cache-key.js";
+import { createLocalClient, LOCAL_UNAVAILABLE } from "./local-llm.js";
+import { OpenAIFactExtractor } from "../memory/openai-extractor.js";
 import {
   readUsage,
   describeUsage,
@@ -134,6 +136,8 @@ function historyTimestamp(createdAt: Date | string | undefined): string {
 
 export class OpenAIChatEngine implements IChatEngine {
   private client: OpenAI;
+  /** The house's own model (llm/local-llm.ts), for Assist; unset = none. */
+  private local?: { client: OpenAI; model: string; extractor: IFactExtractor };
   private memory: IMemoryStore;
   private conversations: IConversationStore;
   private extractor: IFactExtractor;
@@ -161,6 +165,14 @@ export class OpenAIChatEngine implements IChatEngine {
         "X-OpenRouter-Categories": "personal-agent",
       },
     });
+    if (config.localLlmUrl) {
+      const client = createLocalClient(config.localLlmUrl, config.localLlmKey);
+      this.local = {
+        client,
+        model: config.localLlmModel,
+        extractor: new OpenAIFactExtractor(config.localLlmKey || "none", config.localLlmModel, client.baseURL, "json_object", config.openaiMaxTokens),
+      };
+    }
     this.memory = memory;
     this.conversations = conversations;
     this.extractor = extractor;
@@ -198,12 +210,16 @@ export class OpenAIChatEngine implements IChatEngine {
       actions: [],
     };
 
+    // Assist on the house's own model, when there is one (llm/local-llm.ts).
+    // Images need a model that sees; none of the local ones does yet.
+    const local = this.local && !scope.isThread && !request.images?.length ? this.local : undefined;
+
     // 0. A spoken sentence that names Igor after its opening may only talk
     // about it ("c'est Igor qui a éteint"): a small call decides, alongside
     // the memory loading below, before the main model is ever called.
     const addressee =
       isVoice && !scope.isThread && !request.unattended && needsAddresseeCheck(message)
-        ? checkAddressee((signal) => this.askAddressee(message, signal), request.signal)
+        ? checkAddressee((signal) => this.askAddressee(message, signal, local), request.signal)
         : undefined;
 
     // 1-3. Everything the prompt needs, read at once: none of these reads
@@ -228,7 +244,8 @@ export class OpenAIChatEngine implements IChatEngine {
         : scope.isThread
           ? scope.historyWindow
           : DEFAULT_MESSAGE_CAP;
-    const useRecall = !lean || scope.isThread;
+    // Recall embeds the message on Mistral: not for a local request.
+    const useRecall = (!lean || scope.isThread) && !local;
     const [facts, , scripts, storedHistory, recalled, liveStates] = await Promise.all([
       scope.facts
         ? timed("memory", () =>
@@ -385,7 +402,7 @@ export class OpenAIChatEngine implements IChatEngine {
       userMessageId = messageId;
       // Only recall reads these vectors: none in lean Assist, and a thread
       // needs this one only from its next turn on, so it is not waited for.
-      if (!lean) await rememberSemantically(this.config, this.conversations, messageId, message);
+      if (!lean && !local) await rememberSemantically(this.config, this.conversations, messageId, message);
       else if (scope.isThread) void rememberSemantically(this.config, this.conversations, messageId, message);
     }
 
@@ -406,23 +423,27 @@ export class OpenAIChatEngine implements IChatEngine {
     // on the main model.
     // A model or thinking level picked in the panel wins over both.
     const fastModel =
-      !lean && !request.model && this.config.fastModel && isSimpleRequest({ message, hasImages: Boolean(request.images?.length) })
+      !local && !lean && !request.model && this.config.fastModel && isSimpleRequest({ message, hasImages: Boolean(request.images?.length) })
         ? this.config.fastModel
         : undefined;
-    let model = request.model ?? fastModel ?? this.config.llmModel;
+    // The model a failed call falls back to: none for the local one.
+    const mainModel = local?.model ?? this.config.llmModel;
+    let model = local ? local.model : request.model ?? fastModel ?? this.config.llmModel;
     // An explicit reasoning level chosen in the panel wins. Otherwise,
     // threadReasoning is the ceiling and ordinary chat adapts down to avoid
     // paying for deep reasoning on greetings and straightforward questions.
     const threadEffort = scope.isThread
       ? selectThreadReasoning(message, this.config.threadReasoning)
       : undefined;
-    let effort = request.reasoning
+    // The local server runs with thinking off (ear/tools/llm/install.sh).
+    let effort = local ? undefined : request.reasoning
       ?? (fastModel
         ? "none"
         : scope.isThread
           ? threadEffort
           : this.config.reasoningEffort ?? (isVoice ? "none" : undefined));
     if (fastModel) console.log(`[route] fast model ${fastModel} for: ${message.slice(0, 60)}`);
+    if (local) console.log(`[route] local model ${local.model} for: ${message.slice(0, 60)}`);
     let thinkingShown = false;
     // The text of the model turn being streamed, kept for the stop button:
     // what was already written stays in the thread.
@@ -438,7 +459,7 @@ export class OpenAIChatEngine implements IChatEngine {
     const lastReply = [...history].reverse().find((msg) => msg.role === "assistant")?.content;
     const orderCheck =
       !lean && !knownOrder && !request.images?.length && mayBeOrder(message)
-        ? askIsOrder(this.client, this.config.fastModel ?? this.config.llmModel, message, lastReply, signal).catch((error) => {
+        ? askIsOrder(local?.client ?? this.client, local?.model ?? this.config.fastModel ?? this.config.llmModel, message, lastReply, signal).catch((error) => {
             if (!signal?.aborted) console.warn(`[route] order check failed (${error instanceof Error ? error.message : error})`);
             return { order: false, usage: undefined };
           })
@@ -468,6 +489,7 @@ export class OpenAIChatEngine implements IChatEngine {
           tools,
           effort,
           model,
+          client: local?.client,
           signal,
           toolChoice,
           isThread: scope.isThread,
@@ -483,7 +505,7 @@ export class OpenAIChatEngine implements IChatEngine {
       } catch (error) {
         // A fast model that is misspelled or unavailable must not cost the
         // user an answer: fall back to the main model for the rest of the turn.
-        if (model === this.config.llmModel || signal?.aborted) throw error;
+        if (local || model === this.config.llmModel || signal?.aborted) throw error;
         console.warn(`[route] ${model} failed (${error instanceof Error ? error.message : error}); using ${this.config.llmModel}`);
         model = this.config.llmModel;
         effort = scope.isThread ? threadEffort : this.config.reasoningEffort ?? (isVoice ? "none" : undefined);
@@ -492,6 +514,7 @@ export class OpenAIChatEngine implements IChatEngine {
       }
     };
     let interrupted = false;
+    let localDown = false;
     let result: Awaited<ReturnType<typeof call>>;
     try {
       result = await call(false);
@@ -505,10 +528,10 @@ export class OpenAIChatEngine implements IChatEngine {
         if (result.toolCalls.length === 0 && order) {
           // "C'est fait" without doing it: small models do this on plain
           // commands. Ask again on the main model, which must call a tool.
-          console.warn(`[route] ${model} answered a command without acting; asking ${this.config.llmModel} with a required tool call`);
+          console.warn(`[route] ${model} answered a command without acting; asking ${mainModel} with a required tool call`);
           const firstModel = model;
           const first = result;
-          model = this.config.llmModel;
+          model = mainModel;
           try {
             result = await call(false, "required");
             turnUsage.add(result.usage);
@@ -617,11 +640,20 @@ export class OpenAIChatEngine implements IChatEngine {
         result = { ...next, text: sofar + next.text };
       }
     } catch (error) {
-      if (!signal?.aborted) throw error;
-      // Stopped by the user: keep what this turn had written.
-      interrupted = true;
-      result = { text: turnText, finishReason: null, toolCalls: [], usage: undefined };
-      console.log(`[llm] stopped by the user after ${turnText.length} characters`);
+      if (!signal?.aborted && !local) throw error;
+      if (!signal?.aborted) {
+        // The local model did not answer. Never the cloud model instead: that
+        // is the point of having one.
+        console.warn(`[llm] local model ${local!.model} did not answer (${error instanceof Error ? error.message : error})`);
+        localDown = true;
+        result = { text: LOCAL_UNAVAILABLE, finishReason: "stop", toolCalls: [], usage: undefined };
+        onChunk?.(LOCAL_UNAVAILABLE);
+      } else {
+        // Stopped by the user: keep what this turn had written.
+        interrupted = true;
+        result = { text: turnText, finishReason: null, toolCalls: [], usage: undefined };
+        console.log(`[llm] stopped by the user after ${turnText.length} characters`);
+      }
     }
 
     // The always-on microphone sent a sentence that talked about Igor, not to
@@ -660,10 +692,10 @@ export class OpenAIChatEngine implements IChatEngine {
     // 7. Extract and store facts (fire-and-forget). Memories a forget_memory
     // call touched this turn are filtered out of the extraction so they can't
     // be re-learned from the "forget that X" transcript.
-    if (!interrupted && scope.facts) {
+    if (!interrupted && !localDown && scope.facts) {
       extractAndStoreFacts(
         this.memory,
-        this.extractor,
+        local?.extractor ?? this.extractor,
         scope.factBucket,
         message,
         responseText,
@@ -771,14 +803,18 @@ export class OpenAIChatEngine implements IChatEngine {
     return this.config.extractionModel ?? this.config.fastModel ?? this.config.llmModel;
   }
 
-  private async askAddressee(message: string, signal: AbortSignal): Promise<{ text: string; usage?: TokenUsage }> {
-    const response = await this.client.chat.completions.create(
+  private async askAddressee(
+    message: string,
+    signal: AbortSignal,
+    local?: { client: OpenAI; model: string }
+  ): Promise<{ text: string; usage?: TokenUsage }> {
+    const response = await (local?.client ?? this.client).chat.completions.create(
       {
-        model: this.addresseeModel(),
+        model: local?.model ?? this.addresseeModel(),
         temperature: 0,
         max_tokens: 16,
-        // Mistral's JSON mode: the reply can only be the verdict.
-        ...(this.isMistral() ? { response_format: { type: "json_object" as const } } : {}),
+        // JSON mode (Mistral, llama.cpp): the reply can only be the verdict.
+        ...(local || this.isMistral() ? { response_format: { type: "json_object" as const } } : {}),
         messages: [
           { role: "system", content: ADDRESSEE_INSTRUCTIONS },
           { role: "user", content: addresseeQuestion(message) },
@@ -805,6 +841,8 @@ export class OpenAIChatEngine implements IChatEngine {
       tools?: OpenAI.ChatCompletionTool[];
       effort?: ReasoningEffort;
       model?: string;
+      /** Another endpoint than the configured one (the local model). */
+      client?: OpenAI;
       signal?: AbortSignal;
       isThread?: boolean;
       /** Spoken replies: the most whole sentences read out (llm/lean.ts). */
@@ -826,6 +864,8 @@ export class OpenAIChatEngine implements IChatEngine {
     const cap = this.maxOutputTokens(isVoice, Boolean(opts.isThread));
     const tools = opts.tools ?? openAIToolsFor(isVoice ? "voice" : "text");
     const startedAt = Date.now();
+    const client = opts.client ?? this.client;
+    const mistral = /api\.mistral\.ai/i.test(client.baseURL);
     const stream = await withTokenCap(model, cap, (capParam) =>
       withReasoningEffort(
         model,
@@ -835,7 +875,7 @@ export class OpenAIChatEngine implements IChatEngine {
         effort,
         (reasoning) =>
           withPromptCacheKey(model, cacheKey, (cache) =>
-          this.client.chat.completions.create({
+          client.chat.completions.create({
             model: model,
             ...capParam,
             ...reasoning,
@@ -849,14 +889,14 @@ export class OpenAIChatEngine implements IChatEngine {
             // Ask for the token breakdown. Without this a streamed call reports no
             // usage at all, which is why a cap being spent entirely on reasoning
             // looked identical to a prompt being too large.
-            ...(!this.isMistral() ? { stream_options: { include_usage: true } } : {}),
+            ...(!mistral ? { stream_options: { include_usage: true } } : {}),
             // OpenRouter only: a stable session id pins the follow-up turns of one
             // conversation to the provider endpoint that already holds the warm
             // prompt cache, instead of re-balancing every turn. Other endpoints
             // reject unknown fields, so it is not sent to them.
-            ...(this.isOpenRouter() && sessionId ? { session_id: sessionId } : {}),
-          } as OpenAI.ChatCompletionCreateParamsStreaming, opts.signal ? { signal: opts.signal } : undefined), this.client.baseURL),
-        this.client.baseURL
+            ...(!opts.client && this.isOpenRouter() && sessionId ? { session_id: sessionId } : {}),
+          } as OpenAI.ChatCompletionCreateParamsStreaming, opts.signal ? { signal: opts.signal } : undefined), client.baseURL),
+        client.baseURL
       )
     );
 

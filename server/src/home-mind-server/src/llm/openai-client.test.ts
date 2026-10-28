@@ -28,11 +28,13 @@ const mockCreate = vi.fn();
 vi.mock("openai", () => {
   return {
     default: class MockOpenAI {
-      chat = {
-        completions: {
-          create: mockCreate,
-        },
-      };
+      baseURL: string;
+      chat: { completions: { create: typeof mockCreate; baseURL: string } };
+      // Each call's `this` (mockCreate.mock.contexts) names the endpoint it went to.
+      constructor(opts?: { baseURL?: string }) {
+        this.baseURL = opts?.baseURL ?? "https://api.openai.com/v1";
+        this.chat = { completions: { create: mockCreate, baseURL: this.baseURL } };
+      }
     },
   };
 });
@@ -696,6 +698,64 @@ describe("OpenAIChatEngine", () => {
       expect(r.response).toBe("Voici le début\n\n*[Réponse interrompue]*");
       expect(conversations.storeMessage).toHaveBeenLastCalledWith("mado-thread:z", "u", "assistant", r.response);
       expect(extractAndStoreFacts).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("local model for Assist (LOCAL_LLM_URL)", () => {
+    const reply = (text = "ok") => makeStream([{ choices: [{ delta: { content: text }, finish_reason: "stop" }] }]);
+    const endpoint = (i: number) => (mockCreate.mock.contexts[i] as { baseURL: string }).baseURL;
+    let localEngine: OpenAIChatEngine;
+
+    beforeEach(() => {
+      process.env.LEAN_MODE = "off";
+      config.fastModel = "ministral-8b-latest";
+      config.reasoningEffort = "medium";
+      localEngine = new OpenAIChatEngine(
+        { ...config, localLlmUrl: "http://192.168.1.20:8180/", localLlmKey: "k", localLlmModel: "qwen3-8b" },
+        memory, conversations, extractor, ha,
+        { refreshIfStale: vi.fn(), hasProfiles: () => false } as unknown as DeviceScanner,
+        { refreshIfStale: vi.fn(), hasLayout: () => false } as unknown as TopologyScanner
+      );
+    });
+
+    it("answers Assist on the local model, without the fast model or reasoning", async () => {
+      mockCreate.mockResolvedValue(reply("C'est allumé."));
+      const r = await localEngine.chat({ message: "allume la lumière du salon", userId: "u", isVoice: true });
+      expect(r.response).toBe("C'est allumé.");
+      expect(mockCreate.mock.calls[0][0].model).toBe("qwen3-8b");
+      expect(mockCreate.mock.calls[0][0]).not.toHaveProperty("reasoning_effort");
+      expect(endpoint(0)).toBe("http://192.168.1.20:8180/v1");
+      expect(r.usage?.model).toBe("qwen3-8b");
+    });
+
+    it("checks the addressee on the local model too", async () => {
+      mockCreate
+        .mockResolvedValueOnce({ choices: [{ message: { content: '{"pour_igor": false}' } }] })
+        .mockResolvedValue(reply());
+      const r = await localEngine.chat({ message: "c'est Igor qui a éteint la lumière", userId: "u", isVoice: true });
+      expect(r.notForMe).toBe(true);
+      expect(endpoint(0)).toBe("http://192.168.1.20:8180/v1");
+      expect(mockCreate.mock.calls[0][0]).toMatchObject({ model: "qwen3-8b", response_format: { type: "json_object" } });
+    });
+
+    it("says it is unavailable when the local model does not answer, never asking the cloud model", async () => {
+      mockCreate.mockRejectedValue(new Error("connect ECONNREFUSED 192.168.1.20:8180"));
+      const chunks: string[] = [];
+      const r = await localEngine.chat({ message: "pourquoi le ciel est bleu ?", userId: "u", isVoice: true }, { onChunk: (c) => chunks.push(c) });
+      expect(r.response).toMatch(/modèle local ne répond pas/);
+      expect(chunks.join("")).toBe(r.response);
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+      expect(extractAndStoreFacts).not.toHaveBeenCalled();
+    });
+
+    it("keeps panel threads and images on the main model", async () => {
+      mockCreate.mockResolvedValue(reply());
+      await localEngine.chat({ message: "écris-moi un poème", userId: "u", conversationId: "mado-thread:t1" });
+      expect(mockCreate.mock.calls[0][0].model).toBe("gpt-4o-mini");
+      expect(endpoint(0)).toBe("https://api.openai.com/v1");
+      mockCreate.mockClear();
+      await localEngine.chat({ message: "que vois-tu ?", userId: "u", images: ["data:image/png;base64,AAAA"] });
+      expect(endpoint(0)).toBe("https://api.openai.com/v1");
     });
   });
 
