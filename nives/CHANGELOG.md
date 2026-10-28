@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.0 — The local model acts, Mistral speaks
+
+- With the local model, a plain order ("allume la lumière du salon") is carried out by the local model, which says nothing; Mistral Large then words the reply as Igor. Mistral receives only what was done ("Fait : Lumière salon allumée."), with the persona: never your sentence, the state of the house, the contacts or the conversation. If it does not answer within 4 seconds, Igor says the plain sentence ("Lumière salon allumée.").
+- Questions about the house and contacts are still answered by the local model, which keeps that information at home. Scripts (timer, calls, SMS) are still worded by the local model too.
+- The prompt is read ahead once a minute instead of every 15 seconds (and still right after each request), so the graphics card's fans spin up less often.
+- `ear/tools/llm/install.sh` no longer forces the graphics card to its highest clocks, which kept its fans loud; run it again to put the card back on automatic clocks.
+
 ## 0.14.0 — Each request where it belongs
 
 With the local model (`local_llm_url`), a spoken or typed Assist request now takes one of three paths:

@@ -59,6 +59,14 @@ export const GENERAL_INSTRUCTIONS =
   "Tu réponds à une question posée à voix haute. Tu ne sais rien de la maison ni de la personne : ne fais aucune supposition sur elles, " +
   "ne propose aucune action et ne pose pas de question sur la maison. Réponds directement, à l'oral, en texte brut.";
 
+/** The online model's instructions for wording what the local model just did. */
+export const DONE_INSTRUCTIONS =
+  "On vient de faire dans la maison ce qui suit « Fait : ». Annonce-le à la personne en une phrase courte, à l'oral, dans ton style. " +
+  "N'ajoute rien qui n'y est pas, ne pose aucune question et ne propose rien.";
+
+/** How long the online model may take to word an order; then the plain sentence is said. */
+export const DONE_TIMEOUT_MS = 4000;
+
 /** What Igor says when the online model does not answer a handed-over question. */
 export const GENERAL_UNAVAILABLE = "Je n'arrive pas à joindre le service en ligne pour cette question. Réessayez dans un instant.";
 
@@ -80,10 +88,11 @@ export const LOCAL_REMINDER =
 export const LOCAL_SAMPLING = { temperature: 0.7, top_p: 0.8, top_k: 20, presence_penalty: 1.5 };
 
 /**
- * How often the prompt is read again ahead of time: nothing new costs the
- * card a few tokens; a new minute or a changed device, the end of it.
+ * How often the prompt is read again ahead of time, besides right after each
+ * request: once a minute, as the time in it changes by the minute. More often
+ * only made the card's fans spin up for nothing.
  */
-export const PREWARM_EVERY_MS = 15_000;
+export const PREWARM_EVERY_MS = 60_000;
 
 /** What Igor says when the local model does not answer. */
 export const LOCAL_UNAVAILABLE = "Le modèle local ne répond pas pour le moment. Réessayez dans un instant.";
