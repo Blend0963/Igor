@@ -446,7 +446,18 @@ export class OpenAIChatEngine implements IChatEngine {
           ? threadEffort
           : this.config.reasoningEffort ?? (isVoice ? "none" : undefined));
     if (fastModel) console.log(`[route] fast model ${fastModel} for: ${message.slice(0, 60)}`);
-    if (local) console.log(`[route] local model ${local.model} for: ${message.slice(0, 60)}`);
+    if (local) {
+      // What the local model has to read, part by part (≈ 3.5 characters a
+      // token in French): the parts that make a request slow.
+      const tok = (text: string | undefined) => Math.round((text?.length ?? 0) / 3.5);
+      const historyText = history.map((m) => m.content).join("\n");
+      console.log(
+        `[route] local model ${local.model} for: ${message.slice(0, 60)}\n` +
+          `[prompt] ≈ tokens: instructions+persona=${tok(stableSystemPrompt) - tok(homeLayout) - tok(deviceCheatSheet)} ` +
+          `layout=${tok(homeLayout)} devices+scripts=${tok(deviceCheatSheet)} tools=${tok(JSON.stringify(tools))} ` +
+          `history=${tok(historyText)} (${history.length} messages) live=${tok(live)} context=${tok(volatileSystemPrompt) - tok(live)}`
+      );
+    }
     let thinkingShown = false;
     // The text of the model turn being streamed, kept for the stop button:
     // what was already written stays in the thread.
