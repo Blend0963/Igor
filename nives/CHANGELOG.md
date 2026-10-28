@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.1 — A short prompt for the local model
+
+- On the audio VM's Radeon VII, reading a prompt slows down as it grows: 576 tokens per second at the start, 170 after 8 000, 94 after 16 000. Igor's full voice prompt (16 600 tokens) took four minutes. The local model now gets a short one:
+  - the voice rules in one short block instead of the long spoken instructions;
+  - nine tools instead of fourteen: devices, contacts, reminders, "préviens-moi quand", the web. Automations, a sensor's history, the cameras and forgetting a memory stay in chat threads, and Igor says so if asked by voice;
+  - the last 6 messages of the conversation instead of 20.
+- With the persona split into `custom_prompt` (short, common), `custom_prompt_voice` and `custom_prompt_thread`, the local prompt is about 6 000 tokens instead of 16 600.
+- `ear/tools/llm/install.sh` now runs the model with two slots and a prompt cache in memory, so the start of the conversation's prompt is read once and kept, while what Igor learns from each answer is worked out in the other slot. Run it again on the VM to apply.
+
 ## 0.12.0 — Assist on the house's own model
 
 - **New options `local_llm_url` and `local_llm_key`**: Assist and the voice answer with a model that runs at home (Qwen3 8B on the audio VM's graphics card, installed by `ear/tools/llm/install.sh`). On the bench it called the right tool 20 times out of 20 and spoke its answer about 2.3 s after the request.

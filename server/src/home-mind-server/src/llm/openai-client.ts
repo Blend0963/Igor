@@ -25,7 +25,7 @@ import { describeLongBatch } from "./long-task.js";
 import { recallSemantically, rememberSemantically } from "./semantic-recall.js";
 import { DEFAULT_MESSAGE_CAP, RECALL_LIMIT, resolveMemoryScope } from "../memory/memory-scope.js";
 import { withPromptCacheKey } from "./prompt-cache-key.js";
-import { createLocalClient, LOCAL_UNAVAILABLE } from "./local-llm.js";
+import { createLocalClient, LOCAL_HISTORY, LOCAL_TOOLS, LOCAL_UNAVAILABLE } from "./local-llm.js";
 import { OpenAIFactExtractor } from "../memory/openai-extractor.js";
 import {
   readUsage,
@@ -237,7 +237,9 @@ export class OpenAIChatEngine implements IChatEngine {
         });
     // Lean: Assist reads its whole stored conversation instead of searching
     // it by meaning, and the morning briefing only its last messages.
-    const historyWindow = !lean
+    const historyWindow = local
+      ? LOCAL_HISTORY
+      : !lean
       ? scope.historyWindow
       : effectiveConversationId === BRIEFING_THREAD_ID
         ? BRIEFING_HISTORY
@@ -281,7 +283,7 @@ export class OpenAIChatEngine implements IChatEngine {
       .filter(Boolean)
       .join("\n\n") || undefined;
     const homeLayout = this.topology.hasLayout() ? this.topology.formatSection() : undefined;
-    const systemPrompt = buildSystemPromptText(factContents, scope.isThread ? "thread" : isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender, scope.facts);
+    const systemPrompt = buildSystemPromptText(factContents, scope.isThread ? "thread" : isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender, scope.facts, Boolean(local));
 
     // Split the system prompt for prefix caching (#66 follow-up).
     //
@@ -415,7 +417,8 @@ export class OpenAIChatEngine implements IChatEngine {
     const promptMode = scope.isThread ? "thread" : isVoice ? "voice" : "text";
     const cacheKey = `igor:${promptMode}:${scope.factBucket}`;
     const turnUsage = new UsageTally();
-    const tools = openAIToolsFor(promptMode, { unattended: request.unattended === true, noMemory: !scope.facts });
+    const allTools = openAIToolsFor(promptMode, { unattended: request.unattended === true, noMemory: !scope.facts });
+    const tools = local ? allTools.filter((t) => t.type === "function" && LOCAL_TOOLS.has(t.function.name)) : allTools;
     // A thread reasons first (Mistral Large 4's hybrid mode, THREAD_REASONING);
     // spoken answers never do: thinking only adds silence and output tokens.
     // A plain command or a quick state question goes to FAST_MODEL when one

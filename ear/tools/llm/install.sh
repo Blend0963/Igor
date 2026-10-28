@@ -61,11 +61,12 @@ Description=Igor local language model (llama.cpp, Vulkan, Radeon VII)
 After=network-online.target
 
 [Service]
-# Une seule place de 32 768 tokens : le prompt d'Igor (persona, outils,
-# maison, historique) dépasse 16 000 tokens, et ses demandes se suivent (la
-# vérification du destinataire passe avant la réponse). Sans réflexion : la
-# voix attend une phrase, vite.
-ExecStart=$SERVER -m $MODEL --host 0.0.0.0 --port $PORT -ngl 99 -c 32768 -np 1 --jinja --reasoning-budget 0 --chat-template-kwargs '{"enable_thinking":false}' --api-key-file $KEY --no-webui
+# Deux places de 16 384 tokens : la conversation garde la sienne, et donc son
+# début déjà lu en cache, pendant que ce qu'Igor retient de la conversation ou
+# la vérification du destinataire passent dans l'autre. --cache-ram garde en
+# mémoire vive un prompt déjà lu qu'une autre demande a chassé de sa place.
+# Sans réflexion : la voix attend une phrase, vite.
+ExecStart=$SERVER -m $MODEL --host 0.0.0.0 --port $PORT -ngl 99 -c 32768 -np 2 --cache-ram 2048 --jinja --reasoning-budget 0 --chat-template-kwargs '{"enable_thinking":false}' --api-key-file $KEY --no-webui
 Restart=always
 RestartSec=10
 Nice=5

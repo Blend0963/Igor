@@ -8,7 +8,7 @@ systemd user service, `igor-llm`, next to `whisper-server`:
 - listens on `0.0.0.0:8180`, OpenAI-compatible API under `/v1`;
 - every request needs the key in `~/.config/igor-llm/api-key` (created once,
   mode 600, never printed); `/health` stays public;
-- one slot of 32 768 tokens (Igor's real prompt is over 16 000), thinking off.
+- two slots of 16 384 tokens, so the conversation keeps its cached prompt while memory extraction and the addressee check use the other, plus 2 GB of prompt cache in RAM; thinking off. Igor sends the local model a short prompt (about 6 000 tokens): this card reads 576 tokens/s at the start of a prompt but 170 after 8 000.
 
 Run it as the normal user on the VM, from this folder:
 
