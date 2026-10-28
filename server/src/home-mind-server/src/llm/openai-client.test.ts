@@ -748,6 +748,19 @@ describe("OpenAIChatEngine", () => {
       expect(extractAndStoreFacts).not.toHaveBeenCalled();
     });
 
+    it("sends the local model short instructions, its own tools and a short history", async () => {
+      mockCreate.mockResolvedValue(reply());
+      await localEngine.chat({ message: "allume la lumière du salon", userId: "u", isVoice: true });
+      const body = mockCreate.mock.calls[0][0];
+      expect(body.messages[0].content).toContain("## HOW YOU WORK");
+      expect(body.messages[0].content).not.toContain("SCHEDULED / RECURRING ACTIONS");
+      const names = body.tools.map((t: { function: { name: string } }) => t.function.name);
+      expect(names).toContain("call_service");
+      expect(names).not.toContain("create_automation");
+      expect(names).not.toContain("get_history");
+      expect(vi.mocked(conversations.getConversationHistory).mock.calls[0][1]).toBe(6);
+    });
+
     it("keeps panel threads and images on the main model", async () => {
       mockCreate.mockResolvedValue(reply());
       await localEngine.chat({ message: "écris-moi un poème", userId: "u", conversationId: "mado-thread:t1" });

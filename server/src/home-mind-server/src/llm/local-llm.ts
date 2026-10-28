@@ -12,6 +12,27 @@
 
 import OpenAI from "openai";
 
+/**
+ * The tools Assist gets on the local model: every tool description is read
+ * on each request, and these are the ones a spoken or typed Assist answer
+ * uses. The rest (automations, history, cameras, forgetting a memory) stay in
+ * the chat-panel threads.
+ */
+export const LOCAL_TOOLS = new Set([
+  "get_state",
+  "search_entities",
+  "call_service",
+  "find_contact",
+  "schedule_task",
+  "notify_when",
+  "list_scheduled_tasks",
+  "cancel_scheduled_task",
+  "web_search",
+]);
+
+/** Messages of the Assist conversation the local model reads: short, as the prompt must be. */
+export const LOCAL_HISTORY = 6;
+
 /** What Igor says when the local model does not answer. */
 export const LOCAL_UNAVAILABLE = "Le modèle local ne répond pas pour le moment. Réessayez dans un instant.";
 

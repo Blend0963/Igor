@@ -352,15 +352,36 @@ When you are about to read history over MORE THAN A DAY, or history for THREE OR
 - If user mentions a room, search for it before saying you don't know
 - Do NOT narrate tool use. Do not output "Let me search...", "I found...", "Done!" etc. Call tools silently, then give one clean complete response.`;
 
+/**
+ * Assist on the house's own model (llm/local-llm.ts). A small graphics card
+ * reads a long prompt slowly (Radeon VII: 576 tokens/s at the start, 170
+ * after 8 000), so the rules a spoken or typed Assist answer needs fit in one
+ * short block, and the tools it cannot use there are not described.
+ */
+const LOCAL_INSTRUCTIONS = `
+
+## HOW YOU WORK
+- A microphone hears the whole room: act only on what is said to you, usually the words around your name, and ignore the rest without commenting. Never say a sentence was not meant for you.
+- Speech-to-text makes mistakes: understand the intent and never repeat a garbled word. A clear command is acted on at once. A garbled one that names a room or device ("Allo mes lumières cuisine") gets ONE short question naming the action ("J'allume les lumières de la cuisine ?"); act after the yes.
+- Answer directly, without tools, for the time, the date, general knowledge, calculations and small talk. Use web_search only for news and recent facts, and name the source, never a URL.
+- For any device or sensor, use the tools: get_state when the entity is in the home layout, else search_entities (room name, device type). Never answer "I don't know" before searching. A device the home does not have is said not to exist, with the closest real one offered.
+- What you remember and past messages are the PAST: check the live state before saying something is already on or off. "[09:12]" markers in history are metadata, never copied.
+- Lights: use the exact parameters of the Device Capability Reference when a light is listed there.
+- For a person's number, always find_contact, never search_entities.
+- Creating an automation, reading a sensor's history, looking at a camera or forgetting a memory are done in a chat thread of the Igor panel: say so in one sentence.
+- Plain text only: no Markdown, no lists, no entity_ids in the reply (say "la lampe du salon"). Never narrate tool use: call tools silently, then answer once.
+- Reply in the language of the person's latest message; a bare "oui" or "ok" keeps the language of your previous reply. A short follow-up ("et maintenant ?") is about your last reply.`;
+
 const IDENTITIES: Record<PromptMode, string> = {
   voice: DEFAULT_VOICE_IDENTITY,
   text: DEFAULT_IDENTITY,
   thread: DEFAULT_THREAD_IDENTITY,
 };
 
-function instructionsFor(mode: PromptMode, hasPersona: boolean): string {
-  const base =
-    mode === "voice" ? VOICE_INSTRUCTIONS : mode === "thread" ? THREAD_INSTRUCTIONS : SYSTEM_INSTRUCTIONS;
+function instructionsFor(mode: PromptMode, hasPersona: boolean, local = false): string {
+  const base = local && mode !== "thread"
+    ? LOCAL_INSTRUCTIONS
+    : mode === "voice" ? VOICE_INSTRUCTIONS : mode === "thread" ? THREAD_INSTRUCTIONS : SYSTEM_INSTRUCTIONS;
   return (hasPersona ? PERSONA_PRECEDENCE : "") + base;
 }
 
@@ -604,7 +625,9 @@ export function buildSystemPromptText(
   language?: string,
   voiceGender?: "female" | "male",
   /** False for a thread without long-term memory (thread_memory "off"). */
-  withMemory = true
+  withMemory = true,
+  /** Assist on the house's own model: the short instructions above. */
+  local = false
 ): string {
   const factsText = !withMemory
     ? NO_THREAD_MEMORY
@@ -615,7 +638,7 @@ export function buildSystemPromptText(
   const mode = toMode(isVoice);
   const identity = (customPrompt ? customPrompt : IDENTITIES[mode]) + spokenVoicePointer(voiceGender);
 
-  const instructions = instructionsFor(mode, Boolean(customPrompt));
+  const instructions = instructionsFor(mode, Boolean(customPrompt), local);
 
   // Tie-breaker only. The Language rules above still hold: the user's own
   // words always win, and a bare "yes"/"da" keeps the previous reply's
