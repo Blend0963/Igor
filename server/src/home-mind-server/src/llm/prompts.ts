@@ -658,7 +658,7 @@ export function buildSystemPromptText(
 
 ## Current Context:
 - Date/Time: ${dateTimeStr}
-- ISO Timestamp (now, UTC): ${isoTimestamp}
+- ISO Timestamp (now, UTC): ${local ? `${isoTimestamp.slice(0, 16)}:00Z` : isoTimestamp}
 - Local midnight today (UTC): ${localMidnightIso}  ← use this as start_time for "today" history queries, NOT 00:00:00Z${languageLine}
 
 ## What You Remember About This User:

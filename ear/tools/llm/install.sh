@@ -20,16 +20,16 @@ step() { printf '\n== %s\n' "$1"; }
 ok() { printf 'OK — %s\n' "$1"; }
 fail() { printf 'ÉCHEC — %s\n' "$1"; exit 1; }
 
-step "1/7 Utilisateur"
+step "1/8 Utilisateur"
 [ "$(id -u)" -ne 0 ] || fail "lance ce script avec ton utilisateur habituel, pas root"
 ok "$USER"
 
-step "2/7 llama-server"
+step "2/8 llama-server"
 [ -x "$SERVER" ] || fail "$SERVER absent : lance d'abord bash ../llm-bench/setup.sh"
 "$SERVER" --help 2>/dev/null | grep -q -- "--api-key-file" || fail "llama-server trop ancien (pas de --api-key-file) : supprime ~/llama.cpp et relance setup.sh"
 ok "$SERVER"
 
-step "3/7 Modèle Qwen3 8B Q4_K_M"
+step "3/8 Modèle Qwen3 8B Q4_K_M"
 mkdir -p "$APP"
 if [ -s "$MODEL" ]; then
   ok "déjà en place ($(du -h "$MODEL" | cut -f1))"
@@ -40,7 +40,7 @@ else
   ok "$MODEL ($(du -h "$MODEL" | cut -f1))"
 fi
 
-step "4/7 Clé d'accès"
+step "4/8 Clé d'accès"
 mkdir -p "$CONF" && chmod 700 "$CONF"
 if [ -s "$KEY" ]; then
   ok "déjà créée, gardée telle quelle"
@@ -50,7 +50,7 @@ else
 fi
 chmod 600 "$KEY"
 
-step "5/7 Service igor-llm"
+step "5/8 Service igor-llm"
 if ! systemctl --user is-active --quiet igor-llm && curl -s -o /dev/null "http://127.0.0.1:$PORT/health"; then
   fail "le port $PORT est déjà pris (le banc d'essai tourne encore ?) : arrête-le, puis relance"
 fi
@@ -61,12 +61,13 @@ Description=Igor local language model (llama.cpp, Vulkan, Radeon VII)
 After=network-online.target
 
 [Service]
-# Deux places de 16 384 tokens : la conversation garde la sienne, et donc son
-# début déjà lu en cache, pendant que ce qu'Igor retient de la conversation ou
-# la vérification du destinataire passent dans l'autre. --cache-ram garde en
-# mémoire vive un prompt déjà lu qu'une autre demande a chassé de sa place.
-# Sans réflexion : la voix attend une phrase, vite.
-ExecStart=$SERVER -m $MODEL --host 0.0.0.0 --port $PORT -ngl 99 -c 32768 -np 2 --cache-ram 2048 --jinja --reasoning-budget 0 --chat-template-kwargs '{"enable_thinking":false}' --api-key-file $KEY --no-webui
+# Une seule place : les demandes passent l'une après l'autre, et Igor relit
+# le prompt de la voix en avance après chacune (préchauffage), si bien qu'une
+# demande trouve en cache tout ce qui précède les mots de la personne.
+# --cache-ram garde en mémoire vive un prompt qu'une autre demande (ce
+# qu'Igor retient d'une conversation) a chassé. Sans réflexion : la voix
+# attend une phrase, vite.
+ExecStart=$SERVER -m $MODEL --host 0.0.0.0 --port $PORT -ngl 99 -c 32768 -np 1 --cache-ram 4096 --jinja --reasoning-budget 0 --chat-template-kwargs '{"enable_thinking":false}' --api-key-file $KEY --no-webui
 Restart=always
 RestartSec=10
 Nice=5
@@ -79,7 +80,7 @@ systemctl --user enable igor-llm >/dev/null 2>&1 || fail "activation au démarra
 systemctl --user restart igor-llm || fail "démarrage (voir : journalctl --user -u igor-llm -n 50)"
 ok "$UNIT"
 
-step "6/7 Essai"
+step "6/8 Essai"
 up=0
 for _ in $(seq 1 120); do
   if curl -sf "http://127.0.0.1:$PORT/health" >/dev/null; then up=1; break; fi
@@ -111,12 +112,39 @@ vram=$(cat /sys/class/drm/card*/device/mem_info_vram_used 2>/dev/null | sort -n 
 [ -n "$vram" ] && ok "mémoire graphique utilisée : $((vram / 1048576)) Mo sur 16 384"
 systemctl --user is-active --quiet whisper-server && ok "whisper-server tourne toujours" || printf 'ATTENTION — whisper-server ne tourne pas\n'
 
-step "7/7 Démarrage avec la VM"
+step "7/8 Démarrage avec la VM"
 if [ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" = yes ]; then
   ok "déjà actif"
 else
   sudo loginctl enable-linger "$USER" || fail "sudo loginctl enable-linger $USER"
   ok "activé"
+fi
+
+step "8/8 Carte graphique à pleine fréquence"
+# La carte reste à ses fréquences maximales : elle ne perd plus de temps à
+# remonter en régime au début de chaque demande. La consommation n'est pas
+# une limite ici.
+GPU_UNIT=/etc/systemd/system/igor-gpu-high.service
+if ! ls /sys/class/drm/card*/device/power_dpm_force_performance_level >/dev/null 2>&1; then
+  printf 'ATTENTION — réglage de fréquence introuvable (pilote amdgpu ?), étape sautée\n'
+else
+  sudo tee "$GPU_UNIT" >/dev/null <<'GPU' || fail "écriture de $GPU_UNIT"
+[Unit]
+Description=Radeon VII at full clocks for Igor's local model
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'for f in /sys/class/drm/card*/device/power_dpm_force_performance_level; do echo high > "$f"; done'
+
+[Install]
+WantedBy=multi-user.target
+GPU
+  sudo systemctl daemon-reload || fail "sudo systemctl daemon-reload"
+  sudo systemctl enable igor-gpu-high >/dev/null 2>&1 || fail "activation de igor-gpu-high"
+  sudo systemctl restart igor-gpu-high || fail "démarrage de igor-gpu-high"
+  level=$(cat /sys/class/drm/card*/device/power_dpm_force_performance_level 2>/dev/null | sort -u | tr '\n' ' ')
+  case "$level" in *high*) ok "fréquence : $level";; *) fail "la carte n'est pas passée en « high » ($level)";; esac
 fi
 
 ip=$(hostname -I 2>/dev/null | awk '{print $1}')

@@ -33,6 +33,12 @@ export interface ChatRequest {
    * (llm/tool-policy.ts).
    */
   unattended?: boolean;
+  /**
+   * Have the local model read this request's prompt ahead of time, without
+   * the person's words, and answer nothing (llm/local-llm.ts): nothing is
+   * stored, nothing is learned.
+   */
+  prewarm?: boolean;
 }
 
 /** The tokens one request spent, for the cost counter. */

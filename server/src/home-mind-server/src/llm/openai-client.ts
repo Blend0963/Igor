@@ -23,9 +23,9 @@ import { withTokenCap } from "./token-cap.js";
 import { withReasoningEffort, type ReasoningEffort } from "./reasoning-effort.js";
 import { describeLongBatch } from "./long-task.js";
 import { recallSemantically, rememberSemantically } from "./semantic-recall.js";
-import { DEFAULT_MESSAGE_CAP, RECALL_LIMIT, resolveMemoryScope } from "../memory/memory-scope.js";
+import { DEFAULT_MESSAGE_CAP, isThreadId, RECALL_LIMIT, resolveMemoryScope } from "../memory/memory-scope.js";
 import { withPromptCacheKey } from "./prompt-cache-key.js";
-import { createLocalClient, LOCAL_HISTORY, LOCAL_TOOLS, LOCAL_UNAVAILABLE } from "./local-llm.js";
+import { createLocalClient, LOCAL_HISTORY, LOCAL_REMINDER, LOCAL_SAMPLING, LOCAL_TOOLS, LOCAL_UNAVAILABLE, PREWARM_EVERY_MS } from "./local-llm.js";
 import { OpenAIFactExtractor } from "../memory/openai-extractor.js";
 import {
   readUsage,
@@ -138,6 +138,11 @@ export class OpenAIChatEngine implements IChatEngine {
   private client: OpenAI;
   /** The house's own model (llm/local-llm.ts), for Assist; unset = none. */
   private local?: { client: OpenAI; model: string; extractor: IFactExtractor };
+  /** The last spoken Assist request on the local model, replayed by the prewarm. */
+  private lastVoice?: Pick<ChatRequest, "userId" | "conversationId" | "customPrompt" | "language">;
+  /** Local Assist requests being answered: the prewarm waits for none. */
+  private localInFlight = 0;
+  private prewarming = false;
   private memory: IMemoryStore;
   private conversations: IConversationStore;
   private extractor: IFactExtractor;
@@ -172,6 +177,14 @@ export class OpenAIChatEngine implements IChatEngine {
         model: config.localLlmModel,
         extractor: new OpenAIFactExtractor(config.localLlmKey || "none", config.localLlmModel, client.baseURL, "json_object", config.openaiMaxTokens),
       };
+      // Until a first spoken request says who speaks, the configured voice
+      // persona already gives the long, stable start of the prompt.
+      const persona = [config.customPrompt, config.customPromptVoice].map((p) => p?.trim()).filter(Boolean).join("\n\n");
+      this.lastVoice = { userId: "default", customPrompt: persona || undefined };
+      if (config.localLlmPrewarm) {
+        setInterval(() => void this.prewarm(), PREWARM_EVERY_MS).unref();
+        setTimeout(() => void this.prewarm(), 5_000).unref();
+      }
     }
     this.memory = memory;
     this.conversations = conversations;
@@ -182,6 +195,43 @@ export class OpenAIChatEngine implements IChatEngine {
   }
 
   async chat(
+    request: ChatRequest,
+    streamArg?: StreamCallback | ChatStreamEvents
+  ): Promise<ChatResponse> {
+    const local = this.local && !request.prewarm && !isThreadId(request.conversationId) && !request.images?.length;
+    if (!local) return this.runChat(request, streamArg);
+    this.localInFlight++;
+    try {
+      return await this.runChat(request, streamArg);
+    } finally {
+      this.localInFlight--;
+      if (request.isVoice && !request.unattended) {
+        this.lastVoice = { userId: request.userId, conversationId: request.conversationId, customPrompt: request.customPrompt, language: request.language };
+      }
+      // The history just changed: read the next prompt now, after the memory
+      // extraction this turn queued on the same card.
+      void this.prewarm();
+    }
+  }
+
+  /**
+   * Has the local model read the next spoken request's prompt, minus the
+   * person's words, so that a request only has those left to read. Skipped
+   * while a request is being answered, and never two at once.
+   */
+  private async prewarm(): Promise<void> {
+    if (!this.local || !this.config.localLlmPrewarm || !this.lastVoice || this.prewarming || this.localInFlight > 0) return;
+    this.prewarming = true;
+    try {
+      await this.runChat({ ...this.lastVoice, message: "", isVoice: true, prewarm: true });
+    } catch (error) {
+      if (this.config.logLevel === "debug") console.debug(`[prewarm] ${error instanceof Error ? error.message : error}`);
+    } finally {
+      this.prewarming = false;
+    }
+  }
+
+  private async runChat(
     request: ChatRequest,
     streamArg?: StreamCallback | ChatStreamEvents
   ): Promise<ChatResponse> {
@@ -363,6 +413,7 @@ export class OpenAIChatEngine implements IChatEngine {
     if (sentenceCap !== undefined) {
       volatileSystemPrompt = volatileSystemPrompt ? `${volatileSystemPrompt}\n\n${SPOKEN_LENGTH_REMINDER}` : SPOKEN_LENGTH_REMINDER;
     }
+    if (local) volatileSystemPrompt = volatileSystemPrompt ? `${volatileSystemPrompt}\n\n${LOCAL_REMINDER}` : LOCAL_REMINDER;
 
     // The volatile context goes after the history, right before the current
     // user message: everything before it is stable or append-only, so the
@@ -371,6 +422,27 @@ export class OpenAIChatEngine implements IChatEngine {
     // accept them), and models read them as current context.
     if (volatileSystemPrompt) {
       messages.push({ role: "system", content: volatileSystemPrompt });
+    }
+
+    const promptMode = scope.isThread ? "thread" : isVoice ? "voice" : "text";
+    const allTools = openAIToolsFor(promptMode, { unattended: request.unattended === true, noMemory: !scope.facts });
+    const tools = local ? allTools.filter((t) => t.type === "function" && LOCAL_TOOLS.has(t.function.name)) : allTools;
+
+    if (request.prewarm) {
+      // Everything a spoken request sends before the person's words, read
+      // now; a placeholder stands for the words, which the template needs.
+      if (local) {
+        const startedAt = Date.now();
+        const response = await local.client.chat.completions.create({
+          model: local.model,
+          messages: [...messages, { role: "user", content: "…" }],
+          tools,
+          max_tokens: 1,
+        });
+        const t = (response as { timings?: { prompt_n?: number; cache_n?: number } }).timings;
+        if (t?.prompt_n) console.log(`[prewarm] read ${t.prompt_n} new tokens (${t.cache_n ?? 0} from cache) in ${Date.now() - startedAt}ms`);
+      }
+      return { response: "", toolsUsed: [], factsLearned: 0 };
     }
 
     // 4. Add current user message (multimodal when images are present)
@@ -414,11 +486,8 @@ export class OpenAIChatEngine implements IChatEngine {
     events.onTurn?.();
     // One prompt-cache key per conversation style and memory bucket: those
     // decide the opening of the prompt, which is what the cache stores.
-    const promptMode = scope.isThread ? "thread" : isVoice ? "voice" : "text";
     const cacheKey = `igor:${promptMode}:${scope.factBucket}`;
     const turnUsage = new UsageTally();
-    const allTools = openAIToolsFor(promptMode, { unattended: request.unattended === true, noMemory: !scope.facts });
-    const tools = local ? allTools.filter((t) => t.type === "function" && LOCAL_TOOLS.has(t.function.name)) : allTools;
     // A thread reasons first (Mistral Large 4's hybrid mode, THREAD_REASONING);
     // spoken answers never do: thinking only adds silence and output tokens.
     // A plain command or a quick state question goes to FAST_MODEL when one
@@ -891,6 +960,7 @@ export class OpenAIChatEngine implements IChatEngine {
           withPromptCacheKey(model, cacheKey, (cache) =>
           client.chat.completions.create({
             model: model,
+            ...(opts.client ? LOCAL_SAMPLING : {}),
             ...capParam,
             ...reasoning,
             ...cache,
