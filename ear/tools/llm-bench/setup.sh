@@ -15,8 +15,11 @@ ok() { printf 'OK — %s\n' "$1"; }
 fail() { printf 'ÉCHEC — %s\n' "$1"; exit 1; }
 
 step "1/5 Carte graphique vue par Vulkan"
-gpu=$(vulkaninfo --summary 2>/dev/null | grep -i "deviceName" | grep -iv llvmpipe | head -1 | sed 's/.*= *//')
-[ -n "$gpu" ] && ok "$gpu" || fail "aucune carte Vulkan (vulkaninfo --summary)"
+command -v vulkaninfo >/dev/null || fail "vulkaninfo manquant : sudo apt install vulkan-tools, puis relance"
+ls /dev/dri/renderD* >/dev/null 2>&1 || fail "aucune carte dans /dev/dri : la VM ne voit pas la carte graphique"
+vulkaninfo --summary >"$BENCH/vulkan.log" 2>&1
+gpu=$(grep -i "deviceName" "$BENCH/vulkan.log" | grep -iv llvmpipe | head -1 | sed 's/.*= *//')
+[ -n "$gpu" ] && ok "$gpu" || fail "Vulkan ne voit pas la carte (voir $BENCH/vulkan.log)"
 
 step "2/5 Espace disque"
 free=$(df -BG --output=avail "$HOME" | tail -1 | tr -dc 0-9)
