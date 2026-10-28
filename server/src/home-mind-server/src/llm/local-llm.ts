@@ -47,6 +47,12 @@ export const LOCAL_REMINDER =
  */
 export const LOCAL_SAMPLING = { temperature: 0.7, top_p: 0.8, top_k: 20, presence_penalty: 1.5 };
 
+/**
+ * How often the prompt is read again ahead of time: nothing new costs the
+ * card a few tokens; a new minute or a changed device, the end of it.
+ */
+export const PREWARM_EVERY_MS = 15_000;
+
 /** What Igor says when the local model does not answer. */
 export const LOCAL_UNAVAILABLE = "Le modèle local ne répond pas pour le moment. Réessayez dans un instant.";
 

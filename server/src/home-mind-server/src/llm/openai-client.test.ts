@@ -766,6 +766,27 @@ describe("OpenAIChatEngine", () => {
       expect(beforeUser.content).toContain("vouvoie toujours");
     });
 
+    it("prewarms exactly the prompt a spoken request then sends, minus the words", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-28T20:21:33.456Z"));
+      try {
+        mockCreate.mockResolvedValueOnce({ choices: [{ message: { content: "" } }], timings: { prompt_n: 10, cache_n: 0 } });
+        const warm = await localEngine.chat({ message: "", userId: "u", isVoice: true, prewarm: true, customPrompt: "Tu es Igor." });
+        expect(warm.response).toBe("");
+        expect(conversations.storeMessage).not.toHaveBeenCalled();
+        vi.setSystemTime(new Date("2026-10-28T20:21:51.000Z"));
+        mockCreate.mockResolvedValueOnce(reply("Bonsoir."));
+        await localEngine.chat({ message: "bonsoir", userId: "u", isVoice: true, customPrompt: "Tu es Igor." });
+        const [prewarm, real] = [mockCreate.mock.calls[0][0], mockCreate.mock.calls[1][0]];
+        expect(prewarm.max_tokens).toBe(1);
+        expect(prewarm.messages.slice(0, -1)).toEqual(real.messages.slice(0, -1));
+        expect(prewarm.tools).toEqual(real.tools);
+        expect(real.messages.at(-1)).toEqual({ role: "user", content: "bonsoir" });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("keeps panel threads and images on the main model", async () => {
       mockCreate.mockResolvedValue(reply());
       await localEngine.chat({ message: "écris-moi un poème", userId: "u", conversationId: "mado-thread:t1" });

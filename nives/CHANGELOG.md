@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.0 — The local model reads ahead
+
+- **Prewarm**: Igor has the local model read the next spoken request's prompt ahead of time (persona, tools, house, history, live state, the time), without your words, right after each answer and every 15 seconds. When you speak, only your sentence is left to read. A new minute or a device that changed only costs the end of the prompt, read while nobody speaks.
+- The time given to the local model is to the minute, so the prompt read ahead matches the request's word for word.
+- `ear/tools/llm/install.sh`: one slot again (requests follow each other, and the prewarm keeps the slot ready), 4 GB of prompt cache in memory, and the graphics card kept at its highest clocks (`igor-gpu-high`). Run it again on the VM to apply.
+
 ## 0.12.2 — The local model vouvoie and stops repeating itself
 
 - On the local model, Igor answered three different questions with the same sentence, word for word, and switched to "tu" after being addressed with "tu".
