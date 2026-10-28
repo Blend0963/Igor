@@ -8,7 +8,7 @@ systemd user service, `igor-llm`, next to `whisper-server`:
 - listens on `0.0.0.0:8180`, OpenAI-compatible API under `/v1`;
 - every request needs the key in `~/.config/igor-llm/api-key` (created once,
   mode 600, never printed); `/health` stays public;
-- two slots of 16 384 tokens, thinking off.
+- one slot of 32 768 tokens (Igor's real prompt is over 16 000), thinking off.
 
 Run it as the normal user on the VM, from this folder:
 
