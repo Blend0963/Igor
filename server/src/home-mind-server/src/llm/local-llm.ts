@@ -65,6 +65,11 @@ const FACT_MAX = 1500;
 export function onlineFacts(done: { name: string; input: Record<string, unknown>; result: unknown }[], plain?: string): string {
   if (done.length === 0) return "Le module domotique n'a rien fait ni lu pour cette demande.";
   const lines = done.map((d) => {
+    // Memories: only the ones shareMemory checked, never what the local model asked for.
+    if (d.name === SHARE_MEMORY) {
+      const shared = (d.result as { shared?: string[] } | undefined)?.shared ?? [];
+      return `- souvenirs utiles : ${shared.length ? shared.join(" ; ") : "aucun"}`;
+    }
     const result = JSON.stringify(d.result) ?? "";
     return `- ${d.name} ${JSON.stringify(d.input)} → ${result.length > FACT_MAX ? `${result.slice(0, FACT_MAX)}…` : result}`;
   });
@@ -79,6 +84,52 @@ export const DONE_TIMEOUT_MS = 4000;
 
 /** What Igor says when the online model does not answer. */
 export const GENERAL_UNAVAILABLE = "Je n'arrive pas à joindre le service en ligne pour cette question. Réessayez dans un instant.";
+
+/**
+ * The local model hands the online one the memories a reply depends on (a
+ * name, a preference, a habit): only those leave the house, and only if they
+ * are memories Igor really holds (shareMemory checks each one).
+ */
+export const SHARE_MEMORY = "share_memory";
+
+export const SHARE_MEMORY_TOOL: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: SHARE_MEMORY,
+    description:
+      "Give the model that answers the person the memories its answer depends on (their name, a preference, a habit, " +
+      "someone they mentioned), copied word for word from \"What You Remember About This User\". Only these leave the " +
+      "house. Call it only when the request needs them.",
+    parameters: {
+      type: "object",
+      properties: {
+        facts: { type: "array", items: { type: "string" }, description: "The memories, each copied exactly." },
+      },
+      required: ["facts"],
+    },
+  },
+};
+
+function plainText(text: string): string {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+/**
+ * The memories a share_memory call may hand over: the requested texts that
+ * are memories Igor holds (the same text, or one containing the other), as
+ * stored. Anything else is dropped, so nothing invented or unrelated leaves.
+ */
+export function shareMemory(requested: unknown, known: string[]): { shared: string[] } {
+  const asked = (Array.isArray(requested) ? requested : [requested])
+    .filter((r): r is string => typeof r === "string")
+    .map(plainText)
+    .filter((r) => r.length >= 3);
+  const shared = known.filter((fact) => {
+    const f = plainText(fact);
+    return asked.some((r) => r === f || (r.length >= 12 && f.includes(r)) || (f.length >= 12 && r.includes(f)));
+  });
+  return { shared };
+}
 
 /** Messages of the Assist conversation the local model reads: short, as the prompt must be. */
 export const LOCAL_HISTORY = 6;

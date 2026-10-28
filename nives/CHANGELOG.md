@@ -5,6 +5,7 @@
 - The local model never speaks any more. It only acts and reads (turn on, read a temperature, find a contact, schedule a reminder), and writes a single "-" when nothing at home is concerned, which takes it a fraction of a second.
 - Mistral Large then answers every request as Igor, from your exact sentence, the last exchanges (so "vas-y, allume" or "et la cuisine ?" are understood) and what the local model did or read for this request. It never receives the house's layout, the state of everything that is on, your memory or your contact list.
 - A plain order no longer needs a second pass on the local model: once Home Assistant reports what changed, Mistral answers at once (the plain sentence, "Lumière salon allumée.", if it takes more than 4 seconds).
+- **Memories**: Mistral does not see what Igor remembers. When an answer depends on it ("comment je m'appelle ?", a preference, a habit), the local model hands over just those memories with a new tool, and the server checks that each one is a memory Igor really holds before it leaves; anything else is dropped.
 - The forced second try on the local model when it did not act (it ignored the obligation anyway, and cost about 1.7 s) is gone: Mistral says nothing was done and asks what is missing.
 
 ## 0.15.0 — The local model acts, Mistral speaks

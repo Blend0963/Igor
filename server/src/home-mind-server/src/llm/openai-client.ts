@@ -40,6 +40,9 @@ import {
   localPersona,
   ONLINE_SPOKEN_STYLE,
   PREWARM_EVERY_MS,
+  SHARE_MEMORY,
+  SHARE_MEMORY_TOOL,
+  shareMemory,
 } from "./local-llm.js";
 import { actionSentence, type DoneCall } from "./action-sentence.js";
 import { OpenAIFactExtractor } from "../memory/openai-extractor.js";
@@ -445,7 +448,10 @@ export class OpenAIChatEngine implements IChatEngine {
 
     const promptMode = scope.isThread ? "thread" : isVoice ? "voice" : "text";
     const allTools = openAIToolsFor(promptMode, { unattended: request.unattended === true, noMemory: !scope.facts });
-    const tools = local ? allTools.filter((t) => t.type === "function" && LOCAL_TOOLS.has(t.function.name)) : allTools;
+    // The local model also hands the online one the memories a reply needs.
+    const tools = local
+      ? [...allTools.filter((t) => t.type === "function" && LOCAL_TOOLS.has(t.function.name)), ...(scope.facts ? [SHARE_MEMORY_TOOL] : [])]
+      : allTools;
 
     if (request.prewarm) {
       // Everything a spoken request sends before the person's words, read
@@ -716,7 +722,9 @@ export class OpenAIChatEngine implements IChatEngine {
             };
           }
 
-          const toolResult = await handleToolCall(this.ha, tc.function.name, args, toolCtx);
+          const toolResult = local && tc.function.name === SHARE_MEMORY
+            ? shareMemory(args.facts, factContents)
+            : await handleToolCall(this.ha, tc.function.name, args, toolCtx);
           done.push({ name: tc.function.name, input: args, result: toolResult });
           return {
             role: "tool" as const,

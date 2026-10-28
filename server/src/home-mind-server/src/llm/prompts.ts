@@ -368,6 +368,7 @@ const LOCAL_INSTRUCTIONS = `
 - What you remember and past messages are the PAST: check the live state before saying something is already on or off. "[09:12]" markers in history are metadata, never copied.
 - Lights: use the exact parameters of the Device Capability Reference when a light is listed there.
 - For a person's number, always find_contact, never search_entities.
+- The other model does not see what you remember. When the answer depends on it (the person's name, a preference, a habit, someone they mentioned), call share_memory with those memories copied word for word.
 - A short follow-up ("vas-y", "oui", "et la cuisine ?") continues the previous exchange: act on what it refers to.`;
 
 const IDENTITIES: Record<PromptMode, string> = {

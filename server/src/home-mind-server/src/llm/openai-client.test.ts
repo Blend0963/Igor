@@ -810,6 +810,28 @@ describe("OpenAIChatEngine", () => {
       expect(JSON.stringify(online.messages)).not.toContain("Live state");
     });
 
+    it("hands the online model the memories the local one picked, and only real ones", async () => {
+      vi.mocked(memory.getFactsWithinTokenLimit).mockResolvedValue([
+        { id: "f1", content: "Le prénom de l'utilisateur est Jean." },
+        { id: "f2", content: "Il préfère 21 degrés dans le salon." },
+      ] as never);
+      mockCreate
+        .mockResolvedValueOnce(
+          makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "share_memory", arguments: JSON.stringify({ facts: ["Le prénom de l'utilisateur est Jean.", "Son code est 1234."] }) } }] }, finish_reason: "tool_calls" }] }])
+        )
+        .mockResolvedValueOnce(reply("-"))
+        .mockResolvedValueOnce(reply("Vous êtes Jean."));
+      const r = await localEngine.chat({ message: "comment je m'appelle ?", userId: "u", isVoice: true });
+      expect(r.response).toBe("Vous êtes Jean.");
+      expect(mockCreate.mock.calls[0][0].tools.map((t: { function: { name: string } }) => t.function.name)).toContain("share_memory");
+      expect(handleToolCall).not.toHaveBeenCalled();
+      const online = mockCreate.mock.calls[2][0];
+      const sent = JSON.stringify(online.messages);
+      expect(sent).toContain("Le prénom de l'utilisateur est Jean.");
+      expect(sent).not.toContain("1234");
+      expect(sent).not.toContain("21 degrés");
+    });
+
     it("never speaks the local model's words: the online model answers", async () => {
       mockCreate.mockResolvedValueOnce(reply("Je suis Igor, votre majordome.")).mockResolvedValueOnce(reply("Bonsoir, que puis-je pour vous ?"));
       const chunks: string[] = [];
