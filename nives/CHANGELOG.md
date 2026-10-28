@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.0 — Each request where it belongs
+
+With the local model (`local_llm_url`), a spoken or typed Assist request now takes one of three paths:
+
+- **A plain order** ("allume la lumière du salon"): the local model acts, and Igor says what Home Assistant reports it changed itself, at once and without a second model call: "Lumière salon allumée.", "Volets salon fermés.", "Chauffage chambre réglé sur 19 degrés.", "Rappel programmé pour mercredi 29 octobre à 19:00." Scripts (timer, calls, SMS…) and anything whose result must be read are still worded by the model.
+- **The house, the phone, contacts**: the local model answers. Nothing leaves the house.
+- **Conversation and general knowledge** ("pourquoi le ciel est bleu ?"): the local model hands the question, rewritten to stand alone with no name, number or detail of the home, to the main model (Mistral Large), which answers as Igor from that question and the persona alone. It never sees the home, the memory, the contacts or the conversation. About 1 500 tokens a question instead of 16 000.
+
 ## 0.13.0 — The local model reads ahead
 
 - **Prewarm**: Igor has the local model read the next spoken request's prompt ahead of time (persona, tools, house, history, live state, the time), without your words, right after each answer and every 15 seconds. When you speak, only your sentence is left to read. A new minute or a device that changed only costs the end of the prompt, read while nobody speaks.
