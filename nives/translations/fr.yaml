@@ -137,6 +137,12 @@ configuration:
     name: Modèle local (clé)
     description: >-
       La clé du modèle local, dans ~/.config/igor-llm/api-key sur la VM.
+  local_llm_prompt:
+    name: Modèle local (règles)
+    description: >-
+      Les règles de travail du modèle local seulement : scripts du téléphone,
+      contacts, appels, SMS, minuteurs. Pas de personnalité : c'est le modèle
+      en ligne qui joue Igor et formule les réponses, avec custom_prompt.
   fast_model:
     name: Modèle rapide (ordres simples)
     description: >-

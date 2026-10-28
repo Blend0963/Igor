@@ -84,6 +84,7 @@ OCR_PRICE=$(jq -r '.ocr_price_per_1000_pages // ""' "$OPTIONS")
 FAST_MODEL=$(jq -r '.fast_model // ""' "$OPTIONS")
 LOCAL_LLM_URL=$(jq -r '.local_llm_url // ""' "$OPTIONS")
 LOCAL_LLM_KEY=$(jq -r '.local_llm_key // ""' "$OPTIONS")
+LOCAL_LLM_PROMPT=$(jq -r '.local_llm_prompt // ""' "$OPTIONS")
 NOTIFY_SERVICE=$(jq -r '.notify_service // ""' "$OPTIONS")
 DAILY_BRIEFING_TIME=$(jq -r '.daily_briefing_time // ""' "$OPTIONS")
 DAILY_BRIEFING_PROMPT=$(jq -r '.daily_briefing_prompt // ""' "$OPTIONS")
@@ -311,6 +312,7 @@ write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$FAST_MODEL" ] && write_env "FAST_MODEL" "$FAST_MODEL"
 [ -n "$LOCAL_LLM_URL" ] && write_env "LOCAL_LLM_URL" "$LOCAL_LLM_URL"
 [ -n "$LOCAL_LLM_KEY" ] && write_env "LOCAL_LLM_KEY" "$LOCAL_LLM_KEY"
+[ -n "$LOCAL_LLM_PROMPT" ] && write_env "LOCAL_LLM_PROMPT" "$LOCAL_LLM_PROMPT"
 [ -n "$NOTIFY_SERVICE" ] && write_env "NOTIFY_SERVICE" "$NOTIFY_SERVICE"
 [ -n "$DAILY_BRIEFING_TIME" ] && write_env "DAILY_BRIEFING_TIME" "$DAILY_BRIEFING_TIME"
 [ -n "$DAILY_BRIEFING_PROMPT" ] && write_env "DAILY_BRIEFING_PROMPT" "$DAILY_BRIEFING_PROMPT"

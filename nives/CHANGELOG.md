@@ -2,6 +2,9 @@
 
 ## 0.15.0 — The local model acts, Mistral speaks
 
+- The local model no longer plays Igor: it gets a short working identity ("the home-control module of a voice assistant"), plus the new option `local_llm_prompt` for your working rules (phone scripts, contacts, calls, timers). Less to read, so faster. Your persona goes to Mistral only.
+- When Mistral words a reply for the local model, it gets `custom_prompt` and one line of spoken style, not `custom_prompt_voice`, whose rules are for acting: about 600 tokens a reply instead of 1 500.
+
 - With the local model, a plain order ("allume la lumière du salon") is carried out by the local model, which says nothing; Mistral Large then words the reply as Igor. Mistral receives only what was done ("Fait : Lumière salon allumée."), with the persona: never your sentence, the state of the house, the contacts or the conversation. If it does not answer within 4 seconds, Igor says the plain sentence ("Lumière salon allumée.").
 - Questions about the house and contacts are still answered by the local model, which keeps that information at home. Scripts (timer, calls, SMS) are still worded by the local model too.
 - The prompt is read ahead once a minute instead of every 15 seconds (and still right after each request), so the graphics card's fans spin up less often.

@@ -92,6 +92,9 @@ schema:
   # Unset = Assist on the main model.
   local_llm_url: "url?"
   local_llm_key: "password?"
+  # Working rules for the local model only (scripts, contacts, calls): no
+  # persona, the online model plays Igor.
+  local_llm_prompt: "str?"
   # Reminders, scheduled tasks and the morning briefing are sent to this
   # notify service (e.g. mobile_app_pixel_8). Unset = a persistent
   # notification in Home Assistant.

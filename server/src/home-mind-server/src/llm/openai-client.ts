@@ -38,6 +38,8 @@ import {
   LOCAL_SAMPLING,
   LOCAL_TOOLS,
   LOCAL_UNAVAILABLE,
+  localPersona,
+  ONLINE_SPOKEN_STYLE,
   PREWARM_EVERY_MS,
 } from "./local-llm.js";
 import { actionSentence, type DoneCall } from "./action-sentence.js";
@@ -348,7 +350,10 @@ export class OpenAIChatEngine implements IChatEngine {
       .filter(Boolean)
       .join("\n\n") || undefined;
     const homeLayout = this.topology.hasLayout() ? this.topology.formatSection() : undefined;
-    const systemPrompt = buildSystemPromptText(factContents, scope.isThread ? "thread" : isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender, scope.facts, Boolean(local));
+    // The local model gets a working identity, not the persona: Igor is
+    // played by the online model, which words the replies.
+    const promptPersona = local ? localPersona(this.config.localLlmPrompt) : customPrompt;
+    const systemPrompt = buildSystemPromptText(factContents, scope.isThread ? "thread" : isVoice, promptPersona, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender, scope.facts, Boolean(local));
 
     // Split the system prompt for prefix caching (#66 follow-up).
     //
@@ -667,7 +672,7 @@ export class OpenAIChatEngine implements IChatEngine {
           const answer = await this.askOnline({
             instructions: GENERAL_INSTRUCTIONS,
             content: question,
-            persona: customPrompt,
+            persona: this.onlinePersona(customPrompt),
             isVoice,
             maxSentences: sentenceCap,
             onChunk,
@@ -750,7 +755,7 @@ export class OpenAIChatEngine implements IChatEngine {
           const reply = await this.askOnline({
             instructions: DONE_INSTRUCTIONS,
             content: `Fait : ${said}`,
-            persona: customPrompt,
+            persona: this.onlinePersona(customPrompt),
             isVoice,
             maxSentences: sentenceCap,
             onChunk,
@@ -1050,6 +1055,16 @@ export class OpenAIChatEngine implements IChatEngine {
       if (timer) clearTimeout(timer);
       signal?.removeEventListener("abort", stop);
     }
+  }
+
+  /**
+   * The persona the online model gets for the local model's replies: the
+   * owner's common one (custom_prompt) and a line of spoken style, not the
+   * voice part, whose rules are for acting, which the local model does.
+   */
+  private onlinePersona(requestPersona: string | undefined): string | undefined {
+    const common = this.config.customPrompt?.trim() || requestPersona?.trim();
+    return common ? `${common}\n\n${ONLINE_SPOKEN_STYLE}` : ONLINE_SPOKEN_STYLE;
   }
 
   /** Mistral rejects stream_options on its OpenAI-compatible chat endpoint. */

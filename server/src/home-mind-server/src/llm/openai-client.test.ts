@@ -806,6 +806,25 @@ describe("OpenAIChatEngine", () => {
       expect(JSON.stringify(online.messages)).not.toContain("allume la lumière du salon");
     });
 
+    it("gives the local model a working identity and the online one only the common persona", async () => {
+      const engine = new OpenAIChatEngine(
+        { ...config, customPrompt: "Tu es Igor, majordome.", customPromptVoice: "STYLE VOCAL.", localLlmUrl: "http://192.168.1.20:8180", localLlmModel: "qwen3-8b", localLlmPrompt: "MINUTEUR : script.minuteur, recipient en secondes." },
+        memory, conversations, extractor, ha,
+        { refreshIfStale: vi.fn(), hasProfiles: () => false } as unknown as DeviceScanner,
+        { refreshIfStale: vi.fn(), hasLayout: () => false } as unknown as TopologyScanner
+      );
+      vi.mocked(handleToolCall).mockResolvedValue({ changed_states: [{ entity_id: "light.salon", state: "on", name: "Lumière salon" }] });
+      mockCreate.mockResolvedValueOnce(orderCall()).mockResolvedValueOnce(reply("Voilà."));
+      await engine.chat({ message: "allume le salon", userId: "u", isVoice: true, customPrompt: "Tu es Igor, majordome.\n\nSTYLE VOCAL." });
+      const localSystem = mockCreate.mock.calls[0][0].messages[0].content;
+      expect(localSystem).toContain("module domotique");
+      expect(localSystem).toContain("MINUTEUR : script.minuteur");
+      expect(localSystem).not.toContain("majordome");
+      const onlineSystem = mockCreate.mock.calls[1][0].messages[0].content;
+      expect(onlineSystem).toContain("Tu es Igor, majordome.");
+      expect(onlineSystem).not.toContain("STYLE VOCAL.");
+    });
+
     it("says the plain sentence when the online model does not answer", async () => {
       vi.mocked(handleToolCall).mockResolvedValue({ changed_states: [{ entity_id: "light.salon", state: "on", name: "Lumière salon" }] });
       mockCreate.mockResolvedValueOnce(orderCall()).mockRejectedValueOnce(new Error("503"));
