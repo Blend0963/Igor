@@ -57,6 +57,8 @@ const ConfigSchema = z
     localLlmKey: z.string().optional(),
     // llama.cpp serves one model whatever the name; it shows in the logs and usage.
     localLlmModel: z.string().default("qwen3-8b"),
+    // The owner's working rules for the local model (scripts, contacts…), no persona.
+    localLlmPrompt: z.string().optional(),
     // Read the next spoken request's prompt ahead of time (llm/openai-client.ts prewarm).
     localLlmPrewarm: z.boolean().default(true),
     // Reminders, scheduled tasks and the morning briefing (jobs/scheduler.ts).
@@ -238,6 +240,7 @@ export function loadConfig(): Config {
     localLlmUrl: emptyToUndefined(process.env.LOCAL_LLM_URL),
     localLlmKey: emptyToUndefined(process.env.LOCAL_LLM_KEY),
     localLlmModel: emptyToUndefined(process.env.LOCAL_LLM_MODEL),
+    localLlmPrompt: emptyToUndefined(process.env.LOCAL_LLM_PROMPT),
     localLlmPrewarm: emptyToUndefined(process.env.LOCAL_LLM_PREWARM) === undefined ? undefined : process.env.LOCAL_LLM_PREWARM !== "false",
     notifyService: emptyToUndefined(process.env.NOTIFY_SERVICE),
     dailyBriefingTime: emptyToUndefined(process.env.DAILY_BRIEFING_TIME),

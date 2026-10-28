@@ -138,6 +138,12 @@ configuration:
     name: Local Model (key)
     description: >-
       The local model's key, in ~/.config/igor-llm/api-key on the VM.
+  local_llm_prompt:
+    name: Local Model (rules)
+    description: >-
+      Working rules for the local model only: phone scripts, contacts, calls,
+      texts, timers. No personality: the online model plays Igor and words the
+      replies, with custom_prompt.
   fast_model:
     name: Fast Model (simple commands)
     description: >-

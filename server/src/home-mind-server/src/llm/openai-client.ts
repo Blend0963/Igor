@@ -29,6 +29,8 @@ import {
   ANSWER_GENERAL,
   ANSWER_GENERAL_TOOL,
   createLocalClient,
+  DONE_INSTRUCTIONS,
+  DONE_TIMEOUT_MS,
   GENERAL_INSTRUCTIONS,
   GENERAL_UNAVAILABLE,
   LOCAL_HISTORY,
@@ -36,6 +38,8 @@ import {
   LOCAL_SAMPLING,
   LOCAL_TOOLS,
   LOCAL_UNAVAILABLE,
+  localPersona,
+  ONLINE_SPOKEN_STYLE,
   PREWARM_EVERY_MS,
 } from "./local-llm.js";
 import { actionSentence, type DoneCall } from "./action-sentence.js";
@@ -346,7 +350,10 @@ export class OpenAIChatEngine implements IChatEngine {
       .filter(Boolean)
       .join("\n\n") || undefined;
     const homeLayout = this.topology.hasLayout() ? this.topology.formatSection() : undefined;
-    const systemPrompt = buildSystemPromptText(factContents, scope.isThread ? "thread" : isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender, scope.facts, Boolean(local));
+    // The local model gets a working identity, not the persona: Igor is
+    // played by the online model, which words the replies.
+    const promptPersona = local ? localPersona(this.config.localLlmPrompt) : customPrompt;
+    const systemPrompt = buildSystemPromptText(factContents, scope.isThread ? "thread" : isVoice, promptPersona, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender, scope.facts, Boolean(local));
 
     // Split the system prompt for prefix caching (#66 follow-up).
     //
@@ -661,7 +668,17 @@ export class OpenAIChatEngine implements IChatEngine {
         const question = handOver ? String(parseArgs(handOver).question ?? "").trim() : "";
         if (question) {
           toolsUsed.push(ANSWER_GENERAL);
-          const answer = await this.answerGeneral(question, customPrompt, isVoice, sentenceCap, onChunk, signal);
+          console.log(`[route] general question handed to ${this.config.llmModel}: ${question.slice(0, 80)}`);
+          const answer = await this.askOnline({
+            instructions: GENERAL_INSTRUCTIONS,
+            content: question,
+            persona: this.onlinePersona(customPrompt),
+            isVoice,
+            maxSentences: sentenceCap,
+            onChunk,
+            signal,
+            fallback: GENERAL_UNAVAILABLE,
+          });
           turnUsage.add(answer.usage);
           result = { text: answer.text, finishReason: "stop", toolCalls: [], usage: undefined };
           break;
@@ -728,13 +745,26 @@ export class OpenAIChatEngine implements IChatEngine {
         const toolResults = await Promise.all(toolPromises);
         messages.push(...toolResults);
 
-        // A plain order on the local model: Home Assistant said what changed,
-        // so the server says it ("Lumière salon allumée.") without a second
-        // model call.
+        // A plain order on the local model: Home Assistant said what changed.
+        // The online model words it as Igor from that alone ("Lumière salon
+        // allumée."), with no second pass on the local one; the plain
+        // sentence is said if it does not answer in time.
         const said = local && result.text.trim() === "" && done.length === result.toolCalls.length ? actionSentence(done) : undefined;
         if (said) {
-          onChunk?.(said);
-          result = { text: said, finishReason: "stop", toolCalls: [], usage: undefined };
+          console.log(`[route] order done locally, worded by ${this.config.llmModel}: ${said}`);
+          const reply = await this.askOnline({
+            instructions: DONE_INSTRUCTIONS,
+            content: `Fait : ${said}`,
+            persona: this.onlinePersona(customPrompt),
+            isVoice,
+            maxSentences: sentenceCap,
+            onChunk,
+            signal,
+            fallback: said,
+            timeoutMs: DONE_TIMEOUT_MS,
+          });
+          turnUsage.add(reply.usage);
+          result = { text: reply.text, finishReason: "stop", toolCalls: [], usage: undefined };
           break;
         }
 
@@ -949,21 +979,30 @@ export class OpenAIChatEngine implements IChatEngine {
   }
 
   /**
-   * A general question handed over by the local model, answered by the main
-   * (online) model from the question and Igor's persona alone, streamed as
-   * the spoken reply. Never throws but on a stop: a failure is said.
+   * The main (online) model's spoken reply for the local model, from Igor's
+   * persona and one short message (a general question, or what was just done
+   * in the house), never the home, the memory, the contacts or the
+   * conversation. Streamed as the reply. Never throws but on a stop: past
+   * `timeoutMs`, or on a failure before any word, `fallback` is said instead.
    */
-  private async answerGeneral(
-    question: string,
-    persona: string | undefined,
-    isVoice: boolean,
-    maxSentences: number | undefined,
-    onChunk: StreamCallback | undefined,
-    signal: AbortSignal | undefined
-  ): Promise<{ text: string; usage?: TokenUsage }> {
+  private async askOnline(opts: {
+    instructions: string;
+    content: string;
+    persona: string | undefined;
+    isVoice: boolean;
+    maxSentences: number | undefined;
+    onChunk: StreamCallback | undefined;
+    signal: AbortSignal | undefined;
+    fallback: string;
+    timeoutMs?: number;
+  }): Promise<{ text: string; usage?: TokenUsage }> {
+    const { isVoice, onChunk, signal, fallback } = opts;
     const model = this.config.llmModel;
-    const system = [persona?.trim(), GENERAL_INSTRUCTIONS].filter(Boolean).join("\n\n");
-    console.log(`[route] general question handed to ${model}: ${question.slice(0, 80)}`);
+    const system = [opts.persona?.trim(), opts.instructions].filter(Boolean).join("\n\n");
+    const controller = new AbortController();
+    const stop = () => controller.abort();
+    signal?.addEventListener("abort", stop, { once: true });
+    const timer = opts.timeoutMs ? setTimeout(stop, opts.timeoutMs) : undefined;
     let text = "";
     try {
       const stream = await withTokenCap(model, this.maxOutputTokens(isVoice), (capParam) =>
@@ -978,17 +1017,17 @@ export class OpenAIChatEngine implements IChatEngine {
                 ...reasoning,
                 messages: [
                   { role: "system", content: system },
-                  { role: "user", content: question },
+                  { role: "user", content: opts.content },
                 ],
                 stream: true,
                 ...(!this.isMistral() ? { stream_options: { include_usage: true } } : {}),
               } as OpenAI.ChatCompletionCreateParamsStreaming,
-              signal ? { signal } : undefined
+              { signal: controller.signal }
             ),
           this.client.baseURL
         )
       );
-      const guard = new SpokenGuard(isVoice, !leanMode(), maxSentences);
+      const guard = new SpokenGuard(isVoice, !leanMode(), opts.maxSentences);
       let usage: TokenUsage | undefined;
       for await (const chunk of stream) {
         if (chunk.usage) usage = readUsage(chunk.usage);
@@ -1004,14 +1043,28 @@ export class OpenAIChatEngine implements IChatEngine {
         text += rest;
         onChunk?.(rest);
       }
-      return { text, usage: usage ? { ...usage } : undefined };
+      if (text.trim()) return { text, usage: usage ? { ...usage } : undefined };
+      throw new Error("empty reply");
     } catch (error) {
       if (signal?.aborted) throw error;
-      console.warn(`[route] ${model} did not answer the handed-over question (${error instanceof Error ? error.message : error})`);
+      console.warn(`[route] ${model} did not answer for the local model (${error instanceof Error ? error.message : error})`);
       if (text) return { text };
-      onChunk?.(GENERAL_UNAVAILABLE);
-      return { text: GENERAL_UNAVAILABLE };
+      onChunk?.(fallback);
+      return { text: fallback };
+    } finally {
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", stop);
     }
+  }
+
+  /**
+   * The persona the online model gets for the local model's replies: the
+   * owner's common one (custom_prompt) and a line of spoken style, not the
+   * voice part, whose rules are for acting, which the local model does.
+   */
+  private onlinePersona(requestPersona: string | undefined): string | undefined {
+    const common = this.config.customPrompt?.trim() || requestPersona?.trim();
+    return common ? `${common}\n\n${ONLINE_SPOKEN_STYLE}` : ONLINE_SPOKEN_STYLE;
   }
 
   /** Mistral rejects stream_options on its OpenAI-compatible chat endpoint. */
