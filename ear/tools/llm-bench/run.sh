@@ -3,20 +3,23 @@
 # Pour chaque modèle de ~/igor-bench/models : démarre llama-server sur
 # 127.0.0.1:8180 (whisper-server continue de tourner sur 8178), passe les 20
 # demandes de bench.py, puis l'arrête. Rien n'est envoyé hors de la machine.
+#   bash run.sh            tous les modèles
+#   bash run.sh qwen3-8b   seulement ceux dont le nom commence par qwen3-8b
 set -u
 BENCH="$HOME/igor-bench"
 SERVER="$HOME/llama.cpp/build/bin/llama-server"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PORT=8180
+ONLY="${1:-}"
 
 ok() { printf 'OK — %s\n' "$1"; }
 fail() { printf 'ÉCHEC — %s\n' "$1"; }
 
 [ -x "$SERVER" ] || { fail "llama-server absent : lance d'abord bash setup.sh"; exit 1; }
-ls "$BENCH"/models/*.gguf >/dev/null 2>&1 || { fail "aucun modèle dans $BENCH/models"; exit 1; }
+ls "$BENCH"/models/"$ONLY"*.gguf >/dev/null 2>&1 || { fail "aucun modèle ${ONLY:+« $ONLY* » }dans $BENCH/models"; exit 1; }
 curl -s -o /dev/null "http://127.0.0.1:$PORT/health" && { fail "le port $PORT est déjà pris"; exit 1; }
 
-for model in "$BENCH"/models/*.gguf; do
+for model in "$BENCH"/models/"$ONLY"*.gguf; do
   name=$(basename "$model" .gguf)
   printf '\n==================== %s ====================\n' "$name"
   "$SERVER" -m "$model" --host 127.0.0.1 --port "$PORT" -ngl 99 -c 8192 --jinja >"$BENCH/server-$name.log" 2>&1 &
@@ -37,5 +40,5 @@ for model in "$BENCH"/models/*.gguf; do
 done
 
 printf '\nRésumés :\n'
-grep -h "^RÉSUMÉ" "$BENCH"/results-*.txt 2>/dev/null
+grep -h "^RÉSUMÉ" "$BENCH"/results-"$ONLY"*.txt 2>/dev/null
 printf '\nEnvoie-moi ces lignes RÉSUMÉ, et le fichier ~/igor-bench/results-<modèle>.txt du meilleur.\n'

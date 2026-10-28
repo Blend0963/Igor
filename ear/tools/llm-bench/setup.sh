@@ -23,7 +23,7 @@ gpu=$(grep -i "deviceName" "$BENCH/vulkan.log" | grep -iv llvmpipe | head -1 | s
 
 step "2/5 Espace disque"
 free=$(df -BG --output=avail "$HOME" | tail -1 | tr -dc 0-9)
-[ "${free:-0}" -ge 30 ] && ok "$free Go libres" || fail "il faut 30 Go libres dans $HOME, il y en a ${free:-0}"
+[ "${free:-0}" -ge 10 ] && ok "$free Go libres" || fail "il faut 10 Go libres dans $HOME, il y en a ${free:-0}"
 
 step "3/5 Outils de compilation"
 for t in git cmake make g++ curl python3 glslc; do
@@ -58,8 +58,9 @@ while IFS='|' read -r name url; do
   fi
 done <<'LIST'
 qwen3-8b|https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf
+qwen3-8b-q6|https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q6_K.gguf
 ministral-8b|https://huggingface.co/bartowski/Ministral-8B-Instruct-2410-GGUF/resolve/main/Ministral-8B-Instruct-2410-Q4_K_M.gguf
 qwen3-14b|https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf
 LIST
 
-printf '\nTerminé. Lance ensuite : bash run.sh\n'
+printf '\nTerminé. Lance ensuite : bash run.sh   (ou bash run.sh qwen3-8b pour ne passer que ceux-là)\n'

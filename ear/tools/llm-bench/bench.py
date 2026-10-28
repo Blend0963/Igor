@@ -1,10 +1,13 @@
 """Igor — banc d'essai d'un LLM local.
 
-Vingt demandes typiques de la voix, posées à un serveur llama.cpp local avec
-une maison fictive (aucune donnée réelle) : ordres, questions sur la maison,
-contacts, rappels, recherche web, questions générales. Pour chacune : le bon
-outil a-t-il été appelé avec les bons paramètres, ou la réponse est-elle
-courte et en français ? Et combien de temps.
+Trois parties, posées à un serveur llama.cpp local avec une maison fictive
+(aucune donnée réelle) :
+1. Vingt demandes typiques de la voix : le bon outil a-t-il été appelé avec
+   les bons paramètres, ou la réponse est-elle courte ? Et combien de temps.
+2. Dix questions de culture générale, réponses affichées en entier pour en
+   juger le fond (un refus compte comme raté).
+3. Le trajet complet d'un ordre : le modèle choisit l'outil, reçoit un
+   résultat simulé, puis dit sa phrase. Temps total, comme à la voix.
 
     python3 -I bench.py --url http://127.0.0.1:8180 --name qwen3-8b
 """
@@ -24,6 +27,7 @@ Tes réponses sont lues à voix haute : deux phrases courtes au maximum, sans li
 Pour agir sur la maison ou connaître son état, tu utilises les outils ; tu ne dis qu'une action est faite qu'après l'avoir faite.
 Pour appeler ou écrire à quelqu'un, tu cherches toujours le contact avec find_contact, puis tu demandes confirmation avec le numéro avant d'appeler.
 Un rappel (« rappelle-moi de… ») passe par schedule_task, sans confirmation.
+Pour les questions de culture générale, de science, de cuisine ou de calcul, tu réponds directement avec tes connaissances, en deux phrases ; tu n'utilises web_search que pour l'actualité.
 Scripts du téléphone : script.appeler (champ recipient = numéro), script.envoyer_sms (recipient = numéro, message), script.minuteur (recipient = durée en secondes), script.activer_ne_pas_deranger.
 
 ## Maison
@@ -122,6 +126,42 @@ CASES = [
 ]
 
 
+# Culture générale : le fond se juge à la lecture, la réponse est affichée en entier.
+GENERAL = [
+    "Quelle est la capitale de l'Australie ?",
+    "Combien de temps faut-il pour cuire un œuf mollet ?",
+    "Qui a écrit Les Misérables ?",
+    "Pourquoi les feuilles des arbres tombent en automne ?",
+    "Quelle est la différence entre un virus et une bactérie ?",
+    "Combien y a-t-il de centimètres cubes dans un litre ?",
+    "En quelle année l'homme a-t-il marché sur la Lune ?",
+    "Par quoi je peux remplacer le beurre dans un gâteau ?",
+    "Comment on enlève une tache de vin rouge sur une nappe ?",
+    "Quelle est la plus haute montagne de France ?",
+]
+
+REFUSAL = re.compile(r"je ne (peux|suis) pas|je n'ai pas (accès|la possibilité)|impossible de répondre", re.I)
+
+# Trajet complet : (demande, résultat simulé de chaque outil). Le résultat
+# imite celui du serveur Igor.
+FAKE = {
+    "call_service": lambda a: {"success": True, "changed_states": [{"entity_id": a.get("entity_id", ""), "state": "on" if "on" in a.get("service", "") else "off"}]},
+    "get_state": lambda a: {"entity_id": a.get("entity_id", ""), "state": "20.5" if "temperature" in a.get("entity_id", "") else "locked", "attributes": {"unit_of_measurement": "°C"} if "temperature" in a.get("entity_id", "") else {}},
+    "search_entities": lambda a: {"entities": [{"entity_id": "light.salon", "name": "Lumière salon", "state": "off"}]},
+    "find_contact": lambda a: {"query": a.get("query", ""), "found": 1, "contacts": [{"name": "Jean Martin", "numbers": {"mobile": "06 39 98 00 02"}}]},
+    "schedule_task": lambda a: {"scheduled": True, "when": "mercredi 29 octobre 2026 à 19:00"},
+    "web_search": lambda a: {"results": [{"title": "Ligue 1", "snippet": "Le PSG a battu Lyon 2 à 1 dimanche soir au Parc des Princes."}]},
+}
+TRIPS = [
+    "Allume la lumière du salon",
+    "Quelle température fait-il dans la chambre ?",
+    "Est-ce que la porte d'entrée est verrouillée ?",
+    "Appelle Jean Martin",
+    "Rappelle-moi de sortir les poubelles demain à 19 heures",
+    "Qui a gagné le dernier match du PSG ?",
+]
+
+
 def ask(url: str, messages: list[dict]) -> tuple[dict, float]:
     body = json.dumps({
         "messages": messages,
@@ -150,6 +190,62 @@ def vram_mb() -> int | None:
 
 def sentences(text: str) -> int:
     return len([s for s in re.split(r"[.!?…]+(?:\s|$)", text.strip()) if s.strip()])
+
+
+def general(url: str) -> tuple[int, list[float]]:
+    print("\n--- Culture générale (juge le fond) ---")
+    passed, times = 0, []
+    for q in GENERAL:
+        try:
+            data, took = ask(url, [{"role": "system", "content": SYSTEM}, {"role": "user", "content": q}])
+        except Exception as err:  # noqa: BLE001
+            print(f"RATÉ   ----   {q}  →  erreur : {err}")
+            continue
+        times.append(took)
+        msg = (data.get("choices") or [{}])[0].get("message") or {}
+        content = (msg.get("content") or "").strip()
+        calls = msg.get("tool_calls") or []
+        good = bool(content) and not calls and not REFUSAL.search(content) and sentences(content) <= 3
+        shown = content.replace("\n", " ") if content else f"(outil {calls[0]['function']['name'] if calls else '?'})"
+        passed += good
+        print(f"{'OK   ' if good else 'RATÉ '}  {took:4.1f} s  {q}\n         {shown}")
+    return passed, times
+
+
+def trips(url: str) -> tuple[int, list[float]]:
+    print("\n--- Trajet complet : outil, résultat, phrase finale ---")
+    passed, totals = 0, []
+    for q in TRIPS:
+        messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": q}]
+        total, steps, final, used = 0.0, [], "", []
+        try:
+            for _ in range(3):
+                data, took = ask(url, messages)
+                total += took
+                steps.append(f"{took:.1f}")
+                msg = (data.get("choices") or [{}])[0].get("message") or {}
+                calls = msg.get("tool_calls") or []
+                if not calls:
+                    final = (msg.get("content") or "").strip()
+                    break
+                messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": calls})
+                for c in calls:
+                    name = c["function"]["name"]
+                    used.append(name)
+                    try:
+                        args = json.loads(c["function"].get("arguments") or "{}")
+                    except json.JSONDecodeError:
+                        args = {}
+                    result = FAKE.get(name, lambda a: {"error": "outil inconnu"})(args)
+                    messages.append({"role": "tool", "tool_call_id": c.get("id", ""), "content": json.dumps(result, ensure_ascii=False)})
+        except Exception as err:  # noqa: BLE001
+            print(f"RATÉ   ----   {q}  →  erreur : {err}")
+            continue
+        totals.append(total)
+        good = bool(used) and bool(final) and sentences(final) <= 2
+        passed += good
+        print(f"{'OK   ' if good else 'RATÉ '}  {total:4.1f} s ({' + '.join(steps)})  {q}\n         [{', '.join(used) or 'aucun outil'}] {final.replace(chr(10), ' ') or '(pas de phrase finale)'}")
+    return passed, totals
 
 
 def main() -> None:
@@ -195,11 +291,20 @@ def main() -> None:
         passed += good
         print(f"{'OK   ' if good else 'RATÉ '}  {took:4.1f} s  {text}  →  {shown}")
 
+    gen_ok, gen_times = general(a.url)
+    trip_ok, trip_times = trips(a.url)
+    peak = max(peak, vram_mb() or 0)
+
     med = statistics.median(times) if times else 0
     speed = statistics.mean(speeds) if speeds else 0
+    gen_med = statistics.median(gen_times) if gen_times else 0
+    trip_med = statistics.median(trip_times) if trip_times else 0
+    trip_max = max(trip_times) if trip_times else 0
     print(
-        f"RÉSUMÉ {a.name}: {passed}/{len(CASES)} justes, temps médian {med:.1f} s, "
-        f"{speed:.0f} tokens/s, mémoire graphique max {peak} Mo"
+        f"\nRÉSUMÉ {a.name}: {passed}/{len(CASES)} justes, temps médian {med:.1f} s, "
+        f"{speed:.0f} tokens/s, mémoire graphique max {peak} Mo | "
+        f"culture {gen_ok}/{len(GENERAL)} ({gen_med:.1f} s) | "
+        f"trajet complet {trip_ok}/{len(TRIPS)}, médian {trip_med:.1f} s, pire {trip_max:.1f} s"
     )
 
 
