@@ -296,7 +296,7 @@ export class OpenAIChatEngine implements IChatEngine {
     // the memory loading below, before the main model is ever called.
     const addressee =
       isVoice && !scope.isThread && !request.unattended && needsAddresseeCheck(message)
-        ? checkAddressee((signal) => this.askAddressee(message, signal, local), request.signal)
+        ? checkAddressee((signal) => this.askAddressee(message, signal), request.signal)
         : undefined;
 
     // 1-3. Everything the prompt needs, read at once: none of these reads
@@ -804,6 +804,7 @@ export class OpenAIChatEngine implements IChatEngine {
           signal,
           fallback: plainSentence ?? (draft && draft !== "-" ? draft : GENERAL_UNAVAILABLE),
           timeoutMs: plainSentence ? DONE_TIMEOUT_MS : undefined,
+          toolCtx,
         });
         turnUsage.add(reply.usage);
         result = { text: reply.text, finishReason: "stop", toolCalls: [], usage: undefined };
@@ -1023,61 +1024,66 @@ export class OpenAIChatEngine implements IChatEngine {
     signal: AbortSignal | undefined;
     fallback: string;
     timeoutMs?: number;
+    /** For the web search the online model may run. */
+    toolCtx?: ToolContext;
   }): Promise<{ text: string; usage?: TokenUsage }> {
-    const { isVoice, onChunk, signal, fallback } = opts;
+    const { isVoice, signal, fallback } = opts;
     const model = this.config.llmModel;
     const system = [opts.persona?.trim(), opts.instructions].filter(Boolean).join("\n\n");
     const controller = new AbortController();
     const stop = () => controller.abort();
     signal?.addEventListener("abort", stop, { once: true });
-    const timer = opts.timeoutMs ? setTimeout(stop, opts.timeoutMs) : undefined;
+    let timer = opts.timeoutMs ? setTimeout(stop, opts.timeoutMs) : undefined;
     let text = "";
+    const say = (chunk: string) => {
+      text += chunk;
+      opts.onChunk?.(chunk);
+    };
+    const usage = new UsageTally();
+    // It searches the web itself when its own knowledge is not enough (news,
+    // anything recent): only the query leaves, as with any web search.
+    const webTools = process.env.MISTRAL_API_KEY
+      ? openAIToolsFor("voice").filter((t) => t.type === "function" && t.function.name === "web_search")
+      : [];
+    const messages: OpenAI.ChatCompletionMessageParam[] = [
+      { role: "system", content: system },
+      ...(typeof opts.content === "string" ? [{ role: "user" as const, content: opts.content }] : opts.content),
+    ];
+    const ask = (noTools: boolean) =>
+      this.streamCompletion(messages, isVoice, say, noTools, undefined, undefined, {
+        // Kept on the follow-up call too (the history holds the search call);
+        // noTools forbids a second search.
+        tools: webTools,
+        effort: "none",
+        model,
+        signal: controller.signal,
+        maxSentences: opts.maxSentences,
+      });
     try {
-      const stream = await withTokenCap(model, this.maxOutputTokens(isVoice), (capParam) =>
-        withReasoningEffort(
-          model,
-          "none",
-          (reasoning) =>
-            this.client.chat.completions.create(
-              {
-                model,
-                ...capParam,
-                ...reasoning,
-                messages: [
-                  { role: "system", content: system },
-                  ...(typeof opts.content === "string" ? [{ role: "user" as const, content: opts.content }] : opts.content),
-                ],
-                stream: true,
-                ...(!this.isMistral() ? { stream_options: { include_usage: true } } : {}),
-              } as OpenAI.ChatCompletionCreateParamsStreaming,
-              { signal: controller.signal }
-            ),
-          this.client.baseURL
-        )
-      );
-      const guard = new SpokenGuard(isVoice, !leanMode(), opts.maxSentences);
-      let usage: TokenUsage | undefined;
-      for await (const chunk of stream) {
-        if (chunk.usage) usage = readUsage(chunk.usage);
-        const out = guard.push(contentToText(chunk.choices[0]?.delta?.content));
-        if (out) {
-          text += out;
-          onChunk?.(out);
+      let result = await ask(false);
+      usage.add(result.usage);
+      if (result.toolCalls.length && !text.trim()) {
+        // A search takes its time: the plain sentence no longer replaces it.
+        if (timer) clearTimeout(timer);
+        timer = undefined;
+        messages.push({ role: "assistant", content: result.text || null, tool_calls: result.toolCalls });
+        for (const tc of result.toolCalls) {
+          const found = tc.function.name === "web_search" && opts.toolCtx
+            ? await handleToolCall(this.ha, "web_search", parseArgs(tc), opts.toolCtx)
+            : { error: "Only web_search is available here." };
+          console.log(`[route] ${model} searched the web: ${String(parseArgs(tc).query ?? "").slice(0, 80)}`);
+          messages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(found) });
         }
-        if (guard.stopped) break;
+        result = await ask(true);
+        usage.add(result.usage);
       }
-      const rest = guard.flush();
-      if (rest) {
-        text += rest;
-        onChunk?.(rest);
-      }
-      if (text.trim()) return { text, usage: usage ? { ...usage } : undefined };
+      if (text.trim()) return { text, usage: usage.totals() };
       throw new Error("empty reply");
     } catch (error) {
       if (signal?.aborted) throw error;
       console.warn(`[route] ${model} did not answer for the local model (${error instanceof Error ? error.message : error})`);
       if (text) return { text };
-      onChunk?.(fallback);
+      opts.onChunk?.(fallback);
       return { text: fallback };
     } finally {
       if (timer) clearTimeout(timer);
@@ -1154,7 +1160,7 @@ export class OpenAIChatEngine implements IChatEngine {
             ...reasoning,
             ...cache,
             messages,
-            tools,
+            ...(tools.length ? { tools } : {}),
             // Keep the tool list in the request (history already references it) but
             // stop the model from issuing more calls.
             ...(disableTools ? { tool_choice: "none" as const } : opts.toolChoice ? { tool_choice: opts.toolChoice } : {}),

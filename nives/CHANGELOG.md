@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.2 — Mistral searches the web itself
+
+- With the local model, "qui a gagné le Ballon d'Or en 2026 ?" got "I don't have that information": the local model saw nothing about the house in it and did not search, and Mistral answered from what it knew. Mistral now runs the web search itself whenever its knowledge is not enough (news, anything recent), and never says it does not know without searching. Only the query leaves, as before. The local model no longer has the web search.
+- The "was this said to Igor?" check (a sentence that names Igor in the middle) now runs on Mistral, which receives the sentence anyway: about half a second instead of up to 4 seconds while the local model was busy.
+
 ## 0.16.1 — The local model reads less
 
 - A web search, a state read, a contact search, a reminder or an order now goes straight to Mistral with its results: the local model no longer reads them again first. A web search's results took it so long that no answer came. It reads results again only when a second action depends on them (a device search before the order, the calendar's date conversion).
