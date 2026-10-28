@@ -9,7 +9,7 @@ systemd user service, `igor-llm`, next to `whisper-server`:
 - every request needs the key in `~/.config/igor-llm/api-key` (created once,
   mode 600, never printed); `/health` stays public;
 - one slot of 32 768 tokens with 4 GB of prompt cache in RAM; Igor reads the next spoken prompt ahead of time after each request and every 15 s (prewarm), so a request only has the person's words left to read; thinking off. This card reads 576 tokens/s at the start of a prompt but 170 after 8 000, so Igor sends the local model a short prompt (about 6 000 tokens);
-- the card is kept at its highest clocks (`igor-gpu-high` system service).
+- the card stays on automatic clocks (an earlier version forced them high, which kept the fans loud for a few milliseconds' gain; install.sh removes that).
 
 Run it as the normal user on the VM, from this folder:
 

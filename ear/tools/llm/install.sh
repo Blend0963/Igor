@@ -120,32 +120,19 @@ else
   ok "activé"
 fi
 
-step "8/8 Carte graphique à pleine fréquence"
-# La carte reste à ses fréquences maximales : elle ne perd plus de temps à
-# remonter en régime au début de chaque demande. La consommation n'est pas
-# une limite ici.
-GPU_UNIT=/etc/systemd/system/igor-gpu-high.service
-if ! ls /sys/class/drm/card*/device/power_dpm_force_performance_level >/dev/null 2>&1; then
-  printf 'ATTENTION — réglage de fréquence introuvable (pilote amdgpu ?), étape sautée\n'
-else
-  sudo tee "$GPU_UNIT" >/dev/null <<'GPU' || fail "écriture de $GPU_UNIT"
-[Unit]
-Description=Radeon VII at full clocks for Igor's local model
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/bin/sh -c 'for f in /sys/class/drm/card*/device/power_dpm_force_performance_level; do echo high > "$f"; done'
-
-[Install]
-WantedBy=multi-user.target
-GPU
-  sudo systemctl daemon-reload || fail "sudo systemctl daemon-reload"
-  sudo systemctl enable igor-gpu-high >/dev/null 2>&1 || fail "activation de igor-gpu-high"
-  sudo systemctl restart igor-gpu-high || fail "démarrage de igor-gpu-high"
-  level=$(cat /sys/class/drm/card*/device/power_dpm_force_performance_level 2>/dev/null | sort -u | tr '\n' ' ')
-  case "$level" in *high*) ok "fréquence : $level";; *) fail "la carte n'est pas passée en « high » ($level)";; esac
+step "8/8 Carte graphique en réglage automatique"
+# Forcer la carte à sa fréquence maximale (igor-gpu-high, versions
+# précédentes) faisait souffler ses ventilateurs en permanence pour un gain
+# de quelques millisecondes : on revient au réglage automatique.
+if [ -f /etc/systemd/system/igor-gpu-high.service ]; then
+  sudo systemctl disable --now igor-gpu-high >/dev/null 2>&1 || fail "arrêt de igor-gpu-high"
+  sudo rm -f /etc/systemd/system/igor-gpu-high.service && sudo systemctl daemon-reload || fail "suppression de igor-gpu-high"
 fi
+for f in /sys/class/drm/card*/device/power_dpm_force_performance_level; do
+  [ -w "$f" ] || [ -e "$f" ] || continue
+  [ "$(cat "$f")" = auto ] || echo auto | sudo tee "$f" >/dev/null || fail "retour au réglage automatique ($f)"
+done
+ok "réglage automatique"
 
 ip=$(hostname -I 2>/dev/null | awk '{print $1}')
 printf '\nTerminé. Le modèle répond sur http://%s:%s/v1\n' "${ip:-<ip-de-la-vm>}" "$PORT"
