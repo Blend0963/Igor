@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.2 — The local model vouvoie and stops repeating itself
+
+- On the local model, Igor answered three different questions with the same sentence, word for word, and switched to "tu" after being addressed with "tu".
+  - It now uses the sampling Qwen recommends for answers without thinking, including a penalty on repeating itself.
+  - A short reminder goes right before your words: always "vous", never repeat an earlier answer word for word, and ask to repeat a sentence that makes no sense (failed speech recognition).
+
 ## 0.12.1 — A short prompt for the local model
 
 - On the audio VM's Radeon VII, reading a prompt slows down as it grows: 576 tokens per second at the start, 170 after 8 000, 94 after 16 000. Igor's full voice prompt (16 600 tokens) took four minutes. The local model now gets a short one:

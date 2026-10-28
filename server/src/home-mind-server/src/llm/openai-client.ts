@@ -25,7 +25,7 @@ import { describeLongBatch } from "./long-task.js";
 import { recallSemantically, rememberSemantically } from "./semantic-recall.js";
 import { DEFAULT_MESSAGE_CAP, RECALL_LIMIT, resolveMemoryScope } from "../memory/memory-scope.js";
 import { withPromptCacheKey } from "./prompt-cache-key.js";
-import { createLocalClient, LOCAL_HISTORY, LOCAL_TOOLS, LOCAL_UNAVAILABLE } from "./local-llm.js";
+import { createLocalClient, LOCAL_HISTORY, LOCAL_REMINDER, LOCAL_SAMPLING, LOCAL_TOOLS, LOCAL_UNAVAILABLE } from "./local-llm.js";
 import { OpenAIFactExtractor } from "../memory/openai-extractor.js";
 import {
   readUsage,
@@ -363,6 +363,7 @@ export class OpenAIChatEngine implements IChatEngine {
     if (sentenceCap !== undefined) {
       volatileSystemPrompt = volatileSystemPrompt ? `${volatileSystemPrompt}\n\n${SPOKEN_LENGTH_REMINDER}` : SPOKEN_LENGTH_REMINDER;
     }
+    if (local) volatileSystemPrompt = volatileSystemPrompt ? `${volatileSystemPrompt}\n\n${LOCAL_REMINDER}` : LOCAL_REMINDER;
 
     // The volatile context goes after the history, right before the current
     // user message: everything before it is stable or append-only, so the
@@ -891,6 +892,7 @@ export class OpenAIChatEngine implements IChatEngine {
           withPromptCacheKey(model, cacheKey, (cache) =>
           client.chat.completions.create({
             model: model,
+            ...(opts.client ? LOCAL_SAMPLING : {}),
             ...capParam,
             ...reasoning,
             ...cache,

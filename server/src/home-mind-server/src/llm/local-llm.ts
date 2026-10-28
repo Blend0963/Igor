@@ -33,6 +33,20 @@ export const LOCAL_TOOLS = new Set([
 /** Messages of the Assist conversation the local model reads: short, as the prompt must be. */
 export const LOCAL_HISTORY = 6;
 
+/**
+ * Said last, right before the person's words, where a small model heeds it
+ * best: an 8B model mirrored a "tu" into tutoiement and repeated one of its
+ * earlier answers word for word to three different questions.
+ */
+export const LOCAL_REMINDER =
+  "Rappel : vouvoie toujours la personne, même si elle te tutoie. Ne reprends jamais mot pour mot une de tes réponses précédentes : réponds à la phrase qui vient. Si elle n'a pas de sens (reconnaissance vocale ratée), demande en quelques mots de répéter.";
+
+/**
+ * Qwen3's recommended sampling without thinking: presence_penalty keeps a
+ * small model from repeating itself. llama.cpp reads top_k as an extension.
+ */
+export const LOCAL_SAMPLING = { temperature: 0.7, top_p: 0.8, top_k: 20, presence_penalty: 1.5 };
+
 /** What Igor says when the local model does not answer. */
 export const LOCAL_UNAVAILABLE = "Le modèle local ne répond pas pour le moment. Réessayez dans un instant.";
 

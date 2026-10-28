@@ -759,6 +759,11 @@ describe("OpenAIChatEngine", () => {
       expect(names).not.toContain("create_automation");
       expect(names).not.toContain("get_history");
       expect(vi.mocked(conversations.getConversationHistory).mock.calls[0][1]).toBe(6);
+      // Qwen3's sampling, and the reminder right before the person's words.
+      expect(body).toMatchObject({ temperature: 0.7, top_p: 0.8, top_k: 20, presence_penalty: 1.5 });
+      const beforeUser = body.messages[body.messages.length - 2];
+      expect(beforeUser.role).toBe("system");
+      expect(beforeUser.content).toContain("vouvoie toujours");
     });
 
     it("keeps panel threads and images on the main model", async () => {
