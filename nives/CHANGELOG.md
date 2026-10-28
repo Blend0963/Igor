@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16.1 — The local model reads less
+
+- A web search, a state read, a contact search, a reminder or an order now goes straight to Mistral with its results: the local model no longer reads them again first. A web search's results took it so long that no answer came. It reads results again only when a second action depends on them (a device search before the order, the calendar's date conversion).
+- The list of what is on is no longer in the local model's prompt: it changed all the time and had to be read again at every request and every minute (about 650 tokens, 8 to 12 seconds). The local model reads a state when a request needs it.
+- A request no longer waits behind a prewarm under way: the prewarm is stopped.
+- The `[usage]` line names both models: the local one that acts and Mistral that answers.
+
 ## 0.16.0 — With the local model, Mistral answers everything
 
 - The local model never speaks any more. It only acts and reads (turn on, read a temperature, find a contact, schedule a reminder), and writes a single "-" when nothing at home is concerned, which takes it a fraction of a second.
