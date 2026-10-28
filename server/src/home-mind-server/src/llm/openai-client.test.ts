@@ -819,17 +819,58 @@ describe("OpenAIChatEngine", () => {
         .mockResolvedValueOnce(
           makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "share_memory", arguments: JSON.stringify({ facts: ["Le prénom de l'utilisateur est Jean.", "Son code est 1234."] }) } }] }, finish_reason: "tool_calls" }] }])
         )
-        .mockResolvedValueOnce(reply("-"))
         .mockResolvedValueOnce(reply("Vous êtes Jean."));
       const r = await localEngine.chat({ message: "comment je m'appelle ?", userId: "u", isVoice: true });
       expect(r.response).toBe("Vous êtes Jean.");
       expect(mockCreate.mock.calls[0][0].tools.map((t: { function: { name: string } }) => t.function.name)).toContain("share_memory");
       expect(handleToolCall).not.toHaveBeenCalled();
-      const online = mockCreate.mock.calls[2][0];
+      // Straight to the online model: no second local pass.
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+      const online = mockCreate.mock.calls[1][0];
       const sent = JSON.stringify(online.messages);
       expect(sent).toContain("Le prénom de l'utilisateur est Jean.");
       expect(sent).not.toContain("1234");
       expect(sent).not.toContain("21 degrés");
+    });
+
+    it("hands a web search's results straight to the online model, without a second local pass", async () => {
+      vi.mocked(handleToolCall).mockResolvedValue({ answer: "Le Ballon d'Or 2026 est allé à un milieu espagnol." });
+      mockCreate
+        .mockResolvedValueOnce(
+          makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "web_search", arguments: '{"query":"Ballon d\'Or 2026"}' } }] }, finish_reason: "tool_calls" }] }])
+        )
+        .mockResolvedValueOnce(reply("Un milieu espagnol l'a remporté."));
+      const r = await localEngine.chat({ message: "qui a gagné le ballon d'or ?", userId: "u", isVoice: true });
+      expect(r.response).toBe("Un milieu espagnol l'a remporté.");
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+      expect(endpoint(1)).toBe("https://api.openai.com/v1");
+      expect(JSON.stringify(mockCreate.mock.calls[1][0].messages)).toContain("milieu espagnol");
+    });
+
+    it("lets the local model act again after searching for a device", async () => {
+      vi.mocked(handleToolCall)
+        .mockResolvedValueOnce([{ entity_id: "light.bureau", state: "off", name: "Lampe bureau" }])
+        .mockResolvedValueOnce({ changed_states: [{ entity_id: "light.bureau", state: "on", name: "Lampe bureau" }] });
+      mockCreate
+        .mockResolvedValueOnce(
+          makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "search_entities", arguments: '{"query":"bureau"}' } }] }, finish_reason: "tool_calls" }] }])
+        )
+        .mockResolvedValueOnce(
+          makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c2", function: { name: "call_service", arguments: '{"domain":"light","service":"turn_on","entity_id":"light.bureau"}' } }] }, finish_reason: "tool_calls" }] }])
+        )
+        .mockResolvedValueOnce(reply("La lampe du bureau est allumée."));
+      const r = await localEngine.chat({ message: "allume le bureau", userId: "u", isVoice: true });
+      expect(r.response).toBe("La lampe du bureau est allumée.");
+      expect(mockCreate).toHaveBeenCalledTimes(3);
+      expect(endpoint(1)).toBe("http://192.168.1.20:8180/v1");
+      expect(endpoint(2)).toBe("https://api.openai.com/v1");
+    });
+
+    it("leaves the live state out of the local prompt", async () => {
+      vi.mocked(ha.getEntities).mockResolvedValue([{ entity_id: "light.salon", state: "on", attributes: { friendly_name: "Salon" } }] as never);
+      mockCreate.mockResolvedValue(reply("-"));
+      await localEngine.chat({ message: "bonsoir", userId: "u", isVoice: true });
+      expect(JSON.stringify(mockCreate.mock.calls[0][0].messages)).not.toContain("Live state");
     });
 
     it("never speaks the local model's words: the online model answers", async () => {

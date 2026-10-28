@@ -124,3 +124,20 @@ export function actionSentence(calls: DoneCall[]): string | undefined {
   const text = joinFrench(parts);
   return `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
 }
+
+/**
+ * True when the local model must read a batch's results to act again: a
+ * search for a device (the order comes next), or a script that returned
+ * something (the calendar's date conversion before the event). Anything
+ * else is handed straight to the online model, which answers.
+ */
+export function needsLocalFollowUp(calls: DoneCall[]): boolean {
+  return calls.some((call) => {
+    if (call.name === "search_entities" || call.name === "get_entities") return true;
+    if (call.name !== "call_service" || call.input.domain !== "script") return false;
+    const r = call.result as { error?: unknown; service_response?: unknown } | undefined;
+    if (!r || typeof r !== "object" || r.error) return false;
+    const response = r.service_response;
+    return response !== undefined && response !== null && !(typeof response === "object" && Object.keys(response).length === 0);
+  });
+}

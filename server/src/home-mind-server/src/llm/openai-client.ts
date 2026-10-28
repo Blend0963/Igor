@@ -44,7 +44,7 @@ import {
   SHARE_MEMORY_TOOL,
   shareMemory,
 } from "./local-llm.js";
-import { actionSentence, type DoneCall } from "./action-sentence.js";
+import { actionSentence, needsLocalFollowUp, type DoneCall } from "./action-sentence.js";
 import { OpenAIFactExtractor } from "../memory/openai-extractor.js";
 import {
   readUsage,
@@ -162,6 +162,8 @@ export class OpenAIChatEngine implements IChatEngine {
   /** Local Assist requests being answered: the prewarm waits for none. */
   private localInFlight = 0;
   private prewarming = false;
+  /** Stops a prewarm under way, so that a request never waits behind one. */
+  private prewarmAbort?: AbortController;
   private memory: IMemoryStore;
   private conversations: IConversationStore;
   private extractor: IFactExtractor;
@@ -220,6 +222,9 @@ export class OpenAIChatEngine implements IChatEngine {
     const local = this.local && !request.prewarm && !isThreadId(request.conversationId) && !request.images?.length;
     if (!local) return this.runChat(request, streamArg);
     this.localInFlight++;
+    // The card serves one request at a time: a prewarm under way would make
+    // this one wait for it.
+    this.prewarmAbort?.abort();
     try {
       return await this.runChat(request, streamArg);
     } finally {
@@ -241,12 +246,15 @@ export class OpenAIChatEngine implements IChatEngine {
   private async prewarm(): Promise<void> {
     if (!this.local || !this.config.localLlmPrewarm || !this.lastVoice || this.prewarming || this.localInFlight > 0) return;
     this.prewarming = true;
+    const controller = new AbortController();
+    this.prewarmAbort = controller;
     try {
-      await this.runChat({ ...this.lastVoice, message: "", isVoice: true, prewarm: true });
+      await this.runChat({ ...this.lastVoice, message: "", isVoice: true, prewarm: true, signal: controller.signal });
     } catch (error) {
       if (this.config.logLevel === "debug") console.debug(`[prewarm] ${error instanceof Error ? error.message : error}`);
     } finally {
       this.prewarming = false;
+      if (this.prewarmAbort === controller) this.prewarmAbort = undefined;
     }
   }
 
@@ -427,7 +435,10 @@ export class OpenAIChatEngine implements IChatEngine {
 
     // What is on or open right now, read from Home Assistant (llm/live-state.ts).
     // Volatile, so it joins the message after the history.
-    const live = liveStates ? formatLiveState(liveStates) : undefined;
+    // Not for the local model: the list changes all the time, so it had to be
+    // read again at every request and every minute (≈ 650 tokens, 8-12 s on
+    // its card); it reads a state with get_state when a request needs it.
+    const live = liveStates && !local ? formatLiveState(liveStates) : undefined;
     if (live) volatileSystemPrompt = volatileSystemPrompt ? `${volatileSystemPrompt}\n\n${live}` : live;
 
     // A spoken reply is short: said last, right before the person's words.
@@ -458,12 +469,15 @@ export class OpenAIChatEngine implements IChatEngine {
       // now; a placeholder stands for the words, which the template needs.
       if (local) {
         const startedAt = Date.now();
-        const response = await local.client.chat.completions.create({
-          model: local.model,
-          messages: [...messages, { role: "user", content: "…" }],
-          tools,
-          max_tokens: 1,
-        });
+        const response = await local.client.chat.completions.create(
+          {
+            model: local.model,
+            messages: [...messages, { role: "user", content: "…" }],
+            tools,
+            max_tokens: 1,
+          },
+          request.signal ? { signal: request.signal } : undefined
+        );
         const t = (response as { timings?: { prompt_n?: number; cache_n?: number } }).timings;
         if (t?.prompt_n) console.log(`[prewarm] read ${t.prompt_n} new tokens (${t.cache_n ?? 0} from cache) in ${Date.now() - startedAt}ms`);
       }
@@ -742,13 +756,16 @@ export class OpenAIChatEngine implements IChatEngine {
         // The online model words it as Igor from that alone ("Lumière salon
         // allumée."), with no second pass on the local one; the plain
         // sentence is said if it does not answer in time.
-        if (local) localDone.push(...done);
-        const said = local && done.length === result.toolCalls.length ? actionSentence(done) : undefined;
-        if (said) {
-          // Nothing left for the local model to do: the online one answers now.
-          plainSentence = said;
-          result = { text: "", finishReason: "stop", toolCalls: [], usage: undefined };
-          break;
+        if (local) {
+          localDone.push(...done);
+          // The local model reads results again only when a second action
+          // depends on them; otherwise (a web search, a state, a contact, an
+          // order) they go straight to the online model, which answers.
+          if (done.length === result.toolCalls.length && !needsLocalFollowUp(done)) {
+            plainSentence = actionSentence(done);
+            result = { text: "", finishReason: "stop", toolCalls: [], usage: undefined };
+            break;
+          }
         }
 
         // Continue streaming. On the final allowed iteration, disable tool calling
@@ -839,7 +856,7 @@ export class OpenAIChatEngine implements IChatEngine {
       ? `${result.text.trimEnd()}${result.text.trim() ? "\n\n" : ""}*[Réponse interrompue]*`
       : result.text + extraMedia;
 
-    console.log(`[usage] ${promptMode} ${turnUsage.describe()} tools=${toolsUsed.length} model=${model}`);
+    console.log(`[usage] ${promptMode} ${turnUsage.describe()} tools=${toolsUsed.length} model=${local ? `${local.model} (acts) + ${this.config.llmModel} (answers)` : model}`);
     console.log(
       `[timing] ${promptMode} ${Object.entries(timing).map(([k, v]) => `${k}=${v}ms`).join(" ")} ` +
         `model_start=${modelStartedAt - startedAt}ms first_text=${firstTextAt ? `${firstTextAt - startedAt}ms` : "none"} ` +
