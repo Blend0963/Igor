@@ -111,6 +111,13 @@ console.log(`  ✓ Topology scanner: home layout ${topology.hasLayout() ? "loade
 
 const llm = createChatEngine(config, memory, conversations, extractor, ha, scanner, topology);
 console.log(`  LLM client: ${config.llmProvider}/${config.llmModel}`);
+if (config.localLlmUrl) {
+  console.log(
+    config.llmProvider === "anthropic"
+      ? "  ⚠ Local model: LOCAL_LLM_URL is ignored with the anthropic provider"
+      : `  Local model for Assist: ${config.localLlmModel} at ${config.localLlmUrl}`
+  );
+}
 
 // Initialize STT (optional — only when STT_PROVIDER is set)
 const stt = createSttService(config);

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.0 — Assist on the house's own model
+
+- **New options `local_llm_url` and `local_llm_key`**: Assist and the voice answer with a model that runs at home (Qwen3 8B on the audio VM's graphics card, installed by `ear/tools/llm/install.sh`). On the bench it called the right tool 20 times out of 20 and spoke its answer about 2.3 s after the request.
+  - Everything around the answer stays at home too: the "was this said to Igor?" check, the order check and what Igor learns for its memory. The search of old messages by meaning and the fast model, which would send your words online, are not used for these requests.
+  - If the local model does not answer, Igor says so ("Le modèle local ne répond pas pour le moment"). The request is never sent to the online model instead.
+  - Chat threads stay on the main model, as do requests with an image (the local model does not see).
+  - Leave `local_llm_url` empty to keep Assist on the main model, as before.
+
 ## 0.11.15 — Spoken answers stay short
 
 - A spoken (or typed Assist) answer could turn into a numbered list of several paragraphs, on a "why" question for instance: the persona's "two short sentences" sits thousands of words before the question, and the model forgot it.

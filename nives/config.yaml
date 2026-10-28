@@ -1,5 +1,5 @@
 name: "Igor"
-version: "0.11.15"
+version: "0.12.0"
 slug: "mado"
 description: "In Igor we trust. L'assistant IA de la maison, avec sa mémoire"
 url: "https://github.com/Blend0963/MaDo"
@@ -87,6 +87,11 @@ schema:
   # Cheaper model for plain commands ("allume le salon") and quick state
   # questions. Unset = every request on the main model.
   fast_model: "str?"
+  # The house's own model for Assist and the voice: llama.cpp's server on the
+  # audio VM (ear/tools/llm/install.sh), e.g. http://192.168.1.20:8180/v1.
+  # Unset = Assist on the main model.
+  local_llm_url: "url?"
+  local_llm_key: "password?"
   # Reminders, scheduled tasks and the morning briefing are sent to this
   # notify service (e.g. mobile_app_pixel_8). Unset = a persistent
   # notification in Home Assistant.
