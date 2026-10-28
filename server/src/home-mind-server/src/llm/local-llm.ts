@@ -30,6 +30,38 @@ export const LOCAL_TOOLS = new Set([
   "web_search",
 ]);
 
+/**
+ * The local model hands conversation and general knowledge to the main
+ * (online) model with this tool: only the question it writes leaves the
+ * house, never the home, the memory, the contacts or the conversation.
+ */
+export const ANSWER_GENERAL = "answer_general";
+
+export const ANSWER_GENERAL_TOOL: OpenAI.ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: ANSWER_GENERAL,
+    description:
+      "Answer a general question or chat: knowledge, explanations, advice, cooking, health, language, jokes, opinions, " +
+      "anything NOT about this home, its devices, the phone, contacts, reminders or what you remember. " +
+      "Write the person's question so it stands alone, in their language, WITHOUT any name, phone number, address, " +
+      "device or detail of this home. The answer is spoken to the person as it is: say nothing yourself.",
+    parameters: {
+      type: "object",
+      properties: { question: { type: "string", description: "The question, standing alone, with no personal detail." } },
+      required: ["question"],
+    },
+  },
+};
+
+/** The online model's instructions for a question handed over by the local one. */
+export const GENERAL_INSTRUCTIONS =
+  "Tu réponds à une question posée à voix haute. Tu ne sais rien de la maison ni de la personne : ne fais aucune supposition sur elles, " +
+  "ne propose aucune action et ne pose pas de question sur la maison. Réponds directement, à l'oral, en texte brut.";
+
+/** What Igor says when the online model does not answer a handed-over question. */
+export const GENERAL_UNAVAILABLE = "Je n'arrive pas à joindre le service en ligne pour cette question. Réessayez dans un instant.";
+
 /** Messages of the Assist conversation the local model reads: short, as the prompt must be. */
 export const LOCAL_HISTORY = 6;
 

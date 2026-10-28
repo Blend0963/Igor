@@ -787,6 +787,38 @@ describe("OpenAIChatEngine", () => {
       }
     });
 
+    it("says a plain order's outcome itself, without a second model call", async () => {
+      vi.mocked(handleToolCall).mockResolvedValue({ changed_states: [{ entity_id: "light.salon", state: "on", name: "Lumière salon" }] });
+      mockCreate.mockResolvedValueOnce(
+        makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "call_service", arguments: '{"domain":"light","service":"turn_on","entity_id":"light.salon"}' } }] }, finish_reason: "tool_calls" }] }])
+      );
+      const chunks: string[] = [];
+      const r = await localEngine.chat({ message: "allume la lumière du salon", userId: "u", isVoice: true }, { onChunk: (c) => chunks.push(c) });
+      expect(r.response).toBe("Lumière salon allumée.");
+      expect(chunks.join("")).toBe("Lumière salon allumée.");
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it("hands a general question to the online model, with the question alone", async () => {
+      mockCreate
+        .mockResolvedValueOnce(
+          makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "answer_general", arguments: '{"question":"Pourquoi le ciel est-il bleu ?"}' } }] }, finish_reason: "tool_calls" }] }])
+        )
+        .mockResolvedValueOnce(reply("La lumière bleue est diffusée par l'air."));
+      const r = await localEngine.chat({ message: "dis Igor pourquoi le ciel est bleu", userId: "u", isVoice: true, customPrompt: "Tu es Igor." });
+      expect(r.response).toBe("La lumière bleue est diffusée par l'air.");
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+      expect(endpoint(0)).toBe("http://192.168.1.20:8180/v1");
+      expect(endpoint(1)).toBe("https://api.openai.com/v1");
+      const online = mockCreate.mock.calls[1][0];
+      expect(online.model).toBe("gpt-4o-mini");
+      expect(online.tools).toBeUndefined();
+      expect(online.messages).toHaveLength(2);
+      expect(online.messages[0].content).toContain("Tu es Igor.");
+      expect(online.messages[1]).toEqual({ role: "user", content: "Pourquoi le ciel est-il bleu ?" });
+      expect(r.toolsUsed).toEqual(["answer_general"]);
+    });
+
     it("keeps panel threads and images on the main model", async () => {
       mockCreate.mockResolvedValue(reply());
       await localEngine.chat({ message: "écris-moi un poème", userId: "u", conversationId: "mado-thread:t1" });

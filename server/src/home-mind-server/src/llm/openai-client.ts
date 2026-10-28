@@ -25,7 +25,20 @@ import { describeLongBatch } from "./long-task.js";
 import { recallSemantically, rememberSemantically } from "./semantic-recall.js";
 import { DEFAULT_MESSAGE_CAP, isThreadId, RECALL_LIMIT, resolveMemoryScope } from "../memory/memory-scope.js";
 import { withPromptCacheKey } from "./prompt-cache-key.js";
-import { createLocalClient, LOCAL_HISTORY, LOCAL_REMINDER, LOCAL_SAMPLING, LOCAL_TOOLS, LOCAL_UNAVAILABLE, PREWARM_EVERY_MS } from "./local-llm.js";
+import {
+  ANSWER_GENERAL,
+  ANSWER_GENERAL_TOOL,
+  createLocalClient,
+  GENERAL_INSTRUCTIONS,
+  GENERAL_UNAVAILABLE,
+  LOCAL_HISTORY,
+  LOCAL_REMINDER,
+  LOCAL_SAMPLING,
+  LOCAL_TOOLS,
+  LOCAL_UNAVAILABLE,
+  PREWARM_EVERY_MS,
+} from "./local-llm.js";
+import { actionSentence, type DoneCall } from "./action-sentence.js";
 import { OpenAIFactExtractor } from "../memory/openai-extractor.js";
 import {
   readUsage,
@@ -426,7 +439,10 @@ export class OpenAIChatEngine implements IChatEngine {
 
     const promptMode = scope.isThread ? "thread" : isVoice ? "voice" : "text";
     const allTools = openAIToolsFor(promptMode, { unattended: request.unattended === true, noMemory: !scope.facts });
-    const tools = local ? allTools.filter((t) => t.type === "function" && LOCAL_TOOLS.has(t.function.name)) : allTools;
+    // The local model also hands general questions to the online one.
+    const tools = local
+      ? [...allTools.filter((t) => t.type === "function" && LOCAL_TOOLS.has(t.function.name)), ANSWER_GENERAL_TOOL]
+      : allTools;
 
     if (request.prewarm) {
       // Everything a spoken request sends before the person's words, read
@@ -639,6 +655,18 @@ export class OpenAIChatEngine implements IChatEngine {
         if (signal?.aborted) throw new Error("aborted");
         iterations++;
 
+        // A general question the local model handed over: the online model
+        // answers it, from the question alone, and that answer is the reply.
+        const handOver = local ? result.toolCalls.find((tc) => tc.function.name === ANSWER_GENERAL) : undefined;
+        const question = handOver ? String(parseArgs(handOver).question ?? "").trim() : "";
+        if (question) {
+          toolsUsed.push(ANSWER_GENERAL);
+          const answer = await this.answerGeneral(question, customPrompt, isVoice, sentenceCap, onChunk, signal);
+          turnUsage.add(answer.usage);
+          result = { text: answer.text, finishReason: "stop", toolCalls: [], usage: undefined };
+          break;
+        }
+
         // Add assistant message with tool calls
         messages.push({
           role: "assistant",
@@ -661,6 +689,7 @@ export class OpenAIChatEngine implements IChatEngine {
         }
 
         // Execute all tool calls in parallel
+        const done: DoneCall[] = [];
         const toolPromises = result.toolCalls.map(async (tc: FunctionToolCall) => {
           toolsUsed.push(tc.function.name);
 
@@ -686,6 +715,7 @@ export class OpenAIChatEngine implements IChatEngine {
           }
 
           const toolResult = await handleToolCall(this.ha, tc.function.name, args, toolCtx);
+          done.push({ name: tc.function.name, input: args, result: toolResult });
           return {
             role: "tool" as const,
             tool_call_id: tc.id,
@@ -697,6 +727,16 @@ export class OpenAIChatEngine implements IChatEngine {
 
         const toolResults = await Promise.all(toolPromises);
         messages.push(...toolResults);
+
+        // A plain order on the local model: Home Assistant said what changed,
+        // so the server says it ("Lumière salon allumée.") without a second
+        // model call.
+        const said = local && result.text.trim() === "" && done.length === result.toolCalls.length ? actionSentence(done) : undefined;
+        if (said) {
+          onChunk?.(said);
+          result = { text: said, finishReason: "stop", toolCalls: [], usage: undefined };
+          break;
+        }
 
         // Continue streaming. On the final allowed iteration, disable tool calling
         // so the model has to answer in words rather than loop again.
@@ -906,6 +946,72 @@ export class OpenAIChatEngine implements IChatEngine {
       { signal }
     );
     return { text: response.choices[0]?.message?.content ?? "", usage: readUsage(response.usage) };
+  }
+
+  /**
+   * A general question handed over by the local model, answered by the main
+   * (online) model from the question and Igor's persona alone, streamed as
+   * the spoken reply. Never throws but on a stop: a failure is said.
+   */
+  private async answerGeneral(
+    question: string,
+    persona: string | undefined,
+    isVoice: boolean,
+    maxSentences: number | undefined,
+    onChunk: StreamCallback | undefined,
+    signal: AbortSignal | undefined
+  ): Promise<{ text: string; usage?: TokenUsage }> {
+    const model = this.config.llmModel;
+    const system = [persona?.trim(), GENERAL_INSTRUCTIONS].filter(Boolean).join("\n\n");
+    console.log(`[route] general question handed to ${model}: ${question.slice(0, 80)}`);
+    let text = "";
+    try {
+      const stream = await withTokenCap(model, this.maxOutputTokens(isVoice), (capParam) =>
+        withReasoningEffort(
+          model,
+          "none",
+          (reasoning) =>
+            this.client.chat.completions.create(
+              {
+                model,
+                ...capParam,
+                ...reasoning,
+                messages: [
+                  { role: "system", content: system },
+                  { role: "user", content: question },
+                ],
+                stream: true,
+                ...(!this.isMistral() ? { stream_options: { include_usage: true } } : {}),
+              } as OpenAI.ChatCompletionCreateParamsStreaming,
+              signal ? { signal } : undefined
+            ),
+          this.client.baseURL
+        )
+      );
+      const guard = new SpokenGuard(isVoice, !leanMode(), maxSentences);
+      let usage: TokenUsage | undefined;
+      for await (const chunk of stream) {
+        if (chunk.usage) usage = readUsage(chunk.usage);
+        const out = guard.push(contentToText(chunk.choices[0]?.delta?.content));
+        if (out) {
+          text += out;
+          onChunk?.(out);
+        }
+        if (guard.stopped) break;
+      }
+      const rest = guard.flush();
+      if (rest) {
+        text += rest;
+        onChunk?.(rest);
+      }
+      return { text, usage: usage ? { ...usage } : undefined };
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      console.warn(`[route] ${model} did not answer the handed-over question (${error instanceof Error ? error.message : error})`);
+      if (text) return { text };
+      onChunk?.(GENERAL_UNAVAILABLE);
+      return { text: GENERAL_UNAVAILABLE };
+    }
   }
 
   /** Mistral rejects stream_options on its OpenAI-compatible chat endpoint. */
