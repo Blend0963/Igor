@@ -31,44 +31,14 @@ export const LOCAL_TOOLS = new Set([
 ]);
 
 /**
- * The local model hands conversation and general knowledge to the main
- * (online) model with this tool: only the question it writes leaves the
- * house, never the home, the memory, the contacts or the conversation.
- */
-export const ANSWER_GENERAL = "answer_general";
-
-export const ANSWER_GENERAL_TOOL: OpenAI.ChatCompletionTool = {
-  type: "function",
-  function: {
-    name: ANSWER_GENERAL,
-    description:
-      "Answer a general question or chat: knowledge, explanations, advice, cooking, health, language, jokes, opinions, " +
-      "anything NOT about this home, its devices, the phone, contacts, reminders or what you remember. " +
-      "Write the person's question so it stands alone, in their language, WITHOUT any name, phone number, address, " +
-      "device or detail of this home. The answer is spoken to the person as it is: say nothing yourself.",
-    parameters: {
-      type: "object",
-      properties: { question: { type: "string", description: "The question, standing alone, with no personal detail." } },
-      required: ["question"],
-    },
-  },
-};
-
-/** The online model's instructions for a question handed over by the local one. */
-export const GENERAL_INSTRUCTIONS =
-  "Tu réponds à une question posée à voix haute. Tu ne sais rien de la maison ni de la personne : ne fais aucune supposition sur elles, " +
-  "ne propose aucune action et ne pose pas de question sur la maison. Réponds directement, à l'oral, en texte brut.";
-
-/**
- * Who the local model is: a working part, not a character. It acts, and
- * answers only what concerns the home, the phone and contacts; the online
- * model plays Igor. The add-on option local_llm_prompt (LOCAL_LLM_PROMPT)
+ * Who the local model is: a working part, not a character. It acts and
+ * reads; the online model plays Igor and answers. The add-on option local_llm_prompt (LOCAL_LLM_PROMPT)
  * adds the owner's working rules (scripts, contacts, calls) after it.
  */
 export const LOCAL_IDENTITY =
-  "Tu es le module domotique d'un assistant vocal intégré à Home Assistant. Tu n'as pas de personnalité à jouer : " +
-  "tu comprends la demande, tu appelles le bon outil, et quand il faut répondre toi-même (maison, téléphone, contacts), " +
-  "tu réponds en une phrase courte et exacte, en français, en vouvoyant.";
+  "Tu es le module domotique d'un assistant vocal intégré à Home Assistant. Tu n'as pas de personnalité à jouer " +
+  "et tu ne réponds jamais à la personne : tu comprends la demande et tu appelles les bons outils ; un autre modèle " +
+  "lui répond ensuite d'après ce que tu as fait ou lu.";
 
 /** The local model's whole persona: its identity, then the owner's working rules if any. */
 export function localPersona(rules: string | undefined): string {
@@ -79,15 +49,35 @@ export function localPersona(rules: string | undefined): string {
 export const ONLINE_SPOKEN_STYLE =
   "Ta réponse est lue à voix haute : une à deux phrases courtes, en texte brut, sans liste ni mise en forme, sans introduction ni proposition d'aide.";
 
-/** The online model's instructions for wording what the local model just did. */
-export const DONE_INSTRUCTIONS =
-  "On vient de faire dans la maison ce qui suit « Fait : ». Annonce-le à la personne en une phrase courte, à l'oral, dans ton style. " +
-  "N'ajoute rien qui n'y est pas, ne pose aucune question et ne propose rien.";
+/** The online model's instructions when it answers for the local model. */
+export const ONLINE_REPLY_INSTRUCTIONS =
+  "Tu réponds à la personne. Un module domotique local, chez elle, a déjà fait les actions et lectures nécessaires " +
+  "dans la maison, sur le téléphone et dans les contacts ; ce qu'il a fait ou lu t'est donné juste avant sa phrase. " +
+  "Tu ne peux rien faire toi-même dans la maison. Pour tout ce qui concerne la maison, le téléphone ou les contacts, " +
+  "tu te fondes uniquement sur ces résultats et tu n'inventes aucune action ni valeur. S'il s'agissait d'un ordre et " +
+  "que rien n'a été fait, dis-le simplement et demande la précision qui manque. Pour tout le reste (culture générale, " +
+  "discussion, conseils), réponds avec toutes tes connaissances.";
 
-/** How long the online model may take to word an order; then the plain sentence is said. */
+/** Most characters of one tool result handed to the online model. */
+const FACT_MAX = 1500;
+
+/** What the local model did and read this turn, as the online model reads it. */
+export function onlineFacts(done: { name: string; input: Record<string, unknown>; result: unknown }[], plain?: string): string {
+  if (done.length === 0) return "Le module domotique n'a rien fait ni lu pour cette demande.";
+  const lines = done.map((d) => {
+    const result = JSON.stringify(d.result) ?? "";
+    return `- ${d.name} ${JSON.stringify(d.input)} → ${result.length > FACT_MAX ? `${result.slice(0, FACT_MAX)}…` : result}`;
+  });
+  return `Ce que le module domotique vient de faire ou de lire pour cette demande${plain ? ` (en bref : ${plain})` : ""} :\n${lines.join("\n")}`;
+}
+
+/** Most tokens the local model writes in one pass: tool calls, never answers. */
+export const LOCAL_OUTPUT_CAP = 512;
+
+/** How long the online model may take to answer after an order; then the plain sentence is said. */
 export const DONE_TIMEOUT_MS = 4000;
 
-/** What Igor says when the online model does not answer a handed-over question. */
+/** What Igor says when the online model does not answer. */
 export const GENERAL_UNAVAILABLE = "Je n'arrive pas à joindre le service en ligne pour cette question. Réessayez dans un instant.";
 
 /** Messages of the Assist conversation the local model reads: short, as the prompt must be. */
@@ -95,11 +85,12 @@ export const LOCAL_HISTORY = 6;
 
 /**
  * Said last, right before the person's words, where a small model heeds it
- * best: an 8B model mirrored a "tu" into tutoiement and repeated one of its
- * earlier answers word for word to three different questions.
+ * best: it acts and reads, and another model answers the person.
  */
 export const LOCAL_REMINDER =
-  "Rappel : vouvoie toujours la personne, même si elle te tutoie. Ne reprends jamais mot pour mot une de tes réponses précédentes : réponds à la phrase qui vient. Si elle n'a pas de sens (reconnaissance vocale ratée), demande en quelques mots de répéter.";
+  "Rappel : tu n'écris jamais de réponse, un autre modèle répond à la personne. Appelle les outils nécessaires " +
+  "(y compris pour une suite comme « vas-y » ou « oui », d'après les échanges précédents) ; si rien ne concerne " +
+  "la maison, le téléphone, les contacts ou un rappel, écris seulement « - ».";
 
 /**
  * Qwen3's recommended sampling without thinking: presence_penalty keeps a

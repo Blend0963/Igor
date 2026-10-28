@@ -763,7 +763,7 @@ describe("OpenAIChatEngine", () => {
       expect(body).toMatchObject({ temperature: 0.7, top_p: 0.8, top_k: 20, presence_penalty: 1.5 });
       const beforeUser = body.messages[body.messages.length - 2];
       expect(beforeUser.role).toBe("system");
-      expect(beforeUser.content).toContain("vouvoie toujours");
+      expect(beforeUser.content).toContain("un autre modèle répond");
     });
 
     it("prewarms exactly the prompt a spoken request then sends, minus the words", async () => {
@@ -790,20 +790,33 @@ describe("OpenAIChatEngine", () => {
     const orderCall = () =>
       makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "call_service", arguments: '{"domain":"light","service":"turn_on","entity_id":"light.salon"}' } }] }, finish_reason: "tool_calls" }] }]);
 
-    it("acts on the local model and has the online model word what was done, from that alone", async () => {
+    it("acts on the local model, then the online model answers from the words and what was done", async () => {
       vi.mocked(handleToolCall).mockResolvedValue({ changed_states: [{ entity_id: "light.salon", state: "on", name: "Lumière salon" }] });
       mockCreate.mockResolvedValueOnce(orderCall()).mockResolvedValueOnce(reply("Voilà, le salon est éclairé."));
       const chunks: string[] = [];
       const r = await localEngine.chat({ message: "allume la lumière du salon", userId: "u", isVoice: true, customPrompt: "Tu es Igor." }, { onChunk: (c) => chunks.push(c) });
       expect(r.response).toBe("Voilà, le salon est éclairé.");
       expect(chunks.join("")).toBe("Voilà, le salon est éclairé.");
+      // One local pass (no second one to word it), then the online model.
       expect(mockCreate).toHaveBeenCalledTimes(2);
       expect(endpoint(1)).toBe("https://api.openai.com/v1");
       const online = mockCreate.mock.calls[1][0];
       expect(online.tools).toBeUndefined();
-      expect(online.messages[1]).toEqual({ role: "user", content: "Fait : Lumière salon allumée." });
-      // Not the person's words, nor anything of the home beyond what was done.
-      expect(JSON.stringify(online.messages)).not.toContain("allume la lumière du salon");
+      expect(online.messages.at(-1)).toEqual({ role: "user", content: "allume la lumière du salon" });
+      const facts = online.messages.at(-2);
+      expect(facts.role).toBe("system");
+      expect(facts.content).toContain("Lumière salon allumée");
+      // Never the home's layout or live state.
+      expect(JSON.stringify(online.messages)).not.toContain("Live state");
+    });
+
+    it("never speaks the local model's words: the online model answers", async () => {
+      mockCreate.mockResolvedValueOnce(reply("Je suis Igor, votre majordome.")).mockResolvedValueOnce(reply("Bonsoir, que puis-je pour vous ?"));
+      const chunks: string[] = [];
+      const r = await localEngine.chat({ message: "bonsoir", userId: "u", isVoice: true }, { onChunk: (c) => chunks.push(c) });
+      expect(r.response).toBe("Bonsoir, que puis-je pour vous ?");
+      expect(chunks.join("")).toBe("Bonsoir, que puis-je pour vous ?");
+      expect(mockCreate).toHaveBeenCalledTimes(2);
     });
 
     it("gives the local model a working identity and the online one only the common persona", async () => {
@@ -832,24 +845,25 @@ describe("OpenAIChatEngine", () => {
       expect(r.response).toBe("Lumière salon allumée.");
     });
 
-    it("hands a general question to the online model, with the question alone", async () => {
-      mockCreate
-        .mockResolvedValueOnce(
-          makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "answer_general", arguments: '{"question":"Pourquoi le ciel est-il bleu ?"}' } }] }, finish_reason: "tool_calls" }] }])
-        )
-        .mockResolvedValueOnce(reply("La lumière bleue est diffusée par l'air."));
-      const r = await localEngine.chat({ message: "dis Igor pourquoi le ciel est bleu", userId: "u", isVoice: true, customPrompt: "Tu es Igor." });
+    it("sends a question that concerns nothing at home to the online model as it was said, with the last exchanges", async () => {
+      vi.mocked(conversations.getConversationHistory).mockReturnValue([
+        { id: "1", conversationId: "c", userId: "u", role: "user", content: "parle-moi du ciel", createdAt: new Date().toISOString() },
+        { id: "2", conversationId: "c", userId: "u", role: "assistant", content: "Il est souvent bleu.", createdAt: new Date().toISOString() },
+      ] as never);
+      mockCreate.mockResolvedValueOnce(reply("-")).mockResolvedValueOnce(reply("La lumière bleue est diffusée par l'air."));
+      const r = await localEngine.chat({ message: "et pourquoi il est bleu ?", userId: "u", isVoice: true, customPrompt: "Tu es Igor." });
       expect(r.response).toBe("La lumière bleue est diffusée par l'air.");
-      expect(mockCreate).toHaveBeenCalledTimes(2);
       expect(endpoint(0)).toBe("http://192.168.1.20:8180/v1");
       expect(endpoint(1)).toBe("https://api.openai.com/v1");
       const online = mockCreate.mock.calls[1][0];
-      expect(online.model).toBe("gpt-4o-mini");
       expect(online.tools).toBeUndefined();
-      expect(online.messages).toHaveLength(2);
       expect(online.messages[0].content).toContain("Tu es Igor.");
-      expect(online.messages[1]).toEqual({ role: "user", content: "Pourquoi le ciel est-il bleu ?" });
-      expect(r.toolsUsed).toEqual(["answer_general"]);
+      expect(online.messages.slice(1, 3)).toEqual([
+        { role: "user", content: "parle-moi du ciel" },
+        { role: "assistant", content: "Il est souvent bleu." },
+      ]);
+      expect(online.messages.at(-2).content).toContain("n'a rien fait");
+      expect(online.messages.at(-1)).toEqual({ role: "user", content: "et pourquoi il est bleu ?" });
     });
 
     it("keeps panel threads and images on the main model", async () => {

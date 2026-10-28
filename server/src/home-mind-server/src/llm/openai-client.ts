@@ -26,13 +26,12 @@ import { recallSemantically, rememberSemantically } from "./semantic-recall.js";
 import { DEFAULT_MESSAGE_CAP, isThreadId, RECALL_LIMIT, resolveMemoryScope } from "../memory/memory-scope.js";
 import { withPromptCacheKey } from "./prompt-cache-key.js";
 import {
-  ANSWER_GENERAL,
-  ANSWER_GENERAL_TOOL,
   createLocalClient,
-  DONE_INSTRUCTIONS,
   DONE_TIMEOUT_MS,
-  GENERAL_INSTRUCTIONS,
   GENERAL_UNAVAILABLE,
+  LOCAL_OUTPUT_CAP,
+  ONLINE_REPLY_INSTRUCTIONS,
+  onlineFacts,
   LOCAL_HISTORY,
   LOCAL_REMINDER,
   LOCAL_SAMPLING,
@@ -446,10 +445,7 @@ export class OpenAIChatEngine implements IChatEngine {
 
     const promptMode = scope.isThread ? "thread" : isVoice ? "voice" : "text";
     const allTools = openAIToolsFor(promptMode, { unattended: request.unattended === true, noMemory: !scope.facts });
-    // The local model also hands general questions to the online one.
-    const tools = local
-      ? [...allTools.filter((t) => t.type === "function" && LOCAL_TOOLS.has(t.function.name)), ANSWER_GENERAL_TOOL]
-      : allTools;
+    const tools = local ? allTools.filter((t) => t.type === "function" && LOCAL_TOOLS.has(t.function.name)) : allTools;
 
     if (request.prewarm) {
       // Everything a spoken request sends before the person's words, read
@@ -570,7 +566,9 @@ export class OpenAIChatEngine implements IChatEngine {
             return { order: false, usage: undefined };
           })
         : undefined;
-    let holding = knownOrder || orderCheck !== undefined;
+    // The local model never speaks (the online one answers), so nothing of
+    // it is held back or retried.
+    let holding = !local && (knownOrder || orderCheck !== undefined);
     let held = "";
     // A "no" that comes in while the answer is still streaming lets it through
     // at once: only orders are held back.
@@ -583,10 +581,16 @@ export class OpenAIChatEngine implements IChatEngine {
       }
     });
     const sink = (chunk: string) => {
-      if (!firstTextAt && chunk.trim()) firstTextAt = Date.now();
       turnText += chunk;
+      if (local) return;
+      if (!firstTextAt && chunk.trim()) firstTextAt = Date.now();
       if (holding) held += chunk;
       else onChunk?.(chunk);
+    };
+    // What the online model says for the local one.
+    const speak = (chunk: string) => {
+      if (!firstTextAt && chunk.trim()) firstTextAt = Date.now();
+      onChunk?.(chunk);
     };
     const call = async (forceAnswer: boolean, toolChoice?: "required") => {
       turnText = "";
@@ -599,7 +603,7 @@ export class OpenAIChatEngine implements IChatEngine {
           signal,
           toolChoice,
           isThread: scope.isThread,
-          maxSentences: sentenceCap,
+          maxSentences: local ? undefined : sentenceCap,
           onThinking: () => {
             if (thinkingShown) return;
             thinkingShown = true;
@@ -621,6 +625,9 @@ export class OpenAIChatEngine implements IChatEngine {
     };
     let interrupted = false;
     let localDown = false;
+    // What the local model did this turn, and the plain sentence for it when known.
+    const localDone: DoneCall[] = [];
+    let plainSentence: string | undefined;
     let result: Awaited<ReturnType<typeof call>>;
     try {
       result = await call(false);
@@ -661,28 +668,6 @@ export class OpenAIChatEngine implements IChatEngine {
       while (result.toolCalls.length > 0) {
         if (signal?.aborted) throw new Error("aborted");
         iterations++;
-
-        // A general question the local model handed over: the online model
-        // answers it, from the question alone, and that answer is the reply.
-        const handOver = local ? result.toolCalls.find((tc) => tc.function.name === ANSWER_GENERAL) : undefined;
-        const question = handOver ? String(parseArgs(handOver).question ?? "").trim() : "";
-        if (question) {
-          toolsUsed.push(ANSWER_GENERAL);
-          console.log(`[route] general question handed to ${this.config.llmModel}: ${question.slice(0, 80)}`);
-          const answer = await this.askOnline({
-            instructions: GENERAL_INSTRUCTIONS,
-            content: question,
-            persona: this.onlinePersona(customPrompt),
-            isVoice,
-            maxSentences: sentenceCap,
-            onChunk,
-            signal,
-            fallback: GENERAL_UNAVAILABLE,
-          });
-          turnUsage.add(answer.usage);
-          result = { text: answer.text, finishReason: "stop", toolCalls: [], usage: undefined };
-          break;
-        }
 
         // Add assistant message with tool calls
         messages.push({
@@ -749,22 +734,12 @@ export class OpenAIChatEngine implements IChatEngine {
         // The online model words it as Igor from that alone ("Lumière salon
         // allumée."), with no second pass on the local one; the plain
         // sentence is said if it does not answer in time.
-        const said = local && result.text.trim() === "" && done.length === result.toolCalls.length ? actionSentence(done) : undefined;
+        if (local) localDone.push(...done);
+        const said = local && done.length === result.toolCalls.length ? actionSentence(done) : undefined;
         if (said) {
-          console.log(`[route] order done locally, worded by ${this.config.llmModel}: ${said}`);
-          const reply = await this.askOnline({
-            instructions: DONE_INSTRUCTIONS,
-            content: `Fait : ${said}`,
-            persona: this.onlinePersona(customPrompt),
-            isVoice,
-            maxSentences: sentenceCap,
-            onChunk,
-            signal,
-            fallback: said,
-            timeoutMs: DONE_TIMEOUT_MS,
-          });
-          turnUsage.add(reply.usage);
-          result = { text: reply.text, finishReason: "stop", toolCalls: [], usage: undefined };
+          // Nothing left for the local model to do: the online one answers now.
+          plainSentence = said;
+          result = { text: "", finishReason: "stop", toolCalls: [], usage: undefined };
           break;
         }
 
@@ -780,6 +755,33 @@ export class OpenAIChatEngine implements IChatEngine {
         result = await call(forceAnswer);
         turnUsage.add(result.usage);
         if (forceAnswer) break;
+      }
+      // The local model only acts and reads. The online model answers the
+      // person, from their words, the last exchanges and what was done or
+      // read; never from the home's layout, live state, memory or contacts.
+      if (local) {
+        const draft = result.text.trim();
+        console.log(
+          `[route] ${localDone.length ? `${localDone.length} local tool call(s)` : "nothing to do locally"}, ` +
+            `answered by ${this.config.llmModel}${plainSentence ? `: ${plainSentence}` : ""}`
+        );
+        const reply = await this.askOnline({
+          instructions: ONLINE_REPLY_INSTRUCTIONS,
+          content: [
+            ...history.slice(-LOCAL_HISTORY).map((m) => ({ role: m.role, content: m.content }) as OpenAI.ChatCompletionMessageParam),
+            { role: "system", content: onlineFacts(localDone, plainSentence) },
+            { role: "user", content: message },
+          ],
+          persona: this.onlinePersona(customPrompt),
+          isVoice,
+          maxSentences: sentenceCap,
+          onChunk: speak,
+          signal,
+          fallback: plainSentence ?? (draft && draft !== "-" ? draft : GENERAL_UNAVAILABLE),
+          timeoutMs: plainSentence ? DONE_TIMEOUT_MS : undefined,
+        });
+        turnUsage.add(reply.usage);
+        result = { text: reply.text, finishReason: "stop", toolCalls: [], usage: undefined };
       }
       // A thread reply that reached the output cap goes on by itself, as one
       // message: a long table or text must not stop halfway.
@@ -980,14 +982,15 @@ export class OpenAIChatEngine implements IChatEngine {
 
   /**
    * The main (online) model's spoken reply for the local model, from Igor's
-   * persona and one short message (a general question, or what was just done
-   * in the house), never the home, the memory, the contacts or the
-   * conversation. Streamed as the reply. Never throws but on a stop: past
+   * persona and the messages given (the person's words, the last exchanges,
+   * what was done or read), never the home's layout, live state, memory or
+   * contact list. Streamed as the reply. Never throws but on a stop: past
    * `timeoutMs`, or on a failure before any word, `fallback` is said instead.
    */
   private async askOnline(opts: {
     instructions: string;
-    content: string;
+    /** One message from the person, or the exchanges ending with it. */
+    content: string | OpenAI.ChatCompletionMessageParam[];
     persona: string | undefined;
     isVoice: boolean;
     maxSentences: number | undefined;
@@ -1017,7 +1020,7 @@ export class OpenAIChatEngine implements IChatEngine {
                 ...reasoning,
                 messages: [
                   { role: "system", content: system },
-                  { role: "user", content: opts.content },
+                  ...(typeof opts.content === "string" ? [{ role: "user" as const, content: opts.content }] : opts.content),
                 ],
                 stream: true,
                 ...(!this.isMistral() ? { stream_options: { include_usage: true } } : {}),
@@ -1103,7 +1106,9 @@ export class OpenAIChatEngine implements IChatEngine {
   }> {
     const effort = "effort" in opts ? opts.effort : this.config.reasoningEffort ?? (isVoice ? "none" : undefined);
     const model = opts.model ?? this.config.llmModel;
-    const cap = this.maxOutputTokens(isVoice, Boolean(opts.isThread));
+    // The local model writes tool calls, not answers: a small cap keeps a
+    // model that starts talking from costing seconds.
+    const cap = opts.client ? LOCAL_OUTPUT_CAP : this.maxOutputTokens(isVoice, Boolean(opts.isThread));
     const tools = opts.tools ?? openAIToolsFor(isVoice ? "voice" : "text");
     const startedAt = Date.now();
     const client = opts.client ?? this.client;
