@@ -352,35 +352,14 @@ When you are about to read history over MORE THAN A DAY, or history for THREE OR
 - If user mentions a room, search for it before saying you don't know
 - Do NOT narrate tool use. Do not output "Let me search...", "I found...", "Done!" etc. Call tools silently, then give one clean complete response.`;
 
-/**
- * Assist on the house's own model (llm/local-llm.ts). A small graphics card
- * reads a long prompt slowly (Radeon VII: 576 tokens/s at the start, 170
- * after 8 000), so the rules a spoken or typed Assist answer needs fit in one
- * short block, and the tools it cannot use there are not described.
- */
-const LOCAL_INSTRUCTIONS = `
-
-## HOW YOU WORK
-- A microphone hears the whole room: act only on what is said to you, usually the words around your name, and ignore the rest without commenting. Never say a sentence was not meant for you.
-- Speech-to-text makes mistakes: understand the intent and never repeat a garbled word. A clear command is acted on at once. A garbled one is left to the other model, which asks.
-- You never write the answer: another model answers the person from what you did or read. Your job is to call the tools a request needs (to act, to read a state, to find a contact, to schedule), then stop. When nothing about the home, the phone, contacts or reminders is asked (greetings, general knowledge, conversation), call no tool and write only "-". News and recent facts are also left to the other model, which searches the web.
-- For any device or sensor, use the tools: get_state when the entity is in the home layout, else search_entities (room name, device type). Never answer "I don't know" before searching. If the home has no such device, call nothing more: the other model will say so.
-- What you remember and past messages are the PAST: check the live state before saying something is already on or off. "[09:12]" markers in history are metadata, never copied.
-- Lights: use the exact parameters of the Device Capability Reference when a light is listed there.
-- For a person's number, always find_contact, never search_entities.
-- The other model does not see what you remember. When the answer depends on it (the person's name, a preference, a habit, someone they mentioned), call share_memory with those memories copied word for word.
-- A short follow-up ("vas-y", "oui", "et la cuisine ?") continues the previous exchange: act on what it refers to.`;
-
 const IDENTITIES: Record<PromptMode, string> = {
   voice: DEFAULT_VOICE_IDENTITY,
   text: DEFAULT_IDENTITY,
   thread: DEFAULT_THREAD_IDENTITY,
 };
 
-function instructionsFor(mode: PromptMode, hasPersona: boolean, local = false): string {
-  const base = local && mode !== "thread"
-    ? LOCAL_INSTRUCTIONS
-    : mode === "voice" ? VOICE_INSTRUCTIONS : mode === "thread" ? THREAD_INSTRUCTIONS : SYSTEM_INSTRUCTIONS;
+function instructionsFor(mode: PromptMode, hasPersona: boolean): string {
+  const base = mode === "voice" ? VOICE_INSTRUCTIONS : mode === "thread" ? THREAD_INSTRUCTIONS : SYSTEM_INSTRUCTIONS;
   return (hasPersona ? PERSONA_PRECEDENCE : "") + base;
 }
 
@@ -615,16 +594,6 @@ ${factsText}`;
 /**
  * Build system prompt as a plain text string (for providers that don't support cache_control blocks).
  */
-/**
- * The local model's only time line: today's date. It has no history tool and
- * reminders are computed by the server, while an hour and minute changed the
- * prompt every minute and made its slow card read the end of it again.
- */
-function localDateLine(): string {
-  const today = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  return `- Date: ${today} (the server works out times for reminders)`;
-}
-
 export function buildSystemPromptText(
   facts: string[],
   isVoice: boolean | PromptMode = false,
@@ -634,9 +603,7 @@ export function buildSystemPromptText(
   language?: string,
   voiceGender?: "female" | "male",
   /** False for a thread without long-term memory (thread_memory "off"). */
-  withMemory = true,
-  /** Assist on the house's own model: the short instructions above. */
-  local = false
+  withMemory = true
 ): string {
   const factsText = !withMemory
     ? NO_THREAD_MEMORY
@@ -647,7 +614,7 @@ export function buildSystemPromptText(
   const mode = toMode(isVoice);
   const identity = (customPrompt ? customPrompt : IDENTITIES[mode]) + spokenVoicePointer(voiceGender);
 
-  const instructions = instructionsFor(mode, Boolean(customPrompt), local);
+  const instructions = instructionsFor(mode, Boolean(customPrompt));
 
   // Tie-breaker only. The Language rules above still hold: the user's own
   // words always win, and a bare "yes"/"da" keeps the previous reply's
@@ -666,9 +633,9 @@ export function buildSystemPromptText(
   return `${identity}${instructions}${layoutSection}${deviceSection}
 
 ## Current Context:
-${local ? localDateLine() : `- Date/Time: ${dateTimeStr}
+- Date/Time: ${dateTimeStr}
 - ISO Timestamp (now, UTC): ${isoTimestamp}
-- Local midnight today (UTC): ${localMidnightIso}  ← use this as start_time for "today" history queries, NOT 00:00:00Z`}${languageLine}
+- Local midnight today (UTC): ${localMidnightIso}  ← use this as start_time for "today" history queries, NOT 00:00:00Z${languageLine}
 
 ## What You Remember About This User:
 ${factsText}`;

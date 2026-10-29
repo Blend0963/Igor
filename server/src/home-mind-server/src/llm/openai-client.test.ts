@@ -1,5 +1,5 @@
 import { localTurnMessages } from "../train/local-dataset.js";
-import { localPersona } from "./local-llm.js";
+import { LOCAL_PROTOCOL, LOCAL_REMINDER } from "./local-protocol.js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Config } from "../config.js";
 import type { IMemoryStore } from "../memory/interface.js";
@@ -753,18 +753,19 @@ describe("OpenAIChatEngine", () => {
       mockCreate.mockResolvedValue(reply());
       await localEngine.chat({ message: "allume la lumière du salon", userId: "u", isVoice: true });
       const body = mockCreate.mock.calls[0][0];
-      expect(body.messages[0].content).toContain("## HOW YOU WORK");
+      expect(body.messages[0].content.startsWith(LOCAL_PROTOCOL)).toBe(true);
       expect(body.messages[0].content).not.toContain("SCHEDULED / RECURRING ACTIONS");
       const names = body.tools.map((t: { function: { name: string } }) => t.function.name);
       expect(names).toContain("call_service");
       expect(names).not.toContain("create_automation");
       expect(names).not.toContain("get_history");
       expect(vi.mocked(conversations.getConversationHistory).mock.calls[0][1]).toBe(6);
-      // Qwen3's sampling, and the reminder right before the person's words.
-      expect(body).toMatchObject({ temperature: 0.7, top_p: 0.8, top_k: 20, presence_penalty: 1.5 });
+      // Near-greedy sampling, and the reminder right before the person's words.
+      expect(body).toMatchObject({ temperature: 0.1, top_p: 0.9, top_k: 20 });
+      expect(body.presence_penalty).toBeUndefined();
       const beforeUser = body.messages[body.messages.length - 2];
       expect(beforeUser.role).toBe("system");
-      expect(beforeUser.content).toContain("un autre modèle répond");
+      expect(beforeUser.content).toContain(LOCAL_REMINDER);
     });
 
     it("prewarms exactly the prompt a spoken request then sends, minus the words", async () => {
@@ -799,11 +800,43 @@ describe("OpenAIChatEngine", () => {
         { refreshIfStale: vi.fn(), hasLayout: () => false } as unknown as TopologyScanner
       );
 
-    it("says the plain sentence for an order done locally, with no online call", async () => {
+    it("answers a reading through the online model, from the local model's >rep line", async () => {
+      vi.mocked(handleToolCall).mockResolvedValue({ entity_id: "sensor.tele_bat", state: "64", attributes: { friendly_name: "Batterie télécommande", unit_of_measurement: "%" } });
+      mockCreate
+        .mockResolvedValueOnce(makeStream([{ choices: [{ delta: { content: ">rep", tool_calls: [{ index: 0, id: "c1", function: { name: "get_state", arguments: '{"entity_id":"sensor.tele_bat"}' } }] }, finish_reason: "tool_calls" }] }]))
+        .mockResolvedValueOnce(reply("La télécommande est à 64 %."));
+      const r = await localEngine.chat({ message: "quelle est la batterie de la télécommande ?", userId: "u", isVoice: true });
+      expect(r.response).toBe("La télécommande est à 64 %.");
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+      expect(mockCreate.mock.calls[1][0].messages.at(-1).content).toBe(
+        ">rep\nlu : sensor.tele_bat (Batterie télécommande)=64 %\ndit : « quelle est la batterie de la télécommande ? »"
+      );
+    });
+
+    it("always has a failed order said, even after the local model's '-'", async () => {
+      vi.mocked(handleToolCall).mockResolvedValue({ error: "Home Assistant refused the call" });
+      mockCreate
+        .mockResolvedValueOnce(makeStream([{ choices: [{ delta: { content: "-", tool_calls: [{ index: 0, id: "c1", function: { name: "call_service", arguments: '{"domain":"light","service":"turn_on","entity_id":"light.salon"}' } }] }, finish_reason: "tool_calls" }] }]))
+        .mockResolvedValueOnce(reply("Je n'ai pas pu allumer le salon."));
+      const r = await localEngine.chat({ message: "allume le salon", userId: "u", isVoice: true });
+      expect(r.response).toBe("Je n'ai pas pu allumer le salon.");
+      expect(mockCreate.mock.calls[1][0].messages.at(-1).content).toMatch(/^>echec\n.*échec : call_service/s);
+    });
+
+    it("carries out a plain order in silence by default, with no online call", async () => {
+      vi.mocked(handleToolCall).mockResolvedValue({ changed_states: [{ entity_id: "light.salon", state: "on", name: "Lumière salon" }] });
+      mockCreate.mockResolvedValueOnce(orderCall());
+      const r = await localEngine.chat({ message: "allume la lumière du salon", userId: "u", isVoice: true });
+      expect(r.response).toBe("");
+      expect(r.error).toBeFalsy();
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it("says the plain sentence for an order done locally when local_order_reply is sentence", async () => {
       vi.mocked(handleToolCall).mockResolvedValue({ changed_states: [{ entity_id: "light.salon", state: "on", name: "Lumière salon" }] });
       mockCreate.mockResolvedValueOnce(orderCall());
       const chunks: string[] = [];
-      const r = await localEngine.chat({ message: "allume la lumière du salon", userId: "u", isVoice: true }, { onChunk: (c) => chunks.push(c) });
+      const r = await orderEngine("sentence").chat({ message: "allume la lumière du salon", userId: "u", isVoice: true }, { onChunk: (c) => chunks.push(c) });
       expect(r.response).toBe("Lumière salon allumée.");
       expect(chunks.join("")).toBe("Lumière salon allumée.");
       expect(mockCreate).toHaveBeenCalledTimes(1);
@@ -833,10 +866,12 @@ describe("OpenAIChatEngine", () => {
       expect(endpoint(1)).toBe("https://api.openai.com/v1");
       const online = mockCreate.mock.calls[1][0];
       expect(online.tools).toBeUndefined();
-      expect(online.messages.at(-1)).toEqual({ role: "user", content: "allume la lumière du salon" });
-      const facts = online.messages.at(-2);
-      expect(facts.role).toBe("system");
-      expect(facts.content).toContain("Lumière salon allumée");
+      // A terse brief: the tag, what was done, the words.
+      expect(online.messages.at(-1)).toEqual({
+        role: "user",
+        content: ">dire\nfait : light.salon (Lumière salon)=on\ndit : « allume la lumière du salon »",
+      });
+      expect(online.messages[0].content).toContain("Tu es la voix d'Igor");
       // Never the home's layout or live state.
       expect(JSON.stringify(online.messages)).not.toContain("Live state");
     });
@@ -859,15 +894,13 @@ describe("OpenAIChatEngine", () => {
       await engine.chat({ message: "Et la cuisine ?", userId: "u", isVoice: true, language: "fr" });
       const sent = mockCreate.mock.calls[0][0];
       const expected = localTurnMessages({
-        persona: localPersona("MINUTEUR : script.minuteur."),
-        language: "fr",
+        rules: "MINUTEUR : script.minuteur.",
         facts: ["Il aime le jazz."],
         history: [
           { role: "user", content: "allume le salon", time: "09:12" },
           { role: "assistant", content: "Lumière salon allumée." },
         ],
         message: "Et la cuisine ?",
-        isVoice: true,
       }).map(({ training: _training, ...m }) => m);
       expect(sent.messages).toEqual(expected);
       expect(JSON.stringify(sent.messages)).not.toContain("LIGHT CHEAT SHEET");
@@ -953,7 +986,7 @@ describe("OpenAIChatEngine", () => {
       expect(localSent).toContain("six");
       expect(localSent).not.toContain("quatre");
       expect(localSent).not.toContain("Date/Time");
-      expect(localSent).toContain("- Date: ");
+      expect(localSent).toContain("date : ");
       const onlineSent = JSON.stringify(mockCreate.mock.calls[1][0].messages);
       expect(onlineSent).toContain("un");
       expect(onlineSent).toContain("quatre");
@@ -986,7 +1019,7 @@ describe("OpenAIChatEngine", () => {
       mockCreate.mockResolvedValueOnce(orderCall()).mockResolvedValueOnce(reply("Voilà."));
       await engine.chat({ message: "allume le salon", userId: "u", isVoice: true, customPrompt: "Tu es Igor, majordome.\n\nSTYLE VOCAL." });
       const localSystem = mockCreate.mock.calls[0][0].messages[0].content;
-      expect(localSystem).toContain("module domotique");
+      expect(localSystem).toContain("Module domotique");
       expect(localSystem).toContain("MINUTEUR : script.minuteur");
       expect(localSystem).not.toContain("majordome");
       const onlineSystem = mockCreate.mock.calls[1][0].messages[0].content;
@@ -997,7 +1030,7 @@ describe("OpenAIChatEngine", () => {
     it("says the plain sentence when the online model does not answer", async () => {
       vi.mocked(handleToolCall).mockResolvedValue({ changed_states: [{ entity_id: "light.salon", state: "on", name: "Lumière salon" }] });
       mockCreate.mockResolvedValueOnce(orderCall()).mockRejectedValueOnce(new Error("503"));
-      const r = await localEngine.chat({ message: "allume la lumière du salon", userId: "u", isVoice: true });
+      const r = await orderEngine("online").chat({ message: "allume la lumière du salon", userId: "u", isVoice: true });
       expect(r.response).toBe("Lumière salon allumée.");
     });
 
@@ -1018,8 +1051,8 @@ describe("OpenAIChatEngine", () => {
         { role: "user", content: "parle-moi du ciel" },
         { role: "assistant", content: "Il est souvent bleu." },
       ]);
-      expect(online.messages.at(-2).content).toContain("n'a rien fait");
-      expect(online.messages.at(-1)).toEqual({ role: "user", content: "et pourquoi il est bleu ?" });
+      // The local model's "-" with nothing done: the person asked something, Igor answers.
+      expect(online.messages.at(-1)).toEqual({ role: "user", content: ">libre\ndit : « et pourquoi il est bleu ? »" });
       expect(online.messages[0].content).toContain("Date et heure actuelles");
     });
 

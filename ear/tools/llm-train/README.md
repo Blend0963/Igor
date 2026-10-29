@@ -1,7 +1,9 @@
 # Training the local model on the house
 
-Igor's local model has one job: turn what is said into the tool calls that
-carry it out, or answer `-` so the online model answers. A small model
+Igor's local model is the house: it turns what is said into the tool calls
+that carry it out, on any entity, and ends with one line for Igor's voice
+(`-` nothing to say, `>dire`, `>rep`, `>web`, `>libre`, `>demande`; see
+`server/src/home-mind-server/src/llm/local-protocol.ts`). A small model
 fine-tuned on the house does that with a much shorter prompt: it knows the
 rooms, the devices and how each light takes white or a colour, so Igor no
 longer sends it the room map or the light cheat sheet (option
@@ -9,9 +11,11 @@ longer sends it the room map or the light cheat sheet (option
 
 ## 1. The training set
 
-In the Igor panel, open **Diagnostic** and click **Jeu d'entraînement du
-modèle local**. It downloads `igor-local-dataset.zip`, built from the
-entities exposed to Assist:
+In the Igor panel, open **Diagnostic** and click **Jeu d'entraînement :
+toute la maison** (every entity, nothing to expose) or **Entités exposées
+seulement**. The browser downloads `igor-local-dataset.zip`; nothing is kept
+on the server. Its size grows with the house (8 examples per device, 4,000
+to 20,000):
 
 - `train.jsonl`: a few thousand requests, each exactly as Igor sends it to
   the local model, followed by the expected answer;
@@ -34,7 +38,7 @@ Each step prints OK or ÉCHEC and the script stops at the first failure:
 2. unpacks the training set;
 3. installs transformers, peft and accelerate (pinned versions) next to the
    machine's PyTorch;
-4. trains a LoRA on `Qwen/Qwen3-4B-Instruct-2507` (2 epochs; about 3,000 tokens per example, so one to two hours on an RTX 4090, less on an A100 or H100; `EPOCHS=1` halves it),
+4. trains a LoRA on `Qwen/Qwen3-4B-Instruct-2507` (2 epochs; about 1,500 tokens per example, so about an hour for 10,000 examples on an RTX 4090, less on an A100 or H100; `EPOCHS=1` halves it),
    merges it, and scores 200 held-out requests (`out/eval.json`);
 5. builds llama.cpp's converter;
 6. writes `out/igor-local-q4_k_m.gguf` (about 2.5 GB).
@@ -53,7 +57,8 @@ Copy the GGUF file to the VM, then install it as the `igor-llm` service:
 
     bash ../llm/install.sh ~/igor-local-q4_k_m.gguf
 
-In the add-on, turn on `local_llm_tuned`. To go back: `bash ../llm/install.sh`
+In the add-on, turn on `local_llm_tuned`, and turn off `tools_from_exposed`
+so it can drive every entity, not only those exposed to Assist. To go back: `bash ../llm/install.sh`
 (Qwen3 8B) and turn the option off.
 
 ## 4. Bench

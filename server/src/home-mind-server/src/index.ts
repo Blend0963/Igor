@@ -202,14 +202,26 @@ app.get("/api/app-token", (req, res) => {
   res.json({ token: config.apiToken });
 });
 
-// The local model's training set, built from the house (train/export.ts):
-// it describes the whole house, so only the panel inside Home Assistant gets it.
+// The local model's training set, built from the house (train/export.ts)
+// and downloaded by the browser: it describes the whole house, so only the
+// panel inside Home Assistant gets it. scope=all (default) reads every
+// entity, past the Assist exposure list: the model being trained is the
+// house, and exposing 1,300 entities to the current one would flood its prompt.
+let wholeHouse: { ha: HomeAssistantClient; topology: TopologyScanner; scanner: DeviceScanner } | undefined;
 app.get("/api/local-dataset", async (req, res) => {
   if (!isIngressRequest(req)) return res.status(403).json({ error: "Only from the Home Assistant panel." });
   try {
-    const size = Math.min(20000, Math.max(200, Number(req.query.size) || 4000));
-    const { zip, counts, train, test } = await buildDatasetZip(config, ha, topology, scanner, size);
-    console.log(`[dataset] built ${train} training and ${test} test examples: ${JSON.stringify(counts)}`);
+    const size = req.query.size ? Math.min(20000, Math.max(200, Number(req.query.size) || 4000)) : undefined;
+    let source = { ha, topology, scanner };
+    if (req.query.scope !== "exposed") {
+      if (!wholeHouse) {
+        const all = new HomeAssistantClient(config);
+        wholeHouse = { ha: all, topology: new TopologyScanner(all, 30 * 60 * 1000, null, null), scanner: new DeviceScanner(all, 30 * 60 * 1000, deviceOverrides) };
+      }
+      source = wholeHouse;
+    }
+    const { zip, counts, train, test, devices, technical } = await buildDatasetZip(config, source, size);
+    console.log(`[dataset] ${devices} devices (${technical} technical, read only), ${train} training and ${test} test examples: ${JSON.stringify(counts)}`);
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", 'attachment; filename="igor-local-dataset.zip"');

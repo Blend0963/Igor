@@ -3281,14 +3281,16 @@
       train.className = "pm-row";
       var trainStatus = document.createElement("div");
       trainStatus.className = "sub";
-      train.appendChild(button("Jeu d'entraînement du modèle local", "secondary", function () {
-        trainStatus.textContent = "Préparation…";
-        api("api/local-dataset")
+      function dataset(scope) {
+        trainStatus.textContent = "Préparation (une minute pour une grande maison)…";
+        api("api/local-dataset?scope=" + scope)
           .then(function (res) { return res.blob(); })
           .then(function (blob) { saveBlob(blob, "igor-local-dataset.zip"); trainStatus.textContent = ""; })
           .catch(function (err) { trainStatus.textContent = "Impossible : " + err.message; });
-      }));
-      body.appendChild(note("Des milliers d'exemples tirés de votre maison (pièces, appareils, scènes), pour entraîner le modèle local. Le fichier décrit votre maison : gardez-le pour vous."));
+      }
+      train.appendChild(button("Jeu d'entraînement : toute la maison", "secondary", function () { dataset("all"); }));
+      train.appendChild(button("Entités exposées seulement", "secondary", function () { dataset("exposed"); }));
+      body.appendChild(note("Des milliers d'exemples tirés de votre maison (pièces, appareils, scènes), pour entraîner le modèle local. « Toute la maison » lit toutes les entités sans rien exposer. Le fichier est téléchargé sur cet appareil, rien n'est gardé sur le serveur ; il décrit votre maison : gardez-le pour vous."));
       body.appendChild(train);
       body.appendChild(trainStatus);
     });

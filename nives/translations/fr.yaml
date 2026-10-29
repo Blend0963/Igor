@@ -146,12 +146,13 @@ configuration:
   local_order_reply:
     name: Modèle local (réponse aux ordres)
     description: >-
-      Ce qu'Igor dit après un ordre simple exécuté par le modèle local.
-      sentence : une phrase courte et immédiate (« Lumière salon allumée. »),
-      sans appel en ligne. silent : rien, l'ordre est juste exécuté. online :
-      le modèle en ligne formule la réponse. Les questions, la culture
-      générale et les recherches passent toujours par le modèle en ligne.
-      Vide = sentence.
+      Quand le modèle local a exécuté un ordre et n'a rien à dire (« - »).
+      silent : rien, l'ordre est juste exécuté (par défaut). sentence : une
+      phrase courte et immédiate (« Lumière salon allumée. »), sans appel en
+      ligne. online : le modèle en ligne l'annonce quand même. Quand le
+      modèle local demande à parler (une valeur lue, une confirmation
+      demandée, une recherche, une question), ou quand un ordre échoue, le
+      modèle en ligne répond toujours.
   local_llm_tuned:
     name: Modèle local entraîné sur la maison
     description: >-
@@ -159,7 +160,9 @@ configuration:
       d'entraînement à télécharger dans le panneau, page Diagnostic). Il
       connaît les pièces et les lumières : son prompt ne contient plus le
       plan de la maison ni la fiche des lumières, il est donc plus court et
-      plus rapide. Laisser désactivé avec un modèle ordinaire.
+      plus rapide. Laisser désactivé avec un modèle ordinaire. Pour qu'il
+      pilote toutes les entités, et pas seulement celles exposées à Assist,
+      désactivez aussi tools_from_exposed.
   fast_model:
     name: Modèle rapide (ordres simples)
     description: >-

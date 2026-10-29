@@ -2,13 +2,14 @@
  * Training examples for the house's own model (llm/local-llm.ts), built
  * from the house itself: its rooms, devices, scenes and scripts.
  *
- * The model fine-tuned on them has one job: turn what is said into the
- * tool calls that carry it out, or "-" when the request is not about the
- * home (the online model answers then). Each example is the exact request
- * the server sends the local model in tuned mode (LOCAL_LLM_TUNED: no room
- * map, no light cheat sheet, both learned), followed by the answer it
- * should give. localTurnMessages() builds that request the way the engine
- * does, and a test holds the two together.
+ * The model fine-tuned on them is the house: it turns what is said into the
+ * tool calls that carry it out, on any entity, and ends with one line for
+ * Igor's voice (llm/local-protocol.ts): "-" when there is nothing to say,
+ * ">rep", ">dire", ">web", ">libre" or ">demande" otherwise. Each example is
+ * the exact request the server sends the local model in tuned mode
+ * (LOCAL_LLM_TUNED: no room map, no light cheat sheet, both learned),
+ * followed by the answer it should give. localTurnMessages() builds that
+ * request the way the engine does, and a test holds the two together.
  *
  * Nothing here leaves the house on its own: the dataset is built on demand
  * (GET /api/local-dataset, from the panel) and the owner decides where it
@@ -16,9 +17,8 @@
  */
 
 import type OpenAI from "openai";
-import { buildSystemPromptText } from "../llm/prompts.js";
-import { LOCAL_PROMPT_HISTORY, LOCAL_REMINDER } from "../llm/local-llm.js";
-import { SPOKEN_LENGTH_REMINDER, spokenSentenceCap } from "../llm/lean.js";
+import { LOCAL_PROMPT_HISTORY } from "../llm/local-llm.js";
+import { buildLocalPrompt, localDate } from "../llm/local-protocol.js";
 import { isFeminine } from "../llm/action-sentence.js";
 
 /** A device as the generator needs it. */
@@ -29,6 +29,10 @@ export interface HouseDevice {
   deviceClass?: string;
   unit?: string;
   light?: { brightness: boolean; white: "color_temp" | "rgbw" | "rgb_white" | "none"; color: boolean };
+  /** A group's members ("Lumières salon" = the three bulbs): the room's words go to the group. */
+  members?: string[];
+  /** About the device rather than the house (a battery, the CPU load): never given a room's words. */
+  technical?: boolean;
 }
 
 export interface HouseInventory {
@@ -38,12 +42,10 @@ export interface HouseInventory {
 }
 
 export interface DatasetOptions {
-  /** localPersona(LOCAL_LLM_PROMPT), as the engine sends it. */
-  persona: string;
+  /** The owner's working rules (LOCAL_LLM_PROMPT), as the engine sends them. */
+  rules?: string;
   /** formatScriptSection() of the house's scripts: tuned mode keeps it. */
   scriptSection?: string;
-  language?: string;
-  voiceGender?: "female" | "male";
   seed?: number;
   /** Rough number of examples (default 4000). */
   size?: number;
@@ -72,36 +74,26 @@ export interface PastMessage {
   time?: string;
 }
 
-const CACHE_MARKER = "\n\n## Current Context:";
-
 /**
  * The messages the engine sends the local model for one spoken or typed
  * Assist request in tuned mode, before its answer.
  */
 export function localTurnMessages(p: {
-  persona: string;
+  rules?: string;
   scriptSection?: string;
-  language?: string;
-  voiceGender?: "female" | "male";
   facts: string[];
   history: PastMessage[];
   message: string;
-  isVoice: boolean;
-  /** Replaces today's date line, so examples are not all dated the day they were built. */
-  date?: string;
+  /** The date line's day: examples are not all dated the day they were built. */
+  date?: Date;
 }): Message[] {
-  let system = buildSystemPromptText(p.facts, p.isVoice, p.persona, p.scriptSection, undefined, p.language, p.voiceGender, true, true);
-  if (p.date) system = system.replace(/^- Date: .*? \(the server/m, `- Date: ${p.date} (the server`);
-  const at = system.indexOf(CACHE_MARKER);
-  const messages: Message[] = [{ role: "system", content: system.slice(0, at) }];
+  const prompt = buildLocalPrompt({ rules: p.rules, cheatSheet: p.scriptSection, facts: p.facts, withMemory: true, date: localDate(p.date ?? new Date()) });
+  const messages: Message[] = [{ role: "system", content: prompt.stable }];
   for (const m of p.history.slice(-LOCAL_PROMPT_HISTORY)) {
     const prefix = m.role === "user" && m.time ? `[${m.time}] ` : "";
     messages.push({ role: m.role, content: `${prefix}${m.content}`, training: false } as Message);
   }
-  let volatile = system.slice(at + 2);
-  if (p.isVoice && spokenSentenceCap(p.message) !== undefined) volatile = `${volatile}\n\n${SPOKEN_LENGTH_REMINDER}`;
-  volatile = `${volatile}\n\n${LOCAL_REMINDER}`;
-  messages.push({ role: "system", content: volatile });
+  messages.push({ role: "system", content: prompt.volatile });
   messages.push({ role: "user", content: p.message });
   return messages;
 }
@@ -210,10 +202,10 @@ function spoken(rng: Rng, text: string, question = false): string {
 
 type Call = { name: string; args: Record<string, unknown> };
 
-function callMessage(calls: Call[], n: number): Message {
+function callMessage(calls: Call[], n: number, line = ""): Message {
   return {
     role: "assistant",
-    content: "",
+    content: line,
     tool_calls: calls.map((c, i) => ({
       id: `call_${n}_${i}`,
       type: "function" as const,
@@ -222,7 +214,20 @@ function callMessage(calls: Call[], n: number): Message {
   };
 }
 
-const NOTHING: Message = { role: "assistant", content: "-" };
+/** The local model's line alone, with no tool call. */
+function say(line: string): Message {
+  return { role: "assistant", content: line };
+}
+
+/** The line after a kind of request's tool calls ("-" for an order). */
+const LINE_OF_KIND: Record<string, string> = {
+  state: ">rep", temperature: ">rep", humidity: ">rep", sensor: ">rep", technical: ">rep", person: ">rep", weather: ">rep",
+  reminders_list: ">rep", contact: ">rep", memory: ">rep", reminder: ">dire", notify_when: ">dire",
+};
+
+/** Orders, which can be asked with a confirmation: then ">dire" instead of "-". */
+const ORDER_KINDS = new Set(["on_off", "area_lights", "all_lights", "two_devices", "brightness", "white", "color", "cover", "covers_group", "climate", "media", "scene", "script", "lock", "vacuum", "technical_order"]);
+const CONFIRM = [" et dis-moi quand c'est fait", " et confirme-moi", " et préviens-moi quand c'est fait", " et dis-moi si ça a marché", " tu me confirmes"];
 
 function service(domain: string, svc: string, ids: string[] | undefined, data?: Record<string, unknown>): Call {
   const args: Record<string, unknown> = { domain, service: svc };
@@ -254,12 +259,19 @@ interface Named {
   says: string[];
 }
 
+/** Devices a group of the house stands for: they keep their own names, the room's words go to the group. */
+function groupedMembers(devices: HouseDevice[]): Set<string> {
+  const ids = new Set(devices.map((d) => d.id));
+  return new Set(devices.flatMap((d) => (d.members ?? []).filter((m) => m !== d.id && ids.has(m))));
+}
+
 function namings(devices: HouseDevice[]): Named[] {
+  const grouped = groupedMembers(devices);
   return devices.map((d) => {
     const says = new Set<string>([the(d.name)]);
     const domain = domainOf(d.id);
-    if (d.area) {
-      const sameKind = devices.filter((o) => domainOf(o.id) === domain && o.area === d.area);
+    if (d.area && !grouped.has(d.id) && !d.technical) {
+      const sameKind = devices.filter((o) => domainOf(o.id) === domain && o.area === d.area && !grouped.has(o.id) && !o.technical);
       if (sameKind.length === 1) {
         for (const noun of DOMAIN_NOUNS[domain] ?? []) says.add(`${noun} ${of(d.area)}`);
         // "the first word of its name + the room": "le plafonnier de la cuisine"
@@ -307,7 +319,21 @@ const IS_ON = ["est-ce que {x} est {on}", "{x} est {on}", "tu peux vérifier si 
 const IS_OPEN = ["est-ce que {x} est {open}", "{x} est {open}", "tu peux vérifier si {x} est {open}", "{x} est bien {closed}", "est-ce que {x} est {closed}"];
 const TEMP = ["quelle température fait-il {dans}", "il fait combien {dans}", "quelle est la température {de}", "température {de}", "il fait chaud {dans}", "combien de degrés {dans}"];
 const HUMID = ["quelle est l'humidité {dans}", "quel est le taux d'humidité {de}", "humidité {de}", "c'est humide {dans}"];
-const READ = ["combien indique {x}", "quelle est la valeur de {x}", "donne-moi {x}", "que dit {x}", "{x} indique combien"];
+const READ = ["combien indique {x}", "quelle est la valeur de {x}", "donne-moi {x}", "que dit {x}", "{x} c'est combien", "quel est l'état de {x}", "tu peux me donner {x}", "{x} indique combien"];
+const BATTERY = ["quelle est la batterie {de}", "il reste combien de batterie {a}", "{x} a encore de la batterie", "niveau de batterie {de}", "la batterie {de} est à combien"];
+/** Readings the house may not have under these words: looked up, then the online model reads the result. */
+const FOUND: { words: string; query: string; entity: string; state: string; name: string; unit?: string }[] = [
+  { words: "quelle est la batterie du détecteur de fumée", query: "détecteur fumée", entity: "sensor.detecteur_fumee_batterie", state: "64", name: "Détecteur fumée batterie", unit: "%" },
+  { words: "quelle est la charge du processeur", query: "processeur", entity: "sensor.processor_use", state: "12", name: "Processor use", unit: "%" },
+  { words: "il fait combien dans la cave", query: "cave", entity: "sensor.cave_temperature", state: "13.5", name: "Cave température", unit: "°C" },
+  { words: "quelle est l'humidité de la buanderie", query: "buanderie", entity: "sensor.buanderie_humidite", state: "71", name: "Buanderie humidité", unit: "%" },
+  { words: "quel est le niveau de la cuve", query: "cuve", entity: "sensor.cuve_niveau", state: "58", name: "Niveau cuve", unit: "%" },
+  { words: "combien consomme le chauffe-eau", query: "chauffe-eau", entity: "sensor.chauffe_eau_puissance", state: "1980", name: "Chauffe-eau puissance", unit: "W" },
+  { words: "la serrure a encore de la batterie", query: "serrure", entity: "sensor.serrure_batterie", state: "22", name: "Serrure batterie", unit: "%" },
+  { words: "quelle est la qualité de l'air dans le bureau", query: "qualité air", entity: "sensor.bureau_co2", state: "830", name: "Bureau CO2", unit: "ppm" },
+  { words: "quelle est la température du congélateur", query: "congélateur", entity: "sensor.congelateur_temperature", state: "-18", name: "Congélateur température", unit: "°C" },
+  { words: "combien d'espace reste sur le disque", query: "disque", entity: "sensor.disk_free", state: "212", name: "Disk free", unit: "GB" },
+];
 const PERSON_HOME = ["est-ce que {p} est à la maison", "{p} est rentré", "{p} est là", "où est {p}", "{p} est à la maison"];
 const WEATHER_NOW = ["quel temps fait-il", "il fait beau dehors", "quelle est la météo", "il pleut", "quel temps il fait dehors"];
 const WEATHER_TOMORROW = ["quel temps fera-t-il demain", "il va pleuvoir demain", "la météo de demain", "il fera beau demain", "quelles sont les prévisions pour demain"];
@@ -345,11 +371,9 @@ const GENERAL = [
   "pourquoi le ciel est bleu", "quelle est la hauteur de la tour eiffel", "qui a peint la joconde", "combien y a-t-il de planètes",
   "comment on fait une pâte à crêpes", "donne-moi une idée de repas pour ce soir", "raconte-moi une blague", "comment ça va",
   "bonjour", "bonsoir", "merci", "merci beaucoup", "super merci", "t'es qui", "qu'est-ce que tu sais faire", "tu es une intelligence artificielle",
-  "quelles sont les infos du jour", "qui a gagné le match hier soir", "qui a gagné le ballon d'or cette année", "quel est le cours du bitcoin",
-  "quand sort le prochain film marvel", "quel est le prix de l'essence en ce moment", "c'est quoi l'actualité", "il y a des grèves demain",
   "traduis bonjour en espagnol", "comment on dit merci en japonais", "que veut dire procrastiner", "c'est quoi la photosynthèse",
   "donne-moi un conseil pour bien dormir", "comment enlever une tache de vin", "quelle est la recette du bœuf bourguignon", "combien de temps cuire un œuf dur",
-  "raconte-moi une histoire", "chante-moi une chanson", "tu peux m'aider à réviser", "qui est le président de la république",
+  "raconte-moi une histoire", "chante-moi une chanson", "tu peux m'aider à réviser", "combien de pattes a une araignée",
   "quelle est la population de la france", "combien de kilomètres entre paris et marseille", "c'est quand la fête des mères", "quel jour on est",
   "quelle heure est-il", "on est quel jour demain", "quelle est la date de noël", "combien de jours avant noël",
   "qui a inventé l'ampoule", "explique-moi la relativité", "c'est quoi un nombre premier", "quel est le plus grand océan",
@@ -358,15 +382,23 @@ const GENERAL = [
   "tu es là", "salut", "bonne nuit", "à plus tard", "je t'aime bien", "t'es nul", "d'accord", "ok", "non rien", "laisse tomber",
   "c'est qui le meilleur joueur de foot", "quel temps faisait-il en 1990", "quelle est la vitesse de la lumière", "pourquoi les chats ronronnent",
 ];
+/** What only the internet knows: the online model searches. */
+const GENERAL_WEB = [
+  "quelles sont les infos du jour", "qui a gagné le match hier soir", "qui a gagné le ballon d'or cette année", "quel est le cours du bitcoin",
+  "quand sort le prochain film marvel", "quel est le prix de l'essence en ce moment", "c'est quoi l'actualité", "il y a des grèves demain",
+  "qui est le président de la république", "quel temps fera-t-il à lyon demain", "à quelle heure ferme le supermarché", "quel est le score du match",
+  "quand joue le psg", "quelles sont les nouveautés sur netflix", "combien coûte une voiture électrique neuve", "quand ont lieu les prochaines élections",
+  "il y a des bouchons sur l'autoroute", "quel film passe ce soir à la télé", "quel est le taux du livret a", "qui a gagné l'eurovision",
+  "quelle est la météo à la montagne ce week-end", "il y a eu un séisme aujourd'hui", "quel est le prix du gaz", "quand commencent les soldes",
+];
 /** Not in the house: searched, found nowhere, left to the online model (which says so). */
 const ABSENT = ["le jacuzzi", "la piscine", "le sauna", "la cheminée", "le portail", "l'arrosage", "la machine à café", "le four", "la hotte", "le garage", "la véranda", "le spa"];
 
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const DAY_WORDS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
 
-function randomDate(rng: Rng): string {
-  const day = new Date(Date.UTC(2026, 0, 1) + Math.floor(rng() * 540) * 86400000);
-  return day.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+function randomDate(rng: Rng): Date {
+  return new Date(Date.UTC(2026, 0, 1, 12) + Math.floor(rng() * 540) * 86400000);
 }
 
 function randomTime(rng: Rng): string {
@@ -375,13 +407,14 @@ function randomTime(rng: Rng): string {
 
 /** French contractions a filled template needs: "de le" → "du", "de arroser" → "d'arroser". */
 function contract(text: string): string {
+  // (?<!\p{L}) rather than \b, which does not see "à" as a letter.
   return text
-    .replace(/\bde le /g, "du ")
-    .replace(/\bde les /g, "des ")
-    .replace(/\bà le /g, "au ")
-    .replace(/\bà les /g, "aux ")
-    .replace(/\bde ([aeiouyàâéèêîôûh])/gi, "d'$1")
-    .replace(/\bque ([aeiouyàâéèêîôû])/gi, "qu'$1");
+    .replace(/(?<!\p{L})de le /gu, "du ")
+    .replace(/(?<!\p{L})de les /gu, "des ")
+    .replace(/(?<!\p{L})à le /gu, "au ")
+    .replace(/(?<!\p{L})à les /gu, "aux ")
+    .replace(/(?<!\p{L})de ([aeiouyàâéèêîôûh])/giu, "d'$1")
+    .replace(/(?<!\p{L})que ([aeiouyàâéèêîôû])/giu, "qu'$1");
 }
 
 function fill(template: string, values: Record<string, string>): string {
@@ -390,7 +423,7 @@ function fill(template: string, values: Record<string, string>): string {
 
 /** Whether the words read as a question, for the question mark Whisper would add. */
 function asksSomething(text: string): boolean {
-  return /^(qu|comment|combien|pourquoi|quand|où|c'est|est-ce|tu |t'|il y a|il fait|il va|il pleut|on est|je suis|j'ai|je bois)/i.test(text.trim());
+  return /^(qu|comment|combien|pourquoi|quand|où|c'est|est-ce|tu |t'|il y a|il fait|il va|il pleut|on est|je suis|j'ai |je bois)/i.test(text.trim());
 }
 
 /** What the online model might have answered to a chat, as the history holds it. */
@@ -417,7 +450,11 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   const size = options.size ?? 4000;
   const testShare = options.testShare ?? 0.12;
   const named = namings(house.devices);
-  const of_ = (domain: string) => named.filter((n) => domainOf(n.device.id) === domain);
+  const grouped = groupedMembers(house.devices);
+  const of_ = (domain: string) => named.filter((n) => domainOf(n.device.id) === domain && !n.device.technical);
+  const technical = named.filter((n) => n.device.technical);
+  /** What a room or the whole house means: groups, not the members they stand for. */
+  const whole = (list: Named[]) => list.filter((n) => !grouped.has(n.device.id));
   const lights = of_("light");
   const switches = [...of_("switch"), ...of_("fan"), ...of_("input_boolean")];
   const covers = of_("cover");
@@ -432,7 +469,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   const binaries = of_("binary_sensor");
   const openings = binaries.filter((b) => ["door", "window", "garage_door", "opening"].includes(b.device.deviceClass ?? ""));
   const areas = [...new Set(house.devices.map((d) => d.area).filter((a): a is string => Boolean(a)))];
-  const inArea = (list: Named[], area: string) => list.filter((n) => n.device.area === area);
+  const inArea = (list: Named[], area: string) => whole(list).filter((n) => n.device.area === area);
   const tempIn = (area: string) => sensors.filter((s) => s.device.area === area && s.device.deviceClass === "temperature");
   const humidIn = (area: string) => sensors.filter((s) => s.device.area === area && s.device.deviceClass === "humidity");
   let n = 0;
@@ -443,7 +480,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   const add = (kind: string, weight: number, make: Maker) => {
     if (weight > 0) makers.push({ kind, weight, make });
   };
-  const one = (calls: Call[]) => [callMessage(calls, n++)];
+  const one = (calls: Call[], line = "-") => [callMessage(calls, n++, line)];
 
   // Lights and switches, on and off.
   const toggles = [...lights, ...switches];
@@ -461,10 +498,10 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     const text = fill(phrase(rng, on ? AREA_ON : AREA_OFF, test), { de: of(area), dans: inside(area) });
     return { kind: "area_lights", text, answer: one([service("light", on ? "turn_on" : "turn_off", inArea(lights, area).map((l) => l.device.id))]) };
   });
-  add("all_lights", lights.length > 1 && lights.length <= 40 ? 2 : 0, (test) => ({
+  add("all_lights", whole(lights).length > 1 && whole(lights).length <= 40 ? 2 : 0, (test) => ({
     kind: "all_lights",
     text: phrase(rng, ALL_OFF, test),
-    answer: one([service("light", "turn_off", lights.map((l) => l.device.id))]),
+    answer: one([service("light", "turn_off", whole(lights).map((l) => l.device.id))]),
   }));
   // Two devices at once.
   add("two_devices", toggles.length > 1 ? 3 : 0, (test) => {
@@ -519,7 +556,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     return { kind: "cover", text: fill(phrase(rng, COVER_POS, test), { x, p: String(p) }), answer: one([service("cover", "set_cover_position", [d.device.id], { position: p })]) };
   });
   const coverAreas = areas.filter((a) => inArea(covers, a).length > 1);
-  add("covers_group", covers.length > 1 ? 3 : 0, (test) => {
+  add("covers_group", whole(covers).length > 1 ? 3 : 0, (test) => {
     if (coverAreas.length && rng() < 0.5) {
       const area = pick(rng, coverAreas);
       const t = phrase(rng, COVERS_AREA, test);
@@ -527,7 +564,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
       return { kind: "covers_group", text: fill(t, { de: of(area) }), answer: one([service("cover", open ? "open_cover" : "close_cover", inArea(covers, area).map((c) => c.device.id))]) };
     }
     const t = phrase(rng, COVERS_ALL, test);
-    return { kind: "covers_group", text: t, answer: one([service("cover", t.startsWith("ouvre") ? "open_cover" : "close_cover", covers.map((c) => c.device.id))]) };
+    return { kind: "covers_group", text: t, answer: one([service("cover", t.startsWith("ouvre") ? "open_cover" : "close_cover", whole(covers).map((c) => c.device.id))]) };
   });
   // Heating.
   add("climate", climates.length ? 3 : 0, (test) => {
@@ -604,6 +641,26 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   add("sensor", readable.length ? 3 : 0, (test) => {
     const d = pick(rng, readable);
     return { kind: "sensor", text: fill(phrase(rng, READ, test), { x: the(d.device.name) }), question: true, answer: one([{ name: "get_state", args: { entity_id: d.device.id } }]) };
+  });
+  // The device's own readings (a battery, the CPU load): asked for, read, never acted on.
+  add("technical", technical.length ? Math.min(8, 2 + technical.length / 5) : 0, (test) => {
+    const d = pick(rng, technical);
+    const battery = d.device.deviceClass === "battery" || /^batterie\s+/i.test(d.device.name);
+    const rest = d.device.name.replace(/^batterie\s+(de\s+|du\s+|des\s+|d')?/i, "").replace(/\s+batterie$/i, "");
+    const text = battery && rest !== d.device.name && rng() < 0.6
+      ? fill(phrase(rng, BATTERY, test), { de: `de ${the(rest)}`, a: `à ${the(rest)}`, x: the(rest) })
+      : fill(phrase(rng, READ, test), { x: the(d.device.name) });
+    return { kind: "technical", text, question: true, answer: one([{ name: "get_state", args: { entity_id: d.device.id } }]) };
+  });
+  // A reading under words it was not trained on: searched, found, and the online model reads it.
+  const knownNames = house.devices.map((d) => lower(d.name));
+  const found = FOUND.filter((f) => !knownNames.some((k) => k.includes(lower(f.query))));
+  add("search_found", found.length ? 2 : 0, (test) => {
+    const f = pick(rng, found);
+    const call = callMessage([{ name: "search_entities", args: { query: f.query } }], n++);
+    const id = (call as { tool_calls: { id: string }[] }).tool_calls[0].id;
+    const result = [{ entity_id: f.entity, state: f.state, name: f.name, ...(f.unit ? { attributes: { unit_of_measurement: f.unit } } : {}) }];
+    return { kind: "search_found", text: f.words, question: true, answer: [call, { role: "tool", tool_call_id: id, content: JSON.stringify(result) }, say(">rep")] };
   });
   add("person", persons.length ? 2 : 0, (test) => {
     const d = pick(rng, persons);
@@ -682,7 +739,21 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     return { kind: "memory", text: phrase(rng, m.ask, test), question: true, facts, answer: one([{ name: "share_memory", args: { facts: [m.fact] } }]) };
   });
   // Not about the home: "-", and the online model answers.
-  add("not_home", 22, (test) => ({ kind: "not_home", text: phrase(rng, GENERAL, test), answer: [NOTHING] }));
+  add("not_home", 14, (test) => ({ kind: "not_home", text: phrase(rng, GENERAL, test), answer: [say(">libre")] }));
+  add("web", 8, (test) => ({ kind: "web", text: phrase(rng, GENERAL_WEB, test), answer: [say(">web")] }));
+  // Too little to act on: the voice asks.
+  add("unclear", 2, (test) => ({
+    kind: "unclear",
+    text: phrase(rng, ["allume", "éteins", "ouvre", "ferme", "mets-le à cinquante", "change ça", "fais-le", "règle ça", "mets la", "monte un peu", "baisse"], test),
+    answer: [say(">demande")],
+  }));
+  // The device's own switches (an indicator light, a child lock) obey too, by their full name.
+  const technicalSwitches = technical.filter((t) => ["switch", "light", "fan", "input_boolean"].includes(domainOf(t.device.id)));
+  add("technical_order", technicalSwitches.length ? 2 : 0, (test) => {
+    const d = pick(rng, technicalSwitches);
+    const on = rng() < 0.5;
+    return { kind: "technical_order", text: fill(phrase(rng, on ? ON : OFF, test), { x: the(d.device.name) }), answer: one([service(domainOf(d.device.id), on ? "turn_on" : "turn_off", [d.device.id])]) };
+  });
   // A device the house does not have: looked for, not found, left to the online model.
   const known = new Set(house.devices.map((d) => lower(d.name)));
   const absent = ABSENT.filter((a) => ![...known].some((k) => k.includes(a.replace(/^(le |la |l')/, ""))));
@@ -694,7 +765,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     return {
       kind: "absent",
       text: fill(phrase(rng, rng() < 0.5 ? ON : OFF, test), { x: thing }),
-      answer: [call, { role: "tool", tool_call_id: id, content: "[]" }, NOTHING],
+      answer: [call, { role: "tool", tool_call_id: id, content: "[]" }, say(">rep")],
     };
   });
   // Follow-ups: the last exchange says what "et la cuisine ?" or "vas-y" means.
@@ -730,12 +801,12 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
       { role: "user", content: spoken(rng, close ? pick(rng, ["il y a trop de soleil", "on voit tout de dehors", "il fait trop chaud ici"]) : pick(rng, ["il fait sombre ici", "on n'y voit rien", "il fait tout noir"])), time: randomTime(rng) },
       { role: "assistant", content: `Voulez-vous que ${close ? "je ferme" : "j'ouvre"} ${the(d.device.name)} ?` },
     ];
-    if (rng() < 0.2) return { kind: "follow_up", text: phrase(rng, ["non", "non merci", "laisse", "pas besoin", "non c'est bon"], test), history, answer: [NOTHING] };
+    if (rng() < 0.2) return { kind: "follow_up", text: phrase(rng, ["non", "non merci", "laisse", "pas besoin", "non c'est bon"], test), history, answer: [say(">libre")] };
     return { kind: "follow_up", text: phrase(rng, ["oui", "vas-y", "oui vas-y", "d'accord", "ok fais-le", "oui s'il te plaît", "volontiers", "oui merci"], test), history, answer: one([service("cover", close ? "close_cover" : "open_cover", [d.device.id])]) };
   });
   // A home question after a chat, a chat after an order: the history must not decide alone.
   add("after_chat", 3, (test) => {
-    const before = pick(rng, GENERAL);
+    const before = pick(rng, rng() < 0.7 ? GENERAL : GENERAL_WEB);
     const history: PastMessage[] = [
       { role: "user", content: spoken(rng, before, asksSomething(before)), time: randomTime(rng) },
       { role: "assistant", content: pick(rng, CHAT_REPLIES) },
@@ -744,8 +815,9 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
       const d = pick(rng, toggles);
       return { kind: "after_chat", text: fill(phrase(rng, OFF, test), { x: pick(rng, d.says) }), history, answer: one([service(domainOf(d.device.id), "turn_off", [d.device.id])]) };
     }
-    const text = phrase(rng, GENERAL, test);
-    return text === before ? undefined : { kind: "after_chat", text, history, answer: [NOTHING] };
+    const web = rng() < 0.35;
+    const text = phrase(rng, web ? GENERAL_WEB : GENERAL, test);
+    return text === before ? undefined : { kind: "after_chat", text, history, answer: [say(web ? ">web" : ">libre")] };
   });
 
   const total = makers.reduce((s, m) => s + m.weight, 0);
@@ -761,6 +833,15 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     const isTest = rng() < testShare;
     const draft = maker.make(isTest);
     if (!draft) continue;
+    const last = draft.answer[draft.answer.length - 1] as { content?: string; tool_calls?: unknown[] };
+    if (last.tool_calls?.length && last.content === "-") {
+      if (LINE_OF_KIND[draft.kind]) last.content = LINE_OF_KIND[draft.kind];
+      else if (ORDER_KINDS.has(draft.kind) && !draft.history && rng() < 0.12) {
+        // "… et dis-moi quand c'est fait": the voice confirms.
+        draft.text += phrase(rng, CONFIRM, isTest);
+        last.content = ">dire";
+      }
+    }
     const message = spoken(rng, draft.text, draft.question ?? asksSomething(draft.text));
     const key = `${message.toLowerCase()}|${draft.history?.map((h) => h.content).join("|") ?? ""}`;
     if (seen.has(key)) continue;
@@ -768,14 +849,11 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     const facts = draft.facts ?? (rng() < 0.7 ? OTHER_FACTS.filter(() => rng() < 0.35) : []);
     const messages = [
       ...localTurnMessages({
-        persona: options.persona,
+        rules: options.rules,
         scriptSection: options.scriptSection,
-        language: options.language,
-        voiceGender: options.voiceGender,
         facts,
         history: draft.history ?? [],
         message,
-        isVoice: rng() < 0.85,
         date: randomDate(rng),
       }),
       ...draft.answer,
@@ -806,7 +884,8 @@ export function readableSample(examples: Example[], count = 40): string {
     for (const m of e.messages.slice(userAt + 1)) {
       if (m.role === "assistant") {
         const calls = (m as { tool_calls?: { function: { name: string; arguments: string } }[] }).tool_calls;
-        lines.push(calls?.length ? `  → ${calls.map((c) => `${c.function.name} ${c.function.arguments}`).join(" + ")}` : `  → ${m.content}`);
+        const said = typeof m.content === "string" && m.content ? m.content : "";
+        lines.push(calls?.length ? `  → ${calls.map((c) => `${c.function.name} ${c.function.arguments}`).join(" + ")}${said ? `  [${said}]` : ""}` : `  → ${said}`);
       } else if (m.role === "tool") lines.push(`  (résultat) ${m.content}`);
     }
     out.push(lines.join("\n"));

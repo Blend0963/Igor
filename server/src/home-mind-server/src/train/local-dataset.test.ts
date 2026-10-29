@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildLocalDataset, readableSample, toJsonl, type HouseInventory } from "./local-dataset.js";
-import { localPersona, LOCAL_REMINDER } from "../llm/local-llm.js";
+import { LOCAL_REMINDER } from "../llm/local-protocol.js";
 
 /** A made-up house. */
 export const SAMPLE_HOUSE: HouseInventory = {
@@ -28,7 +28,7 @@ export const SAMPLE_HOUSE: HouseInventory = {
   scripts: [{ id: "script.arrosage", name: "Arrosage" }],
 };
 
-const options = { persona: localPersona("RÈGLES."), language: "fr", seed: 7, size: 1500 };
+const options = { rules: "RÈGLES.", seed: 7, size: 1500 };
 
 type Msg = { role: string; content?: string; training?: boolean; tool_calls?: { function: { name: string; arguments: string } }[] };
 
@@ -76,10 +76,20 @@ describe("buildLocalDataset", () => {
     }
   });
 
-  it("answers '-' to what is not about the home, and never writes a reply", () => {
-    const answers = all.map((e) => (e.messages as Msg[]).at(-1)!);
-    expect(answers.filter((a) => a.content === "-").length / all.length).toBeGreaterThan(0.15);
-    for (const a of answers) expect(a.tool_calls?.length || a.content === "-").toBeTruthy();
+  it("ends every answer with one line for the voice, never a reply", () => {
+    const lines = ["-", ">dire", ">rep", ">web", ">libre", ">demande"];
+    for (const e of all) expect(lines, e.kind).toContain((e.messages.at(-1) as Msg).content);
+    const line = (kind: string) => new Set(all.filter((e) => e.kind === kind).map((e) => (e.messages.at(-1) as Msg).content));
+    expect(line("not_home")).toEqual(new Set([">libre"]));
+    expect(line("web")).toEqual(new Set([">web"]));
+    expect(line("state")).toEqual(new Set([">rep"]));
+    expect(line("reminder")).toEqual(new Set([">dire"]));
+    expect(line("absent")).toEqual(new Set([">rep"]));
+    expect(line("on_off")).toEqual(new Set(["-", ">dire"]));
+    // An order with a confirmation asked for is announced.
+    for (const e of all.filter((e) => e.kind === "on_off" && (e.messages.at(-1) as Msg).content === ">dire")) {
+      expect((e.messages.at(-2) as Msg).content).toMatch(/confirm|dis-moi|préviens-moi/i);
+    }
   });
 
   it("knows the house: the right ids for the words", () => {
@@ -97,5 +107,75 @@ describe("buildLocalDataset", () => {
     expect(line.tools[0].function.name).toBe("get_state");
     expect(line.messages.length).toBeGreaterThan(2);
     expect(readableSample(train, 10)).toContain("personne :");
+  });
+});
+
+describe("groups", () => {
+  const house: HouseInventory = {
+    devices: [
+      { id: "light.salon", name: "Lumières salon", area: "Salon", members: ["light.a", "light.b"] },
+      { id: "light.a", name: "Ampoule gauche", area: "Salon" },
+      { id: "light.b", name: "Ampoule droite", area: "Salon" },
+      { id: "light.cuisine", name: "Plafonnier cuisine", area: "Cuisine" },
+    ],
+    scripts: [],
+  };
+  const { train } = buildLocalDataset(house, { ...options, size: 600 });
+  const calls = (kind: string) =>
+    train.filter((e) => e.kind === kind).map((e) => ({ words: (e.messages.at(-2) as Msg).content!, args: JSON.parse((e.messages.at(-1) as Msg).tool_calls![0].function.arguments) }));
+
+  it("gives the room's words to the group, and keeps the members' own names", () => {
+    const onOff = calls("on_off");
+    const salon = onOff.filter((c) => /du salon/i.test(c.words));
+    expect(salon.length).toBeGreaterThan(0);
+    for (const c of salon) expect(c.args.entity_id).toBe("light.salon");
+    expect(onOff.some((c) => c.args.entity_id === "light.a" && /ampoule gauche/i.test(c.words))).toBe(true);
+    for (const c of calls("area_lights").filter((c) => /salon/i.test(c.words))) expect(c.args.entity_id).toBe("light.salon");
+  });
+});
+
+describe("technical entities", () => {
+  const house: HouseInventory = {
+    devices: [
+      { id: "switch.prise_salon", name: "Prise salon", area: "Salon" },
+      { id: "switch.prise_salon_voyant", name: "Voyant prise salon", area: "Salon", technical: true },
+      { id: "sensor.telecommande_batterie", name: "Batterie télécommande", area: "Salon", deviceClass: "battery", unit: "%", technical: true },
+      { id: "sensor.processor_use", name: "Charge processeur", unit: "%", technical: true },
+    ],
+    scripts: [],
+  };
+  const { train } = buildLocalDataset(house, { ...options, size: 600 });
+  const last = (e: { messages: unknown[] }) => e.messages.at(-1) as Msg;
+
+  it("reads them when asked, and switches them only by their full name", () => {
+    const reads = train.filter((e) => e.kind === "technical");
+    expect(reads.length).toBeGreaterThan(5);
+    expect(reads.some((e) => /batterie de la télécommande|batterie à la télécommande/i.test((e.messages.at(-2) as Msg).content!))).toBe(true);
+    for (const e of train) {
+      for (const c of last(e).tool_calls ?? []) {
+        if (c.function.name === "call_service" && c.function.arguments.includes("voyant")) {
+          expect(e.kind).toBe("technical_order");
+          expect((e.messages.at(-2) as Msg).content).toMatch(/voyant prise salon/i);
+        }
+        if (c.function.name === "call_service") expect(c.function.arguments).not.toMatch(/batterie|processor/);
+      }
+    }
+    expect(train.some((e) => e.kind === "technical_order")).toBe(true);
+  });
+
+  it("leaves the room's words to the real device", () => {
+    const salon = train.filter((e) => e.kind === "on_off" && /la prise du salon/i.test((e.messages.at(-2) as Msg).content!));
+    expect(salon.length).toBeGreaterThan(0);
+    for (const e of salon) expect(last(e).tool_calls![0].function.arguments).toContain('"switch.prise_salon"');
+  });
+
+  it("looks up a reading it was not trained on, and leaves the answer to the online model", () => {
+    const found = train.filter((e) => e.kind === "search_found");
+    expect(found.length).toBeGreaterThan(0);
+    for (const e of found) {
+      expect(e.messages.at(-3)).toMatchObject({ role: "assistant" });
+      expect(e.messages.at(-2)).toMatchObject({ role: "tool" });
+      expect(last(e).content).toBe(">rep");
+    }
   });
 });

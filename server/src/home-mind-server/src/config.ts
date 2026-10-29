@@ -61,7 +61,7 @@ const ConfigSchema = z
     localLlmPrompt: z.string().optional(),
     // A plain order done by the local model: the server's sentence, nothing,
     // or the online model's wording.
-    localOrderReply: z.enum(["sentence", "silent", "online"]).default("sentence"),
+    localOrderReply: z.enum(["sentence", "silent", "online"]).default("silent"),
     // Read the next spoken request's prompt ahead of time (llm/openai-client.ts prewarm).
     localLlmPrewarm: z.boolean().default(true),
     // A local model fine-tuned on this house (train/local-dataset.ts): it knows
