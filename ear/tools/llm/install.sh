@@ -7,9 +7,21 @@
 # Chaque étape affiche OK ou ÉCHEC ; au premier ÉCHEC, rien d'autre n'est fait.
 #   bash install.sh             Qwen3 8B (par défaut)
 #   bash install.sh qwen3-14b   Qwen3 14B, pour comparer ; bash install.sh pour revenir au 8B
+#   bash install.sh qwen3-4b    Qwen3 4B Instruct, la base que l'entraînement adapte à la maison
+#   bash install.sh ~/igor-local-q4_k_m.gguf   le modèle entraîné sur la maison (../llm-train)
 set -u
 CHOICE="${1:-qwen3-8b}"
+FILE=""
 case "$CHOICE" in
+  *.gguf)
+    FILE="$CHOICE"
+    [ -s "$FILE" ] || { printf 'ÉCHEC — fichier introuvable : %s\n' "$FILE"; exit 1; }
+    CHOICE=igor-tuned
+    # Un 4B (2,5 Go) avec un prompt court : 16 384 tokens suffisent largement.
+    CTX=16384 ;;
+  qwen3-4b)
+    URL=https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+    CTX=16384 ;;
   qwen3-8b)
     URL=https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf
     # 32 768 tokens de contexte : le modèle (4,7 Go) laisse la place.
@@ -19,7 +31,7 @@ case "$CHOICE" in
     # Le modèle fait 9 Go : 16 384 tokens de contexte pour tenir avec Whisper
     # dans les 16 Go de la carte (le prompt d'Igor en fait environ 5 500).
     CTX=16384 ;;
-  *) printf 'ÉCHEC — modèle inconnu « %s » : qwen3-8b ou qwen3-14b\n' "$CHOICE"; exit 1 ;;
+  *) printf 'ÉCHEC — modèle inconnu « %s » : qwen3-8b, qwen3-14b, qwen3-4b ou un fichier .gguf\n' "$CHOICE"; exit 1 ;;
 esac
 SERVER="$HOME/llama.cpp/build/bin/llama-server"
 BENCH_MODEL="$HOME/igor-bench/models/$CHOICE.gguf"
@@ -45,7 +57,11 @@ ok "$SERVER"
 
 step "3/8 Modèle $CHOICE (Q4_K_M)"
 mkdir -p "$APP"
-if [ -s "$MODEL" ]; then
+if [ -n "$FILE" ]; then
+  # Copié à chaque fois : un nouvel entraînement remplace l'ancien.
+  cp "$FILE" "$MODEL.part" && mv "$MODEL.part" "$MODEL" || fail "copie de $FILE dans $APP"
+  ok "$MODEL ($(du -h "$MODEL" | cut -f1))"
+elif [ -s "$MODEL" ]; then
   ok "déjà en place ($(du -h "$MODEL" | cut -f1))"
 elif [ -s "$BENCH_MODEL" ]; then
   # Un lien dur ne prend pas de place en plus ; une copie si le disque diffère.
