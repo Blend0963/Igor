@@ -873,6 +873,26 @@ describe("OpenAIChatEngine", () => {
       expect(endpoint(2)).toBe("https://api.openai.com/v1");
     });
 
+    it("gives the local model the last exchange and today's date only, the online one six messages", async () => {
+      const at = new Date().toISOString();
+      vi.mocked(conversations.getConversationHistory).mockReturnValue(
+        ["un", "deux", "trois", "quatre", "cinq", "six"].map((content, i) => ({
+          id: String(i), conversationId: "c", userId: "u", role: i % 2 ? "assistant" : "user", content, createdAt: at,
+        })) as never
+      );
+      mockCreate.mockResolvedValueOnce(reply("-")).mockResolvedValueOnce(reply("Bonsoir."));
+      await localEngine.chat({ message: "bonsoir", userId: "u", isVoice: true });
+      const localSent = JSON.stringify(mockCreate.mock.calls[0][0].messages);
+      expect(localSent).toContain("cinq");
+      expect(localSent).toContain("six");
+      expect(localSent).not.toContain("quatre");
+      expect(localSent).not.toContain("Date/Time");
+      expect(localSent).toContain("- Date: ");
+      const onlineSent = JSON.stringify(mockCreate.mock.calls[1][0].messages);
+      expect(onlineSent).toContain("un");
+      expect(onlineSent).toContain("quatre");
+    });
+
     it("leaves the live state out of the local prompt", async () => {
       vi.mocked(ha.getEntities).mockResolvedValue([{ entity_id: "light.salon", state: "on", attributes: { friendly_name: "Salon" } }] as never);
       mockCreate.mockResolvedValue(reply("-"));
@@ -934,6 +954,7 @@ describe("OpenAIChatEngine", () => {
       ]);
       expect(online.messages.at(-2).content).toContain("n'a rien fait");
       expect(online.messages.at(-1)).toEqual({ role: "user", content: "et pourquoi il est bleu ?" });
+      expect(online.messages[0].content).toContain("Date et heure actuelles");
     });
 
     it("keeps panel threads and images on the main model", async () => {

@@ -7,7 +7,7 @@ import { HomeAssistantClient } from "../ha/client.js";
 import { DeviceScanner } from "../ha/device-scanner.js";
 import { TopologyScanner } from "../ha/topology-scanner.js";
 import { formatScriptSection } from "../ha/script-catalog.js";
-import { buildSystemPromptText } from "./prompts.js";
+import { buildSystemPromptText, formatDateTimeWithOffset } from "./prompts.js";
 import { toolsForMode, toOpenAITools } from "./tool-definitions.js";
 import { listFromEnv, mistralKey } from "./mistral-platform.js";
 import { isActionCommand, isSimpleRequest, mayBeOrder, selectThreadReasoning } from "./model-router.js";
@@ -33,6 +33,7 @@ import {
   ONLINE_REPLY_INSTRUCTIONS,
   onlineFacts,
   LOCAL_HISTORY,
+  LOCAL_PROMPT_HISTORY,
   LOCAL_REMINDER,
   LOCAL_SAMPLING,
   LOCAL_TOOLS,
@@ -397,9 +398,12 @@ export class OpenAIChatEngine implements IChatEngine {
     // A thread id is chosen by the caller, so only this user's own turns in
     // it are history; another user's thread under the same id stays theirs.
     const history = storedHistory.filter((msg) => msg.userId === userId);
-    history.forEach((msg, index) => {
+    // The local model reads only the last exchange (the online one, which
+    // answers, gets more): history is what it has to read again each time.
+    const historyForModel = local ? history.slice(-LOCAL_PROMPT_HISTORY) : history;
+    historyForModel.forEach((msg, index) => {
       // Files attached long ago keep only an excerpt (see files/extract.ts).
-      const old = index < history.length - RECENT_FILE_MESSAGES;
+      const old = index < historyForModel.length - RECENT_FILE_MESSAGES;
       // Only the user's turns carry the time marker. Stamping the
       // assistant's own past replies taught the model to open its answers
       // with a recited "[09:12]" — it imitates its own history entries —
@@ -1029,7 +1033,10 @@ export class OpenAIChatEngine implements IChatEngine {
   }): Promise<{ text: string; usage?: TokenUsage }> {
     const { isVoice, signal, fallback } = opts;
     const model = this.config.llmModel;
-    const system = [opts.persona?.trim(), opts.instructions].filter(Boolean).join("\n\n");
+    // Without today's date it took "cette année" for the year it was trained
+    // in, and searched the web for the wrong one.
+    const now = `Date et heure actuelles : ${formatDateTimeWithOffset().display}.`;
+    const system = [opts.persona?.trim(), opts.instructions, now].filter(Boolean).join("\n\n");
     const controller = new AbortController();
     const stop = () => controller.abort();
     signal?.addEventListener("abort", stop, { once: true });

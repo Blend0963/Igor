@@ -615,6 +615,16 @@ ${factsText}`;
 /**
  * Build system prompt as a plain text string (for providers that don't support cache_control blocks).
  */
+/**
+ * The local model's only time line: today's date. It has no history tool and
+ * reminders are computed by the server, while an hour and minute changed the
+ * prompt every minute and made its slow card read the end of it again.
+ */
+function localDateLine(): string {
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  return `- Date: ${today} (the server works out times for reminders)`;
+}
+
 export function buildSystemPromptText(
   facts: string[],
   isVoice: boolean | PromptMode = false,
@@ -656,9 +666,9 @@ export function buildSystemPromptText(
   return `${identity}${instructions}${layoutSection}${deviceSection}
 
 ## Current Context:
-- Date/Time: ${dateTimeStr}
-- ISO Timestamp (now, UTC): ${local ? `${isoTimestamp.slice(0, 16)}:00Z` : isoTimestamp}
-- Local midnight today (UTC): ${localMidnightIso}  ← use this as start_time for "today" history queries, NOT 00:00:00Z${languageLine}
+${local ? localDateLine() : `- Date/Time: ${dateTimeStr}
+- ISO Timestamp (now, UTC): ${isoTimestamp}
+- Local midnight today (UTC): ${localMidnightIso}  ← use this as start_time for "today" history queries, NOT 00:00:00Z`}${languageLine}
 
 ## What You Remember About This User:
 ${factsText}`;

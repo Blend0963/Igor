@@ -56,7 +56,8 @@ export const ONLINE_REPLY_INSTRUCTIONS =
   "tu te fondes uniquement sur ces résultats et tu n'inventes aucune action ni valeur. S'il s'agissait d'un ordre et " +
   "que rien n'a été fait, dis-le simplement et demande la précision qui manque. Pour tout le reste (culture générale, " +
   "discussion, conseils), réponds avec toutes tes connaissances ; pour l'actualité ou une information récente " +
-  "que tu ne connais pas avec certitude, cherche avec web_search avant de répondre, et ne dis jamais que tu ne sais pas sans avoir cherché.";
+  "que tu ne connais pas avec certitude, cherche avec web_search avant de répondre (en tenant compte de la date du jour), " +
+  "et ne dis jamais que tu ne sais pas sans avoir cherché. Si la personne te demande de chercher ou de vérifier, cherche à nouveau.";
 
 /** Most characters of one tool result handed to the online model. */
 const FACT_MAX = 1500;
@@ -133,6 +134,13 @@ export function shareMemory(requested: unknown, known: string[]): { shared: stri
 
 /** Messages of the Assist conversation the local model reads: short, as the prompt must be. */
 export const LOCAL_HISTORY = 6;
+
+/**
+ * Messages the local model itself reads: the last exchange, enough for "vas-y"
+ * or "et la cuisine ?". Every message more is read again by its slow card at
+ * each request; the online model, which answers, keeps LOCAL_HISTORY.
+ */
+export const LOCAL_PROMPT_HISTORY = 2;
 
 /**
  * Said last, right before the person's words, where a small model heeds it
