@@ -136,6 +136,13 @@ export function shareMemory(requested: unknown, known: string[]): { shared: stri
 export const LOCAL_HISTORY = 6;
 
 /**
+ * Messages the local model itself reads: the last exchange, enough for "vas-y"
+ * or "et la cuisine ?". Every message more is read again by its slow card at
+ * each request; the online model, which answers, keeps LOCAL_HISTORY.
+ */
+export const LOCAL_PROMPT_HISTORY = 2;
+
+/**
  * Said last, right before the person's words, where a small model heeds it
  * best: it acts and reads, and another model answers the person.
  */

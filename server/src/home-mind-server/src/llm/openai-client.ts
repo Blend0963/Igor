@@ -33,6 +33,7 @@ import {
   ONLINE_REPLY_INSTRUCTIONS,
   onlineFacts,
   LOCAL_HISTORY,
+  LOCAL_PROMPT_HISTORY,
   LOCAL_REMINDER,
   LOCAL_SAMPLING,
   LOCAL_TOOLS,
@@ -397,9 +398,12 @@ export class OpenAIChatEngine implements IChatEngine {
     // A thread id is chosen by the caller, so only this user's own turns in
     // it are history; another user's thread under the same id stays theirs.
     const history = storedHistory.filter((msg) => msg.userId === userId);
-    history.forEach((msg, index) => {
+    // The local model reads only the last exchange (the online one, which
+    // answers, gets more): history is what it has to read again each time.
+    const historyForModel = local ? history.slice(-LOCAL_PROMPT_HISTORY) : history;
+    historyForModel.forEach((msg, index) => {
       // Files attached long ago keep only an excerpt (see files/extract.ts).
-      const old = index < history.length - RECENT_FILE_MESSAGES;
+      const old = index < historyForModel.length - RECENT_FILE_MESSAGES;
       // Only the user's turns carry the time marker. Stamping the
       // assistant's own past replies taught the model to open its answers
       // with a recited "[09:12]" — it imitates its own history entries —

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.4 — The local model reads less at each request
+
+- The local model now reads only the last exchange (enough for "vas-y" or "et la cuisine ?") instead of six messages, and today's date instead of the time to the minute: the part of its prompt it reads again at each request shrinks from about 450 to about 150 tokens, and the once-a-minute prewarm no longer has anything to read. Mistral, which answers, still gets the last six messages and the exact time.
+
 ## 0.16.3 — Mistral knows today's date
 
 - With the local model, Mistral answered without knowing today's date: asked who won the Ballon d'Or "cette année", it searched the web for the wrong year and answered wrongly. It now gets the date and time with every request, and searches again when asked to check.
