@@ -147,18 +147,22 @@ configuration:
   local_order_reply:
     name: Local Model (order reply)
     description: >-
-      What Igor says after a plain order the local model carried out.
+      When the local model carried out an order and has nothing to say
+      ("-"). silent: nothing, the order is just carried out (default).
       sentence: a short sentence at once ("Lumière salon allumée."), with no
-      online call. silent: nothing, the order is just carried out. online:
-      the online model words the reply. Questions, general knowledge and
-      searches always go to the online model. Empty = sentence.
+      online call. online: the online model announces it anyway. When the
+      local model asks to speak (a reading, a confirmation asked for, a
+      search, a question), or an order fails, the online model always
+      answers.
   local_llm_tuned:
     name: Local Model trained on the house
     description: >-
       Turn on only with a local model fine-tuned on your house (training set
       downloadable from the panel's Diagnostic page). It knows the rooms and
       lights, so its prompt leaves out the room map and the light cheat
-      sheet: shorter and faster. Leave off with an ordinary model.
+      sheet: shorter and faster. Leave off with an ordinary model. For it to
+      drive every entity, not only those exposed to Assist, also turn off
+      tools_from_exposed.
   fast_model:
     name: Fast Model (simple commands)
     description: >-

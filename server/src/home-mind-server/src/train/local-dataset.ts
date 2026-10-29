@@ -2,13 +2,14 @@
  * Training examples for the house's own model (llm/local-llm.ts), built
  * from the house itself: its rooms, devices, scenes and scripts.
  *
- * The model fine-tuned on them has one job: turn what is said into the
- * tool calls that carry it out, or "-" when the request is not about the
- * home (the online model answers then). Each example is the exact request
- * the server sends the local model in tuned mode (LOCAL_LLM_TUNED: no room
- * map, no light cheat sheet, both learned), followed by the answer it
- * should give. localTurnMessages() builds that request the way the engine
- * does, and a test holds the two together.
+ * The model fine-tuned on them is the house: it turns what is said into the
+ * tool calls that carry it out, on any entity, and ends with one line for
+ * Igor's voice (llm/local-protocol.ts): "-" when there is nothing to say,
+ * ">rep", ">dire", ">web", ">libre" or ">demande" otherwise. Each example is
+ * the exact request the server sends the local model in tuned mode
+ * (LOCAL_LLM_TUNED: no room map, no light cheat sheet, both learned),
+ * followed by the answer it should give. localTurnMessages() builds that
+ * request the way the engine does, and a test holds the two together.
  *
  * Nothing here leaves the house on its own: the dataset is built on demand
  * (GET /api/local-dataset, from the panel) and the owner decides where it
@@ -16,9 +17,8 @@
  */
 
 import type OpenAI from "openai";
-import { buildSystemPromptText } from "../llm/prompts.js";
-import { LOCAL_PROMPT_HISTORY, LOCAL_REMINDER } from "../llm/local-llm.js";
-import { SPOKEN_LENGTH_REMINDER, spokenSentenceCap } from "../llm/lean.js";
+import { LOCAL_PROMPT_HISTORY } from "../llm/local-llm.js";
+import { buildLocalPrompt, localDate } from "../llm/local-protocol.js";
 import { isFeminine } from "../llm/action-sentence.js";
 
 /** A device as the generator needs it. */
@@ -31,7 +31,7 @@ export interface HouseDevice {
   light?: { brightness: boolean; white: "color_temp" | "rgbw" | "rgb_white" | "none"; color: boolean };
   /** A group's members ("Lumières salon" = the three bulbs): the room's words go to the group. */
   members?: string[];
-  /** About the device rather than the house (a battery, the CPU load): read on request, never acted on. */
+  /** About the device rather than the house (a battery, the CPU load): never given a room's words. */
   technical?: boolean;
 }
 
@@ -42,12 +42,10 @@ export interface HouseInventory {
 }
 
 export interface DatasetOptions {
-  /** localPersona(LOCAL_LLM_PROMPT), as the engine sends it. */
-  persona: string;
+  /** The owner's working rules (LOCAL_LLM_PROMPT), as the engine sends them. */
+  rules?: string;
   /** formatScriptSection() of the house's scripts: tuned mode keeps it. */
   scriptSection?: string;
-  language?: string;
-  voiceGender?: "female" | "male";
   seed?: number;
   /** Rough number of examples (default 4000). */
   size?: number;
@@ -76,36 +74,26 @@ export interface PastMessage {
   time?: string;
 }
 
-const CACHE_MARKER = "\n\n## Current Context:";
-
 /**
  * The messages the engine sends the local model for one spoken or typed
  * Assist request in tuned mode, before its answer.
  */
 export function localTurnMessages(p: {
-  persona: string;
+  rules?: string;
   scriptSection?: string;
-  language?: string;
-  voiceGender?: "female" | "male";
   facts: string[];
   history: PastMessage[];
   message: string;
-  isVoice: boolean;
-  /** Replaces today's date line, so examples are not all dated the day they were built. */
-  date?: string;
+  /** The date line's day: examples are not all dated the day they were built. */
+  date?: Date;
 }): Message[] {
-  let system = buildSystemPromptText(p.facts, p.isVoice, p.persona, p.scriptSection, undefined, p.language, p.voiceGender, true, true);
-  if (p.date) system = system.replace(/^- Date: .*? \(the server/m, `- Date: ${p.date} (the server`);
-  const at = system.indexOf(CACHE_MARKER);
-  const messages: Message[] = [{ role: "system", content: system.slice(0, at) }];
+  const prompt = buildLocalPrompt({ rules: p.rules, cheatSheet: p.scriptSection, facts: p.facts, withMemory: true, date: localDate(p.date ?? new Date()) });
+  const messages: Message[] = [{ role: "system", content: prompt.stable }];
   for (const m of p.history.slice(-LOCAL_PROMPT_HISTORY)) {
     const prefix = m.role === "user" && m.time ? `[${m.time}] ` : "";
     messages.push({ role: m.role, content: `${prefix}${m.content}`, training: false } as Message);
   }
-  let volatile = system.slice(at + 2);
-  if (p.isVoice && spokenSentenceCap(p.message) !== undefined) volatile = `${volatile}\n\n${SPOKEN_LENGTH_REMINDER}`;
-  volatile = `${volatile}\n\n${LOCAL_REMINDER}`;
-  messages.push({ role: "system", content: volatile });
+  messages.push({ role: "system", content: prompt.volatile });
   messages.push({ role: "user", content: p.message });
   return messages;
 }
@@ -214,10 +202,10 @@ function spoken(rng: Rng, text: string, question = false): string {
 
 type Call = { name: string; args: Record<string, unknown> };
 
-function callMessage(calls: Call[], n: number): Message {
+function callMessage(calls: Call[], n: number, line = ""): Message {
   return {
     role: "assistant",
-    content: "",
+    content: line,
     tool_calls: calls.map((c, i) => ({
       id: `call_${n}_${i}`,
       type: "function" as const,
@@ -226,7 +214,20 @@ function callMessage(calls: Call[], n: number): Message {
   };
 }
 
-const NOTHING: Message = { role: "assistant", content: "-" };
+/** The local model's line alone, with no tool call. */
+function say(line: string): Message {
+  return { role: "assistant", content: line };
+}
+
+/** The line after a kind of request's tool calls ("-" for an order). */
+const LINE_OF_KIND: Record<string, string> = {
+  state: ">rep", temperature: ">rep", humidity: ">rep", sensor: ">rep", technical: ">rep", person: ">rep", weather: ">rep",
+  reminders_list: ">rep", contact: ">rep", memory: ">rep", reminder: ">dire", notify_when: ">dire",
+};
+
+/** Orders, which can be asked with a confirmation: then ">dire" instead of "-". */
+const ORDER_KINDS = new Set(["on_off", "area_lights", "all_lights", "two_devices", "brightness", "white", "color", "cover", "covers_group", "climate", "media", "scene", "script", "lock", "vacuum", "technical_order"]);
+const CONFIRM = [" et dis-moi quand c'est fait", " et confirme-moi", " et préviens-moi quand c'est fait", " et dis-moi si ça a marché", " tu me confirmes"];
 
 function service(domain: string, svc: string, ids: string[] | undefined, data?: Record<string, unknown>): Call {
   const args: Record<string, unknown> = { domain, service: svc };
@@ -370,11 +371,9 @@ const GENERAL = [
   "pourquoi le ciel est bleu", "quelle est la hauteur de la tour eiffel", "qui a peint la joconde", "combien y a-t-il de planètes",
   "comment on fait une pâte à crêpes", "donne-moi une idée de repas pour ce soir", "raconte-moi une blague", "comment ça va",
   "bonjour", "bonsoir", "merci", "merci beaucoup", "super merci", "t'es qui", "qu'est-ce que tu sais faire", "tu es une intelligence artificielle",
-  "quelles sont les infos du jour", "qui a gagné le match hier soir", "qui a gagné le ballon d'or cette année", "quel est le cours du bitcoin",
-  "quand sort le prochain film marvel", "quel est le prix de l'essence en ce moment", "c'est quoi l'actualité", "il y a des grèves demain",
   "traduis bonjour en espagnol", "comment on dit merci en japonais", "que veut dire procrastiner", "c'est quoi la photosynthèse",
   "donne-moi un conseil pour bien dormir", "comment enlever une tache de vin", "quelle est la recette du bœuf bourguignon", "combien de temps cuire un œuf dur",
-  "raconte-moi une histoire", "chante-moi une chanson", "tu peux m'aider à réviser", "qui est le président de la république",
+  "raconte-moi une histoire", "chante-moi une chanson", "tu peux m'aider à réviser", "combien de pattes a une araignée",
   "quelle est la population de la france", "combien de kilomètres entre paris et marseille", "c'est quand la fête des mères", "quel jour on est",
   "quelle heure est-il", "on est quel jour demain", "quelle est la date de noël", "combien de jours avant noël",
   "qui a inventé l'ampoule", "explique-moi la relativité", "c'est quoi un nombre premier", "quel est le plus grand océan",
@@ -383,15 +382,23 @@ const GENERAL = [
   "tu es là", "salut", "bonne nuit", "à plus tard", "je t'aime bien", "t'es nul", "d'accord", "ok", "non rien", "laisse tomber",
   "c'est qui le meilleur joueur de foot", "quel temps faisait-il en 1990", "quelle est la vitesse de la lumière", "pourquoi les chats ronronnent",
 ];
+/** What only the internet knows: the online model searches. */
+const GENERAL_WEB = [
+  "quelles sont les infos du jour", "qui a gagné le match hier soir", "qui a gagné le ballon d'or cette année", "quel est le cours du bitcoin",
+  "quand sort le prochain film marvel", "quel est le prix de l'essence en ce moment", "c'est quoi l'actualité", "il y a des grèves demain",
+  "qui est le président de la république", "quel temps fera-t-il à lyon demain", "à quelle heure ferme le supermarché", "quel est le score du match",
+  "quand joue le psg", "quelles sont les nouveautés sur netflix", "combien coûte une voiture électrique neuve", "quand ont lieu les prochaines élections",
+  "il y a des bouchons sur l'autoroute", "quel film passe ce soir à la télé", "quel est le taux du livret a", "qui a gagné l'eurovision",
+  "quelle est la météo à la montagne ce week-end", "il y a eu un séisme aujourd'hui", "quel est le prix du gaz", "quand commencent les soldes",
+];
 /** Not in the house: searched, found nowhere, left to the online model (which says so). */
 const ABSENT = ["le jacuzzi", "la piscine", "le sauna", "la cheminée", "le portail", "l'arrosage", "la machine à café", "le four", "la hotte", "le garage", "la véranda", "le spa"];
 
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const DAY_WORDS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
 
-function randomDate(rng: Rng): string {
-  const day = new Date(Date.UTC(2026, 0, 1) + Math.floor(rng() * 540) * 86400000);
-  return day.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+function randomDate(rng: Rng): Date {
+  return new Date(Date.UTC(2026, 0, 1, 12) + Math.floor(rng() * 540) * 86400000);
 }
 
 function randomTime(rng: Rng): string {
@@ -416,7 +423,7 @@ function fill(template: string, values: Record<string, string>): string {
 
 /** Whether the words read as a question, for the question mark Whisper would add. */
 function asksSomething(text: string): boolean {
-  return /^(qu|comment|combien|pourquoi|quand|où|c'est|est-ce|tu |t'|il y a|il fait|il va|il pleut|on est|je suis|j'ai|je bois)/i.test(text.trim());
+  return /^(qu|comment|combien|pourquoi|quand|où|c'est|est-ce|tu |t'|il y a|il fait|il va|il pleut|on est|je suis|j'ai |je bois)/i.test(text.trim());
 }
 
 /** What the online model might have answered to a chat, as the history holds it. */
@@ -473,7 +480,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   const add = (kind: string, weight: number, make: Maker) => {
     if (weight > 0) makers.push({ kind, weight, make });
   };
-  const one = (calls: Call[]) => [callMessage(calls, n++)];
+  const one = (calls: Call[], line = "-") => [callMessage(calls, n++, line)];
 
   // Lights and switches, on and off.
   const toggles = [...lights, ...switches];
@@ -653,7 +660,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     const call = callMessage([{ name: "search_entities", args: { query: f.query } }], n++);
     const id = (call as { tool_calls: { id: string }[] }).tool_calls[0].id;
     const result = [{ entity_id: f.entity, state: f.state, name: f.name, ...(f.unit ? { attributes: { unit_of_measurement: f.unit } } : {}) }];
-    return { kind: "search_found", text: f.words, question: true, answer: [call, { role: "tool", tool_call_id: id, content: JSON.stringify(result) }, NOTHING] };
+    return { kind: "search_found", text: f.words, question: true, answer: [call, { role: "tool", tool_call_id: id, content: JSON.stringify(result) }, say(">rep")] };
   });
   add("person", persons.length ? 2 : 0, (test) => {
     const d = pick(rng, persons);
@@ -732,7 +739,21 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     return { kind: "memory", text: phrase(rng, m.ask, test), question: true, facts, answer: one([{ name: "share_memory", args: { facts: [m.fact] } }]) };
   });
   // Not about the home: "-", and the online model answers.
-  add("not_home", 22, (test) => ({ kind: "not_home", text: phrase(rng, GENERAL, test), answer: [NOTHING] }));
+  add("not_home", 14, (test) => ({ kind: "not_home", text: phrase(rng, GENERAL, test), answer: [say(">libre")] }));
+  add("web", 8, (test) => ({ kind: "web", text: phrase(rng, GENERAL_WEB, test), answer: [say(">web")] }));
+  // Too little to act on: the voice asks.
+  add("unclear", 2, (test) => ({
+    kind: "unclear",
+    text: phrase(rng, ["allume", "éteins", "ouvre", "ferme", "mets-le à cinquante", "change ça", "fais-le", "règle ça", "mets la", "monte un peu", "baisse"], test),
+    answer: [say(">demande")],
+  }));
+  // The device's own switches (an indicator light, a child lock) obey too, by their full name.
+  const technicalSwitches = technical.filter((t) => ["switch", "light", "fan", "input_boolean"].includes(domainOf(t.device.id)));
+  add("technical_order", technicalSwitches.length ? 2 : 0, (test) => {
+    const d = pick(rng, technicalSwitches);
+    const on = rng() < 0.5;
+    return { kind: "technical_order", text: fill(phrase(rng, on ? ON : OFF, test), { x: the(d.device.name) }), answer: one([service(domainOf(d.device.id), on ? "turn_on" : "turn_off", [d.device.id])]) };
+  });
   // A device the house does not have: looked for, not found, left to the online model.
   const known = new Set(house.devices.map((d) => lower(d.name)));
   const absent = ABSENT.filter((a) => ![...known].some((k) => k.includes(a.replace(/^(le |la |l')/, ""))));
@@ -744,7 +765,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     return {
       kind: "absent",
       text: fill(phrase(rng, rng() < 0.5 ? ON : OFF, test), { x: thing }),
-      answer: [call, { role: "tool", tool_call_id: id, content: "[]" }, NOTHING],
+      answer: [call, { role: "tool", tool_call_id: id, content: "[]" }, say(">rep")],
     };
   });
   // Follow-ups: the last exchange says what "et la cuisine ?" or "vas-y" means.
@@ -780,12 +801,12 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
       { role: "user", content: spoken(rng, close ? pick(rng, ["il y a trop de soleil", "on voit tout de dehors", "il fait trop chaud ici"]) : pick(rng, ["il fait sombre ici", "on n'y voit rien", "il fait tout noir"])), time: randomTime(rng) },
       { role: "assistant", content: `Voulez-vous que ${close ? "je ferme" : "j'ouvre"} ${the(d.device.name)} ?` },
     ];
-    if (rng() < 0.2) return { kind: "follow_up", text: phrase(rng, ["non", "non merci", "laisse", "pas besoin", "non c'est bon"], test), history, answer: [NOTHING] };
+    if (rng() < 0.2) return { kind: "follow_up", text: phrase(rng, ["non", "non merci", "laisse", "pas besoin", "non c'est bon"], test), history, answer: [say(">libre")] };
     return { kind: "follow_up", text: phrase(rng, ["oui", "vas-y", "oui vas-y", "d'accord", "ok fais-le", "oui s'il te plaît", "volontiers", "oui merci"], test), history, answer: one([service("cover", close ? "close_cover" : "open_cover", [d.device.id])]) };
   });
   // A home question after a chat, a chat after an order: the history must not decide alone.
   add("after_chat", 3, (test) => {
-    const before = pick(rng, GENERAL);
+    const before = pick(rng, rng() < 0.7 ? GENERAL : GENERAL_WEB);
     const history: PastMessage[] = [
       { role: "user", content: spoken(rng, before, asksSomething(before)), time: randomTime(rng) },
       { role: "assistant", content: pick(rng, CHAT_REPLIES) },
@@ -794,8 +815,9 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
       const d = pick(rng, toggles);
       return { kind: "after_chat", text: fill(phrase(rng, OFF, test), { x: pick(rng, d.says) }), history, answer: one([service(domainOf(d.device.id), "turn_off", [d.device.id])]) };
     }
-    const text = phrase(rng, GENERAL, test);
-    return text === before ? undefined : { kind: "after_chat", text, history, answer: [NOTHING] };
+    const web = rng() < 0.35;
+    const text = phrase(rng, web ? GENERAL_WEB : GENERAL, test);
+    return text === before ? undefined : { kind: "after_chat", text, history, answer: [say(web ? ">web" : ">libre")] };
   });
 
   const total = makers.reduce((s, m) => s + m.weight, 0);
@@ -811,6 +833,15 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     const isTest = rng() < testShare;
     const draft = maker.make(isTest);
     if (!draft) continue;
+    const last = draft.answer[draft.answer.length - 1] as { content?: string; tool_calls?: unknown[] };
+    if (last.tool_calls?.length && last.content === "-") {
+      if (LINE_OF_KIND[draft.kind]) last.content = LINE_OF_KIND[draft.kind];
+      else if (ORDER_KINDS.has(draft.kind) && !draft.history && rng() < 0.12) {
+        // "… et dis-moi quand c'est fait": the voice confirms.
+        draft.text += phrase(rng, CONFIRM, isTest);
+        last.content = ">dire";
+      }
+    }
     const message = spoken(rng, draft.text, draft.question ?? asksSomething(draft.text));
     const key = `${message.toLowerCase()}|${draft.history?.map((h) => h.content).join("|") ?? ""}`;
     if (seen.has(key)) continue;
@@ -818,14 +849,11 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     const facts = draft.facts ?? (rng() < 0.7 ? OTHER_FACTS.filter(() => rng() < 0.35) : []);
     const messages = [
       ...localTurnMessages({
-        persona: options.persona,
+        rules: options.rules,
         scriptSection: options.scriptSection,
-        language: options.language,
-        voiceGender: options.voiceGender,
         facts,
         history: draft.history ?? [],
         message,
-        isVoice: rng() < 0.85,
         date: randomDate(rng),
       }),
       ...draft.answer,
@@ -856,7 +884,8 @@ export function readableSample(examples: Example[], count = 40): string {
     for (const m of e.messages.slice(userAt + 1)) {
       if (m.role === "assistant") {
         const calls = (m as { tool_calls?: { function: { name: string; arguments: string } }[] }).tool_calls;
-        lines.push(calls?.length ? `  → ${calls.map((c) => `${c.function.name} ${c.function.arguments}`).join(" + ")}` : `  → ${m.content}`);
+        const said = typeof m.content === "string" && m.content ? m.content : "";
+        lines.push(calls?.length ? `  → ${calls.map((c) => `${c.function.name} ${c.function.arguments}`).join(" + ")}${said ? `  [${said}]` : ""}` : `  → ${said}`);
       } else if (m.role === "tool") lines.push(`  (résultat) ${m.content}`);
     }
     out.push(lines.join("\n"));

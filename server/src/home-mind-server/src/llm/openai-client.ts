@@ -30,21 +30,26 @@ import {
   DONE_TIMEOUT_MS,
   GENERAL_UNAVAILABLE,
   LOCAL_OUTPUT_CAP,
-  ONLINE_REPLY_INSTRUCTIONS,
-  onlineFacts,
   LOCAL_HISTORY,
   LOCAL_PROMPT_HISTORY,
-  LOCAL_REMINDER,
   LOCAL_SAMPLING,
-  LOCAL_TOOLS,
   LOCAL_UNAVAILABLE,
-  localPersona,
   ONLINE_SPOKEN_STYLE,
   PREWARM_EVERY_MS,
   SHARE_MEMORY,
-  SHARE_MEMORY_TOOL,
   shareMemory,
 } from "./local-llm.js";
+import {
+  buildLocalPrompt,
+  localDate,
+  LOCAL_TOOL_DEFS,
+  needsWord,
+  ONLINE_BRIEF_INSTRUCTIONS,
+  onlineBrief,
+  readLocalTag,
+  SHARE_MEMORY_DEF,
+  type LocalTag,
+} from "./local-protocol.js";
 import { actionSentence, needsLocalFollowUp, type DoneCall } from "./action-sentence.js";
 import { OpenAIFactExtractor } from "../memory/openai-extractor.js";
 import {
@@ -87,8 +92,7 @@ function openAIToolsFor(mode: "voice" | "text" | "thread", turn: TurnPolicy = {}
 
 /** The tools a local Assist turn gets, as the engine sends them (train/local-dataset.ts trains on them). */
 export function localToolList(withMemory: boolean): OpenAI.ChatCompletionTool[] {
-  const tools = openAIToolsFor("voice").filter((t) => t.type === "function" && LOCAL_TOOLS.has(t.function.name));
-  return withMemory ? [...tools, SHARE_MEMORY_TOOL] : tools;
+  return withMemory ? [...LOCAL_TOOL_DEFS, SHARE_MEMORY_DEF] : LOCAL_TOOL_DEFS;
 }
 
 /** Output ceiling of a thread turn that reasons first: the thinking is billed from it too. */
@@ -370,10 +374,14 @@ export class OpenAIChatEngine implements IChatEngine {
       .filter(Boolean)
       .join("\n\n") || undefined;
     const homeLayout = this.topology.hasLayout() && !tuned ? this.topology.formatSection() : undefined;
-    // The local model gets a working identity, not the persona: Igor is
-    // played by the online model, which words the replies.
-    const promptPersona = local ? localPersona(this.config.localLlmPrompt) : customPrompt;
-    const systemPrompt = buildSystemPromptText(factContents, scope.isThread ? "thread" : isVoice, promptPersona, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender, scope.facts, Boolean(local));
+    // The local model gets its own technical prompt (llm/local-protocol.ts),
+    // never the persona: Igor is played by the online model, which speaks.
+    const localPrompt = local
+      ? buildLocalPrompt({ rules: this.config.localLlmPrompt, layout: homeLayout, cheatSheet: deviceCheatSheet, facts: factContents, withMemory: scope.facts, date: localDate(new Date()) })
+      : undefined;
+    const systemPrompt = localPrompt
+      ? ""
+      : buildSystemPromptText(factContents, scope.isThread ? "thread" : isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender, scope.facts);
 
     // Split the system prompt for prefix caching (#66 follow-up).
     //
@@ -398,8 +406,8 @@ export class OpenAIChatEngine implements IChatEngine {
     // falls back to the single-message shape, unchanged.
     const CACHE_MARKER = "\n\n## Current Context:";
     const markerIndex = systemPrompt.indexOf(CACHE_MARKER);
-    const stableSystemPrompt = markerIndex === -1 ? systemPrompt : systemPrompt.slice(0, markerIndex);
-    let volatileSystemPrompt = markerIndex === -1 ? "" : systemPrompt.slice(markerIndex + 2);
+    const stableSystemPrompt = localPrompt ? localPrompt.stable : markerIndex === -1 ? systemPrompt : systemPrompt.slice(0, markerIndex);
+    let volatileSystemPrompt = localPrompt ? localPrompt.volatile : markerIndex === -1 ? "" : systemPrompt.slice(markerIndex + 2);
     const messages: OpenAI.ChatCompletionMessageParam[] = [
       { role: "system", content: stableSystemPrompt },
     ];
@@ -456,10 +464,9 @@ export class OpenAIChatEngine implements IChatEngine {
 
     // A spoken reply is short: said last, right before the person's words.
     const sentenceCap = isVoice && !scope.isThread ? spokenSentenceCap(message) : undefined;
-    if (sentenceCap !== undefined) {
+    if (sentenceCap !== undefined && !local) {
       volatileSystemPrompt = volatileSystemPrompt ? `${volatileSystemPrompt}\n\n${SPOKEN_LENGTH_REMINDER}` : SPOKEN_LENGTH_REMINDER;
     }
-    if (local) volatileSystemPrompt = volatileSystemPrompt ? `${volatileSystemPrompt}\n\n${LOCAL_REMINDER}` : LOCAL_REMINDER;
 
     // The volatile context goes after the history, right before the current
     // user message: everything before it is stable or append-only, so the
@@ -473,9 +480,8 @@ export class OpenAIChatEngine implements IChatEngine {
     const promptMode = scope.isThread ? "thread" : isVoice ? "voice" : "text";
     const allTools = openAIToolsFor(promptMode, { unattended: request.unattended === true, noMemory: !scope.facts });
     // The local model also hands the online one the memories a reply needs.
-    const tools = local
-      ? [...allTools.filter((t) => t.type === "function" && LOCAL_TOOLS.has(t.function.name)), ...(scope.facts ? [SHARE_MEMORY_TOOL] : [])]
-      : allTools;
+    const allowed = new Set(allTools.map((t) => (t.type === "function" ? t.function.name : "")));
+    const tools = local ? localToolList(scope.facts).filter((t) => t.type !== "function" || allowed.has(t.function.name) || t.function.name === SHARE_MEMORY) : allTools;
 
     if (request.prewarm) {
       // Everything a spoken request sends before the person's words, read
@@ -661,6 +667,10 @@ export class OpenAIChatEngine implements IChatEngine {
     // What the local model did this turn, and the plain sentence for it when known.
     const localDone: DoneCall[] = [];
     let plainSentence: string | undefined;
+    // The local model's line for the voice (llm/local-protocol.ts), from its last pass.
+    let localTag: ReturnType<typeof readLocalTag>;
+    // An order carried out without a word: not an empty answer.
+    let localSilent = false;
     let result: Awaited<ReturnType<typeof call>>;
     try {
       result = await call(false);
@@ -701,6 +711,7 @@ export class OpenAIChatEngine implements IChatEngine {
       while (result.toolCalls.length > 0) {
         if (signal?.aborted) throw new Error("aborted");
         iterations++;
+        if (local) localTag = readLocalTag(result.text) ?? localTag;
 
         // Add assistant message with tool calls
         messages.push({
@@ -794,40 +805,47 @@ export class OpenAIChatEngine implements IChatEngine {
         turnUsage.add(result.usage);
         if (forceAnswer) break;
       }
-      // The local model only acts and reads. The online model answers the
-      // person, from their words, the last exchanges and what was done or
-      // read; never from the home's layout, live state, memory or contacts.
-      // A plain order whose outcome is known needs no online call at all
-      // (local_order_reply sentence or silent): the server says it, or nothing.
-      const orderReply = this.config.localOrderReply ?? "sentence";
-      if (local && plainSentence && orderReply !== "online") {
-        console.log(`[route] order done locally, no online call (${orderReply}): ${plainSentence}`);
-        if (orderReply === "sentence") speak(plainSentence);
-        result = { text: orderReply === "sentence" ? plainSentence : "", finishReason: "stop", toolCalls: [], usage: undefined };
-      } else if (local) {
-        const draft = result.text.trim();
-        console.log(
-          `[route] ${localDone.length ? `${localDone.length} local tool call(s)` : "nothing to do locally"}, ` +
-            `answered by ${this.config.llmModel}${plainSentence ? `: ${plainSentence}` : ""}`
-        );
-        const reply = await this.askOnline({
-          instructions: ONLINE_REPLY_INSTRUCTIONS,
-          content: [
-            ...history.slice(-LOCAL_HISTORY).map((m) => ({ role: m.role, content: m.content }) as OpenAI.ChatCompletionMessageParam),
-            { role: "system", content: onlineFacts(localDone, plainSentence) },
-            { role: "user", content: message },
-          ],
-          persona: this.onlinePersona(customPrompt),
-          isVoice,
-          maxSentences: sentenceCap,
-          onChunk: speak,
-          signal,
-          fallback: plainSentence ?? (draft && draft !== "-" ? draft : GENERAL_UNAVAILABLE),
-          timeoutMs: plainSentence ? DONE_TIMEOUT_MS : undefined,
-          toolCtx,
-        });
-        turnUsage.add(reply.usage);
-        result = { text: reply.text, finishReason: "stop", toolCalls: [], usage: undefined };
+      // The local model acts and reads, then its line says whether Igor
+      // speaks and why (llm/local-protocol.ts). The online model, which plays
+      // Igor, gets only a terse brief: the tag, what was done and read, the
+      // person's words, and the last exchanges; never the home's layout,
+      // live state, memory or contacts beyond what the brief carries.
+      if (local) {
+        localTag = readLocalTag(result.text) ?? localTag;
+        // A failure or a confirmation to ask is always said. Without a line:
+        // a known order is done, a read is answered, anything else is talk.
+        let tag: LocalTag = needsWord(localDone) ?? localTag?.tag ?? (localDone.length ? (plainSentence ? "silence" : "rep") : "libre");
+        // "-" with nothing done means the person asked something: Igor answers.
+        if (tag === "silence" && localDone.length === 0) tag = "libre";
+        const orderReply = this.config.localOrderReply ?? "silent";
+        if (tag === "silence" && orderReply === "online") tag = "dire";
+        if (tag === "silence") {
+          const said = orderReply === "sentence" && plainSentence ? plainSentence : "";
+          console.log(`[route] done locally, nothing for ${this.config.llmModel}${said ? `; said: ${said}` : ""}`);
+          if (said) speak(said);
+          localSilent = !said;
+          result = { text: said, finishReason: "stop", toolCalls: [], usage: undefined };
+        } else {
+          const brief = onlineBrief(tag, localTag?.note, localDone, message);
+          console.log(`[route] local → ${this.config.llmModel}: ${brief.replace(/\n/g, " | ").slice(0, 400)}`);
+          const reply = await this.askOnline({
+            instructions: ONLINE_BRIEF_INSTRUCTIONS,
+            content: [
+              ...history.slice(-LOCAL_HISTORY).map((m) => ({ role: m.role, content: m.content }) as OpenAI.ChatCompletionMessageParam),
+              { role: "user", content: brief },
+            ],
+            persona: this.onlinePersona(customPrompt),
+            isVoice,
+            maxSentences: sentenceCap,
+            onChunk: speak,
+            signal,
+            fallback: plainSentence ?? GENERAL_UNAVAILABLE,
+            timeoutMs: tag === "dire" && plainSentence ? DONE_TIMEOUT_MS : undefined,
+            toolCtx,
+          });
+          turnUsage.add(reply.usage);
+          result = { text: reply.text, finishReason: "stop", toolCalls: [], usage: undefined };
+        }
       }
       // A thread reply that reached the output cap goes on by itself, as one
       // message: a long table or text must not stop halfway.
@@ -908,8 +926,8 @@ export class OpenAIChatEngine implements IChatEngine {
     // so the HA integration can surface a useful hint instead of the generic
     // "I received your request but got no response." fallback. The `finish_reason`
     // from the final stream tells us which diagnostic applies.
-    // An order carried out without a word (local_order_reply silent) is not an empty answer.
-    const error = responseText === "" && result.toolCalls.length === 0 && !(local && plainSentence)
+    // An order carried out without a word (the local model's "-") is not an empty answer.
+    const error = responseText === "" && result.toolCalls.length === 0 && !localSilent
       ? this.classifyEmptyResponse(result.finishReason, result.usage)
       : undefined;
 

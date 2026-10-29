@@ -1,11 +1,13 @@
 # Changelog
 
-## 0.18.1 — Expose everything, the training set sorts it out
+## 0.19.0 — The local model is the house, Mistral is Igor's voice
 
-- Everything can be exposed to Assist. What is about a device rather than the house (what Home Assistant's entity registry marks as diagnostic or configuration, hidden entities, and what reads like it: batteries, signal, firmware, CPU load, indicator lights, child locks…) stays in the training set, but read only: "quelle est la batterie de la télécommande ?" reads it and Mistral answers; the model never learns to switch it, and it never takes "la prise du salon" from the real plug. The add-on log says how many there are.
-- A reading the model was not trained on ("la température du congélateur" on a sensor added since) is looked up with a search, and Mistral answers from what it found.
-- Groups: when a group ("Lumières salon") and its bulbs are in the same room, "la lumière du salon" and "éteins tout dans le salon" mean the group, and each bulb keeps its own name. A group with no room takes its members' room. Before, a room with several lights got no short phrasing at all.
-- French in the examples and in the short order sentences: more feminine nouns (télécommande, batterie, température…), "à la", "au", "du" after accented words.
+- The local model now decides whether Igor speaks. After acting, it writes one line: `-` (nothing to say), `>dire` (announce what was done), `>rep` (answer from what it read), `>web` (needs the internet), `>libre` (general knowledge, conversation) or `>demande` (something is missing). A plain order is carried out in silence by default; a failed order or a confirmation to ask is always said.
+- Mistral gets a terse brief instead of the full tool results: the tag, `fait :` and `lu :` lines as entity=state, and the person's exact words, plus the last exchanges. Its instructions tell it how to read that brief and speak as Igor.
+- The local model's prompt is now technical and minimal (the protocol in a few lines, short tool descriptions); its sampling is near-greedy (temperature 0.1), as it writes ids and JSON.
+- `local_order_reply` now applies when the local model has nothing to say; its default is `silent`.
+- Training set: built from the whole house by default (button "toute la maison", nothing to expose), or from the exposed entities only. Its size grows with the house (8 examples per device, 4,000 to 20,000), the zip is compressed and downloaded by the browser, nothing is kept on the server. Every example ends with the right line. Every entity can be driven: what is about a device rather than the house (diagnostic and configuration entities, hidden ones, batteries, signal, CPU load, indicator lights…) is read when asked and switched by its full name, and never takes a room's words ("la prise du salon") from a real device. Groups get the room's words, their members keep their own names. Readings the model was not trained on are searched for. More feminine nouns and accent-aware contractions in the examples and the short order sentences.
+- With a tuned model (`local_llm_tuned`), turn off `tools_from_exposed` for it to drive every entity.
 
 ## 0.18.0 — A training set for a local model that knows the house
 

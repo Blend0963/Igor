@@ -9,6 +9,7 @@
  * size are capped and inflation itself is stopped at the remaining budget.
  */
 
+import { deflateRawSync } from "node:zlib";
 import { inflateRawSync } from "node:zlib";
 
 export interface ZipEntry {
@@ -89,22 +90,24 @@ function crc32(data: Buffer): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-/** An archive of stored (uncompressed) entries. */
-export function writeZip(entries: ZipEntry[]): Buffer {
+/** An archive of stored (uncompressed) entries, or deflated ones with `deflate`. */
+export function writeZip(entries: ZipEntry[], options: { deflate?: boolean } = {}): Buffer {
   const locals: Buffer[] = [];
   const centrals: Buffer[] = [];
   let offset = 0;
   for (const entry of entries) {
     const name = Buffer.from(entry.name, "utf8");
     const crc = crc32(entry.data);
+    const method = options.deflate ? 8 : 0;
+    const body = options.deflate ? deflateRawSync(entry.data, { level: 6 }) : entry.data;
     const local = Buffer.alloc(30);
     local.writeUInt32LE(LOCAL, 0);
     local.writeUInt16LE(20, 4);
     local.writeUInt16LE(0x0800, 6); // UTF-8 names
-    local.writeUInt16LE(0, 8);
+    local.writeUInt16LE(method, 8);
     local.writeUInt32LE(0x00210000, 10); // 1980-01-01 00:00
     local.writeUInt32LE(crc, 14);
-    local.writeUInt32LE(entry.data.length, 18);
+    local.writeUInt32LE(body.length, 18);
     local.writeUInt32LE(entry.data.length, 22);
     local.writeUInt16LE(name.length, 26);
     local.writeUInt16LE(0, 28);
@@ -113,16 +116,16 @@ export function writeZip(entries: ZipEntry[]): Buffer {
     central.writeUInt16LE(20, 4);
     central.writeUInt16LE(20, 6);
     central.writeUInt16LE(0x0800, 8);
-    central.writeUInt16LE(0, 10);
+    central.writeUInt16LE(method, 10);
     central.writeUInt32LE(0x00210000, 12);
     central.writeUInt32LE(crc, 16);
-    central.writeUInt32LE(entry.data.length, 20);
+    central.writeUInt32LE(body.length, 20);
     central.writeUInt32LE(entry.data.length, 24);
     central.writeUInt16LE(name.length, 28);
     central.writeUInt32LE(offset, 42);
-    locals.push(local, name, entry.data);
+    locals.push(local, name, body);
     centrals.push(central, name);
-    offset += 30 + name.length + entry.data.length;
+    offset += 30 + name.length + body.length;
   }
   const directory = Buffer.concat(centrals);
   const end = Buffer.alloc(22);

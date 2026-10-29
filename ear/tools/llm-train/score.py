@@ -1,9 +1,9 @@
 """Igor — compare the local model's answer with the expected one.
 
-An answer is either "-" (left to the online model) or a set of tool calls.
-Two answers match when they call the same tools with the same arguments, in
-any order; a list of entities ("light.a,light.b") matches in any order, and
-5 matches 5.0. Used by train.py (after training) and bench.py (on the VM).
+An answer is the local model's line for Igor's voice ("-", ">rep", ">web"…)
+and its tool calls. Two answers match when the line is the same and they call
+the same tools with the same arguments, in any order; a list of entities
+("light.a,light.b") matches in any order, and 5 matches 5.0. Used by train.py (after training) and bench.py (on the VM).
 """
 
 import json
@@ -36,8 +36,20 @@ def _call(name, args):
     return json.dumps([name, _norm_args(args)], sort_keys=True, ensure_ascii=False)
 
 
+def _line(text):
+    """The local model's line for Igor's voice: "-", ">rep", ">web"… (llm/local-protocol.ts)."""
+    for raw in TOOL_CALL.sub("", text or "").split("\n"):
+        t = raw.strip()
+        if t == "-":
+            return "-"
+        m = re.match(r"^>\s*([a-zé]+)", t, re.I)
+        if m:
+            return ">" + m.group(1).lower()
+    return ""
+
+
 def parse_answer(text):
-    """The model's raw output (Qwen writes tool calls as <tool_call>{...}</tool_call>)."""
+    """The model's raw output: its line, and its tool calls (Qwen writes <tool_call>{...}</tool_call>)."""
     calls = []
     for block in TOOL_CALL.findall(text or ""):
         try:
@@ -45,21 +57,15 @@ def parse_answer(text):
             calls.append(_call(obj.get("name", ""), obj.get("arguments", {})))
         except ValueError:
             calls.append(_call("_bad", block))
-    if calls:
-        return sorted(calls)
-    return (text or "").strip()
+    return (_line(text), sorted(calls))
 
 
 def parse_message(message):
     """An OpenAI-style assistant message: the expected answer, or llama-server's reply."""
-    calls = message.get("tool_calls") or []
-    if calls:
-        return sorted(_call(c["function"]["name"], c["function"].get("arguments", {})) for c in calls)
-    return parse_answer(message.get("content") or "")
+    calls = sorted(_call(c["function"]["name"], c["function"].get("arguments", {})) for c in (message.get("tool_calls") or []))
+    return (_line(message.get("content") or ""), calls)
 
 
 def same_answer(got, expected_message):
-    want = parse_message(expected_message)
-    if isinstance(want, str):
-        return isinstance(got, str) and got.strip().strip(".") == want
-    return got == want
+    """Same line for the voice and the same tool calls."""
+    return got == parse_message(expected_message)

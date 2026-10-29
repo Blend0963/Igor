@@ -12,72 +12,9 @@
 
 import OpenAI from "openai";
 
-/**
- * The tools Assist gets on the local model: every tool description is read
- * on each request, and these are the ones a spoken or typed Assist answer
- * uses. The rest (automations, history, cameras, forgetting a memory) stay in
- * the chat-panel threads; the web search is the online model's.
- */
-export const LOCAL_TOOLS = new Set([
-  "get_state",
-  "search_entities",
-  "call_service",
-  "find_contact",
-  "schedule_task",
-  "notify_when",
-  "list_scheduled_tasks",
-  "cancel_scheduled_task",
-]);
-
-/**
- * Who the local model is: a working part, not a character. It acts and
- * reads; the online model plays Igor and answers. The add-on option local_llm_prompt (LOCAL_LLM_PROMPT)
- * adds the owner's working rules (scripts, contacts, calls) after it.
- */
-export const LOCAL_IDENTITY =
-  "Tu es le module domotique d'un assistant vocal intégré à Home Assistant. Tu n'as pas de personnalité à jouer " +
-  "et tu ne réponds jamais à la personne : tu comprends la demande et tu appelles les bons outils ; un autre modèle " +
-  "lui répond ensuite d'après ce que tu as fait ou lu.";
-
-/** The local model's whole persona: its identity, then the owner's working rules if any. */
-export function localPersona(rules: string | undefined): string {
-  return rules?.trim() ? `${LOCAL_IDENTITY}\n\n${rules.trim()}` : LOCAL_IDENTITY;
-}
-
 /** Said to the online model after the owner's common persona: how a spoken reply sounds. */
 export const ONLINE_SPOKEN_STYLE =
   "Ta réponse est lue à voix haute : une à deux phrases courtes, en texte brut, sans liste ni mise en forme, sans introduction ni proposition d'aide.";
-
-/** The online model's instructions when it answers for the local model. */
-export const ONLINE_REPLY_INSTRUCTIONS =
-  "Tu réponds à la personne. Un module domotique local, chez elle, a déjà fait les actions et lectures nécessaires " +
-  "dans la maison, sur le téléphone et dans les contacts ; ce qu'il a fait ou lu t'est donné juste avant sa phrase. " +
-  "Tu ne peux rien faire toi-même dans la maison. Pour tout ce qui concerne la maison, le téléphone ou les contacts, " +
-  "tu te fondes uniquement sur ces résultats et tu n'inventes aucune action ni valeur. S'il s'agissait d'un ordre et " +
-  "que rien n'a été fait, dis-le simplement et demande la précision qui manque. Pour tout le reste (culture générale, " +
-  "discussion, conseils), réponds avec toutes tes connaissances ; pour l'actualité ou une information récente " +
-  "que tu ne connais pas avec certitude, cherche avec web_search avant de répondre (en tenant compte de la date du jour) ; " +
-  "pour un résultat sportif, un prix, une élection, une sortie ou tout ce qui change avec le temps, cherche toujours, " +
-  "même si tu crois savoir : ta mémoire peut être dépassée. " +
-  "et ne dis jamais que tu ne sais pas sans avoir cherché. Si la personne te demande de chercher ou de vérifier, cherche à nouveau.";
-
-/** Most characters of one tool result handed to the online model. */
-const FACT_MAX = 1500;
-
-/** What the local model did and read this turn, as the online model reads it. */
-export function onlineFacts(done: { name: string; input: Record<string, unknown>; result: unknown }[], plain?: string): string {
-  if (done.length === 0) return "Le module domotique n'a rien fait ni lu pour cette demande.";
-  const lines = done.map((d) => {
-    // Memories: only the ones shareMemory checked, never what the local model asked for.
-    if (d.name === SHARE_MEMORY) {
-      const shared = (d.result as { shared?: string[] } | undefined)?.shared ?? [];
-      return `- souvenirs utiles : ${shared.length ? shared.join(" ; ") : "aucun"}`;
-    }
-    const result = JSON.stringify(d.result) ?? "";
-    return `- ${d.name} ${JSON.stringify(d.input)} → ${result.length > FACT_MAX ? `${result.slice(0, FACT_MAX)}…` : result}`;
-  });
-  return `Ce que le module domotique vient de faire ou de lire pour cette demande${plain ? ` (en bref : ${plain})` : ""} :\n${lines.join("\n")}`;
-}
 
 /** Most tokens the local model writes in one pass: tool calls, never answers. */
 export const LOCAL_OUTPUT_CAP = 512;
@@ -94,24 +31,6 @@ export const GENERAL_UNAVAILABLE = "Je n'arrive pas à joindre le service en lig
  * are memories Igor really holds (shareMemory checks each one).
  */
 export const SHARE_MEMORY = "share_memory";
-
-export const SHARE_MEMORY_TOOL: OpenAI.ChatCompletionTool = {
-  type: "function",
-  function: {
-    name: SHARE_MEMORY,
-    description:
-      "Give the model that answers the person the memories its answer depends on (their name, a preference, a habit, " +
-      "someone they mentioned), copied word for word from \"What You Remember About This User\". Only these leave the " +
-      "house. Call it only when the request needs them.",
-    parameters: {
-      type: "object",
-      properties: {
-        facts: { type: "array", items: { type: "string" }, description: "The memories, each copied exactly." },
-      },
-      required: ["facts"],
-    },
-  },
-};
 
 function plainText(text: string): string {
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -145,19 +64,12 @@ export const LOCAL_HISTORY = 6;
 export const LOCAL_PROMPT_HISTORY = 2;
 
 /**
- * Said last, right before the person's words, where a small model heeds it
- * best: it acts and reads, and another model answers the person.
+ * Near-greedy: the local model writes entity ids, JSON and one tag, where a
+ * creative pick is a wrong one. (presence_penalty, which kept it from
+ * repeating itself when it still spoke, would push it off an id it must
+ * write twice.) llama.cpp reads top_k as an extension.
  */
-export const LOCAL_REMINDER =
-  "Rappel : tu n'écris jamais de réponse, un autre modèle répond à la personne. Appelle les outils nécessaires " +
-  "(y compris pour une suite comme « vas-y » ou « oui », d'après les échanges précédents) ; si rien ne concerne " +
-  "la maison, le téléphone, les contacts ou un rappel, écris seulement « - ».";
-
-/**
- * Qwen3's recommended sampling without thinking: presence_penalty keeps a
- * small model from repeating itself. llama.cpp reads top_k as an extension.
- */
-export const LOCAL_SAMPLING = { temperature: 0.7, top_p: 0.8, top_k: 20, presence_penalty: 1.5 };
+export const LOCAL_SAMPLING = { temperature: 0.1, top_p: 0.9, top_k: 20 };
 
 /**
  * How often the prompt is read again ahead of time, besides right after each
