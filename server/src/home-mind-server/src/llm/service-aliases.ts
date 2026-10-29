@@ -7,6 +7,8 @@
  */
 const ALIASES: Record<string, Record<string, string>> = {
   cover: {
+    turn_on: "open_cover",
+    turn_off: "close_cover",
     open: "open_cover",
     close: "close_cover",
     stop: "stop_cover",

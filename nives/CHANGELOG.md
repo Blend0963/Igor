@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.6 — Covers: turn_on and turn_off too
+
+- "Ferme-les complètement" asked for cover `turn_off`, which Home Assistant refuses; it is now sent as `close_cover` (and `turn_on` as `open_cover`).
+- `ear/tools/stt-bridge`: Whisper now gets the house's usual words as its initial prompt, which steers short commands ("ferme-les complètement" was heard as "ferme le lit complètement"). Run its install.sh again on the VM to apply.
+
 ## 0.16.5 — Service names fixed before Home Assistant sees them
 
 - "Ouvre les volets à 10 %" failed: the model asked for cover `set_position` and `open`, which Home Assistant refuses (the real services are `set_cover_position` and `open_cover`). The server now maps such near-miss names to the real ones (covers, media players, thermostats, fans, lights, switches) before calling Home Assistant; a real service is never changed. This helps every model, local or online.
