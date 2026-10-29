@@ -41,6 +41,8 @@ PY="$WORK/venv/bin/python"
 "$PY" -c 'import torch; assert torch.cuda.is_available(), "CUDA"' || fail "PyTorch ne voit pas la carte"
 ok "$("$PY" -c 'import torch, transformers, peft; print(f"torch {torch.__version__}, transformers {transformers.__version__}, peft {peft.__version__}")')"
 
+# Fewer, larger free blocks: the logits of a long example need one big piece.
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 step "4/6 Entraînement (une à deux heures)"
 (cd "$HERE" && "$PY" train.py "$DATA" "$OUT") 2>&1 | tee "$OUT/train.log"
 [ "${PIPESTATUS[0]}" = 0 ] || fail "entraînement (voir $OUT/train.log)"
