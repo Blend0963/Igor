@@ -5,12 +5,26 @@
 # joignable par Home Assistant sur le réseau local, protégé par une clé.
 # La clé reste dans ~/.config/igor-llm/api-key ; ce script ne l'affiche jamais.
 # Chaque étape affiche OK ou ÉCHEC ; au premier ÉCHEC, rien d'autre n'est fait.
-#   bash install.sh
+#   bash install.sh             Qwen3 8B (par défaut)
+#   bash install.sh qwen3-14b   Qwen3 14B, pour comparer ; bash install.sh pour revenir au 8B
 set -u
+CHOICE="${1:-qwen3-8b}"
+case "$CHOICE" in
+  qwen3-8b)
+    URL=https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf
+    # 32 768 tokens de contexte : le modèle (4,7 Go) laisse la place.
+    CTX=32768 ;;
+  qwen3-14b)
+    URL=https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf
+    # Le modèle fait 9 Go : 16 384 tokens de contexte pour tenir avec Whisper
+    # dans les 16 Go de la carte (le prompt d'Igor en fait environ 5 500).
+    CTX=16384 ;;
+  *) printf 'ÉCHEC — modèle inconnu « %s » : qwen3-8b ou qwen3-14b\n' "$CHOICE"; exit 1 ;;
+esac
 SERVER="$HOME/llama.cpp/build/bin/llama-server"
-BENCH_MODEL="$HOME/igor-bench/models/qwen3-8b.gguf"
+BENCH_MODEL="$HOME/igor-bench/models/$CHOICE.gguf"
 APP="$HOME/.local/share/igor-llm"
-MODEL="$APP/qwen3-8b-q4_k_m.gguf"
+MODEL="$APP/$CHOICE-q4_k_m.gguf"
 CONF="$HOME/.config/igor-llm"
 KEY="$CONF/api-key"
 UNIT="$HOME/.config/systemd/user/igor-llm.service"
@@ -29,14 +43,20 @@ step "2/8 llama-server"
 "$SERVER" --help 2>/dev/null | grep -q -- "--api-key-file" || fail "llama-server trop ancien (pas de --api-key-file) : supprime ~/llama.cpp et relance setup.sh"
 ok "$SERVER"
 
-step "3/8 Modèle Qwen3 8B Q4_K_M"
+step "3/8 Modèle $CHOICE (Q4_K_M)"
 mkdir -p "$APP"
 if [ -s "$MODEL" ]; then
   ok "déjà en place ($(du -h "$MODEL" | cut -f1))"
-else
-  [ -s "$BENCH_MODEL" ] || fail "$BENCH_MODEL absent : lance d'abord bash ../llm-bench/setup.sh"
+elif [ -s "$BENCH_MODEL" ]; then
   # Un lien dur ne prend pas de place en plus ; une copie si le disque diffère.
   ln "$BENCH_MODEL" "$MODEL" 2>/dev/null || cp "$BENCH_MODEL" "$MODEL" || fail "copie du modèle dans $APP"
+  ok "$MODEL ($(du -h "$MODEL" | cut -f1))"
+else
+  free=$(df -BG --output=avail "$APP" | tail -1 | tr -dc 0-9)
+  [ "${free:-0}" -ge 12 ] || fail "il faut 12 Go libres pour le télécharger, il y en a ${free:-0}"
+  printf 'Téléchargement (plusieurs minutes)…\n'
+  curl -fL --retry 3 -C - -o "$MODEL.part" "$URL" || fail "téléchargement de $URL"
+  mv "$MODEL.part" "$MODEL" || fail "mise en place de $MODEL"
   ok "$MODEL ($(du -h "$MODEL" | cut -f1))"
 fi
 
@@ -67,7 +87,7 @@ After=network-online.target
 # --cache-ram garde en mémoire vive un prompt qu'une autre demande (ce
 # qu'Igor retient d'une conversation) a chassé. Sans réflexion : la voix
 # attend une phrase, vite.
-ExecStart=$SERVER -m $MODEL --host 0.0.0.0 --port $PORT -ngl 99 -c 32768 -np 1 --cache-ram 4096 --jinja --reasoning-budget 0 --chat-template-kwargs '{"enable_thinking":false}' --api-key-file $KEY --no-webui
+ExecStart=$SERVER -m $MODEL --host 0.0.0.0 --port $PORT -ngl 99 -c $CTX -np 1 --cache-ram 4096 --jinja --reasoning-budget 0 --chat-template-kwargs '{"enable_thinking":false}' --api-key-file $KEY --no-webui
 Restart=always
 RestartSec=10
 Nice=5
