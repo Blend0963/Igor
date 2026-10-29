@@ -56,7 +56,9 @@ export const ONLINE_REPLY_INSTRUCTIONS =
   "tu te fondes uniquement sur ces résultats et tu n'inventes aucune action ni valeur. S'il s'agissait d'un ordre et " +
   "que rien n'a été fait, dis-le simplement et demande la précision qui manque. Pour tout le reste (culture générale, " +
   "discussion, conseils), réponds avec toutes tes connaissances ; pour l'actualité ou une information récente " +
-  "que tu ne connais pas avec certitude, cherche avec web_search avant de répondre (en tenant compte de la date du jour), " +
+  "que tu ne connais pas avec certitude, cherche avec web_search avant de répondre (en tenant compte de la date du jour) ; " +
+  "pour un résultat sportif, un prix, une élection, une sortie ou tout ce qui change avec le temps, cherche toujours, " +
+  "même si tu crois savoir : ta mémoire peut être dépassée. " +
   "et ne dis jamais que tu ne sais pas sans avoir cherché. Si la personne te demande de chercher ou de vérifier, cherche à nouveau.";
 
 /** Most characters of one tool result handed to the online model. */

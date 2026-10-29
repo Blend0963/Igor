@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.5 — Service names fixed before Home Assistant sees them
+
+- "Ouvre les volets à 10 %" failed: the model asked for cover `set_position` and `open`, which Home Assistant refuses (the real services are `set_cover_position` and `open_cover`). The server now maps such near-miss names to the real ones (covers, media players, thermostats, fans, lights, switches) before calling Home Assistant; a real service is never changed. This helps every model, local or online.
+- With the local model, Mistral now always searches the web for results, prices, elections, releases and anything that changes over time, even when it thinks it knows: it had answered "who won the Ballon d'Or" from memory.
+
 ## 0.16.4 — The local model reads less at each request
 
 - The local model now reads only the last exchange (enough for "vas-y" or "et la cuisine ?") instead of six messages, and today's date instead of the time to the minute: the part of its prompt it reads again at each request shrinks from about 450 to about 150 tokens, and the once-a-minute prewarm no longer has anything to read. Mistral, which answers, still gets the last six messages and the exact time.
