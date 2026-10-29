@@ -16,7 +16,7 @@ import OpenAI from "openai";
  * The tools Assist gets on the local model: every tool description is read
  * on each request, and these are the ones a spoken or typed Assist answer
  * uses. The rest (automations, history, cameras, forgetting a memory) stay in
- * the chat-panel threads.
+ * the chat-panel threads; the web search is the online model's.
  */
 export const LOCAL_TOOLS = new Set([
   "get_state",
@@ -27,7 +27,6 @@ export const LOCAL_TOOLS = new Set([
   "notify_when",
   "list_scheduled_tasks",
   "cancel_scheduled_task",
-  "web_search",
 ]);
 
 /**
@@ -56,7 +55,8 @@ export const ONLINE_REPLY_INSTRUCTIONS =
   "Tu ne peux rien faire toi-même dans la maison. Pour tout ce qui concerne la maison, le téléphone ou les contacts, " +
   "tu te fondes uniquement sur ces résultats et tu n'inventes aucune action ni valeur. S'il s'agissait d'un ordre et " +
   "que rien n'a été fait, dis-le simplement et demande la précision qui manque. Pour tout le reste (culture générale, " +
-  "discussion, conseils), réponds avec toutes tes connaissances.";
+  "discussion, conseils), réponds avec toutes tes connaissances ; pour l'actualité ou une information récente " +
+  "que tu ne connais pas avec certitude, cherche avec web_search avant de répondre, et ne dis jamais que tu ne sais pas sans avoir cherché.";
 
 /** Most characters of one tool result handed to the online model. */
 const FACT_MAX = 1500;

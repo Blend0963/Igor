@@ -728,14 +728,13 @@ describe("OpenAIChatEngine", () => {
       expect(r.usage?.model).toBe("qwen3-8b");
     });
 
-    it("checks the addressee on the local model too", async () => {
+    it("checks the addressee on the online model, which hears the sentence anyway", async () => {
       mockCreate
         .mockResolvedValueOnce({ choices: [{ message: { content: '{"pour_igor": false}' } }] })
         .mockResolvedValue(reply());
       const r = await localEngine.chat({ message: "c'est Igor qui a éteint la lumière", userId: "u", isVoice: true });
       expect(r.notForMe).toBe(true);
-      expect(endpoint(0)).toBe("http://192.168.1.20:8180/v1");
-      expect(mockCreate.mock.calls[0][0]).toMatchObject({ model: "qwen3-8b", response_format: { type: "json_object" } });
+      expect(endpoint(0)).toBe("https://api.openai.com/v1");
     });
 
     it("says it is unavailable when the local model does not answer, never asking the cloud model", async () => {
@@ -833,18 +832,26 @@ describe("OpenAIChatEngine", () => {
       expect(sent).not.toContain("21 degrés");
     });
 
-    it("hands a web search's results straight to the online model, without a second local pass", async () => {
-      vi.mocked(handleToolCall).mockResolvedValue({ answer: "Le Ballon d'Or 2026 est allé à un milieu espagnol." });
-      mockCreate
-        .mockResolvedValueOnce(
-          makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "web_search", arguments: '{"query":"Ballon d\'Or 2026"}' } }] }, finish_reason: "tool_calls" }] }])
-        )
-        .mockResolvedValueOnce(reply("Un milieu espagnol l'a remporté."));
-      const r = await localEngine.chat({ message: "qui a gagné le ballon d'or ?", userId: "u", isVoice: true });
-      expect(r.response).toBe("Un milieu espagnol l'a remporté.");
-      expect(mockCreate).toHaveBeenCalledTimes(2);
-      expect(endpoint(1)).toBe("https://api.openai.com/v1");
-      expect(JSON.stringify(mockCreate.mock.calls[1][0].messages)).toContain("milieu espagnol");
+    it("lets the online model search the web itself when the local one has nothing to do", async () => {
+      process.env.MISTRAL_API_KEY = "k";
+      try {
+        vi.mocked(handleToolCall).mockResolvedValue({ answer: "Le Ballon d'Or 2026 est allé à un milieu espagnol." });
+        mockCreate
+          .mockResolvedValueOnce(reply("-"))
+          .mockResolvedValueOnce(
+            makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "w1", function: { name: "web_search", arguments: '{"query":"Ballon d\'Or 2026"}' } }] }, finish_reason: "tool_calls" }] }])
+          )
+          .mockResolvedValueOnce(reply("Un milieu espagnol l'a remporté."));
+        const r = await localEngine.chat({ message: "qui a gagné le ballon d'or ?", userId: "u", isVoice: true });
+        expect(r.response).toBe("Un milieu espagnol l'a remporté.");
+        expect(mockCreate.mock.calls[0][0].tools.map((t: { function: { name: string } }) => t.function.name)).not.toContain("web_search");
+        expect(endpoint(1)).toBe("https://api.openai.com/v1");
+        expect(mockCreate.mock.calls[1][0].tools.map((t: { function: { name: string } }) => t.function.name)).toEqual(["web_search"]);
+        expect(handleToolCall).toHaveBeenCalledWith(expect.anything(), "web_search", { query: "Ballon d'Or 2026" }, expect.anything());
+        expect(mockCreate.mock.calls[2][0].tool_choice).toBe("none");
+      } finally {
+        delete process.env.MISTRAL_API_KEY;
+      }
     });
 
     it("lets the local model act again after searching for a device", async () => {
