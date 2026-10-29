@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.17.0 — The local model acts, Mistral speaks only when there is something to say
+
+- With the local model, a plain order whose outcome Home Assistant reports (lights, covers, thermostats, reminders) no longer calls Mistral: Igor says the short sentence built from the new states ("Lumière salon allumée.") at once, or nothing. Questions, general knowledge, news, web searches and scripts still go to Mistral, which answers.
+- New option `local_order_reply`: `sentence` (default, the short sentence), `silent` (the order is carried out without a word) or `online` (Mistral words it, as in 0.16).
+
 ## 0.16.6 — Covers: turn_on and turn_off too
 
 - "Ferme-les complètement" asked for cover `turn_off`, which Home Assistant refuses; it is now sent as `close_cover` (and `turn_on` as `open_cover`).

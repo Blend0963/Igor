@@ -788,7 +788,14 @@ export class OpenAIChatEngine implements IChatEngine {
       // The local model only acts and reads. The online model answers the
       // person, from their words, the last exchanges and what was done or
       // read; never from the home's layout, live state, memory or contacts.
-      if (local) {
+      // A plain order whose outcome is known needs no online call at all
+      // (local_order_reply sentence or silent): the server says it, or nothing.
+      const orderReply = this.config.localOrderReply ?? "sentence";
+      if (local && plainSentence && orderReply !== "online") {
+        console.log(`[route] order done locally, no online call (${orderReply}): ${plainSentence}`);
+        if (orderReply === "sentence") speak(plainSentence);
+        result = { text: orderReply === "sentence" ? plainSentence : "", finishReason: "stop", toolCalls: [], usage: undefined };
+      } else if (local) {
         const draft = result.text.trim();
         console.log(
           `[route] ${localDone.length ? `${localDone.length} local tool call(s)` : "nothing to do locally"}, ` +
@@ -892,7 +899,8 @@ export class OpenAIChatEngine implements IChatEngine {
     // so the HA integration can surface a useful hint instead of the generic
     // "I received your request but got no response." fallback. The `finish_reason`
     // from the final stream tells us which diagnostic applies.
-    const error = responseText === "" && result.toolCalls.length === 0
+    // An order carried out without a word (local_order_reply silent) is not an empty answer.
+    const error = responseText === "" && result.toolCalls.length === 0 && !(local && plainSentence)
       ? this.classifyEmptyResponse(result.finishReason, result.usage)
       : undefined;
 

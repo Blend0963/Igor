@@ -144,6 +144,14 @@ configuration:
       Working rules for the local model only: phone scripts, contacts, calls,
       texts, timers. No personality: the online model plays Igor and words the
       replies, with custom_prompt.
+  local_order_reply:
+    name: Local Model (order reply)
+    description: >-
+      What Igor says after a plain order the local model carried out.
+      sentence: a short sentence at once ("Lumière salon allumée."), with no
+      online call. silent: nothing, the order is just carried out. online:
+      the online model words the reply. Questions, general knowledge and
+      searches always go to the online model. Empty = sentence.
   fast_model:
     name: Fast Model (simple commands)
     description: >-

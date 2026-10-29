@@ -143,6 +143,15 @@ configuration:
       Les règles de travail du modèle local seulement : scripts du téléphone,
       contacts, appels, SMS, minuteurs. Pas de personnalité : c'est le modèle
       en ligne qui joue Igor et formule les réponses, avec custom_prompt.
+  local_order_reply:
+    name: Modèle local (réponse aux ordres)
+    description: >-
+      Ce qu'Igor dit après un ordre simple exécuté par le modèle local.
+      sentence : une phrase courte et immédiate (« Lumière salon allumée. »),
+      sans appel en ligne. silent : rien, l'ordre est juste exécuté. online :
+      le modèle en ligne formule la réponse. Les questions, la culture
+      générale et les recherches passent toujours par le modèle en ligne.
+      Vide = sentence.
   fast_model:
     name: Modèle rapide (ordres simples)
     description: >-

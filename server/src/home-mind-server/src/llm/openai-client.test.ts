@@ -789,11 +789,41 @@ describe("OpenAIChatEngine", () => {
     const orderCall = () =>
       makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "call_service", arguments: '{"domain":"light","service":"turn_on","entity_id":"light.salon"}' } }] }, finish_reason: "tool_calls" }] }]);
 
+    const orderEngine = (localOrderReply: "sentence" | "silent" | "online") =>
+      new OpenAIChatEngine(
+        { ...config, localLlmUrl: "http://192.168.1.20:8180/", localLlmKey: "k", localLlmModel: "qwen3-8b", localOrderReply },
+        memory, conversations, extractor, ha,
+        { refreshIfStale: vi.fn(), hasProfiles: () => false } as unknown as DeviceScanner,
+        { refreshIfStale: vi.fn(), hasLayout: () => false } as unknown as TopologyScanner
+      );
+
+    it("says the plain sentence for an order done locally, with no online call", async () => {
+      vi.mocked(handleToolCall).mockResolvedValue({ changed_states: [{ entity_id: "light.salon", state: "on", name: "Lumière salon" }] });
+      mockCreate.mockResolvedValueOnce(orderCall());
+      const chunks: string[] = [];
+      const r = await localEngine.chat({ message: "allume la lumière du salon", userId: "u", isVoice: true }, { onChunk: (c) => chunks.push(c) });
+      expect(r.response).toBe("Lumière salon allumée.");
+      expect(chunks.join("")).toBe("Lumière salon allumée.");
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+      expect(endpoint(0)).toBe("http://192.168.1.20:8180/v1");
+    });
+
+    it("carries out an order without a word when local_order_reply is silent", async () => {
+      vi.mocked(handleToolCall).mockResolvedValue({ changed_states: [{ entity_id: "light.salon", state: "on", name: "Lumière salon" }] });
+      mockCreate.mockResolvedValueOnce(orderCall());
+      const chunks: string[] = [];
+      const r = await orderEngine("silent").chat({ message: "allume la lumière du salon", userId: "u", isVoice: true }, { onChunk: (c) => chunks.push(c) });
+      expect(r.response).toBe("");
+      expect(r.error).toBeFalsy();
+      expect(chunks.join("")).toBe("");
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+    });
+
     it("acts on the local model, then the online model answers from the words and what was done", async () => {
       vi.mocked(handleToolCall).mockResolvedValue({ changed_states: [{ entity_id: "light.salon", state: "on", name: "Lumière salon" }] });
       mockCreate.mockResolvedValueOnce(orderCall()).mockResolvedValueOnce(reply("Voilà, le salon est éclairé."));
       const chunks: string[] = [];
-      const r = await localEngine.chat({ message: "allume la lumière du salon", userId: "u", isVoice: true, customPrompt: "Tu es Igor." }, { onChunk: (c) => chunks.push(c) });
+      const r = await orderEngine("online").chat({ message: "allume la lumière du salon", userId: "u", isVoice: true, customPrompt: "Tu es Igor." }, { onChunk: (c) => chunks.push(c) });
       expect(r.response).toBe("Voilà, le salon est éclairé.");
       expect(chunks.join("")).toBe("Voilà, le salon est éclairé.");
       // One local pass (no second one to word it), then the online model.
@@ -866,7 +896,7 @@ describe("OpenAIChatEngine", () => {
           makeStream([{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c2", function: { name: "call_service", arguments: '{"domain":"light","service":"turn_on","entity_id":"light.bureau"}' } }] }, finish_reason: "tool_calls" }] }])
         )
         .mockResolvedValueOnce(reply("La lampe du bureau est allumée."));
-      const r = await localEngine.chat({ message: "allume le bureau", userId: "u", isVoice: true });
+      const r = await orderEngine("online").chat({ message: "allume le bureau", userId: "u", isVoice: true });
       expect(r.response).toBe("La lampe du bureau est allumée.");
       expect(mockCreate).toHaveBeenCalledTimes(3);
       expect(endpoint(1)).toBe("http://192.168.1.20:8180/v1");
@@ -911,7 +941,7 @@ describe("OpenAIChatEngine", () => {
 
     it("gives the local model a working identity and the online one only the common persona", async () => {
       const engine = new OpenAIChatEngine(
-        { ...config, customPrompt: "Tu es Igor, majordome.", customPromptVoice: "STYLE VOCAL.", localLlmUrl: "http://192.168.1.20:8180", localLlmModel: "qwen3-8b", localLlmPrompt: "MINUTEUR : script.minuteur, recipient en secondes." },
+        { ...config, customPrompt: "Tu es Igor, majordome.", customPromptVoice: "STYLE VOCAL.", localLlmUrl: "http://192.168.1.20:8180", localLlmModel: "qwen3-8b", localLlmPrompt: "MINUTEUR : script.minuteur, recipient en secondes.", localOrderReply: "online" },
         memory, conversations, extractor, ha,
         { refreshIfStale: vi.fn(), hasProfiles: () => false } as unknown as DeviceScanner,
         { refreshIfStale: vi.fn(), hasLayout: () => false } as unknown as TopologyScanner
