@@ -7,7 +7,7 @@ import { HomeAssistantClient } from "../ha/client.js";
 import { DeviceScanner } from "../ha/device-scanner.js";
 import { TopologyScanner } from "../ha/topology-scanner.js";
 import { formatScriptSection } from "../ha/script-catalog.js";
-import { buildSystemPromptText } from "./prompts.js";
+import { buildSystemPromptText, formatDateTimeWithOffset } from "./prompts.js";
 import { toolsForMode, toOpenAITools } from "./tool-definitions.js";
 import { listFromEnv, mistralKey } from "./mistral-platform.js";
 import { isActionCommand, isSimpleRequest, mayBeOrder, selectThreadReasoning } from "./model-router.js";
@@ -1029,7 +1029,10 @@ export class OpenAIChatEngine implements IChatEngine {
   }): Promise<{ text: string; usage?: TokenUsage }> {
     const { isVoice, signal, fallback } = opts;
     const model = this.config.llmModel;
-    const system = [opts.persona?.trim(), opts.instructions].filter(Boolean).join("\n\n");
+    // Without today's date it took "cette année" for the year it was trained
+    // in, and searched the web for the wrong one.
+    const now = `Date et heure actuelles : ${formatDateTimeWithOffset().display}.`;
+    const system = [opts.persona?.trim(), opts.instructions, now].filter(Boolean).join("\n\n");
     const controller = new AbortController();
     const stop = () => controller.abort();
     signal?.addEventListener("abort", stop, { once: true });

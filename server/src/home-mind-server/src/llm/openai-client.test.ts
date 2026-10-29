@@ -934,6 +934,7 @@ describe("OpenAIChatEngine", () => {
       ]);
       expect(online.messages.at(-2).content).toContain("n'a rien fait");
       expect(online.messages.at(-1)).toEqual({ role: "user", content: "et pourquoi il est bleu ?" });
+      expect(online.messages[0].content).toContain("Date et heure actuelles");
     });
 
     it("keeps panel threads and images on the main model", async () => {

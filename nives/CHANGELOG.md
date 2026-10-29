@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.3 — Mistral knows today's date
+
+- With the local model, Mistral answered without knowing today's date: asked who won the Ballon d'Or "cette année", it searched the web for the wrong year and answered wrongly. It now gets the date and time with every request, and searches again when asked to check.
+
 ## 0.16.2 — Mistral searches the web itself
 
 - With the local model, "qui a gagné le Ballon d'Or en 2026 ?" got "I don't have that information": the local model saw nothing about the house in it and did not search, and Mistral answered from what it knew. Mistral now runs the web search itself whenever its knowledge is not enough (news, anything recent), and never says it does not know without searching. Only the query leaves, as before. The local model no longer has the web search.
