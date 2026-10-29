@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.19.1 — A training set that sounds like the house
+
+- Entities whose name carries a machine id (`browser_mod_c8a993dd…`, `navbar 6926f9e4…`) are left out of the training set: nobody can say them. The add-on log says how many.
+- Interface helpers (Material You, browser_mod, themes) count as technical: switched by their full name, never given a room's words.
+- What is said every day comes up most: in orders and state questions, a light is picked 60 % of the time, a plain switch 30 %, a helper (`input_boolean`) 10 %; technical readings are fewer.
+- Containers and stacks start and stop ("démarre le conteneur", "arrête la stack") instead of "allume". A state with no unit is asked as "quel est l'état de…", not "c'est combien".
+- "Voiture — annonces vocales" is said without the dash; "voiture" is feminine.
+- Training tools (`ear/tools/llm-train`): one example per step by default, so a 24 GB card no longer runs out of memory.
+
 ## 0.19.0 — The local model is the house, Mistral is Igor's voice
 
 - The local model now decides whether Igor speaks. After acting, it writes one line: `-` (nothing to say), `>dire` (announce what was done), `>rep` (answer from what it read), `>web` (needs the internet), `>libre` (general knowledge, conversation) or `>demande` (something is missing). A plain order is carried out in silence by default; a failed order or a confirmation to ask is always said.

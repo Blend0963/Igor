@@ -220,8 +220,8 @@ app.get("/api/local-dataset", async (req, res) => {
       }
       source = wholeHouse;
     }
-    const { zip, counts, train, test, devices, technical } = await buildDatasetZip(config, source, size);
-    console.log(`[dataset] ${devices} devices (${technical} technical, read only), ${train} training and ${test} test examples: ${JSON.stringify(counts)}`);
+    const { zip, counts, train, test, devices, technical, unspeakable } = await buildDatasetZip(config, source, size);
+    console.log(`[dataset] ${devices} devices (${technical} technical, ${unspeakable} with a machine id left out), ${train} training and ${test} test examples: ${JSON.stringify(counts)}`);
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", 'attachment; filename="igor-local-dataset.zip"');

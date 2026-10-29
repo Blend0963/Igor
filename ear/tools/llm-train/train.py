@@ -10,7 +10,8 @@ the loss is computed on. Past messages (the online model's replies) are
 never learned.
 
 Environment: BASE_MODEL (default Qwen/Qwen3-4B-Instruct-2507), EPOCHS (2),
-LR (1e-4), BATCH (2), ACCUM (8), MAX_LEN (6144), EVAL (200 test examples).
+LR (1e-4), BATCH (1: two ~1,500-token examples ran a 24 GB card out of
+memory on the logits), ACCUM (16), MAX_LEN (6144), EVAL (200 test examples).
 """
 
 import json
@@ -28,8 +29,8 @@ from score import parse_answer, same_answer
 BASE = os.environ.get("BASE_MODEL", "Qwen/Qwen3-4B-Instruct-2507")
 EPOCHS = float(os.environ.get("EPOCHS", "2"))
 LR = float(os.environ.get("LR", "1e-4"))
-BATCH = int(os.environ.get("BATCH", "2"))
-ACCUM = int(os.environ.get("ACCUM", "8"))
+BATCH = int(os.environ.get("BATCH", "1"))
+ACCUM = int(os.environ.get("ACCUM", "16"))
 MAX_LEN = int(os.environ.get("MAX_LEN", "6144"))
 EVAL = int(os.environ.get("EVAL", "200"))
 

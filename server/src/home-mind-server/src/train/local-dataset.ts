@@ -132,7 +132,8 @@ function phrase(rng: Rng, list: readonly string[], test: boolean): string {
 const VOWEL = /^[aeiouyàâäéèêëîïôöùûüh]/i;
 
 function lower(name: string): string {
-  return name.trim().replace(/\s+/g, " ").toLowerCase();
+  // "Voiture — annonces vocales" is said "voiture annonces vocales".
+  return name.trim().replace(/\s+[—–-]\s+/g, " ").replace(/\s+/g, " ").toLowerCase();
 }
 
 function isPlural(name: string): boolean {
@@ -319,6 +320,12 @@ const IS_ON = ["est-ce que {x} est {on}", "{x} est {on}", "tu peux vérifier si 
 const IS_OPEN = ["est-ce que {x} est {open}", "{x} est {open}", "tu peux vérifier si {x} est {open}", "{x} est bien {closed}", "est-ce que {x} est {closed}"];
 const TEMP = ["quelle température fait-il {dans}", "il fait combien {dans}", "quelle est la température {de}", "température {de}", "il fait chaud {dans}", "combien de degrés {dans}"];
 const HUMID = ["quelle est l'humidité {dans}", "quel est le taux d'humidité {de}", "humidité {de}", "c'est humide {dans}"];
+/** A state without a unit: "on", "home", "running"… */
+const READ_STATE = ["quel est l'état de {x}", "{x} est dans quel état", "donne-moi l'état de {x}", "où en est {x}", "dis-moi l'état de {x}"];
+/** Containers and stacks start and stop. */
+const START = ["démarre {x}", "lance {x}", "tu peux démarrer {x}", "relance {x}", "mets en route {x}"];
+const STOP = ["arrête {x}", "stoppe {x}", "tu peux arrêter {x}", "coupe {x}", "éteins {x}"];
+const CONTAINER = /(?<![\p{L}])(conteneur|container|stack|docker)(?![\p{L}])/iu;
 const READ = ["combien indique {x}", "quelle est la valeur de {x}", "donne-moi {x}", "que dit {x}", "{x} c'est combien", "quel est l'état de {x}", "tu peux me donner {x}", "{x} indique combien"];
 const BATTERY = ["quelle est la batterie {de}", "il reste combien de batterie {a}", "{x} a encore de la batterie", "niveau de batterie {de}", "la batterie {de} est à combien"];
 /** Readings the house may not have under these words: looked up, then the online model reads the result. */
@@ -484,10 +491,19 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
 
   // Lights and switches, on and off.
   const toggles = [...lights, ...switches];
+  // What is said every day comes up most: a light more often than a helper switch.
+  const plainSwitches = switches.filter((t) => domainOf(t.device.id) !== "input_boolean");
+  const pickToggle = (): Named => {
+    const r = rng();
+    if (lights.length && (r < 0.6 || !switches.length)) return pick(rng, lights);
+    if (plainSwitches.length && r < 0.9) return pick(rng, plainSwitches);
+    return pick(rng, switches.length ? switches : lights);
+  };
   add("on_off", toggles.length ? 14 : 0, (test) => {
-    const d = pick(rng, toggles);
+    const d = pickToggle();
     const on = rng() < 0.55;
-    const text = fill(phrase(rng, on ? ON : OFF, test), { x: pick(rng, d.says) });
+    const container = CONTAINER.test(d.device.name);
+    const text = fill(phrase(rng, container ? (on ? START : STOP) : on ? ON : OFF, test), { x: pick(rng, d.says) });
     return { kind: "on_off", text, answer: one([service(domainOf(d.device.id), on ? "turn_on" : "turn_off", [d.device.id])]) };
   });
   // A room's lights, or the whole house's.
@@ -505,8 +521,9 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   }));
   // Two devices at once.
   add("two_devices", toggles.length > 1 ? 3 : 0, (test) => {
-    const a = pick(rng, toggles);
-    const b = pick(rng, toggles.filter((t) => t !== a));
+    const a = pickToggle();
+    const b = pickToggle();
+    if (a === b) return undefined;
     const on = rng() < 0.5;
     const verb = phrase(rng, on ? ON : OFF, test);
     const text = fill(verb, { x: `${pick(rng, a.says)} et ${pick(rng, b.says)}` });
@@ -619,7 +636,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   // Reading states.
   add("state", toggles.length + covers.length + openings.length ? 6 : 0, (test) => {
     const pool = [...toggles, ...covers, ...openings];
-    const d = pick(rng, pool);
+    const d = toggles.length && rng() < 0.5 ? pickToggle() : pick(rng, pool);
     const domain = domainOf(d.device.id);
     const x = pick(rng, d.says);
     const text = domain === "light" || domain === "switch" || domain === "fan" || domain === "input_boolean"
@@ -643,13 +660,13 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     return { kind: "sensor", text: fill(phrase(rng, READ, test), { x: the(d.device.name) }), question: true, answer: one([{ name: "get_state", args: { entity_id: d.device.id } }]) };
   });
   // The device's own readings (a battery, the CPU load): asked for, read, never acted on.
-  add("technical", technical.length ? Math.min(8, 2 + technical.length / 5) : 0, (test) => {
+  add("technical", technical.length ? Math.min(4, 1 + technical.length / 20) : 0, (test) => {
     const d = pick(rng, technical);
     const battery = d.device.deviceClass === "battery" || /^batterie\s+/i.test(d.device.name);
     const rest = d.device.name.replace(/^batterie\s+(de\s+|du\s+|des\s+|d')?/i, "").replace(/\s+batterie$/i, "");
     const text = battery && rest !== d.device.name && rng() < 0.6
       ? fill(phrase(rng, BATTERY, test), { de: `de ${the(rest)}`, a: `à ${the(rest)}`, x: the(rest) })
-      : fill(phrase(rng, READ, test), { x: the(d.device.name) });
+      : fill(phrase(rng, d.device.unit ? READ : READ_STATE, test), { x: the(d.device.name) });
     return { kind: "technical", text, question: true, answer: one([{ name: "get_state", args: { entity_id: d.device.id } }]) };
   });
   // A reading under words it was not trained on: searched, found, and the online model reads it.
@@ -772,7 +789,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   add("follow_up", toggles.length > 1 || covers.length ? 8 : 0, (test) => {
     const r = rng();
     if (r < 0.35 && toggles.length) {
-      const d = pick(rng, toggles);
+      const d = pickToggle();
       const domain = domainOf(d.device.id);
       const history: PastMessage[] = [
         { role: "user", content: spoken(rng, fill(pick(rng, ON), { x: pick(rng, d.says) })), time: randomTime(rng) },
@@ -812,7 +829,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
       { role: "assistant", content: pick(rng, CHAT_REPLIES) },
     ];
     if (toggles.length && rng() < 0.5) {
-      const d = pick(rng, toggles);
+      const d = pickToggle();
       return { kind: "after_chat", text: fill(phrase(rng, OFF, test), { x: pick(rng, d.says) }), history, answer: one([service(domainOf(d.device.id), "turn_off", [d.device.id])]) };
     }
     const web = rng() < 0.35;

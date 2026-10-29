@@ -38,7 +38,16 @@ const TECHNICAL_UNITS = new Set(["dBm", "dB", "lqi", "s", "ms", "min", "h", "d",
 
 // Whole words, accents included (\b does not see "é" as a letter).
 const TECHNICAL_NAME =
-  /(?<![\p{L}\p{N}])(batterie|battery|signal|rssi|lqi|link ?quality|qualité (de (la )?)?liaison|firmware|micrologiciel|uptime|temps de fonctionnement|adresse ip|ip address|wi-?fi|ssid|voyant|indicateur|indicator|led d'état|status led|verrouillage enfant|child lock|mise à jour|update|redémarr|restart|reboot|identif|last seen|dernière (vue|activité|mise)|connectivité|connectivity|calibration|étalonnage|sensibilité|sensitivity|power on behavio|comportement à la mise sous tension|cpu|mémoire|memory|disque|disk|load|charge système|processor|processeur)(?![\p{L}\p{N}])/iu;
+  /(?<![\p{L}\p{N}])(batterie|battery|signal|rssi|lqi|link ?quality|qualité (de (la )?)?liaison|firmware|micrologiciel|uptime|temps de fonctionnement|adresse ip|ip address|wi-?fi|ssid|voyant|indicateur|indicator|led d'état|status led|verrouillage enfant|child lock|mise à jour|update|redémarr|restart|reboot|identif|last seen|dernière (vue|activité|mise)|connectivité|connectivity|calibration|étalonnage|sensibilité|sensitivity|power on behavio|comportement à la mise sous tension|cpu|mémoire|memory|disque|disk|load|charge système|processor|processeur|material you|browser_mod|thème|theme)(?![\p{L}\p{N}])/iu;
+
+/**
+ * A name nobody can say: it carries a machine id ("browser_mod_c8a993dd",
+ * "navbar 6926f9e4e63f…"), a run of 8+ hex characters mixing letters and
+ * digits. Such entities (per-browser helpers, generated ones) are left out.
+ */
+export function isUnspeakable(entityId: string, name: string): boolean {
+  return [entityId, name].some((t) => (t.match(/[0-9a-f]{8,}/gi) ?? []).some((run) => /\d/.test(run) && /[a-f]/i.test(run)));
+}
 
 /** Entities the registry marks as setup knobs or diagnostics, or hidden: read once per dataset. */
 export type RegistryReader = () => Promise<Set<string>>;
@@ -67,7 +76,7 @@ export async function readHouse(
   topology: TopologyScanner,
   scanner: DeviceScanner,
   registry?: RegistryReader
-): Promise<{ house: HouseInventory; scripts: ScriptInfo[]; technical: number }> {
+): Promise<{ house: HouseInventory; scripts: ScriptInfo[]; technical: number; unspeakable: number }> {
   await Promise.all([topology.refreshIfStale(), scanner.refreshIfStale()]);
   const [entities, scripts, hidden] = await Promise.all([
     ha.getEntities(),
@@ -81,11 +90,16 @@ export async function readHouse(
 
   const devices: HouseDevice[] = [];
   let technical = 0;
+  let unspeakable = 0;
   for (const e of entities) {
     const domain = e.entity_id.slice(0, e.entity_id.indexOf("."));
     if (!DOMAINS.has(domain)) continue;
     const name = typeof e.attributes.friendly_name === "string" ? e.attributes.friendly_name.trim() : "";
     if (!name) continue;
+    if (isUnspeakable(e.entity_id, name)) {
+      unspeakable++;
+      continue;
+    }
     const device: HouseDevice = { id: e.entity_id, name, area: areaOf.get(e.entity_id) };
     if (hidden.has(e.entity_id) || isTechnical(e)) {
       device.technical = true;
@@ -116,5 +130,6 @@ export async function readHouse(
     },
     scripts,
     technical,
+    unspeakable,
   };
 }
