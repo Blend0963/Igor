@@ -1,3 +1,5 @@
+import { localTurnMessages } from "../train/local-dataset.js";
+import { localPersona } from "./local-llm.js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Config } from "../config.js";
 import type { IMemoryStore } from "../memory/interface.js";
@@ -48,7 +50,7 @@ vi.mock("./order-check.js", () => ({
   askIsOrder: vi.fn().mockResolvedValue({ order: false }),
 }));
 
-import { OpenAIChatEngine } from "./openai-client.js";
+import { OpenAIChatEngine, localToolList } from "./openai-client.js";
 import { askIsOrder } from "./order-check.js";
 import { resetTokenCapCache } from "./token-cap.js";
 import { resetReasoningEffortCache } from "./reasoning-effort.js";
@@ -837,6 +839,40 @@ describe("OpenAIChatEngine", () => {
       expect(facts.content).toContain("Lumière salon allumée");
       // Never the home's layout or live state.
       expect(JSON.stringify(online.messages)).not.toContain("Live state");
+    });
+
+    it("sends a tuned local model exactly what its training set was built from", async () => {
+      const engine = new OpenAIChatEngine(
+        { ...config, localLlmUrl: "http://192.168.1.20:8180", localLlmModel: "qwen3-8b", localLlmPrompt: "MINUTEUR : script.minuteur.", localLlmTuned: true },
+        memory, conversations, extractor, ha,
+        { refreshIfStale: vi.fn(), hasProfiles: () => true, formatCheatSheet: () => "LIGHT CHEAT SHEET" } as unknown as DeviceScanner,
+        { refreshIfStale: vi.fn(), hasLayout: () => true, formatSection: () => "ROOM MAP" } as unknown as TopologyScanner
+      );
+      vi.mocked(memory.getFactsWithinTokenLimit).mockResolvedValue([{ id: "f1", content: "Il aime le jazz." }] as never);
+      const at = new Date();
+      at.setHours(9, 12, 0, 0);
+      vi.mocked(conversations.getConversationHistory).mockReturnValue([
+        { id: "m1", userId: "u", role: "user", content: "allume le salon", createdAt: at },
+        { id: "m2", userId: "u", role: "assistant", content: "Lumière salon allumée.", createdAt: at },
+      ] as never);
+      mockCreate.mockResolvedValueOnce(reply("-")).mockResolvedValueOnce(reply("Bien sûr."));
+      await engine.chat({ message: "Et la cuisine ?", userId: "u", isVoice: true, language: "fr" });
+      const sent = mockCreate.mock.calls[0][0];
+      const expected = localTurnMessages({
+        persona: localPersona("MINUTEUR : script.minuteur."),
+        language: "fr",
+        facts: ["Il aime le jazz."],
+        history: [
+          { role: "user", content: "allume le salon", time: "09:12" },
+          { role: "assistant", content: "Lumière salon allumée." },
+        ],
+        message: "Et la cuisine ?",
+        isVoice: true,
+      }).map(({ training: _training, ...m }) => m);
+      expect(sent.messages).toEqual(expected);
+      expect(JSON.stringify(sent.messages)).not.toContain("LIGHT CHEAT SHEET");
+      expect(JSON.stringify(sent.messages)).not.toContain("ROOM MAP");
+      expect(sent.tools).toEqual(localToolList(true));
     });
 
     it("hands the online model the memories the local one picked, and only real ones", async () => {

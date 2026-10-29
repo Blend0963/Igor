@@ -152,6 +152,14 @@ configuration:
       le modèle en ligne formule la réponse. Les questions, la culture
       générale et les recherches passent toujours par le modèle en ligne.
       Vide = sentence.
+  local_llm_tuned:
+    name: Modèle local entraîné sur la maison
+    description: >-
+      À activer seulement avec un modèle local entraîné sur votre maison (jeu
+      d'entraînement à télécharger dans le panneau, page Diagnostic). Il
+      connaît les pièces et les lumières : son prompt ne contient plus le
+      plan de la maison ni la fiche des lumières, il est donc plus court et
+      plus rapide. Laisser désactivé avec un modèle ordinaire.
   fast_model:
     name: Modèle rapide (ordres simples)
     description: >-

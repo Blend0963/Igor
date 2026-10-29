@@ -85,6 +85,12 @@ function openAIToolsFor(mode: "voice" | "text" | "thread", turn: TurnPolicy = {}
   );
 }
 
+/** The tools a local Assist turn gets, as the engine sends them (train/local-dataset.ts trains on them). */
+export function localToolList(withMemory: boolean): OpenAI.ChatCompletionTool[] {
+  const tools = openAIToolsFor("voice").filter((t) => t.type === "function" && LOCAL_TOOLS.has(t.function.name));
+  return withMemory ? [...tools, SHARE_MEMORY_TOOL] : tools;
+}
+
 /** Output ceiling of a thread turn that reasons first: the thinking is billed from it too. */
 export const THREAD_REASONING_OUTPUT_CAP = 16384;
 /** How many times a thread reply that hit the output cap is continued. */
@@ -357,10 +363,13 @@ export class OpenAIChatEngine implements IChatEngine {
     }
 
     const scriptSection = formatScriptSection(scripts);
-    const deviceCheatSheet = [this.scanner.hasProfiles() ? this.scanner.formatCheatSheet() : undefined, scriptSection]
+    // A local model fine-tuned on the house knows its rooms and lights; the
+    // scripts' fields it still reads (train/local-dataset.ts builds the same).
+    const tuned = Boolean(local) && this.config.localLlmTuned === true;
+    const deviceCheatSheet = [this.scanner.hasProfiles() && !tuned ? this.scanner.formatCheatSheet() : undefined, scriptSection]
       .filter(Boolean)
       .join("\n\n") || undefined;
-    const homeLayout = this.topology.hasLayout() ? this.topology.formatSection() : undefined;
+    const homeLayout = this.topology.hasLayout() && !tuned ? this.topology.formatSection() : undefined;
     // The local model gets a working identity, not the persona: Igor is
     // played by the online model, which words the replies.
     const promptPersona = local ? localPersona(this.config.localLlmPrompt) : customPrompt;

@@ -1,5 +1,5 @@
 name: "Igor"
-version: "0.17.0"
+version: "0.18.0"
 slug: "mado"
 description: "In Igor we trust. L'assistant IA de la maison, avec sa mémoire"
 url: "https://github.com/Blend0963/MaDo"
@@ -99,6 +99,10 @@ schema:
   # sentence = "Lumière salon allumée." from the server, silent = nothing,
   # online = the online model words it. Unset = sentence.
   local_order_reply: "list(sentence|silent|online)?"
+  # The local model was fine-tuned on this house (training set from the
+  # panel's Diagnostic page): its prompt leaves out the room map and the
+  # light cheat sheet, which it knows.
+  local_llm_tuned: "bool?"
   # Reminders, scheduled tasks and the morning briefing are sent to this
   # notify service (e.g. mobile_app_pixel_8). Unset = a persistent
   # notification in Home Assistant.

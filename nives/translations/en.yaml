@@ -152,6 +152,13 @@ configuration:
       online call. silent: nothing, the order is just carried out. online:
       the online model words the reply. Questions, general knowledge and
       searches always go to the online model. Empty = sentence.
+  local_llm_tuned:
+    name: Local Model trained on the house
+    description: >-
+      Turn on only with a local model fine-tuned on your house (training set
+      downloadable from the panel's Diagnostic page). It knows the rooms and
+      lights, so its prompt leaves out the room map and the light cheat
+      sheet: shorter and faster. Leave off with an ordinary model.
   fast_model:
     name: Fast Model (simple commands)
     description: >-
