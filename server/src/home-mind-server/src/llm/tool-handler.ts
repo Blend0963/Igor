@@ -1,4 +1,5 @@
 import { addChips, chipsFromServiceCall, chipsFromTool, type ActionChip } from "./action-chips.js";
+import { canonicalService } from "./service-aliases.js";
 import type { HomeAssistantClient, AutomationConfig } from "../ha/client.js";
 import { compactServiceResult, compactState, compactStateList } from "./compact-state.js";
 import { summarizeHistory } from "./history-summary.js";
@@ -303,6 +304,8 @@ export async function handleToolCall(
         break;
 
       case "call_service": {
+        // "open" for a cover is open_cover: fix the name before anything checks it.
+        input.service = canonicalService(input.domain, input.service);
         const sensitive = sensitiveServiceIdentity(input);
         if (sensitive) {
           const gate = gateSensitiveService(ctx, sensitive, input);
