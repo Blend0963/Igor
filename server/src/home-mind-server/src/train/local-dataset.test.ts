@@ -99,3 +99,27 @@ describe("buildLocalDataset", () => {
     expect(readableSample(train, 10)).toContain("personne :");
   });
 });
+
+describe("groups", () => {
+  const house: HouseInventory = {
+    devices: [
+      { id: "light.salon", name: "Lumières salon", area: "Salon", members: ["light.a", "light.b"] },
+      { id: "light.a", name: "Ampoule gauche", area: "Salon" },
+      { id: "light.b", name: "Ampoule droite", area: "Salon" },
+      { id: "light.cuisine", name: "Plafonnier cuisine", area: "Cuisine" },
+    ],
+    scripts: [],
+  };
+  const { train } = buildLocalDataset(house, { ...options, size: 600 });
+  const calls = (kind: string) =>
+    train.filter((e) => e.kind === kind).map((e) => ({ words: (e.messages.at(-2) as Msg).content!, args: JSON.parse((e.messages.at(-1) as Msg).tool_calls![0].function.arguments) }));
+
+  it("gives the room's words to the group, and keeps the members' own names", () => {
+    const onOff = calls("on_off");
+    const salon = onOff.filter((c) => /du salon/i.test(c.words));
+    expect(salon.length).toBeGreaterThan(0);
+    for (const c of salon) expect(c.args.entity_id).toBe("light.salon");
+    expect(onOff.some((c) => c.args.entity_id === "light.a" && /ampoule gauche/i.test(c.words))).toBe(true);
+    for (const c of calls("area_lights").filter((c) => /salon/i.test(c.words))) expect(c.args.entity_id).toBe("light.salon");
+  });
+});

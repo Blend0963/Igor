@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.18.1 — Expose everything, the training set sorts it out
+
+- The training set now leaves out what nobody says out loud, even when everything is exposed to Assist: what Home Assistant's entity registry marks as diagnostic or configuration, hidden entities, and what reads like it (batteries, signal, firmware, uptime, indicator lights, child locks, calibration…). The add-on log says how many were left out.
+- Groups: when a group ("Lumières salon") and its bulbs are in the same room, "la lumière du salon" and "éteins tout dans le salon" now mean the group, and each bulb keeps its own name. A group with no room takes its members' room. Before, a room with several lights got no short phrasing at all.
+
 ## 0.18.0 — A training set for a local model that knows the house
 
 - The panel's Diagnostic page downloads a training set built from your house (`igor-local-dataset.zip`): a few thousand requests in French, each one exactly as Igor sends it to the local model, with the answer it should give. They cover orders (lights, brightness, white and colours as each light takes them, covers, heating, media, scenes, scripts, locks, vacuum), questions about a state, reminders and alerts, contacts, memories, follow-ups ("et la cuisine ?", "vas-y"), devices the house does not have, and "-" for everything that is not about the home. A held-out part (`test.jsonl`), phrased in ways training never sees, is for checking the trained model. The file describes your house: it stays with you.

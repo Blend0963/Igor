@@ -29,6 +29,8 @@ export interface HouseDevice {
   deviceClass?: string;
   unit?: string;
   light?: { brightness: boolean; white: "color_temp" | "rgbw" | "rgb_white" | "none"; color: boolean };
+  /** A group's members ("Lumières salon" = the three bulbs): the room's words go to the group. */
+  members?: string[];
 }
 
 export interface HouseInventory {
@@ -254,12 +256,19 @@ interface Named {
   says: string[];
 }
 
+/** Devices a group of the house stands for: they keep their own names, the room's words go to the group. */
+function groupedMembers(devices: HouseDevice[]): Set<string> {
+  const ids = new Set(devices.map((d) => d.id));
+  return new Set(devices.flatMap((d) => (d.members ?? []).filter((m) => m !== d.id && ids.has(m))));
+}
+
 function namings(devices: HouseDevice[]): Named[] {
+  const grouped = groupedMembers(devices);
   return devices.map((d) => {
     const says = new Set<string>([the(d.name)]);
     const domain = domainOf(d.id);
-    if (d.area) {
-      const sameKind = devices.filter((o) => domainOf(o.id) === domain && o.area === d.area);
+    if (d.area && !grouped.has(d.id)) {
+      const sameKind = devices.filter((o) => domainOf(o.id) === domain && o.area === d.area && !grouped.has(o.id));
       if (sameKind.length === 1) {
         for (const noun of DOMAIN_NOUNS[domain] ?? []) says.add(`${noun} ${of(d.area)}`);
         // "the first word of its name + the room": "le plafonnier de la cuisine"
@@ -417,7 +426,10 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   const size = options.size ?? 4000;
   const testShare = options.testShare ?? 0.12;
   const named = namings(house.devices);
+  const grouped = groupedMembers(house.devices);
   const of_ = (domain: string) => named.filter((n) => domainOf(n.device.id) === domain);
+  /** What a room or the whole house means: groups, not the members they stand for. */
+  const whole = (list: Named[]) => list.filter((n) => !grouped.has(n.device.id));
   const lights = of_("light");
   const switches = [...of_("switch"), ...of_("fan"), ...of_("input_boolean")];
   const covers = of_("cover");
@@ -432,7 +444,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   const binaries = of_("binary_sensor");
   const openings = binaries.filter((b) => ["door", "window", "garage_door", "opening"].includes(b.device.deviceClass ?? ""));
   const areas = [...new Set(house.devices.map((d) => d.area).filter((a): a is string => Boolean(a)))];
-  const inArea = (list: Named[], area: string) => list.filter((n) => n.device.area === area);
+  const inArea = (list: Named[], area: string) => whole(list).filter((n) => n.device.area === area);
   const tempIn = (area: string) => sensors.filter((s) => s.device.area === area && s.device.deviceClass === "temperature");
   const humidIn = (area: string) => sensors.filter((s) => s.device.area === area && s.device.deviceClass === "humidity");
   let n = 0;
@@ -461,10 +473,10 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     const text = fill(phrase(rng, on ? AREA_ON : AREA_OFF, test), { de: of(area), dans: inside(area) });
     return { kind: "area_lights", text, answer: one([service("light", on ? "turn_on" : "turn_off", inArea(lights, area).map((l) => l.device.id))]) };
   });
-  add("all_lights", lights.length > 1 && lights.length <= 40 ? 2 : 0, (test) => ({
+  add("all_lights", whole(lights).length > 1 && whole(lights).length <= 40 ? 2 : 0, (test) => ({
     kind: "all_lights",
     text: phrase(rng, ALL_OFF, test),
-    answer: one([service("light", "turn_off", lights.map((l) => l.device.id))]),
+    answer: one([service("light", "turn_off", whole(lights).map((l) => l.device.id))]),
   }));
   // Two devices at once.
   add("two_devices", toggles.length > 1 ? 3 : 0, (test) => {
@@ -519,7 +531,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     return { kind: "cover", text: fill(phrase(rng, COVER_POS, test), { x, p: String(p) }), answer: one([service("cover", "set_cover_position", [d.device.id], { position: p })]) };
   });
   const coverAreas = areas.filter((a) => inArea(covers, a).length > 1);
-  add("covers_group", covers.length > 1 ? 3 : 0, (test) => {
+  add("covers_group", whole(covers).length > 1 ? 3 : 0, (test) => {
     if (coverAreas.length && rng() < 0.5) {
       const area = pick(rng, coverAreas);
       const t = phrase(rng, COVERS_AREA, test);
@@ -527,7 +539,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
       return { kind: "covers_group", text: fill(t, { de: of(area) }), answer: one([service("cover", open ? "open_cover" : "close_cover", inArea(covers, area).map((c) => c.device.id))]) };
     }
     const t = phrase(rng, COVERS_ALL, test);
-    return { kind: "covers_group", text: t, answer: one([service("cover", t.startsWith("ouvre") ? "open_cover" : "close_cover", covers.map((c) => c.device.id))]) };
+    return { kind: "covers_group", text: t, answer: one([service("cover", t.startsWith("ouvre") ? "open_cover" : "close_cover", whole(covers).map((c) => c.device.id))]) };
   });
   // Heating.
   add("climate", climates.length ? 3 : 0, (test) => {

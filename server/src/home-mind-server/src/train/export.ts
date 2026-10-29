@@ -12,7 +12,7 @@ import { formatScriptSection } from "../ha/script-catalog.js";
 import { writeZip } from "../files/zip.js";
 import { localPersona } from "../llm/local-llm.js";
 import { localToolList } from "../llm/openai-client.js";
-import { readHouse } from "./house-inventory.js";
+import { readHouse, registryReader } from "./house-inventory.js";
 import { buildLocalDataset, readableSample, toJsonl } from "./local-dataset.js";
 
 const README = `Igor — training set for the local model
@@ -36,8 +36,8 @@ export async function buildDatasetZip(
   topology: TopologyScanner,
   scanner: DeviceScanner,
   size?: number
-): Promise<{ zip: Buffer; counts: Record<string, number>; train: number; test: number }> {
-  const { house, scripts } = await readHouse(ha, topology, scanner);
+): Promise<{ zip: Buffer; counts: Record<string, number>; train: number; test: number; devices: number; skipped: number }> {
+  const { house, scripts, skipped } = await readHouse(ha, topology, scanner, registryReader(config.haUrl, config.haToken));
   const dataset = buildLocalDataset(house, {
     persona: localPersona(config.localLlmPrompt),
     scriptSection: formatScriptSection(scripts),
@@ -53,5 +53,5 @@ export async function buildDatasetZip(
     { name: "test.jsonl", data: Buffer.from(toJsonl(dataset.test, tools)) },
     { name: "sample.txt", data: Buffer.from(readableSample(dataset.train, 60)) },
   ]);
-  return { zip, counts: dataset.counts, train: dataset.train.length, test: dataset.test.length };
+  return { zip, counts: dataset.counts, train: dataset.train.length, test: dataset.test.length, devices: house.devices.length, skipped };
 }
