@@ -50,3 +50,14 @@ describe("readHouse", () => {
     expect(house.devices[0]).toMatchObject({ area: "Salon", members: ["light.a", "light.b"] });
   });
 });
+
+describe("isUnspeakable", () => {
+  it("leaves out names carrying a machine id, keeps the rest", async () => {
+    const { isUnspeakable } = await import("./house-inventory.js");
+    expect(isUnspeakable("input_boolean.material_you_navbar_6926f9e4e63f49d1824a39ead0cc86e1", "Material You navbar")).toBe(true);
+    expect(isUnspeakable("media_player.browser_mod_12854781_1591d154", "browser_mod_12854781_1591d154")).toBe(true);
+    expect(isUnspeakable("light.10_45_30_4", "Lumière cuisine")).toBe(false);
+    expect(isUnspeakable("switch.dreamebot_l10_prime_auto_drying", "Dreamebot L10 Prime séchage automatique")).toBe(false);
+    expect(isUnspeakable("sensor.deadbeef", "Capteur")).toBe(false);
+  });
+});
