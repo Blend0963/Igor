@@ -27,7 +27,7 @@ describe("isTechnical", () => {
 });
 
 describe("readHouse", () => {
-  it("drops registry diagnostics and technical entities, and gives a group its members' room", async () => {
+  it("marks registry diagnostics and technical entities as read-only, and gives a group its members' room", async () => {
     const ha = {
       getEntities: vi.fn().mockResolvedValue([
         state("light.salon", "Lumières salon", { entity_id: ["light.a", "light.b"] }),
@@ -43,9 +43,10 @@ describe("readHouse", () => {
       getRooms: () => [{ name: "Salon", entities: [{ id: "light.a", name: null }, { id: "light.b", name: null }] }],
     } as unknown as TopologyScanner;
     const scanner = { refreshIfStale: vi.fn(), getProfiles: () => [] } as unknown as DeviceScanner;
-    const { house, skipped } = await readHouse(ha, topology, scanner, async () => new Set(["switch.diag"]));
-    expect(house.devices.map((d) => d.id)).toEqual(["light.salon", "light.a", "light.b"]);
-    expect(skipped).toBe(2);
+    const { house, technical } = await readHouse(ha, topology, scanner, async () => new Set(["switch.diag"]));
+    expect(house.devices.map((d) => d.id)).toEqual(["light.salon", "light.a", "light.b", "sensor.bat", "switch.diag"]);
+    expect(technical).toBe(2);
+    expect(house.devices.filter((d) => d.technical).map((d) => d.id)).toEqual(["sensor.bat", "switch.diag"]);
     expect(house.devices[0]).toMatchObject({ area: "Salon", members: ["light.a", "light.b"] });
   });
 });

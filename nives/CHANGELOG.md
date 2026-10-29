@@ -2,8 +2,10 @@
 
 ## 0.18.1 — Expose everything, the training set sorts it out
 
-- The training set now leaves out what nobody says out loud, even when everything is exposed to Assist: what Home Assistant's entity registry marks as diagnostic or configuration, hidden entities, and what reads like it (batteries, signal, firmware, uptime, indicator lights, child locks, calibration…). The add-on log says how many were left out.
-- Groups: when a group ("Lumières salon") and its bulbs are in the same room, "la lumière du salon" and "éteins tout dans le salon" now mean the group, and each bulb keeps its own name. A group with no room takes its members' room. Before, a room with several lights got no short phrasing at all.
+- Everything can be exposed to Assist. What is about a device rather than the house (what Home Assistant's entity registry marks as diagnostic or configuration, hidden entities, and what reads like it: batteries, signal, firmware, CPU load, indicator lights, child locks…) stays in the training set, but read only: "quelle est la batterie de la télécommande ?" reads it and Mistral answers; the model never learns to switch it, and it never takes "la prise du salon" from the real plug. The add-on log says how many there are.
+- A reading the model was not trained on ("la température du congélateur" on a sensor added since) is looked up with a search, and Mistral answers from what it found.
+- Groups: when a group ("Lumières salon") and its bulbs are in the same room, "la lumière du salon" and "éteins tout dans le salon" mean the group, and each bulb keeps its own name. A group with no room takes its members' room. Before, a room with several lights got no short phrasing at all.
+- French in the examples and in the short order sentences: more feminine nouns (télécommande, batterie, température…), "à la", "au", "du" after accented words.
 
 ## 0.18.0 — A training set for a local model that knows the house
 

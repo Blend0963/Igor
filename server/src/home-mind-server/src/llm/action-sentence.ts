@@ -46,6 +46,9 @@ const FEMININE = new Set([
   "machine", "box", "clim", "climatisation", "pompe", "chaudière", "serrure", "alarme", "caméra", "hotte",
   "barre", "plaque", "bouilloire", "radio", "console", "imprimante", "vmc", "piscine", "douche", "cuisine",
   "chambre", "entrée", "salle", "cave", "terrasse", "véranda",
+  "télécommande", "télécommandes", "batterie", "charge", "température", "humidité", "consommation", "puissance",
+  "qualité", "mémoire", "tension", "pression", "luminosité", "valeur", "sonde", "sonnette", "station", "ventilation",
+  "alimentation", "sirène", "buanderie", "cuve", "chaleur", "fenetre", "baie", "verrière", "pergola", "cour",
 ]);
 
 /** True when a name's first word is a feminine noun ("Lampe bureau", "Cuisine"). */

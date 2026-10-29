@@ -36,8 +36,8 @@ export async function buildDatasetZip(
   topology: TopologyScanner,
   scanner: DeviceScanner,
   size?: number
-): Promise<{ zip: Buffer; counts: Record<string, number>; train: number; test: number; devices: number; skipped: number }> {
-  const { house, scripts, skipped } = await readHouse(ha, topology, scanner, registryReader(config.haUrl, config.haToken));
+): Promise<{ zip: Buffer; counts: Record<string, number>; train: number; test: number; devices: number; technical: number }> {
+  const { house, scripts, technical } = await readHouse(ha, topology, scanner, registryReader(config.haUrl, config.haToken));
   const dataset = buildLocalDataset(house, {
     persona: localPersona(config.localLlmPrompt),
     scriptSection: formatScriptSection(scripts),
@@ -53,5 +53,5 @@ export async function buildDatasetZip(
     { name: "test.jsonl", data: Buffer.from(toJsonl(dataset.test, tools)) },
     { name: "sample.txt", data: Buffer.from(readableSample(dataset.train, 60)) },
   ]);
-  return { zip, counts: dataset.counts, train: dataset.train.length, test: dataset.test.length, devices: house.devices.length, skipped };
+  return { zip, counts: dataset.counts, train: dataset.train.length, test: dataset.test.length, devices: house.devices.length, technical };
 }

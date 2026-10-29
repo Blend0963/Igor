@@ -4,11 +4,13 @@
  * the scripts that need no field. Read through the same exposure-bounded
  * client as the tools, so the model learns only what it may touch.
  *
- * Exposing everything is fine: what nobody says out loud is left out. That
- * is what the entity registry marks as diagnostic or configuration, or
- * hides, and what reads like it (batteries, signal, firmware, uptime,
- * indicator lights...). Groups keep their members, which only lose the
- * room's words ("la lumière du salon" is the group).
+ * Exposing everything is fine. What is about a device rather than the house
+ * (what the entity registry marks as diagnostic or configuration, or hides,
+ * and what reads like it: batteries, signal, firmware, CPU load, indicator
+ * lights...) is kept but marked technical: the model learns to read it when
+ * asked, never to act on it, and it never takes the room's words from a
+ * real device. Groups keep their members, which only lose the room's words
+ * ("la lumière du salon" is the group).
  */
 
 import type { HomeAssistantClient, EntityState, ScriptInfo } from "../ha/client.js";
@@ -50,7 +52,7 @@ export function registryReader(haUrl: string, token: string): RegistryReader {
   };
 }
 
-/** Something nobody asks for out loud: a battery, a signal, a firmware, an indicator light. */
+/** About the device rather than the house: a battery, a signal, a firmware, the CPU load, an indicator light. */
 export function isTechnical(entity: EntityState): boolean {
   const name = typeof entity.attributes.friendly_name === "string" ? entity.attributes.friendly_name : "";
   const deviceClass = entity.attributes.device_class;
@@ -65,7 +67,7 @@ export async function readHouse(
   topology: TopologyScanner,
   scanner: DeviceScanner,
   registry?: RegistryReader
-): Promise<{ house: HouseInventory; scripts: ScriptInfo[]; skipped: number }> {
+): Promise<{ house: HouseInventory; scripts: ScriptInfo[]; technical: number }> {
   await Promise.all([topology.refreshIfStale(), scanner.refreshIfStale()]);
   const [entities, scripts, hidden] = await Promise.all([
     ha.getEntities(),
@@ -78,17 +80,17 @@ export async function readHouse(
   const profiles = new Map(scanner.getProfiles().map((p) => [p.entityId, p]));
 
   const devices: HouseDevice[] = [];
-  let skipped = 0;
+  let technical = 0;
   for (const e of entities) {
     const domain = e.entity_id.slice(0, e.entity_id.indexOf("."));
     if (!DOMAINS.has(domain)) continue;
     const name = typeof e.attributes.friendly_name === "string" ? e.attributes.friendly_name.trim() : "";
     if (!name) continue;
-    if (hidden.has(e.entity_id) || isTechnical(e)) {
-      skipped++;
-      continue;
-    }
     const device: HouseDevice = { id: e.entity_id, name, area: areaOf.get(e.entity_id) };
+    if (hidden.has(e.entity_id) || isTechnical(e)) {
+      device.technical = true;
+      technical++;
+    }
     if (typeof e.attributes.device_class === "string") device.deviceClass = e.attributes.device_class;
     if (typeof e.attributes.unit_of_measurement === "string") device.unit = e.attributes.unit_of_measurement;
     const members = e.attributes.entity_id;
@@ -113,6 +115,6 @@ export async function readHouse(
         .map((s) => ({ id: s.id, name: s.name || s.id.replace(/^script\./, "").replace(/_/g, " ") })),
     },
     scripts,
-    skipped,
+    technical,
   };
 }

@@ -31,6 +31,8 @@ export interface HouseDevice {
   light?: { brightness: boolean; white: "color_temp" | "rgbw" | "rgb_white" | "none"; color: boolean };
   /** A group's members ("Lumières salon" = the three bulbs): the room's words go to the group. */
   members?: string[];
+  /** About the device rather than the house (a battery, the CPU load): read on request, never acted on. */
+  technical?: boolean;
 }
 
 export interface HouseInventory {
@@ -267,8 +269,8 @@ function namings(devices: HouseDevice[]): Named[] {
   return devices.map((d) => {
     const says = new Set<string>([the(d.name)]);
     const domain = domainOf(d.id);
-    if (d.area && !grouped.has(d.id)) {
-      const sameKind = devices.filter((o) => domainOf(o.id) === domain && o.area === d.area && !grouped.has(o.id));
+    if (d.area && !grouped.has(d.id) && !d.technical) {
+      const sameKind = devices.filter((o) => domainOf(o.id) === domain && o.area === d.area && !grouped.has(o.id) && !o.technical);
       if (sameKind.length === 1) {
         for (const noun of DOMAIN_NOUNS[domain] ?? []) says.add(`${noun} ${of(d.area)}`);
         // "the first word of its name + the room": "le plafonnier de la cuisine"
@@ -316,7 +318,21 @@ const IS_ON = ["est-ce que {x} est {on}", "{x} est {on}", "tu peux vérifier si 
 const IS_OPEN = ["est-ce que {x} est {open}", "{x} est {open}", "tu peux vérifier si {x} est {open}", "{x} est bien {closed}", "est-ce que {x} est {closed}"];
 const TEMP = ["quelle température fait-il {dans}", "il fait combien {dans}", "quelle est la température {de}", "température {de}", "il fait chaud {dans}", "combien de degrés {dans}"];
 const HUMID = ["quelle est l'humidité {dans}", "quel est le taux d'humidité {de}", "humidité {de}", "c'est humide {dans}"];
-const READ = ["combien indique {x}", "quelle est la valeur de {x}", "donne-moi {x}", "que dit {x}", "{x} indique combien"];
+const READ = ["combien indique {x}", "quelle est la valeur de {x}", "donne-moi {x}", "que dit {x}", "{x} c'est combien", "quel est l'état de {x}", "tu peux me donner {x}", "{x} indique combien"];
+const BATTERY = ["quelle est la batterie {de}", "il reste combien de batterie {a}", "{x} a encore de la batterie", "niveau de batterie {de}", "la batterie {de} est à combien"];
+/** Readings the house may not have under these words: looked up, then the online model reads the result. */
+const FOUND: { words: string; query: string; entity: string; state: string; name: string; unit?: string }[] = [
+  { words: "quelle est la batterie du détecteur de fumée", query: "détecteur fumée", entity: "sensor.detecteur_fumee_batterie", state: "64", name: "Détecteur fumée batterie", unit: "%" },
+  { words: "quelle est la charge du processeur", query: "processeur", entity: "sensor.processor_use", state: "12", name: "Processor use", unit: "%" },
+  { words: "il fait combien dans la cave", query: "cave", entity: "sensor.cave_temperature", state: "13.5", name: "Cave température", unit: "°C" },
+  { words: "quelle est l'humidité de la buanderie", query: "buanderie", entity: "sensor.buanderie_humidite", state: "71", name: "Buanderie humidité", unit: "%" },
+  { words: "quel est le niveau de la cuve", query: "cuve", entity: "sensor.cuve_niveau", state: "58", name: "Niveau cuve", unit: "%" },
+  { words: "combien consomme le chauffe-eau", query: "chauffe-eau", entity: "sensor.chauffe_eau_puissance", state: "1980", name: "Chauffe-eau puissance", unit: "W" },
+  { words: "la serrure a encore de la batterie", query: "serrure", entity: "sensor.serrure_batterie", state: "22", name: "Serrure batterie", unit: "%" },
+  { words: "quelle est la qualité de l'air dans le bureau", query: "qualité air", entity: "sensor.bureau_co2", state: "830", name: "Bureau CO2", unit: "ppm" },
+  { words: "quelle est la température du congélateur", query: "congélateur", entity: "sensor.congelateur_temperature", state: "-18", name: "Congélateur température", unit: "°C" },
+  { words: "combien d'espace reste sur le disque", query: "disque", entity: "sensor.disk_free", state: "212", name: "Disk free", unit: "GB" },
+];
 const PERSON_HOME = ["est-ce que {p} est à la maison", "{p} est rentré", "{p} est là", "où est {p}", "{p} est à la maison"];
 const WEATHER_NOW = ["quel temps fait-il", "il fait beau dehors", "quelle est la météo", "il pleut", "quel temps il fait dehors"];
 const WEATHER_TOMORROW = ["quel temps fera-t-il demain", "il va pleuvoir demain", "la météo de demain", "il fera beau demain", "quelles sont les prévisions pour demain"];
@@ -384,13 +400,14 @@ function randomTime(rng: Rng): string {
 
 /** French contractions a filled template needs: "de le" → "du", "de arroser" → "d'arroser". */
 function contract(text: string): string {
+  // (?<!\p{L}) rather than \b, which does not see "à" as a letter.
   return text
-    .replace(/\bde le /g, "du ")
-    .replace(/\bde les /g, "des ")
-    .replace(/\bà le /g, "au ")
-    .replace(/\bà les /g, "aux ")
-    .replace(/\bde ([aeiouyàâéèêîôûh])/gi, "d'$1")
-    .replace(/\bque ([aeiouyàâéèêîôû])/gi, "qu'$1");
+    .replace(/(?<!\p{L})de le /gu, "du ")
+    .replace(/(?<!\p{L})de les /gu, "des ")
+    .replace(/(?<!\p{L})à le /gu, "au ")
+    .replace(/(?<!\p{L})à les /gu, "aux ")
+    .replace(/(?<!\p{L})de ([aeiouyàâéèêîôûh])/giu, "d'$1")
+    .replace(/(?<!\p{L})que ([aeiouyàâéèêîôû])/giu, "qu'$1");
 }
 
 function fill(template: string, values: Record<string, string>): string {
@@ -427,7 +444,8 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   const testShare = options.testShare ?? 0.12;
   const named = namings(house.devices);
   const grouped = groupedMembers(house.devices);
-  const of_ = (domain: string) => named.filter((n) => domainOf(n.device.id) === domain);
+  const of_ = (domain: string) => named.filter((n) => domainOf(n.device.id) === domain && !n.device.technical);
+  const technical = named.filter((n) => n.device.technical);
   /** What a room or the whole house means: groups, not the members they stand for. */
   const whole = (list: Named[]) => list.filter((n) => !grouped.has(n.device.id));
   const lights = of_("light");
@@ -616,6 +634,26 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   add("sensor", readable.length ? 3 : 0, (test) => {
     const d = pick(rng, readable);
     return { kind: "sensor", text: fill(phrase(rng, READ, test), { x: the(d.device.name) }), question: true, answer: one([{ name: "get_state", args: { entity_id: d.device.id } }]) };
+  });
+  // The device's own readings (a battery, the CPU load): asked for, read, never acted on.
+  add("technical", technical.length ? Math.min(8, 2 + technical.length / 5) : 0, (test) => {
+    const d = pick(rng, technical);
+    const battery = d.device.deviceClass === "battery" || /^batterie\s+/i.test(d.device.name);
+    const rest = d.device.name.replace(/^batterie\s+(de\s+|du\s+|des\s+|d')?/i, "").replace(/\s+batterie$/i, "");
+    const text = battery && rest !== d.device.name && rng() < 0.6
+      ? fill(phrase(rng, BATTERY, test), { de: `de ${the(rest)}`, a: `à ${the(rest)}`, x: the(rest) })
+      : fill(phrase(rng, READ, test), { x: the(d.device.name) });
+    return { kind: "technical", text, question: true, answer: one([{ name: "get_state", args: { entity_id: d.device.id } }]) };
+  });
+  // A reading under words it was not trained on: searched, found, and the online model reads it.
+  const knownNames = house.devices.map((d) => lower(d.name));
+  const found = FOUND.filter((f) => !knownNames.some((k) => k.includes(lower(f.query))));
+  add("search_found", found.length ? 2 : 0, (test) => {
+    const f = pick(rng, found);
+    const call = callMessage([{ name: "search_entities", args: { query: f.query } }], n++);
+    const id = (call as { tool_calls: { id: string }[] }).tool_calls[0].id;
+    const result = [{ entity_id: f.entity, state: f.state, name: f.name, ...(f.unit ? { attributes: { unit_of_measurement: f.unit } } : {}) }];
+    return { kind: "search_found", text: f.words, question: true, answer: [call, { role: "tool", tool_call_id: id, content: JSON.stringify(result) }, NOTHING] };
   });
   add("person", persons.length ? 2 : 0, (test) => {
     const d = pick(rng, persons);

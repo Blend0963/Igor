@@ -208,8 +208,8 @@ app.get("/api/local-dataset", async (req, res) => {
   if (!isIngressRequest(req)) return res.status(403).json({ error: "Only from the Home Assistant panel." });
   try {
     const size = Math.min(20000, Math.max(200, Number(req.query.size) || 4000));
-    const { zip, counts, train, test, devices, skipped } = await buildDatasetZip(config, ha, topology, scanner, size);
-    console.log(`[dataset] ${devices} devices (${skipped} technical ones left out), ${train} training and ${test} test examples: ${JSON.stringify(counts)}`);
+    const { zip, counts, train, test, devices, technical } = await buildDatasetZip(config, ha, topology, scanner, size);
+    console.log(`[dataset] ${devices} devices (${technical} technical, read only), ${train} training and ${test} test examples: ${JSON.stringify(counts)}`);
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", 'attachment; filename="igor-local-dataset.zip"');

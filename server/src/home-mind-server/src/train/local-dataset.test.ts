@@ -123,3 +123,44 @@ describe("groups", () => {
     for (const c of calls("area_lights").filter((c) => /salon/i.test(c.words))) expect(c.args.entity_id).toBe("light.salon");
   });
 });
+
+describe("technical entities", () => {
+  const house: HouseInventory = {
+    devices: [
+      { id: "switch.prise_salon", name: "Prise salon", area: "Salon" },
+      { id: "switch.prise_salon_voyant", name: "Voyant prise salon", area: "Salon", technical: true },
+      { id: "sensor.telecommande_batterie", name: "Batterie télécommande", area: "Salon", deviceClass: "battery", unit: "%", technical: true },
+      { id: "sensor.processor_use", name: "Charge processeur", unit: "%", technical: true },
+    ],
+    scripts: [],
+  };
+  const { train } = buildLocalDataset(house, { ...options, size: 400 });
+  const last = (e: { messages: unknown[] }) => e.messages.at(-1) as Msg;
+
+  it("reads them when asked, never acts on them", () => {
+    const reads = train.filter((e) => e.kind === "technical");
+    expect(reads.length).toBeGreaterThan(5);
+    expect(reads.some((e) => /batterie de la télécommande|batterie à la télécommande/i.test((e.messages.at(-2) as Msg).content!))).toBe(true);
+    for (const e of train) {
+      for (const c of last(e).tool_calls ?? []) {
+        if (c.function.name === "call_service") expect(c.function.arguments).not.toMatch(/voyant|batterie|processor/);
+      }
+    }
+  });
+
+  it("leaves the room's words to the real device", () => {
+    const salon = train.filter((e) => e.kind === "on_off" && /la prise du salon/i.test((e.messages.at(-2) as Msg).content!));
+    expect(salon.length).toBeGreaterThan(0);
+    for (const e of salon) expect(last(e).tool_calls![0].function.arguments).toContain('"switch.prise_salon"');
+  });
+
+  it("looks up a reading it was not trained on, and leaves the answer to the online model", () => {
+    const found = train.filter((e) => e.kind === "search_found");
+    expect(found.length).toBeGreaterThan(0);
+    for (const e of found) {
+      expect(e.messages.at(-3)).toMatchObject({ role: "assistant" });
+      expect(e.messages.at(-2)).toMatchObject({ role: "tool" });
+      expect(last(e).content).toBe("-");
+    }
+  });
+});
