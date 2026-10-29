@@ -21,6 +21,7 @@ import { fetchExposedEntities } from "./ha/exposed-entities.js";
 import { AssistExposure } from "./ha/exposure.js";
 import { createChatEngine, createFactExtractor } from "./llm/factory.js";
 import { createRouter } from "./api/routes.js";
+import { buildDatasetZip } from "./train/export.js";
 import { createSttService, sttModelFor } from "./stt/stt-service.js";
 import { createTtsService } from "./tts/tts-service.js";
 import { configureMediaStore } from "./llm/media-store.js";
@@ -199,6 +200,23 @@ app.get("/api/app-token", (req, res) => {
   if (!isIngressRequest(req)) return res.status(403).json({ error: "Only from the Home Assistant panel." });
   res.setHeader("Cache-Control", "no-store");
   res.json({ token: config.apiToken });
+});
+
+// The local model's training set, built from the house (train/export.ts):
+// it describes the whole house, so only the panel inside Home Assistant gets it.
+app.get("/api/local-dataset", async (req, res) => {
+  if (!isIngressRequest(req)) return res.status(403).json({ error: "Only from the Home Assistant panel." });
+  try {
+    const size = Math.min(20000, Math.max(200, Number(req.query.size) || 4000));
+    const { zip, counts, train, test } = await buildDatasetZip(config, ha, topology, scanner, size);
+    console.log(`[dataset] built ${train} training and ${test} test examples: ${JSON.stringify(counts)}`);
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", 'attachment; filename="igor-local-dataset.zip"');
+    res.send(zip);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
 });
 
 // Add request logging

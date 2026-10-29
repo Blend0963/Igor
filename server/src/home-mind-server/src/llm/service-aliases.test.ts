@@ -5,6 +5,8 @@ describe("canonicalService", () => {
   it("maps the names models get wrong to Home Assistant's", () => {
     expect(canonicalService("cover", "open")).toBe("open_cover");
     expect(canonicalService("cover", "set_position")).toBe("set_cover_position");
+    expect(canonicalService("cover", "turn_off")).toBe("close_cover");
+    expect(canonicalService("cover", "turn_on")).toBe("open_cover");
     expect(canonicalService("media_player", "play")).toBe("media_play");
   });
 

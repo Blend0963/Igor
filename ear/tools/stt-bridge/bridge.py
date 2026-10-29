@@ -32,11 +32,24 @@ LOG = logging.getLogger("igor-stt")
 TO_WHISPER = AudioChunkConverter(rate=16000, width=2, channels=1)
 
 
-def transcribe(whisper_url: str, wav: bytes, language: str) -> str:
+# Words of the house said to Igor: given to Whisper as its initial prompt,
+# they steer short commands towards them ("ferme-les" rather than "ferme le
+# lit"). Override with --prompt.
+HOME_PROMPT = (
+    "Igor, allume la lumière du salon. Éteins la cuisine. Ouvre les volets à 30 %. "
+    "Ferme-les complètement. Baisse le chauffage. Mets un minuteur de dix minutes. "
+    "Appelle Jean. Rappelle-moi demain. Le couloir, la chambre, le bureau."
+)
+
+
+def transcribe(whisper_url: str, wav: bytes, language: str, prompt: str = "") -> str:
     """POST a WAV file to whisper.cpp's /inference and return its text."""
     boundary = uuid.uuid4().hex
     parts = []
-    for name, value in (("response_format", "json"), ("temperature", "0.0"), ("language", language)):
+    fields = [("response_format", "json"), ("temperature", "0.0"), ("language", language)]
+    if prompt:
+        fields.append(("prompt", prompt))
+    for name, value in fields:
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
     parts.append(
         f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.wav"\r\n'
@@ -81,7 +94,7 @@ class Handler(AsyncEventHandler):
             started = time.monotonic()
             try:
                 text = await asyncio.get_running_loop().run_in_executor(
-                    None, transcribe, self.args.whisper, buffer.getvalue(), self.args.language
+                    None, transcribe, self.args.whisper, buffer.getvalue(), self.args.language, self.args.prompt
                 )
             except Exception as err:  # noqa: BLE001 - an empty transcript, never a dropped pipeline
                 LOG.warning("whisper failed: %s", err)
@@ -97,6 +110,7 @@ def main() -> None:
     parser.add_argument("--uri", default="tcp://0.0.0.0:10300")
     parser.add_argument("--whisper", default="http://127.0.0.1:8178")
     parser.add_argument("--language", default="fr")
+    parser.add_argument("--prompt", default=HOME_PROMPT, help="Whisper's initial prompt ('' for none)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 

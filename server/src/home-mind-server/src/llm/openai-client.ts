@@ -85,6 +85,12 @@ function openAIToolsFor(mode: "voice" | "text" | "thread", turn: TurnPolicy = {}
   );
 }
 
+/** The tools a local Assist turn gets, as the engine sends them (train/local-dataset.ts trains on them). */
+export function localToolList(withMemory: boolean): OpenAI.ChatCompletionTool[] {
+  const tools = openAIToolsFor("voice").filter((t) => t.type === "function" && LOCAL_TOOLS.has(t.function.name));
+  return withMemory ? [...tools, SHARE_MEMORY_TOOL] : tools;
+}
+
 /** Output ceiling of a thread turn that reasons first: the thinking is billed from it too. */
 export const THREAD_REASONING_OUTPUT_CAP = 16384;
 /** How many times a thread reply that hit the output cap is continued. */
@@ -357,10 +363,13 @@ export class OpenAIChatEngine implements IChatEngine {
     }
 
     const scriptSection = formatScriptSection(scripts);
-    const deviceCheatSheet = [this.scanner.hasProfiles() ? this.scanner.formatCheatSheet() : undefined, scriptSection]
+    // A local model fine-tuned on the house knows its rooms and lights; the
+    // scripts' fields it still reads (train/local-dataset.ts builds the same).
+    const tuned = Boolean(local) && this.config.localLlmTuned === true;
+    const deviceCheatSheet = [this.scanner.hasProfiles() && !tuned ? this.scanner.formatCheatSheet() : undefined, scriptSection]
       .filter(Boolean)
       .join("\n\n") || undefined;
-    const homeLayout = this.topology.hasLayout() ? this.topology.formatSection() : undefined;
+    const homeLayout = this.topology.hasLayout() && !tuned ? this.topology.formatSection() : undefined;
     // The local model gets a working identity, not the persona: Igor is
     // played by the online model, which words the replies.
     const promptPersona = local ? localPersona(this.config.localLlmPrompt) : customPrompt;
@@ -788,7 +797,14 @@ export class OpenAIChatEngine implements IChatEngine {
       // The local model only acts and reads. The online model answers the
       // person, from their words, the last exchanges and what was done or
       // read; never from the home's layout, live state, memory or contacts.
-      if (local) {
+      // A plain order whose outcome is known needs no online call at all
+      // (local_order_reply sentence or silent): the server says it, or nothing.
+      const orderReply = this.config.localOrderReply ?? "sentence";
+      if (local && plainSentence && orderReply !== "online") {
+        console.log(`[route] order done locally, no online call (${orderReply}): ${plainSentence}`);
+        if (orderReply === "sentence") speak(plainSentence);
+        result = { text: orderReply === "sentence" ? plainSentence : "", finishReason: "stop", toolCalls: [], usage: undefined };
+      } else if (local) {
         const draft = result.text.trim();
         console.log(
           `[route] ${localDone.length ? `${localDone.length} local tool call(s)` : "nothing to do locally"}, ` +
@@ -892,7 +908,8 @@ export class OpenAIChatEngine implements IChatEngine {
     // so the HA integration can surface a useful hint instead of the generic
     // "I received your request but got no response." fallback. The `finish_reason`
     // from the final stream tells us which diagnostic applies.
-    const error = responseText === "" && result.toolCalls.length === 0
+    // An order carried out without a word (local_order_reply silent) is not an empty answer.
+    const error = responseText === "" && result.toolCalls.length === 0 && !(local && plainSentence)
       ? this.classifyEmptyResponse(result.finishReason, result.usage)
       : undefined;
 

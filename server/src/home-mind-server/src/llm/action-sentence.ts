@@ -48,6 +48,11 @@ const FEMININE = new Set([
   "chambre", "entrée", "salle", "cave", "terrasse", "véranda",
 ]);
 
+/** True when a name's first word is a feminine noun ("Lampe bureau", "Cuisine"). */
+export function isFeminine(name: string): boolean {
+  return FEMININE.has(firstWord(name));
+}
+
 function firstWord(name: string): string {
   return name.trim().split(/[\s'’]+/)[0]?.toLowerCase() ?? "";
 }

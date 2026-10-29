@@ -59,8 +59,15 @@ const ConfigSchema = z
     localLlmModel: z.string().default("qwen3-8b"),
     // The owner's working rules for the local model (scripts, contacts…), no persona.
     localLlmPrompt: z.string().optional(),
+    // A plain order done by the local model: the server's sentence, nothing,
+    // or the online model's wording.
+    localOrderReply: z.enum(["sentence", "silent", "online"]).default("sentence"),
     // Read the next spoken request's prompt ahead of time (llm/openai-client.ts prewarm).
     localLlmPrewarm: z.boolean().default(true),
+    // A local model fine-tuned on this house (train/local-dataset.ts): it knows
+    // the rooms and the lights, so its prompt leaves out the room map and the
+    // light cheat sheet.
+    localLlmTuned: z.boolean().default(false),
     // Reminders, scheduled tasks and the morning briefing (jobs/scheduler.ts).
     // Notify service for them ("mobile_app_pixel"); unset = a persistent
     // notification in Home Assistant.
@@ -241,7 +248,9 @@ export function loadConfig(): Config {
     localLlmKey: emptyToUndefined(process.env.LOCAL_LLM_KEY),
     localLlmModel: emptyToUndefined(process.env.LOCAL_LLM_MODEL),
     localLlmPrompt: emptyToUndefined(process.env.LOCAL_LLM_PROMPT),
+    localOrderReply: emptyToUndefined(process.env.LOCAL_ORDER_REPLY),
     localLlmPrewarm: emptyToUndefined(process.env.LOCAL_LLM_PREWARM) === undefined ? undefined : process.env.LOCAL_LLM_PREWARM !== "false",
+    localLlmTuned: process.env.LOCAL_LLM_TUNED === "true",
     notifyService: emptyToUndefined(process.env.NOTIFY_SERVICE),
     dailyBriefingTime: emptyToUndefined(process.env.DAILY_BRIEFING_TIME),
     dailyBriefingPrompt: emptyToUndefined(process.env.DAILY_BRIEFING_PROMPT),

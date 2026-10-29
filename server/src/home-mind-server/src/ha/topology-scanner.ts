@@ -113,7 +113,7 @@ export const DEFAULT_LAYOUT_DOMAINS = [
 ] as const;
 
 /** One entity in a room. `name` is null when Home Assistant has none. */
-interface EntityRef {
+export interface EntityRef {
   id: string;
   name: string | null;
 }
@@ -158,6 +158,13 @@ interface LayoutData {
  *
  * Runs at startup and refreshes every scanIntervalMs.
  */
+/** A room as the last scan saw it, for code that needs more than the prompt text. */
+export interface Room {
+  name: string;
+  floor?: string;
+  entities: EntityRef[];
+}
+
 /** Reads the entities exposed to Assist; `null` when the list is unavailable. */
 export type ExposureProvider = () => Promise<Set<string> | null>;
 
@@ -169,6 +176,7 @@ export class TopologyScanner {
   private readonly exposure: ExposureProvider | null;
   private exposed: Set<string> | null = null;
   private layoutText: string = "";
+  private rooms: Room[] = [];
 
   /**
    * @param domains Entity domains to keep in the layout. `null` keeps every
@@ -320,6 +328,14 @@ export class TopologyScanner {
 
       const data = await this.fetchLayout();
       this.layoutText = this.buildLayout(data);
+      this.rooms = [
+        ...data.floors.flatMap((f) => f.areas.map((a) => ({ floor: f.name, area: a }))),
+        ...data.unassigned.map((a) => ({ floor: undefined, area: a })),
+      ].map(({ floor, area }) => ({
+        name: area.name,
+        floor,
+        entities: area.entities.filter((e) => this.keep(e.id)).map((e) => ({ id: e.id, name: e.name })),
+      }));
       this.lastScanTime = Date.now();
 
       const floorCount = data.floors.length;
@@ -352,6 +368,11 @@ export class TopologyScanner {
 
   formatSection(): string {
     return this.layoutText;
+  }
+
+  /** The rooms of the last scan with the entities the filter keeps (llm/local-dataset.ts reads them). */
+  getRooms(): Room[] {
+    return this.rooms;
   }
 
   /** Room lines for one group of areas, skipping rooms the filter emptied. */

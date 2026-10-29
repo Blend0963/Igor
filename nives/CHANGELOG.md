@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.18.0 — A training set for a local model that knows the house
+
+- The panel's Diagnostic page downloads a training set built from your house (`igor-local-dataset.zip`): a few thousand requests in French, each one exactly as Igor sends it to the local model, with the answer it should give. They cover orders (lights, brightness, white and colours as each light takes them, covers, heating, media, scenes, scripts, locks, vacuum), questions about a state, reminders and alerts, contacts, memories, follow-ups ("et la cuisine ?", "vas-y"), devices the house does not have, and "-" for everything that is not about the home. A held-out part (`test.jsonl`), phrased in ways training never sees, is for checking the trained model. The file describes your house: it stays with you.
+- New option `local_llm_tuned`: for a local model fine-tuned on that set. Its prompt leaves out the room map and the light cheat sheet, which it has learned, so it is shorter and faster to read. Off by default.
+
+## 0.17.0 — The local model acts, Mistral speaks only when there is something to say
+
+- With the local model, a plain order whose outcome Home Assistant reports (lights, covers, thermostats, reminders) no longer calls Mistral: Igor says the short sentence built from the new states ("Lumière salon allumée.") at once, or nothing. Questions, general knowledge, news, web searches and scripts still go to Mistral, which answers.
+- New option `local_order_reply`: `sentence` (default, the short sentence), `silent` (the order is carried out without a word) or `online` (Mistral words it, as in 0.16).
+
+## 0.16.6 — Covers: turn_on and turn_off too
+
+- "Ferme-les complètement" asked for cover `turn_off`, which Home Assistant refuses; it is now sent as `close_cover` (and `turn_on` as `open_cover`).
+- `ear/tools/stt-bridge`: Whisper now gets the house's usual words as its initial prompt, which steers short commands ("ferme-les complètement" was heard as "ferme le lit complètement"). Run its install.sh again on the VM to apply.
+
 ## 0.16.5 — Service names fixed before Home Assistant sees them
 
 - "Ouvre les volets à 10 %" failed: the model asked for cover `set_position` and `open`, which Home Assistant refuses (the real services are `set_cover_position` and `open_cover`). The server now maps such near-miss names to the real ones (covers, media players, thermostats, fans, lights, switches) before calling Home Assistant; a real service is never changed. This helps every model, local or online.
