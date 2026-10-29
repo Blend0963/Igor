@@ -34,7 +34,7 @@ Each step prints OK or ÉCHEC and the script stops at the first failure:
 2. unpacks the training set;
 3. installs transformers, peft and accelerate (pinned versions) next to the
    machine's PyTorch;
-4. trains a LoRA on `Qwen/Qwen3-4B-Instruct-2507` (2 epochs, about an hour),
+4. trains a LoRA on `Qwen/Qwen3-4B-Instruct-2507` (2 epochs; about 3,000 tokens per example, so one to two hours on an RTX 4090, less on an A100 or H100; `EPOCHS=1` halves it),
    merges it, and scores 200 held-out requests (`out/eval.json`);
 5. builds llama.cpp's converter;
 6. writes `out/igor-local-q4_k_m.gguf` (about 2.5 GB).
