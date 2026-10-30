@@ -95,6 +95,9 @@ class Settings:
     cpu_threads: int = 2
     hotwords: str = "Igor"
     beam_size: int = 0
+    whisper_url: str = ""
+    send_text: bool = False
+    tv_source: str = ""
     extra_targets: list[str] = field(default_factory=list)
     names: list[str] = field(default_factory=lambda: ["igor"])
     spotter: str = "vosk"
@@ -154,6 +157,8 @@ def load(path: Path = CONFIG) -> Settings:
     if s.hotwords.strip().lower() in {"", "igor", "mado"}:
         s.hotwords = ", ".join(n.capitalize() for n in s.names)
     s.beam_size = int(stt.get("beam_size", s.beam_size))
+    s.whisper_url = str(stt.get("whisper_url", s.whisper_url)).strip()
+    s.send_text = bool(stt.get("send_text", s.send_text))
     s.extra_targets = [str(t) for t in addressing.get("extra_targets", [])]
     s.act = bool(mode.get("act", s.act))
     s.addressing = str(mode.get("addressing", s.addressing)).strip().lower()
@@ -172,6 +177,7 @@ def load(path: Path = CONFIG) -> Settings:
         raise ValueError(f'[media] sound_from must be "speakers", "players" or "both", not "{s.sound_from}"')
     s.sink = str(media.get("sink", s.sink))
     s.quiet_db = float(media.get("quiet_db", s.quiet_db))
+    s.tv_source = str(media.get("tv_source", s.tv_source)).strip()
     s.when_media = str(media.get("when_media", s.when_media)).strip().lower()
     if s.when_media not in {"name", "closed"}:
         raise ValueError(f'[media] when_media must be "name" or "closed", not "{s.when_media}"')

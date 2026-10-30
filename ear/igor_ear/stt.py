@@ -6,11 +6,17 @@ the default is the "small" model in float32 on the GPU (about 1 GB of its
 """
 from __future__ import annotations
 
+import io
+import json
 import logging
+import os
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+import urllib.request
+import wave
+from dataclasses import dataclass, field
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -45,6 +51,9 @@ class Transcript:
     seconds: float
     no_speech: float
     logprob: float
+    # With a whisper.cpp server: (start, end, text, words) of each piece, the
+    # words being {word, start, end} with the times in seconds.
+    parts: list = field(default_factory=list)
 
 
 # A voice from across the room arrives faint, and Whisper hears faint words
@@ -71,7 +80,13 @@ class Transcriber:
         cpu_threads: int = 2,
         hotwords: str = "Igor",
         beam_size: int = 0,
+        server_url: str = "",
     ) -> None:
+        # Fast enough to transcribe a whole long sentence (a GPU, a server).
+        self.full = False
+        server_url = server_url or os.environ.get("IGOR_WHISPER_URL", "").strip()
+        if server_url and self._init_server(server_url, language, hotwords):
+            return
         from faster_whisper import WhisperModel
 
         self.language = language
@@ -98,12 +113,65 @@ class Transcriber:
                 # A first, silent run loads every library now rather than on the first sentence.
                 self._run(np.zeros(16000, dtype=np.float32))
                 self.device = f"{dev}/{compute}"
+                self.full = dev == "cuda"
                 log.info("Transcription: model %s on %s, beam %d", model, self.device, self.beam_size)
                 return
             except Exception as err:  # noqa: BLE001 - try the next device
                 last = err
                 log.warning("Transcription on %s/%s unavailable: %s", dev, compute, err)
         raise RuntimeError(f"No device can run the transcription: {last}")
+
+    def _init_server(self, url: str, language: str, hotwords: str) -> bool:
+        """Transcribe with a whisper.cpp server (any GPU it runs on) instead of
+        faster-whisper. False, and faster-whisper is used, if it does not answer."""
+        self._url = url.rstrip("/") + "/inference"
+        self.language, self.hotwords, self.beam_size = language, hotwords or None, 5
+        try:
+            self._post(np.zeros(16000, dtype=np.float32))
+        except Exception as err:  # noqa: BLE001 - faster-whisper then
+            log.warning("whisper-server unusable (%s): falling back", err)
+            return False
+        self._run = self._run_server
+        self.device = "whisper.cpp"
+        self.full = True
+        log.info("Transcription: whisper.cpp server at %s", self._url)
+        return True
+
+    def _post(self, audio: np.ndarray) -> dict:
+        pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+        wav = io.BytesIO()
+        with wave.open(wav, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes(pcm)
+        boundary = "igorear" + str(time.monotonic_ns())
+        fields = {"temperature": "0.0", "response_format": "verbose_json", "language": self.language}
+        if self.hotwords:
+            fields["prompt"] = self.hotwords
+        body = b""
+        for k, v in fields.items():
+            body += f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+        body += (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="a.wav"\r\n'
+                 "Content-Type: audio/wav\r\n\r\n").encode() + wav.getvalue() + f"\r\n--{boundary}--\r\n".encode()
+        request = urllib.request.Request(self._url, data=body,
+                                         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+        with urllib.request.urlopen(request, timeout=30) as r:
+            return json.loads(r.read())
+
+    def _run_server(self, audio: np.ndarray):
+        try:
+            data = self._post(audio)
+        except Exception as err:  # noqa: BLE001 - heard as silence
+            log.warning("whisper-server error: %s", err)
+            return []
+        pieces = data.get("segments") or []
+        if not pieces and data.get("text", "").strip():
+            pieces = [{"text": data["text"]}]
+        return [SimpleNamespace(text=g.get("text", ""), no_speech_prob=g.get("no_speech_prob", 0.0),
+                                avg_logprob=g.get("avg_logprob", 0.0), timed="start" in g,
+                                start=g.get("start", 0.0), end=g.get("end", 0.0),
+                                words=g.get("words") or []) for g in pieces]
 
     def _run(self, audio: np.ndarray):
         segments, _info = self._model.transcribe(
@@ -125,4 +193,5 @@ class Transcriber:
         text = " ".join(s.text.strip() for s in segments).strip()
         no_speech = max((s.no_speech_prob for s in segments), default=1.0)
         logprob = min((s.avg_logprob for s in segments), default=-10.0)
-        return Transcript(text, time.monotonic() - start, no_speech, logprob)
+        parts = [(s.start, s.end, s.text.strip(), s.words) for s in segments if getattr(s, "timed", False)]
+        return Transcript(text, time.monotonic() - start, no_speech, logprob, parts)

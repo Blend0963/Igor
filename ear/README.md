@@ -132,6 +132,44 @@ sentence still works as always, and `addressing = "name"` switches back.
   `smart_would_act` in the observations. Read a few days of it, then set
   `act = true`.
 
+## A fast GPU, and a television that talks
+
+**A whisper.cpp server** (`[stt] whisper_url`). Any GPU whisper.cpp runs on
+(an AMD card through Vulkan, for instance) can do the transcription: start
+`whisper-server -m ggml-large-v3-turbo.bin --host 127.0.0.1 --port 8178 -l fr`
+as a service and give its address. A sentence of eleven seconds takes about
+0.5 s with the large model, and long sentences are transcribed whole instead
+of by their head and tail. The server gives each word its time, which the
+television comparison below needs. If it does not answer at start, Igor uses
+faster-whisper as before. (`IGOR_WHISPER_URL` in the environment does the
+same, for a run.sh.)
+
+**Text instead of audio** (`[stt] send_text = true`). With a fast local model
+the words heard here go straight to the Assist pipeline's intent step: no
+second transcription, no audio upload, about a second saved. The pipeline
+for other devices (the phone) is untouched. If the local transcription
+fails, the audio is sent as before.
+
+**A television that talks** (`[media] tv_source`). A television, a projector
+or a box wired into the sound card plays voices all the time, and a sentence
+naming Igor then arrives mixed with them. Name the sound card input that
+carries the television's own sound (`pactl list short sources`): while sound
+plays, and only then, a sentence naming Igor is compared with what that input
+said at the same moment, both transcribed with their word times. The words
+found in both are the television's and are dropped; the order is what
+follows "Igor" up to the television's next words, a pause of 1.2 s or the
+end of the sentence (or what comes before the name, when the name closes the
+sentence). Nothing from before or after is joined, since those are the
+television's voices. The journal shows each case (`Cut:`, `TV:`, `MIC:` with
+the television's words between `[[ ]]`). With the sound off, Igor listens as
+usual and cuts nothing.
+
+It compares words, not waveforms, so the two inputs need not share a clock;
+an echo canceller does, and with a USB microphone next to a sound card it
+mangles the voice. What it cannot do is recover a word the microphone did
+not hear under the television: a microphone near the speaker and far from
+you will still lose the fight.
+
 ## Resources
 
 The service runs at low priority (nice 10, at most two CPUs, idle I/O,

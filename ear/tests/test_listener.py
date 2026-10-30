@@ -428,3 +428,74 @@ def test_a_full_sentence_with_the_name_opens_no_window():
     listener.handle(audio())
     clock.t = 4
     assert listener.handle(audio())["reason"] == "not_addressed"
+
+
+# --- A television is sounding -------------------------------------------------
+
+def w(word, start, end):
+    return {"word": word, "start": start, "end": end}
+
+
+def tv_listener(tv_on, tv_words):
+    """One sentence of six seconds: the television, then "Igor, quelle heure
+    est-il ?" (2.0 to 3.5 s), then the television again."""
+    sent = []
+    words = [w(" Oh", 0.0, 0.3), w(" la", 0.3, 0.5), w(" boulette", 0.5, 1.0), w(" hein", 1.0, 1.3),
+             w(" Igor,", 2.0, 2.4), w(" quelle", 2.4, 2.7), w(" heure", 2.7, 3.0), w(" est-il", 3.0, 3.4),
+             w("?", 3.4, 3.5), w(" Les", 4.5, 4.7), w(" frais", 4.7, 5.0), w(" de", 5.0, 5.1),
+             w(" déplacement", 5.1, 5.9)]
+    text = "Oh la boulette hein Igor, quelle heure est-il ? Les frais de déplacement"
+
+    def stt(audio):
+        return Transcript(text, 0.3, 0.1, -0.2, [(0.0, 6.0, text, words)])
+
+    def do(audio, conversation):
+        sent.append(len(audio))
+        return Outcome(heard="x", speech="Il est 20 h.")
+
+    def tv(t0, t1):
+        from igor_ear.addressing import normalize
+        return [(t, s, e, normalize(t)) for t, s, e in tv_words]
+
+    tv_said = [("Oh", 0.0, 0.3), ("la", 0.3, 0.5), ("boulette", 0.5, 1.0), ("hein", 1.0, 1.3),
+               ("Les", 4.5, 4.7), ("frais", 4.7, 5.0), ("de", 5.0, 5.1), ("déplacement", 5.1, 5.9)]
+    listener = Listener(stt, Addressing(), do, tv=tv if tv_words else None, tv_active=lambda: tv_on,
+                        clock=Clock())
+    return listener, sent, tv_said
+
+
+def test_television_on_the_order_is_cut_out_of_the_television():
+    tv_said = [("Oh", 0.0, 0.3), ("la", 0.3, 0.5), ("boulette", 0.5, 1.0), ("hein", 1.0, 1.3),
+               ("Les", 4.5, 4.7), ("frais", 4.7, 5.0), ("de", 5.0, 5.1), ("déplacement", 5.1, 5.9)]
+    listener, sent, _ = tv_listener(True, tv_said)
+    e = listener.handle(audio(6.0), more=lambda: audio(1.0), start=0.0, end=6.0, window=(0.0, 6.0))
+    assert e["accepted"] and e["reason"] == "name" and e["sent"]
+    assert e["text"] == "Igor, quelle heure est-il?"
+    assert abs(sent[0] - 33600) <= 2          # 1.7 s to 3.8 s of the 6 s heard
+    assert "joined" not in e                   # nothing is joined while a television plays
+
+
+def test_television_on_without_a_reference_the_order_still_starts_at_the_name():
+    listener, sent, _ = tv_listener(True, None)
+    e = listener.handle(audio(6.0), start=0.0, end=6.0, window=(0.0, 6.0))
+    assert e["accepted"] and e["text"].startswith("Igor, quelle heure")
+    assert sent and sent[0] < 6 * 16000
+
+
+def test_television_off_nothing_is_cut():
+    listener, sent, tv_said = tv_listener(False, [("Oh", 0.0, 0.3)])
+    e = listener.handle(audio(6.0), start=0.0, end=6.0, window=(0.0, 6.0))
+    assert "cropped_s" not in e
+    assert not sent or sent[0] == 6 * 16000
+
+
+def test_name_closing_the_sentence_takes_the_order_before_it():
+    words = [w(" Oh", 0.0, 0.3), w(" la", 0.3, 0.5), w("!", 0.5, 0.6), w(" Éteins", 2.0, 2.4), w(" la", 2.4, 2.5),
+             w(" cuisine,", 2.5, 3.0), w(" Igor", 3.0, 3.4)]
+    text = "Oh la! Éteins la cuisine, Igor"
+    sent = []
+    listener = Listener(lambda a: Transcript(text, 0.3, 0.1, -0.2, [(0.0, 4.0, text, words)]),
+                        Addressing(), lambda a, c: sent.append(len(a)) or Outcome(),
+                        tv_active=lambda: True, clock=Clock())
+    e = listener.handle(audio(4.0), start=0.0, end=4.0, window=(0.0, 4.0))
+    assert e["text"] == "Éteins la cuisine, Igor"

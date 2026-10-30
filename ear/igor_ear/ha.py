@@ -68,9 +68,13 @@ def run_pipeline(
     conversation_id: str | None = None,
     device_id: str | None = None,
     timeout: float = 90,
+    text: str | None = None,
 ) -> PipelineResult:
-    """Speech in, Igor's answer out (as text; the satellite speaks it)."""
-    result = PipelineResult()
+    """Speech in, Igor's answer out (as text; the satellite speaks it).
+
+    With `text`, the pipeline starts at its intent step: the words are
+    already known, `pcm16` is not sent and no speech-to-text runs."""
+    result = PipelineResult(heard=text or "")
     conn = connect(url, token)
     try:
         request: dict[str, Any] = {
@@ -83,6 +87,9 @@ def run_pipeline(
             "input": {"sample_rate": 16000, "no_vad": True},
             "timeout": 60,
         }
+        if text:
+            request["start_stage"] = "intent"
+            request["input"] = {"text": text}
         if pipeline:
             request["pipeline"] = pipeline
         if conversation_id:
@@ -93,7 +100,7 @@ def run_pipeline(
             request["device_id"] = device_id
         conn.send(json.dumps(request))
         deadline = time.monotonic() + timeout
-        sent = False
+        sent = bool(text)
         while time.monotonic() < deadline:
             msg = json.loads(conn.recv(timeout=max(1.0, deadline - time.monotonic())))
             if msg.get("type") == "result":
