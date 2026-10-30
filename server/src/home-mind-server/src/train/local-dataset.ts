@@ -400,6 +400,47 @@ const NOTIFY_HOME = ["préviens-moi quand {p} rentre", "dis-moi quand {p} arrive
 const NOTIFY_ABOVE = ["préviens-moi quand la température {de} dépasse {t} degrés", "dis-moi quand il fait plus de {t} degrés {dans}"];
 
 const CONTACTS = ["Jean Martin", "Paul", "Sophie", "Marie Dubois", "Lucas", "Camille Bernard", "Thomas", "Léa", "Nicolas Petit", "Julie", "maman", "papa", "Antoine", "Chloé Moreau", "le docteur Lambert"];
+/** Made-up contacts with made-up numbers, for the phone flows. */
+const PHONEBOOK = [
+  { name: "Jean Martin", say: "Jean", number: "06 39 98 00 02" },
+  { name: "Sophie Durand", say: "Sophie", number: "06 39 98 00 11" },
+  { name: "Paul Lefèvre", say: "Paul", number: "06 39 98 00 12" },
+  { name: "Marie Dubois", say: "Marie", number: "06 39 98 00 13" },
+  { name: "Lucas Bernard", say: "Lucas", number: "06 39 98 00 14" },
+  { name: "Camille Petit", say: "Camille", number: "06 39 98 00 15" },
+  { name: "Maman", say: "maman", number: "06 39 98 00 16" },
+  { name: "Docteur Lambert", say: "le docteur Lambert", number: "01 39 98 00 17" },
+];
+const CALL = ["appelle {c}", "tu peux appeler {c}", "passe-moi {c}", "téléphone à {c}", "lance un appel vers {c}", "rappelle {c}", "appelle {c} sur son portable"];
+const SMS = ["envoie un sms à {c} pour lui dire {t}", "écris à {c} {t}", "envoie un message à {c} : {t}", "dis à {c} par sms {t}", "texto à {c} : {t}"];
+/** What is said, and the short message the voice proposes for it. */
+const SMS_TEXTS: [string, string][] = [
+  ["que j'arrive dans dix minutes", "J'arrive dans dix minutes."],
+  ["que je serai en retard", "Je serai en retard."],
+  ["que le dîner est prêt", "Le dîner est prêt !"],
+  ["qu'il faut acheter du pain", "Pense à acheter du pain."],
+  ["que je suis bien rentré", "Je suis bien rentré."],
+  ["de me rappeler", "Peux-tu me rappeler ?"],
+  ["que je l'attends en bas", "Je t'attends en bas."],
+];
+const YES = ["oui", "vas-y", "oui vas-y", "c'est ça", "ok", "d'accord", "oui envoie", "parfait", "oui appelle"];
+const TIMER = ["mets un minuteur de {d}", "minuteur {d}", "lance un minuteur de {d}", "préviens-moi dans {d} avec un minuteur", "compte {d}"];
+const DURATIONS: [string, number][] = [["30 secondes", 30], ["une minute", 60], ["2 minutes", 120], ["5 minutes", 300], ["10 minutes", 600], ["12 minutes", 720], ["un quart d'heure", 900], ["20 minutes", 1200], ["une demi-heure", 1800], ["45 minutes", 2700], ["une heure", 3600], ["1 heure 20", 4800]];
+/** Phone scripts with no field: what is said, the script it runs. */
+const PHONE_MODES: [string[], string][] = [
+  [["mets le téléphone en mode avion", "active le mode avion"], "activer_le_mode_avion"],
+  [["active ne pas déranger", "mets le téléphone en ne pas déranger", "je ne veux pas être dérangé"], "activer_ne_pas_deranger"],
+  [["désactive ne pas déranger", "enlève le ne pas déranger"], "desactiver_ne_pas_deranger"],
+  [["mets le téléphone en vibreur", "active le vibreur"], "activer_le_mode_vibreur"],
+  [["enlève le vibreur", "désactive le mode vibreur"], "desactiver_le_mode_vibreur"],
+  [["fais sonner mon téléphone", "je ne trouve plus mon téléphone", "fais sonner le portable"], "faire_sonner_le_telephone"],
+  [["mets la musique en pause sur le téléphone", "pause la musique"], "media_pause"],
+  [["relance la musique", "remets la musique"], "media_lecture"],
+  [["chanson suivante", "passe au morceau suivant"], "media_suivant"],
+  [["chanson précédente", "reviens au morceau d'avant"], "media_precedent"],
+];
+const NOTIFICATIONS = ["j'ai des notifications", "lis-moi mes notifications", "qu'est-ce que j'ai comme notifications", "il y a quoi sur mon téléphone"];
+
 const NUMBER = ["quel est le numéro de {c}", "donne-moi le numéro de {c}", "c'est quoi le téléphone de {c}", "tu as le numéro de {c}", "trouve le numéro de {c}"];
 
 const MEMORY: { fact: string; ask: string[] }[] = [
@@ -787,6 +828,51 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     return { kind: "notify_when", text: fill(phrase(rng, NOTIFY_ABOVE, test), { de: of(area), dans: inside(area), t: String(t) }), answer: one([{ name: "notify_when", args: { entity_id: tempIn(area)[0].device.id, condition: "above", value: String(t), text: `Plus de ${t} degrés ${inside(area)}` } }]) };
   });
   // Contacts and memories.
+  // The phone, through the owner's scripts (if the house has them): the
+  // local model finds the contact and hands over (">demande"); the voice
+  // reads the name and number back; on "oui" the local model calls or texts.
+  const script = (name: string) => Boolean(options.scriptSection?.includes(`script.${name}`));
+  const digits = (n: string) => n.replace(/\s/g, "");
+  add("call", script("appeler") ? 3 : 0, (test) => {
+    const c = pick(rng, PHONEBOOK);
+    if (rng() < 0.5) {
+      return { kind: "call", text: fill(phrase(rng, CALL, test), { c: c.say }), answer: one([{ name: "find_contact", args: { query: c.say } }], ">demande") };
+    }
+    const history: PastMessage[] = [
+      { role: "user", content: spoken(rng, fill(pick(rng, CALL), { c: c.say })), time: randomTime(rng) },
+      { role: "assistant", content: `${c.name}, sur son mobile au ${c.number}, je l'appelle ?` },
+    ];
+    if (rng() < 0.15) return { kind: "call", text: phrase(rng, ["non", "non laisse", "pas maintenant", "annule"], test), history, answer: [say(">libre")] };
+    return { kind: "call", text: phrase(rng, YES, test), history, answer: one([service("script", "appeler", undefined, { recipient: digits(c.number) })]) };
+  });
+  add("sms", script("envoyer_sms") ? 3 : 0, (test) => {
+    const c = pick(rng, PHONEBOOK);
+    const [t, message] = pick(rng, SMS_TEXTS);
+    if (rng() < 0.5) {
+      return { kind: "sms", text: fill(phrase(rng, SMS, test), { c: c.say, t }), answer: one([{ name: "find_contact", args: { query: c.say } }], ">demande") };
+    }
+    const history: PastMessage[] = [
+      { role: "user", content: spoken(rng, fill(pick(rng, SMS), { c: c.say, t })), time: randomTime(rng) },
+      { role: "assistant", content: `J'envoie à ${c.name}, au ${c.number} : « ${message} » ?` },
+    ];
+    return { kind: "sms", text: phrase(rng, YES, test), history, answer: one([service("script", "envoyer_sms", undefined, { recipient: digits(c.number), message })]) };
+  });
+  add("timer", script("minuteur") ? 3 : 0, (test) => {
+    const [d, seconds] = pick(rng, DURATIONS);
+    return { kind: "timer", text: fill(phrase(rng, TIMER, test), { d }), answer: one([service("script", "minuteur", undefined, { recipient: seconds })], ">dire") };
+  });
+  const modes = PHONE_MODES.filter(([, id]) => script(id));
+  add("phone_mode", modes.length ? 2 : 0, (test) => {
+    const [words, id] = pick(rng, modes);
+    return { kind: "phone_mode", text: phrase(rng, words, test), answer: one([service("script", id, undefined)]) };
+  });
+  add("notifications", script("outil_consulter_les_notifications_du_telephone") ? 1 : 0, (test) => ({
+    kind: "notifications",
+    text: phrase(rng, NOTIFICATIONS, test),
+    question: true,
+    answer: one([service("script", "outil_consulter_les_notifications_du_telephone", undefined)], ">rep"),
+  }));
+
   add("contact", 2, (test) => {
     const c = pick(rng, CONTACTS);
     return { kind: "contact", text: fill(phrase(rng, NUMBER, test), { c }), question: true, answer: one([{ name: "find_contact", args: { query: c } }]) };

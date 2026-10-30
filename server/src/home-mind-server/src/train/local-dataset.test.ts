@@ -250,3 +250,36 @@ describe("aliases", () => {
     expect(words.some((w) => w.includes("le plafonnier"))).toBe(true);
   });
 });
+
+describe("the phone, through the owner's scripts", () => {
+  const scriptSection = "## Scripts you can run\n- script.appeler. Fields: recipient (required)\n- script.envoyer_sms. Fields: recipient (required); message (required)\n- script.minuteur. Fields: recipient (required)";
+  const { train } = buildLocalDataset({ devices: [{ id: "light.salon", name: "Lumière salon", area: "Salon" }], scripts: [] }, { ...options, size: 600, scriptSection });
+  const of = (kind: string) => train.filter((e) => e.kind === kind);
+
+  it("finds the contact and hands over, then calls on yes with the confirmed number", () => {
+    const calls = of("call");
+    expect(calls.some((e) => (e.messages.at(-1) as Msg).content === ">demande" && (e.messages.at(-1) as Msg).tool_calls![0].function.name === "find_contact")).toBe(true);
+    const yes = calls.find((e) => (e.messages.at(-1) as Msg).tool_calls?.[0]?.function.name === "call_service")!;
+    const asked = (yes.messages.find((m) => m.role === "assistant") as Msg).content!;
+    const number = /au ([\d ]+), je l'appelle/.exec(asked)![1].replace(/\s/g, "");
+    expect(JSON.parse((yes.messages.at(-1) as Msg).tool_calls![0].function.arguments)).toEqual({ domain: "script", service: "appeler", data: { recipient: number } });
+  });
+
+  it("sends the text the voice read back, word for word", () => {
+    const sent = of("sms").find((e) => (e.messages.at(-1) as Msg).tool_calls?.[0]?.function.name === "call_service")!;
+    const asked = (sent.messages.find((m) => m.role === "assistant") as Msg).content!;
+    const text = /« (.*) » \?$/.exec(asked)![1];
+    expect(JSON.parse((sent.messages.at(-1) as Msg).tool_calls![0].function.arguments).data.message).toBe(text);
+  });
+
+  it("sets a timer in seconds and has it announced", () => {
+    const t = of("timer")[0];
+    expect((t.messages.at(-1) as Msg).content).toBe(">dire");
+    expect(JSON.parse((t.messages.at(-1) as Msg).tool_calls![0].function.arguments).data.recipient).toBeGreaterThan(0);
+  });
+
+  it("does none of it in a house without those scripts", () => {
+    const plain = buildLocalDataset({ devices: [{ id: "light.salon", name: "Lumière salon", area: "Salon" }], scripts: [] }, { ...options, size: 300 });
+    expect(plain.train.some((e) => ["call", "sms", "timer"].includes(e.kind))).toBe(false);
+  });
+});
