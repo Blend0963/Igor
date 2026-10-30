@@ -52,3 +52,15 @@ describe("scripts with fields", () => {
     expect(phrases[0].calls[0].args).toEqual({ domain: "script", service: "shield_lancer_app", data: { app: "netflix" } });
   });
 });
+
+describe("the owner's phrases win", () => {
+  it("drops a generated request with the same words", () => {
+    const phrases = parsePhrasebook("éteins tout => scene.turn_on scene.eteindre\n").phrases;
+    const { train } = buildLocalDataset({ devices: [
+      { id: "light.a", name: "Lumière salon", area: "Salon" }, { id: "light.b", name: "Lumière cuisine", area: "Cuisine" },
+    ], scripts: [] }, { seed: 3, size: 800, phrases });
+    const eteinsTout = train.filter((e) => /^(igor, )?éteins tout[.?]?$/i.test((e.messages.at(-2) as { content: string }).content.trim()));
+    expect(eteinsTout.length).toBeGreaterThan(0);
+    for (const e of eteinsTout) expect(e.kind).toBe("phrase");
+  });
+});

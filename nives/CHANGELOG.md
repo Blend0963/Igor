@@ -6,6 +6,7 @@
 - `local_llm_prompt.fr.txt`: the Shield scripts (launch an app, press a key), and the calendar script's `recipent` field as the script spells it.
 - A name carrying a long number (an account number, a serial) counts as technical: it never appears in everyday examples.
 - Phrasebook: a script with fields and no entity (`script.shield_lancer_app {"app": "netflix"}`) is read correctly.
+- Phrasebook: your phrases win. A generated request with the same words as one of yours ("éteins tout") is dropped, so the model learns only your answer (`scene.eteindre`).
 
 ## 0.21.1 — The phone, the silent way
 
