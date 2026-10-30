@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.21.1 — The phone, the silent way
+
+- Calls and texts with the silent local model: it finds the contact and hands over (`>demande`); Mistral reads the name, the number and, for a text, the proposed message back ("Jean Martin, sur son mobile au 06…, je l'appelle ?"); on "oui" the local model runs `script.appeler` or `script.envoyer_sms` with the confirmed number and text. "Non" leaves it there.
+- The training set teaches these flows, the timer (`script.minuteur`, seconds, announced), the phone modes (plane, do not disturb, vibrate, ring, media) and the notifications, whenever the house has those scripts (made-up contacts).
+- A ready `local_llm_prompt` for these scripts, technical and on one line: `ear/tools/llm-train/local_llm_prompt.fr.txt`.
+
 ## 0.21.0 — Your own words in the training set: aliases and a phrasebook
 
 - The aliases you give a device for Assist (Settings → Voice assistants → Expose → the entity → Aliases) are now its preferred names in the training set: "aspirateur", "robot" on the Dreamebot, and the model learns to say it your way.

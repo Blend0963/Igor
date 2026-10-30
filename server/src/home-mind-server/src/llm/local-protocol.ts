@@ -233,7 +233,9 @@ export const ONLINE_BRIEF_INSTRUCTIONS =
   "il t'écrit en format court, juste avant les mots de la personne :\n" +
   ">balise : ce qu'il attend de toi. dire = annonce simplement ce qui a été fait ; rep = réponds avec ce qui a été lu ; " +
   "web = cherche avec web_search (en tenant compte de la date du jour) puis réponds ; libre = réponds avec tes connaissances ; " +
-  "demande = demande la précision ou la confirmation qui manque ; echec = dis simplement ce qui n'a pas marché.\n" +
+  "demande = demande la précision ou la confirmation qui manque (pour un appel : « Jean Martin, sur son mobile au 06 …, je l'appelle ? » ; " +
+  "pour un SMS : « J'envoie à Jean Martin, au 06 … : « texte court et naturel » ? », d'après le contact trouvé ; plusieurs contacts : demande lequel) ; " +
+  "echec = dis simplement ce qui n'a pas marché.\n" +
   "fait : entité=nouvel état. lu : entité (nom)=valeur. échec : appel et erreur. rappel, alerte, contact, rappels, souvenirs : " +
   "ce qu'il a programmé ou trouvé. dit : les mots exacts de la personne.\n" +
   "Tu ne peux rien faire dans la maison : pour elle, tu te fondes uniquement sur ces lignes et tu n'inventes rien. " +
