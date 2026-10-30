@@ -793,7 +793,7 @@ export class OpenAIChatEngine implements IChatEngine {
           // The local model reads results again only when a second action
           // depends on them; otherwise (a web search, a state, a contact, an
           // order) they go straight to the online model, which answers.
-          if (done.length === result.toolCalls.length && !needsLocalFollowUp(done)) {
+          if (done.length === result.toolCalls.length && !needsLocalFollowUp(done, Boolean(readLocalTag(result.text)))) {
             plainSentence = actionSentence(done);
             result = { text: "", finishReason: "stop", toolCalls: [], usage: undefined };
             break;

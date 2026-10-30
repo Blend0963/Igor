@@ -966,6 +966,9 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   });
 
   const total = makers.reduce((s, m) => s + m.weight, 0);
+  // The owner's phrases win: a generated request saying the same words is dropped.
+  const plainWords = (t: string) => stripAccents(t.toLowerCase()).replace(/^igor,?\s*|,?\s*igor$/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const owned = new Set((options.phrases ?? []).map((p) => plainWords(p.words)));
   const seen = new Set<string>();
   const train: Example[] = [];
   const test: Example[] = [];
@@ -987,6 +990,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
         last.content = ">dire";
       }
     }
+    if (owned.has(plainWords(draft.text))) continue;
     const message = spoken(rng, draft.text, draft.question ?? asksSomething(draft.text));
     const key = `${message.toLowerCase()}|${draft.history?.map((h) => h.content).join("|") ?? ""}`;
     if (seen.has(key)) continue;
