@@ -288,8 +288,9 @@ function namings(devices: HouseDevice[]): Named[] {
 
 const ON = ["allume {x}", "allume-moi {x}", "tu peux allumer {x}", "peux-tu allumer {x}", "active {x}", "allume {x} s'il te plaît", "j'aimerais que tu allumes {x}", "vous pouvez allumer {x}", "mets {x} en marche", "allume donc {x}"];
 const OFF = ["éteins {x}", "éteins-moi {x}", "tu peux éteindre {x}", "coupe {x}", "désactive {x}", "éteins {x} s'il te plaît", "peux-tu éteindre {x}", "arrête {x}", "vous pouvez éteindre {x}", "coupe-moi {x}"];
-const AREA_ON = ["allume les lumières {de}", "allume tout {dans}", "allume la lumière {dans}", "mets de la lumière {dans}", "fais de la lumière {dans}"];
-const AREA_OFF = ["éteins les lumières {de}", "éteins tout {dans}", "éteins la lumière {dans}", "coupe les lumières {de}", "plus de lumière {dans}"];
+// Plural or "tout": "la lumière du salon" is one light's name (on_off), not the room's.
+const AREA_ON = ["allume les lumières {de}", "allume tout {dans}", "allume toutes les lumières {de}", "mets de la lumière {dans}", "fais de la lumière {dans}"];
+const AREA_OFF = ["éteins les lumières {de}", "éteins tout {dans}", "éteins toutes les lumières {de}", "coupe les lumières {de}", "plus de lumière {dans}"];
 const ALL_OFF = ["éteins toutes les lumières", "éteins tout", "coupe toutes les lumières", "éteins toutes les lumières de la maison", "on éteint tout"];
 const BRIGHT = ["mets {x} à {p} %", "règle {x} à {p} %", "baisse {x} à {p} %", "{x} à {p} %", "allume {x} à {p} %", "passe {x} à {p} pour cent"];
 const DIM = ["baisse {x}", "tamise {x}", "diminue {x}", "{x} moins fort"];
@@ -310,7 +311,8 @@ const HEAT = ["mets {x} à {t} degrés", "règle {x} sur {t}", "monte {x} à {t}
 const MEDIA_PAUSE = ["mets {x} en pause", "pause sur {x}", "mets pause {dans}"];
 const MEDIA_PLAY = ["relance {x}", "remets la lecture sur {x}", "reprends la lecture {dans}"];
 const VOLUME = ["mets le son {de} à {p}", "volume {de} à {p} %", "règle le volume de {x} à {p}"];
-const SCENE = ["active la scène {n}", "lance la scène {n}", "mets l'ambiance {n}", "scène {n}", "mode {n}", "passe en mode {n}"];
+// Not "mode {n}": helpers are often called "Mode cinéma".
+const SCENE = ["active la scène {n}", "lance la scène {n}", "mets l'ambiance {n}", "scène {n}", "mets la scène {n}", "ambiance {n}"];
 const SCRIPT = ["lance {n}", "exécute {n}", "démarre {n}", "lance le script {n}", "fais {n}"];
 const LOCK = ["verrouille {x}", "ferme {x} à clé", "tu peux verrouiller {x}"];
 const UNLOCK = ["déverrouille {x}", "tu peux déverrouiller {x}"];

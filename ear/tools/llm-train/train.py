@@ -9,9 +9,11 @@ rendered by the model's own chat template, then the answer, the only tokens
 the loss is computed on. Past messages (the online model's replies) are
 never learned.
 
-Environment: BASE_MODEL (default Qwen/Qwen3-4B-Instruct-2507), EPOCHS (2),
-LR (1e-4), BATCH (1: two ~1,500-token examples ran a 24 GB card out of
-memory on the logits), ACCUM (16), MAX_LEN (6144), EVAL (200 test examples).
+Environment: BASE_MODEL (default Qwen/Qwen3-4B-Instruct-2507), EPOCHS (1),
+LR (1e-4), BATCH and ACCUM (4 × 4 with Liger Kernel, which computes the loss
+without the full logits; 1 × 16 without it, as two ~1,500-token examples ran
+a 24 GB card out of memory on the logits), MAX_LEN (6144), EVAL (200 test
+examples).
 """
 
 import json
@@ -27,10 +29,21 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingA
 from score import parse_answer, same_answer
 
 BASE = os.environ.get("BASE_MODEL", "Qwen/Qwen3-4B-Instruct-2507")
-EPOCHS = float(os.environ.get("EPOCHS", "2"))
+EPOCHS = float(os.environ.get("EPOCHS", "1"))
 LR = float(os.environ.get("LR", "1e-4"))
-BATCH = int(os.environ.get("BATCH", "1"))
-ACCUM = int(os.environ.get("ACCUM", "16"))
+
+
+def liger(model):
+    """Fused kernels: the loss without the 150k-wide logits, so several
+    examples fit at once on a 24 GB card, and each step runs faster. False
+    when the library is missing or refuses this model."""
+    try:
+        from liger_kernel.transformers import _apply_liger_kernel_to_instance
+        _apply_liger_kernel_to_instance(model=model)
+        return True
+    except Exception as err:  # noqa: BLE001 — without it, training still runs, slower
+        print(f"sans Liger Kernel ({err})", flush=True)
+        return False
 MAX_LEN = int(os.environ.get("MAX_LEN", "6144"))
 EVAL = int(os.environ.get("EVAL", "200"))
 
@@ -95,8 +108,8 @@ def evaluate(model, tok, examples):
     tok.padding_side = "left"
     random.Random(0).shuffle(examples)
     rows = []
-    for start in range(0, min(EVAL, len(examples)), 8):
-        chunk = examples[start: start + 8]
+    for start in range(0, min(EVAL, len(examples)), 16):
+        chunk = examples[start: start + 16][: max(0, EVAL - start)]
         prompts, expected = [], []
         for e in chunk:
             i = targets(e["messages"])[0]
@@ -107,7 +120,12 @@ def evaluate(model, tok, examples):
             gen = model.generate(**enc, max_new_tokens=256, do_sample=False, pad_token_id=tok.pad_token_id)
         for e, want, g in zip(chunk, expected, gen):
             text = tok.decode(g[enc["input_ids"].shape[1]:], skip_special_tokens=True)
-            rows.append({"kind": e["kind"], "ok": same_answer(parse_answer(text), want), "got": text.strip()[:300]})
+            words = next((m["content"] for m in reversed(e["messages"][: targets(e["messages"])[0]]) if m["role"] == "user"), "")
+            rows.append({
+                "kind": e["kind"], "ok": same_answer(parse_answer(text), want), "words": words,
+                "want": json.dumps({"line": want.get("content"), "calls": [c["function"] for c in want.get("tool_calls") or []]}, ensure_ascii=False),
+                "got": text.strip()[:300],
+            })
     return rows
 
 
@@ -126,6 +144,10 @@ def main():
     print(f"{len(train)} réponses à apprendre (écartées : {skipped}), la plus longue fait {longest} tokens", flush=True)
 
     model = AutoModelForCausalLM.from_pretrained(BASE, torch_dtype=torch.bfloat16, attn_implementation="sdpa").to("cuda")
+    fused = liger(model)
+    batch = int(os.environ.get("BATCH", "4" if fused else "1"))
+    accum = int(os.environ.get("ACCUM", "4" if fused else "16"))
+    print(f"{'Liger Kernel' if fused else 'sans Liger Kernel'} : {batch} exemple(s) par pas × {accum}", flush=True)
     model.gradient_checkpointing_enable()
     model.enable_input_require_grads()
     model = get_peft_model(model, LoraConfig(
@@ -135,7 +157,7 @@ def main():
 
     args = TrainingArguments(
         output_dir=os.path.join(out, "checkpoints"), num_train_epochs=EPOCHS, learning_rate=LR,
-        per_device_train_batch_size=BATCH, gradient_accumulation_steps=ACCUM, lr_scheduler_type="cosine",
+        per_device_train_batch_size=batch, gradient_accumulation_steps=accum, lr_scheduler_type="cosine",
         warmup_ratio=0.03, bf16=True, logging_steps=10, save_strategy="no", report_to=[],
         group_by_length=True, remove_unused_columns=False, dataloader_num_workers=2)
     started = time.time()

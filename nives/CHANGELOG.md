@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.19.2 — Faster training that stops by itself
+
+- Training (`ear/tools/llm-train`): one epoch by default; Liger Kernel when it installs (the loss without the full logits, four examples per step on a 24 GB card); on RunPod the machine stops by itself a minute after the end, success or failure, with the model kept on its disk (`AUTO_STOP=0` to keep it running). `eval.json` lists, for each miss, the words, the expected answer and the model's.
+- Training set: "la lumière du salon" now always means one light (room-wide orders say "les lumières", "toutes les lumières" or "tout"), and scenes are no longer called "mode …", which helpers like "Mode cinéma" use. The score counts `>web` and `>libre` alike: both hand the question to Mistral, which searches when it needs to.
+
 ## 0.19.1 — A training set that sounds like the house
 
 - Entities whose name carries a machine id (`browser_mod_c8a993dd…`, `navbar 6926f9e4…`) are left out of the training set: nobody can say them. The add-on log says how many.

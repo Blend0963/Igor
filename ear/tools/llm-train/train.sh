@@ -17,6 +17,19 @@ step() { printf '\n== %s\n' "$1"; }
 ok() { printf 'OK — %s\n' "$1"; }
 fail() { printf 'ÉCHEC — %s\n' "$1"; exit 1; }
 
+# Sur RunPod, la machine s'arrête toute seule à la fin, réussite ou échec :
+# plus de facture pendant la nuit. Le dossier /workspace reste sur son disque ;
+# on la redémarre (sans carte graphique si possible) pour récupérer le fichier.
+# AUTO_STOP=0 pour la laisser tourner.
+stop_pod() {
+  [ -n "${RUNPOD_POD_ID:-}" ] && [ "${AUTO_STOP:-1}" = 1 ] || return 0
+  printf '\nArrêt de la machine dans 60 s (le résultat reste dans %s).\n' "$OUT"
+  sleep 60
+  runpodctl stop pod "$RUNPOD_POD_ID" >/dev/null 2>&1 \
+    || printf 'ATTENTION — arrêt automatique impossible : arrête la machine toi-même sur runpod.io\n'
+}
+trap stop_pod EXIT
+
 step "1/6 Carte graphique"
 command -v nvidia-smi >/dev/null || fail "pas de carte NVIDIA (nvidia-smi absent)"
 vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1 | tr -dc 0-9)
@@ -39,11 +52,13 @@ PY="$WORK/venv/bin/python"
 "$PY" -m pip install -q "transformers==4.56.2" "peft==0.17.1" "accelerate==1.10.1" safetensors sentencepiece protobuf cmake \
   || fail "installation de transformers et peft"
 "$PY" -c 'import torch; assert torch.cuda.is_available(), "CUDA"' || fail "PyTorch ne voit pas la carte"
+# Facultatif : sans lui l'entraînement tourne quand même, un exemple à la fois, plus lentement.
+"$PY" -m pip install -q "liger-kernel==0.6.2" || printf 'ATTENTION — Liger Kernel non installé : entraînement plus lent\n'
 ok "$("$PY" -c 'import torch, transformers, peft; print(f"torch {torch.__version__}, transformers {transformers.__version__}, peft {peft.__version__}")')"
 
 # Fewer, larger free blocks: the logits of a long example need one big piece.
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
-step "4/6 Entraînement (une à deux heures)"
+step "4/6 Entraînement (environ une heure sur une RTX 4090)"
 (cd "$HERE" && "$PY" train.py "$DATA" "$OUT") 2>&1 | tee "$OUT/train.log"
 [ "${PIPESTATUS[0]}" = 0 ] || fail "entraînement (voir $OUT/train.log)"
 [ -s "$OUT/merged/config.json" ] || fail "modèle entraîné introuvable dans $OUT/merged"
@@ -68,7 +83,7 @@ step "6/6 Fichier GGUF Q4_K_M"
 rm -f "$OUT/igor-local-f16.gguf"
 ok "$GGUF ($(du -h "$GGUF" | cut -f1))"
 
-printf '\nTerminé. Récupère le fichier sur la VM, par exemple :\n'
-printf '  scp -P <port> root@<adresse-de-la-machine>:%s ~/\n' "$GGUF"
-printf 'puis, sur la VM : bash ~/MaDo/ear/tools/llm/install.sh ~/igor-local-q4_k_m.gguf\n'
-printf 'Ensuite, supprime la machine louée : elle garde le jeu d'\''entraînement de ta maison.\n'
+printf '\nTerminé. Le modèle : %s\n' "$GGUF"
+printf 'Sur RunPod, la machine va s'\''arrêter : redémarre-la (Start, sans carte graphique si proposé),\n'
+printf 'télécharge ce fichier et out/eval.json depuis JupyterLab, puis supprime-la (Terminate) :\n'
+printf 'elle garde le jeu d'\''entraînement de ta maison.\n'
