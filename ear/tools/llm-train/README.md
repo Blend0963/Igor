@@ -37,9 +37,13 @@ Each step prints OK or ÉCHEC and the script stops at the first failure:
 1. checks the card;
 2. unpacks the training set;
 3. installs transformers, peft and accelerate (pinned versions) next to the
-   machine's PyTorch;
-4. trains a LoRA on `Qwen/Qwen3-4B-Instruct-2507` (2 epochs; about 1,500 tokens per example, so about an hour for 10,000 examples on an RTX 4090, less on an A100 or H100; `EPOCHS=1` halves it),
-   merges it, and scores 200 held-out requests (`out/eval.json`);
+   machine's PyTorch, and Liger Kernel if it can (fused loss: four examples
+   per step on 24 GB instead of one);
+4. trains a LoRA on `Qwen/Qwen3-4B-Instruct-2507` (1 epoch; about 1,500
+   tokens per example, so roughly an hour for 7,000 examples on an RTX 4090
+   with Liger Kernel; the first run, 2 epochs one example at a time, took
+   4 hours), merges it, and scores 200 held-out requests (`out/eval.json`,
+   with the words, the expected answer and the model's for each miss);
 5. builds llama.cpp's converter;
 6. writes `out/igor-local-q4_k_m.gguf` (about 2.5 GB).
 
@@ -49,7 +53,12 @@ Settings, as environment variables: `BASE_MODEL`, `EPOCHS`, `LR`, `BATCH`,
 Only the model's own answers are learned: past messages in an example (what
 the online model said) are marked `"training": false` and masked.
 
-Delete the rented machine afterwards: it holds the training set.
+On RunPod the machine **stops by itself** a minute after the end, success or
+failure (`AUTO_STOP=0` to keep it running): nothing is billed overnight but
+its disk. `/workspace` stays on that disk: start the machine again (without a
+GPU if RunPod offers it), download `out/igor-local-q4_k_m.gguf` and
+`out/eval.json` from JupyterLab, then **Terminate** it: it holds the training
+set.
 
 ## 3. On the VM
 

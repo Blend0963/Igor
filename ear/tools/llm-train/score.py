@@ -66,6 +66,12 @@ def parse_message(message):
     return (_line(message.get("content") or ""), calls)
 
 
+# Both hand the question to the online model, which searches when it needs to.
+SAME_LINE = {">web": ">libre"}
+
+
 def same_answer(got, expected_message):
-    """Same line for the voice and the same tool calls."""
-    return got == parse_message(expected_message)
+    """Same line for the voice (>web and >libre alike) and the same tool calls."""
+    want = parse_message(expected_message)
+    line = lambda a: (SAME_LINE.get(a[0], a[0]), a[1])  # noqa: E731
+    return line(got) == line(want)
