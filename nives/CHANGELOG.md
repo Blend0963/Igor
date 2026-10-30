@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.21.0 — Your own words in the training set: aliases and a phrasebook
+
+- The aliases you give a device for Assist (Settings → Voice assistants → Expose → the entity → Aliases) are now its preferred names in the training set: "aspirateur", "robot" on the Dreamebot, and the model learns to say it your way.
+- Phrasebook: write your own phrases in `igor-phrases.txt` in Home Assistant's config folder, one per line, `phrase => action` (`passe l'aspirateur => vacuum.start vacuum.dreamebot`, `il fait combien dehors => get_state sensor.temperature_exterieure`, `qui a gagné le match => web`). Each one is trained three ways; a sixth is held out for the bench. Lines that cannot be read are listed in `phrases-erreurs.txt` in the zip.
+- The zip lists the devices the training set knows in `appareils.txt` (id, name, room, aliases), to write the phrasebook from.
+- The zip also holds `maison.json`, everything the training set is built from (devices, rooms, aliases, light capabilities, your `local_llm_prompt` rules, the scripts section), so it can be built elsewhere: `npx tsx src/train/build-from-house.ts maison.json [igor-phrases.txt] [out.zip]`.
+
 ## 0.20.1 — "Lance l'aspirateur", not "allume le Dreamebot"
 
 - Training set: a device the house has only one of gets its everyday name too ("l'aspirateur", "le robot", "le chauffage", "la serrure", "la tondeuse", "le chauffe-eau"), and the vacuum starts, docks and stops in those words.

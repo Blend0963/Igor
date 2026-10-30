@@ -237,3 +237,16 @@ describe("devices one of a kind", () => {
     expect(words.some((w) => w.includes("dreamebot l10 prime dreamebot"))).toBe(false);
   });
 });
+
+describe("aliases", () => {
+  const { train } = buildLocalDataset({ devices: [
+    { id: "vacuum.robot", name: "Dreamebot L10 Prime", aliases: ["Ronron"] },
+    { id: "light.l1", name: "Lumière salon", area: "Salon", aliases: ["plafonnier"] },
+  ], scripts: [] }, { ...options, size: 400 });
+  const words = train.map((e) => (e.messages.at(-2) as Msg).content!.toLowerCase());
+
+  it("uses the owner's own words for a device", () => {
+    expect(words.some((w) => w.includes("ronron"))).toBe(true);
+    expect(words.some((w) => w.includes("le plafonnier"))).toBe(true);
+  });
+});
