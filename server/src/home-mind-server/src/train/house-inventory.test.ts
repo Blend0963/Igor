@@ -61,3 +61,11 @@ describe("isUnspeakable", () => {
     expect(isUnspeakable("sensor.deadbeef", "Capteur")).toBe(false);
   });
 });
+
+describe("long names", () => {
+  it("counts a name no one would say whole as technical", () => {
+    expect(isTechnical(state("sensor.mf", "Météo-France forecast for city Paris (75) freeze chance", { unit_of_measurement: "%" }))).toBe(true);
+    expect(isTechnical(state("sensor.disk", "Disk pve: Samsung SSD power cycles"))).toBe(true);
+    expect(isTechnical(state("sensor.temp", "Température couloir", { device_class: "temperature", unit_of_measurement: "°C" }))).toBe(false);
+  });
+});

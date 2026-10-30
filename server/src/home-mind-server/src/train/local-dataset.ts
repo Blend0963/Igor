@@ -145,8 +145,15 @@ function phrase(rng: Rng, list: readonly string[], test: boolean): string {
 const VOWEL = /^[aeiouyàâäéèêëîïôöùûüh]/i;
 
 function lower(name: string): string {
-  // "Voiture — annonces vocales" is said "voiture annonces vocales".
-  return name.trim().replace(/\s+[—–-]\s+/g, " ").replace(/\s+/g, " ").toLowerCase();
+  // "Voiture — annonces vocales" is said "voiture annonces vocales", and a
+  // name Home Assistant built from the device's twice ("Dreamebot L10 Prime
+  // Dreamebot L10 Prime") once.
+  let n = name.trim().replace(/\s+[—–-]\s+/g, " ").replace(/\s+/g, " ").toLowerCase();
+  for (let prev = ""; prev !== n; ) {
+    prev = n;
+    n = n.replace(/(^|\s)(\S+(?:\s\S+)*?)\s\2(?=\s|$)/u, "$1$2");
+  }
+  return n;
 }
 
 function isPlural(name: string): boolean {
@@ -263,6 +270,15 @@ const DOMAIN_NOUNS: Record<string, string[]> = {
   vacuum: ["l'aspirateur"],
 };
 
+/** What a device is called when the house has only one of its kind: "lance l'aspirateur". */
+const HOUSE_NOUNS: Record<string, string[]> = {
+  vacuum: ["l'aspirateur", "le robot", "le robot aspirateur", "l'aspirateur robot"],
+  climate: ["le chauffage", "le thermostat"],
+  lock: ["la serrure"],
+  lawn_mower: ["la tondeuse", "le robot tondeuse"],
+  water_heater: ["le chauffe-eau", "le ballon d'eau chaude"],
+};
+
 function domainOf(id: string): string {
   return id.slice(0, id.indexOf("."));
 }
@@ -284,6 +300,9 @@ function namings(devices: HouseDevice[]): Named[] {
   return devices.map((d) => {
     const says = new Set<string>([the(d.name)]);
     const domain = domainOf(d.id);
+    if (!d.technical && devices.filter((o) => domainOf(o.id) === domain && !o.technical).length === 1) {
+      for (const noun of HOUSE_NOUNS[domain] ?? []) says.add(noun);
+    }
     if (d.area && !grouped.has(d.id) && !d.technical) {
       const sameKind = devices.filter((o) => domainOf(o.id) === domain && o.area === d.area && !grouped.has(o.id) && !o.technical);
       if (sameKind.length === 1) {
@@ -325,12 +344,13 @@ const MEDIA_PAUSE = ["mets {x} en pause", "pause sur {x}", "mets pause {dans}"];
 const MEDIA_PLAY = ["relance {x}", "remets la lecture sur {x}", "reprends la lecture {dans}"];
 const VOLUME = ["mets le son {de} à {p}", "volume {de} à {p} %", "règle le volume de {x} à {p}"];
 // Not "mode {n}": helpers are often called "Mode cinéma".
-const SCENE = ["active la scène {n}", "lance la scène {n}", "mets l'ambiance {n}", "scène {n}", "mets la scène {n}", "ambiance {n}"];
+// Scene names are often verbs or events ("Éteindre", "Entrée détectée"): no "ambiance {n}".
+const SCENE = ["active la scène {n}", "lance la scène {n}", "scène {n}", "mets la scène {n}", "déclenche la scène {n}"];
 const SCRIPT = ["lance {n}", "exécute {n}", "démarre {n}", "lance le script {n}", "fais {n}"];
 const LOCK = ["verrouille {x}", "ferme {x} à clé", "tu peux verrouiller {x}"];
 const UNLOCK = ["déverrouille {x}", "tu peux déverrouiller {x}"];
-const VACUUM_START = ["lance {x}", "passe l'aspirateur", "démarre {x}", "lance le ménage"];
-const VACUUM_DOCK = ["renvoie {x} à sa base", "remets {x} sur sa base", "rappelle {x}"];
+const VACUUM_START = ["lance {x}", "démarre {x}", "mets {x} en route", "passe l'aspirateur", "lance le ménage", "fais le ménage"];
+const VACUUM_DOCK = ["renvoie {x} à sa base", "remets {x} sur sa base", "rappelle {x}", "arrête {x}", "range {x}"];
 const IS_ON = ["est-ce que {x} est {on}", "{x} est {on}", "tu peux vérifier si {x} est {on}", "j'ai laissé {x} {on}", "{x} est toujours {on}"];
 const IS_OPEN = ["est-ce que {x} est {open}", "{x} est {open}", "tu peux vérifier si {x} est {open}", "{x} est bien {closed}", "est-ce que {x} est {closed}"];
 const TEMP = ["quelle température fait-il {dans}", "il fait combien {dans}", "quelle est la température {de}", "température {de}", "il fait chaud {dans}", "combien de degrés {dans}"];
