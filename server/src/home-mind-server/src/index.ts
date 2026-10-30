@@ -22,6 +22,7 @@ import { AssistExposure } from "./ha/exposure.js";
 import { createChatEngine, createFactExtractor } from "./llm/factory.js";
 import { createRouter } from "./api/routes.js";
 import { buildDatasetZip } from "./train/export.js";
+import { TurnLog } from "./train/turn-log.js";
 import { createSttService, sttModelFor } from "./stt/stt-service.js";
 import { createTtsService } from "./tts/tts-service.js";
 import { configureMediaStore } from "./llm/media-store.js";
@@ -207,6 +208,11 @@ app.get("/api/app-token", (req, res) => {
 // panel inside Home Assistant gets it. scope=all (default) reads every
 // entity, past the Assist exposure list: the model being trained is the
 // house, and exposing 1,300 entities to the current one would flood its prompt.
+// The local model's real requests, on the house's disk (train/turn-log.ts).
+const turnLog = config.localLlmUrl && config.localTurnLog && config.conversationStorage === "sqlite"
+  ? new TurnLog(path.join(path.dirname(config.conversationDbPath), "local-turns.jsonl"))
+  : undefined;
+if (turnLog && "setTurnLog" in llm) (llm as { setTurnLog(log: TurnLog): void }).setTurnLog(turnLog);
 let wholeHouse: { ha: HomeAssistantClient; topology: TopologyScanner; scanner: DeviceScanner } | undefined;
 app.get("/api/local-dataset", async (req, res) => {
   if (!isIngressRequest(req)) return res.status(403).json({ error: "Only from the Home Assistant panel." });
@@ -220,8 +226,11 @@ app.get("/api/local-dataset", async (req, res) => {
       }
       source = wholeHouse;
     }
-    const { zip, counts, train, test, devices, technical, unspeakable } = await buildDatasetZip(config, source, size);
-    console.log(`[dataset] ${devices} devices (${technical} technical, ${unspeakable} with a machine id left out), ${train} training and ${test} test examples: ${JSON.stringify(counts)}`);
+    const { zip, counts, train, test, devices, technical, unspeakable, used } = await buildDatasetZip(config, source, size, turnLog);
+    console.log(
+      `[dataset] ${devices} devices (${technical} technical, ${unspeakable} with a machine id left out, ${used} used lately), ` +
+        `${train} training and ${test} test examples: ${JSON.stringify(counts)}`
+    );
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", 'attachment; filename="igor-local-dataset.zip"');

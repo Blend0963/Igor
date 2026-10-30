@@ -20,6 +20,7 @@ import type OpenAI from "openai";
 import { LOCAL_PROMPT_HISTORY } from "../llm/local-llm.js";
 import { buildLocalPrompt, localDate } from "../llm/local-protocol.js";
 import { isFeminine } from "../llm/action-sentence.js";
+import type { LoggedTurn } from "./turn-log.js";
 
 /** A device as the generator needs it. */
 export interface HouseDevice {
@@ -33,6 +34,8 @@ export interface HouseDevice {
   members?: string[];
   /** About the device rather than the house (a battery, the CPU load): never given a room's words. */
   technical?: boolean;
+  /** How often it was switched by a person lately (logbook, voice): used devices get more examples. */
+  usage?: number;
 }
 
 export interface HouseInventory {
@@ -51,6 +54,8 @@ export interface DatasetOptions {
   size?: number;
   /** Share of examples held out for the bench, from phrasings training never sees. */
   testShare?: number;
+  /** The owner's real requests (train/turn-log.ts): those that worked become examples. */
+  real?: LoggedTurn[];
 }
 
 type Message = OpenAI.ChatCompletionMessageParam & { training?: boolean };
@@ -115,6 +120,14 @@ function mulberry32(seed: number): Rng {
 
 function pick<T>(rng: Rng, list: readonly T[]): T {
   return list[Math.floor(rng() * list.length)];
+}
+
+/** A device, the ones used more often drawn more often (1 + √uses: a daily light ≈ 6×, never 100×). */
+function pickUsed<T extends { device: { usage?: number } }>(rng: Rng, list: readonly T[]): T {
+  const weights = list.map((n) => 1 + Math.sqrt(n.device.usage ?? 0));
+  let x = rng() * weights.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < list.length; i++) if ((x -= weights[i]) < 0) return list[i];
+  return list[list.length - 1];
 }
 
 /**
@@ -497,9 +510,9 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   const plainSwitches = switches.filter((t) => domainOf(t.device.id) !== "input_boolean");
   const pickToggle = (): Named => {
     const r = rng();
-    if (lights.length && (r < 0.6 || !switches.length)) return pick(rng, lights);
-    if (plainSwitches.length && r < 0.9) return pick(rng, plainSwitches);
-    return pick(rng, switches.length ? switches : lights);
+    if (lights.length && (r < 0.6 || !switches.length)) return pickUsed(rng, lights);
+    if (plainSwitches.length && r < 0.9) return pickUsed(rng, plainSwitches);
+    return pickUsed(rng, switches.length ? switches : lights);
   };
   add("on_off", toggles.length ? 14 : 0, (test) => {
     const d = pickToggle();
@@ -539,7 +552,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   // Brightness, white, colours.
   const dimmable = lights.filter((l) => l.device.light?.brightness);
   add("brightness", dimmable.length ? 5 : 0, (test) => {
-    const d = pick(rng, dimmable);
+    const d = pickUsed(rng, dimmable);
     if (rng() < 0.2) {
       return { kind: "brightness", text: fill(phrase(rng, DIM, test), { x: pick(rng, d.says) }), answer: one([service("light", "turn_on", [d.device.id], { brightness_pct: 30 })]) };
     }
@@ -549,7 +562,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   });
   const whites = lights.filter((l) => l.device.light && l.device.light.white !== "none");
   add("white", whites.length ? 2 : 0, (test) => {
-    const d = pick(rng, whites);
+    const d = pickUsed(rng, whites);
     const white = d.device.light!.white;
     const data = white === "color_temp" ? { color_temp_kelvin: 4000 } : white === "rgbw" ? { rgbw_color: [0, 0, 0, 255] } : { rgb_color: [255, 255, 255] };
     const template = phrase(rng, WHITE, test);
@@ -558,13 +571,13 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   });
   const colored = lights.filter((l) => l.device.light?.color);
   add("color", colored.length ? 3 : 0, (test) => {
-    const d = pick(rng, colored);
+    const d = pickUsed(rng, colored);
     const c = pick(rng, Object.keys(COLORS));
     return { kind: "color", text: fill(phrase(rng, COLOR, test), { x: pick(rng, d.says), c }), answer: one([service("light", "turn_on", [d.device.id], { rgb_color: COLORS[c] })]) };
   });
   // Covers.
   add("cover", covers.length ? 8 : 0, (test) => {
-    const d = pick(rng, covers);
+    const d = pickUsed(rng, covers);
     const x = pick(rng, d.says);
     const r = rng();
     if (r < 0.35) return { kind: "cover", text: fill(phrase(rng, COVER_OPEN, test), { x }), answer: one([service("cover", "open_cover", [d.device.id])]) };
@@ -587,7 +600,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   });
   // Heating.
   add("climate", climates.length ? 3 : 0, (test) => {
-    const d = pick(rng, climates);
+    const d = pickUsed(rng, climates);
     const t = pick(rng, [17, 18, 18.5, 19, 19.5, 20, 20.5, 21, 21.5, 22, 23]);
     const template = phrase(rng, HEAT, test);
     if (template.includes("{dans}") && !(d.device.area && inArea(climates, d.device.area).length === 1)) return undefined;
@@ -600,7 +613,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   });
   // Media players.
   add("media", media.length ? 3 : 0, (test) => {
-    const d = pick(rng, media);
+    const d = pickUsed(rng, media);
     const x = pick(rng, d.says);
     const dans = d.device.area ? inside(d.device.area) : "";
     const de = d.device.area ? of(d.device.area) : "";
@@ -617,7 +630,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   });
   // Scenes and scripts.
   add("scene", scenes.length ? 4 : 0, (test) => {
-    const d = pick(rng, scenes);
+    const d = pickUsed(rng, scenes);
     return { kind: "scene", text: fill(phrase(rng, SCENE, test), { n: lower(d.device.name).replace(/^scène\s+/, "") }), answer: one([service("scene", "turn_on", [d.device.id])]) };
   });
   add("script", house.scripts.length ? 3 : 0, (test) => {
@@ -638,7 +651,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
   // Reading states.
   add("state", toggles.length + covers.length + openings.length ? 6 : 0, (test) => {
     const pool = [...toggles, ...covers, ...openings];
-    const d = toggles.length && rng() < 0.5 ? pickToggle() : pick(rng, pool);
+    const d = toggles.length && rng() < 0.5 ? pickToggle() : pickUsed(rng, pool);
     const domain = domainOf(d.device.id);
     const x = pick(rng, d.says);
     const text = domain === "light" || domain === "switch" || domain === "fan" || domain === "input_boolean"
@@ -814,7 +827,7 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
       return { kind: "follow_up", text, question: text.startsWith("et"), history, answer: one([service("light", "turn_on", [inArea(lights, b)[0].device.id])]) };
     }
     if (!covers.length) return undefined;
-    const d = pick(rng, covers);
+    const d = pickUsed(rng, covers);
     const close = rng() < 0.5;
     const history: PastMessage[] = [
       { role: "user", content: spoken(rng, close ? pick(rng, ["il y a trop de soleil", "on voit tout de dehors", "il fait trop chaud ici"]) : pick(rng, ["il fait sombre ici", "on n'y voit rien", "il fait tout noir"])), time: randomTime(rng) },
@@ -880,7 +893,50 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     (isTest ? test : train).push({ kind: draft.kind, messages });
     counts[draft.kind] = (counts[draft.kind] ?? 0) + 1;
   }
+  // The owner's real requests, replayed exactly: the way they really speak.
+  // Twice in training (they are few next to the generated ones); a sixth of
+  // them held out, the truest bench there is.
+  const realSeen = new Set<string>();
+  for (const t of (options.real ?? []).filter(isReplayable)) {
+    const key = `${t.words.trim().toLowerCase()}|${t.history.map((h) => h.content).join("|")}`;
+    if (realSeen.has(key)) continue;
+    realSeen.add(key);
+    const messages = [
+      ...localTurnMessages({ rules: options.rules, scriptSection: options.scriptSection, facts: [], history: t.history, message: t.words, date: new Date(t.at) }),
+      t.calls.length ? callMessage(t.calls.map((c) => ({ name: c.name, args: c.args })), n++, t.line) : say(t.line),
+    ];
+    if (hashOf(key) % 6 === 0) test.push({ kind: "real", messages });
+    else train.push({ kind: "real", messages }, { kind: "real", messages });
+    counts.real = (counts.real ?? 0) + 1;
+  }
   return { train, test, counts };
+}
+
+/** Tools whose answer depends on what the logged request does not keep (memories, a search's results). */
+const NOT_REPLAYABLE = new Set(["share_memory", "search_entities", "get_entities"]);
+
+/** A real request that can be learned as it was: one pass, everything worked, not corrected, a known line. */
+export function isReplayable(t: LoggedTurn): boolean {
+  return !t.corrected && t.passes <= 1 && /^(-|>(dire|rep|web|libre|demande))$/.test(t.line) &&
+    t.calls.every((c) => c.ok && !NOT_REPLAYABLE.has(c.name));
+}
+
+function hashOf(text: string): number {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) h = (Math.imul(h, 31) + text.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+/** The real requests that went wrong, for the owner to look at: failed, corrected. */
+export function reviewList(turns: LoggedTurn[]): string {
+  const bad = turns.filter((t) => t.corrected || t.calls.some((c) => !c.ok));
+  if (!bad.length) return "Aucune demande ratée ou corrigée pour le moment.\n";
+  return bad.map((t) => [
+    `[${t.at.slice(0, 16).replace("T", " ")}] ${t.corrected ? "corrigée" : "échec"}`,
+    ...t.history.map((h) => `  (avant) ${h.role === "user" ? "personne" : "Igor"} : ${h.content}`),
+    `  personne : ${t.words}`,
+    `  → ${t.calls.map((c) => `${c.name} ${JSON.stringify(c.args)}${c.ok ? "" : " (échec)"}`).join(" + ") || t.line}  [${t.line}]`,
+  ].join("\n")).join("\n\n") + "\n";
 }
 
 /** One example per line, with the tools: what Axolotl's chat_template datasets read. */

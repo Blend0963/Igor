@@ -75,7 +75,9 @@ export async function readHouse(
   ha: HomeAssistantClient,
   topology: TopologyScanner,
   scanner: DeviceScanner,
-  registry?: RegistryReader
+  registry?: RegistryReader,
+  /** Times each entity was switched by a person lately (logbook, voice). */
+  usage?: Map<string, number>
 ): Promise<{ house: HouseInventory; scripts: ScriptInfo[]; technical: number; unspeakable: number }> {
   await Promise.all([topology.refreshIfStale(), scanner.refreshIfStale()]);
   const [entities, scripts, hidden] = await Promise.all([
@@ -101,6 +103,8 @@ export async function readHouse(
       continue;
     }
     const device: HouseDevice = { id: e.entity_id, name, area: areaOf.get(e.entity_id) };
+    const used = usage?.get(e.entity_id);
+    if (used) device.usage = used;
     if (hidden.has(e.entity_id) || isTechnical(e)) {
       device.technical = true;
       technical++;

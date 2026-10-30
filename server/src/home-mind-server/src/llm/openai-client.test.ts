@@ -823,6 +823,21 @@ describe("OpenAIChatEngine", () => {
       expect(mockCreate.mock.calls[1][0].messages.at(-1).content).toMatch(/^>echec\n.*échec : call_service/s);
     });
 
+    it("keeps the local model's request for its training: words, calls and line", async () => {
+      vi.mocked(handleToolCall).mockResolvedValue({ changed_states: [{ entity_id: "light.salon", state: "on", name: "Lumière salon" }] });
+      mockCreate.mockResolvedValueOnce(orderCall());
+      const record = vi.fn();
+      localEngine.setTurnLog({ record } as never);
+      await localEngine.chat({ message: "allume la lumière du salon", userId: "u", isVoice: true });
+      expect(record).toHaveBeenCalledWith({
+        words: "allume la lumière du salon",
+        history: [],
+        calls: [{ name: "call_service", args: { domain: "light", service: "turn_on", entity_id: "light.salon" }, ok: true }],
+        line: "-",
+        passes: 1,
+      });
+    });
+
     it("carries out a plain order in silence by default, with no online call", async () => {
       vi.mocked(handleToolCall).mockResolvedValue({ changed_states: [{ entity_id: "light.salon", state: "on", name: "Lumière salon" }] });
       mockCreate.mockResolvedValueOnce(orderCall());

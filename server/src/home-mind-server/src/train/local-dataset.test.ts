@@ -179,3 +179,48 @@ describe("technical entities", () => {
     }
   });
 });
+
+describe("real requests and usage", () => {
+  const house: HouseInventory = {
+    devices: [
+      { id: "light.salon", name: "Lumière salon", area: "Salon", usage: 400 },
+      ...Array.from({ length: 20 }, (_, i) => ({ id: `light.l${i}`, name: `Lampe ${i}`, area: `Pièce ${i}` })),
+    ],
+    scripts: [],
+  };
+  const real = [
+    { at: "2026-10-30T10:00:00Z", words: "coupe-moi le salon", history: [], calls: [{ name: "call_service", args: { domain: "light", service: "turn_off", entity_id: "light.salon" }, ok: true }], line: "-", passes: 1 },
+    { at: "2026-10-30T10:01:00Z", words: "raté", history: [], calls: [{ name: "call_service", args: { domain: "light", service: "turn_on" }, ok: false }], line: ">echec", passes: 1 },
+    { at: "2026-10-30T10:02:00Z", words: "corrigé", history: [], calls: [], line: ">libre", passes: 0, corrected: true },
+    { at: "2026-10-30T10:03:00Z", words: "qui a gagné hier", history: [], calls: [], line: ">web", passes: 0 },
+  ];
+  const { train, test, counts } = buildLocalDataset(house, { ...options, size: 800, real });
+  const all = [...train, ...test];
+
+  it("replays the real requests that worked, and only those", () => {
+    expect(counts.real).toBe(2);
+    const words = all.filter((e) => e.kind === "real").map((e) => (e.messages.at(-2) as Msg).content);
+    expect(words).toContain("coupe-moi le salon");
+    expect(words).toContain("qui a gagné hier");
+    expect(words).not.toContain("raté");
+    expect(words).not.toContain("corrigé");
+    const salon = all.find((e) => e.kind === "real" && (e.messages.at(-2) as Msg).content === "coupe-moi le salon")!;
+    expect((salon.messages.at(-1) as Msg).content).toBe("-");
+    expect((salon.messages.at(-1) as Msg).tool_calls![0].function.arguments).toContain("light.salon");
+  });
+
+  it("gives the devices used most more examples", () => {
+    const onSalon = train.filter((e) => e.kind === "on_off" && (e.messages.at(-1) as Msg).tool_calls![0].function.arguments.includes('"light.salon"')).length;
+    const onOthers = train.filter((e) => e.kind === "on_off").length - onSalon;
+    // 1 + √400 = 21 against 1 for each of 20 lamps: about half.
+    expect(onSalon).toBeGreaterThan(onOthers / 3);
+  });
+
+  it("lists the requests to review", async () => {
+    const { reviewList } = await import("./local-dataset.js");
+    const text = reviewList(real);
+    expect(text).toContain("échec");
+    expect(text).toContain("corrigée");
+    expect(text).not.toContain("coupe-moi");
+  });
+});
