@@ -53,7 +53,8 @@ PY="$WORK/venv/bin/python"
   || "$PY" -m pip install -q torch || fail "installation de PyTorch"
 "$PY" -m pip install -q "transformers==4.56.2" "peft==0.17.1" "accelerate==1.10.1" safetensors sentencepiece protobuf cmake \
   || fail "installation de transformers et peft"
-"$PY" -c 'import torch; assert torch.cuda.is_available(), "CUDA"' || fail "PyTorch ne voit pas la carte"
+"$PY" -c 'import torch; assert torch.cuda.is_available(), "CUDA"' \
+  || fail "PyTorch ne voit pas la carte : la machine louée est en panne (sur une carte SXM, « Error 802 » = Fabric Manager arrêté chez l'hébergeur). Supprime-la (Terminate) et prends-en une autre"
 # Facultatif : sans lui l'entraînement tourne quand même, un exemple à la fois, plus lentement.
 "$PY" -m pip install -q "liger-kernel==0.6.2" || printf 'ATTENTION — Liger Kernel non installé : entraînement plus lent\n'
 ok "$("$PY" -c 'import torch, transformers, peft; print(f"torch {torch.__version__}, transformers {transformers.__version__}, peft {peft.__version__}")')"
