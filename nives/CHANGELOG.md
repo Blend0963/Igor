@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.0 — The training set learns from real requests and real use
+
+- Every request the local model handles is kept on the house's disk (`/data/local-turns.jsonl`, 5,000 newest): the words, the exchange before them, what it did and whether it worked. A request followed within two minutes by "non, l'autre…", "annule" or "c'est pas ça" marks the one before as corrected. Option `local_turn_log` (on by default).
+- The training set replays the real requests that worked and stood, exactly as the model read them, twice each next to the generated ones; a sixth of them is held out in `test.jsonl`, the truest bench. Those that failed or were corrected are listed in `a-revoir.txt`, not trained on.
+- Usage weighting: the devices a person switched over the last 30 days (Home Assistant's logbook, entries carrying a user, plus the voice requests) get more examples; a light used daily comes up about six times as often as one never touched.
+
 ## 0.19.2 — Faster training that stops by itself
 
 - Training (`ear/tools/llm-train`): one epoch by default; Liger Kernel when it installs (the loss without the full logits, four examples per step on a 24 GB card); on RunPod the machine stops by itself a minute after the end, success or failure, with the model kept on its disk (`AUTO_STOP=0` to keep it running). `eval.json` lists, for each miss, the words, the expected answer and the model's.

@@ -996,6 +996,23 @@ export class HomeAssistantClient {
     return this.fetch("/api/config/core/check_config", { method: "POST" });
   }
 
+  /**
+   * How many times each entity changed because a person asked (logbook entries
+   * that carry a user: the app, the dashboard, Assist), over the last days.
+   * The training set gives the devices actually used more examples.
+   */
+  async getPersonUsage(days = 30): Promise<Map<string, number>> {
+    const start = new Date(Date.now() - days * 86_400_000).toISOString();
+    const entries = await this.fetch<{ entity_id?: string; context_user_id?: string | null }[]>(
+      `/api/logbook/${encodeURIComponent(start)}`
+    );
+    const counts = new Map<string, number>();
+    for (const e of entries) {
+      if (e.entity_id && e.context_user_id) counts.set(e.entity_id, (counts.get(e.entity_id) ?? 0) + 1);
+    }
+    return counts;
+  }
+
   /** Home Assistant's own settings: the house's time zone, for schedules. */
   async getConfig(): Promise<{ time_zone?: string; location_name?: string; language?: string }> {
     return this.fetch("/api/config");

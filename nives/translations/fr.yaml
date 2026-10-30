@@ -163,6 +163,13 @@ configuration:
       plus rapide. Laisser désactivé avec un modèle ordinaire. Pour qu'il
       pilote toutes les entités, et pas seulement celles exposées à Assist,
       désactivez aussi tools_from_exposed.
+  local_turn_log:
+    name: Modèle local (garder les vraies demandes)
+    description: >-
+      Garde dans l'add-on (/data) chaque demande traitée par le modèle local :
+      les mots, ce qu'il a fait, si ça a marché ou si vous l'avez corrigé
+      (« non, l'autre »). Le jeu d'entraînement les reprend pour apprendre
+      votre façon de parler ; rien ne sort de la maison. Vide = activé.
   fast_model:
     name: Modèle rapide (ordres simples)
     description: >-

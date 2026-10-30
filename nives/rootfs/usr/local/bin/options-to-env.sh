@@ -87,6 +87,7 @@ LOCAL_LLM_KEY=$(jq -r '.local_llm_key // ""' "$OPTIONS")
 LOCAL_LLM_PROMPT=$(jq -r '.local_llm_prompt // ""' "$OPTIONS")
 LOCAL_ORDER_REPLY=$(jq -r '.local_order_reply // ""' "$OPTIONS")
 LOCAL_LLM_TUNED=$(jq -r 'if .local_llm_tuned == null then "" else (.local_llm_tuned | tostring) end' "$OPTIONS")
+LOCAL_TURN_LOG=$(jq -r 'if .local_turn_log == null then "" else (.local_turn_log | tostring) end' "$OPTIONS")
 NOTIFY_SERVICE=$(jq -r '.notify_service // ""' "$OPTIONS")
 DAILY_BRIEFING_TIME=$(jq -r '.daily_briefing_time // ""' "$OPTIONS")
 DAILY_BRIEFING_PROMPT=$(jq -r '.daily_briefing_prompt // ""' "$OPTIONS")
@@ -317,6 +318,7 @@ write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$LOCAL_LLM_PROMPT" ] && write_env "LOCAL_LLM_PROMPT" "$LOCAL_LLM_PROMPT"
 [ -n "$LOCAL_ORDER_REPLY" ] && write_env "LOCAL_ORDER_REPLY" "$LOCAL_ORDER_REPLY"
 [ -n "$LOCAL_LLM_TUNED" ] && write_env "LOCAL_LLM_TUNED" "$LOCAL_LLM_TUNED"
+[ -n "$LOCAL_TURN_LOG" ] && write_env "LOCAL_TURN_LOG" "$LOCAL_TURN_LOG"
 [ -n "$NOTIFY_SERVICE" ] && write_env "NOTIFY_SERVICE" "$NOTIFY_SERVICE"
 [ -n "$DAILY_BRIEFING_TIME" ] && write_env "DAILY_BRIEFING_TIME" "$DAILY_BRIEFING_TIME"
 [ -n "$DAILY_BRIEFING_PROMPT" ] && write_env "DAILY_BRIEFING_PROMPT" "$DAILY_BRIEFING_PROMPT"

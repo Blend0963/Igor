@@ -68,6 +68,9 @@ const ConfigSchema = z
     // the rooms and the lights, so its prompt leaves out the room map and the
     // light cheat sheet.
     localLlmTuned: z.boolean().default(false),
+    // The local model's real requests, kept next to the conversation database
+    // to train it on how the owner speaks (train/turn-log.ts).
+    localTurnLog: z.boolean().default(true),
     // Reminders, scheduled tasks and the morning briefing (jobs/scheduler.ts).
     // Notify service for them ("mobile_app_pixel"); unset = a persistent
     // notification in Home Assistant.
@@ -251,6 +254,7 @@ export function loadConfig(): Config {
     localOrderReply: emptyToUndefined(process.env.LOCAL_ORDER_REPLY),
     localLlmPrewarm: emptyToUndefined(process.env.LOCAL_LLM_PREWARM) === undefined ? undefined : process.env.LOCAL_LLM_PREWARM !== "false",
     localLlmTuned: process.env.LOCAL_LLM_TUNED === "true",
+    localTurnLog: process.env.LOCAL_TURN_LOG !== "false",
     notifyService: emptyToUndefined(process.env.NOTIFY_SERVICE),
     dailyBriefingTime: emptyToUndefined(process.env.DAILY_BRIEFING_TIME),
     dailyBriefingPrompt: emptyToUndefined(process.env.DAILY_BRIEFING_PROMPT),

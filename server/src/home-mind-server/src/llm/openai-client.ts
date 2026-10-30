@@ -52,6 +52,7 @@ import {
 } from "./local-protocol.js";
 import { actionSentence, needsLocalFollowUp, type DoneCall } from "./action-sentence.js";
 import { OpenAIFactExtractor } from "../memory/openai-extractor.js";
+import type { TurnLog } from "../train/turn-log.js";
 import {
   readUsage,
   describeUsage,
@@ -166,6 +167,13 @@ function historyTimestamp(createdAt: Date | string | undefined): string {
 
 export class OpenAIChatEngine implements IChatEngine {
   private client: OpenAI;
+  /** The local model's real requests, for its training (train/turn-log.ts); unset = not kept. */
+  private turnLog?: TurnLog;
+
+  setTurnLog(log: TurnLog): void {
+    this.turnLog = log;
+  }
+
   /** The house's own model (llm/local-llm.ts), for Assist; unset = none. */
   private local?: { client: OpenAI; model: string; extractor: IFactExtractor };
   /** The last spoken Assist request on the local model, replayed by the prewarm. */
@@ -817,6 +825,17 @@ export class OpenAIChatEngine implements IChatEngine {
         let tag: LocalTag = needsWord(localDone) ?? localTag?.tag ?? (localDone.length ? (plainSentence ? "silence" : "rep") : "libre");
         // "-" with nothing done means the person asked something: Igor answers.
         if (tag === "silence" && localDone.length === 0) tag = "libre";
+        // Kept on the house's disk to train the local model on real requests (train/turn-log.ts).
+        this.turnLog?.record({
+          words: message,
+          history: history
+            .slice(-LOCAL_PROMPT_HISTORY)
+            .filter((m) => m.role === "user" || m.role === "assistant")
+            .map((m) => ({ role: m.role as "user" | "assistant", content: m.content, ...(m.role === "user" && historyTimestamp(m.createdAt) ? { time: historyTimestamp(m.createdAt) } : {}) })),
+          calls: localDone.map((d) => ({ name: d.name, args: d.input, ok: !needsWord([d]) })),
+          line: tag === "silence" ? "-" : `>${tag}`,
+          passes: iterations,
+        });
         const orderReply = this.config.localOrderReply ?? "silent";
         if (tag === "silence" && orderReply === "online") tag = "dire";
         if (tag === "silence") {

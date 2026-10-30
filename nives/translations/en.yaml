@@ -163,6 +163,13 @@ configuration:
       sheet: shorter and faster. Leave off with an ordinary model. For it to
       drive every entity, not only those exposed to Assist, also turn off
       tools_from_exposed.
+  local_turn_log:
+    name: Local Model (keep real requests)
+    description: >-
+      Keeps in the add-on (/data) every request the local model handled: the
+      words, what it did, whether it worked or you corrected it ("non,
+      l'autre"). The training set replays them to learn how you speak;
+      nothing leaves the house. Empty = on.
   fast_model:
     name: Fast Model (simple commands)
     description: >-

@@ -21,6 +21,12 @@ to 20,000):
   the local model, followed by the expected answer;
 - `test.jsonl`: requests phrased in ways training never sees, for the bench;
 - `sample.txt`: examples to read.
+- `a-revoir.txt`: your real requests that failed or that you corrected.
+
+With `local_turn_log` on (the default), the real requests the local model
+handled and that worked are replayed in the training set (kind `real`), and a
+sixth of them is held out in `test.jsonl`. Devices you switch often get more
+examples. A week or two of use before training makes the biggest difference.
 
 The file describes your house. Keep it to yourself.
 
