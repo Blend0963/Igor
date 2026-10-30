@@ -224,3 +224,16 @@ describe("real requests and usage", () => {
     expect(text).not.toContain("coupe-moi");
   });
 });
+
+describe("devices one of a kind", () => {
+  const { train } = buildLocalDataset({ devices: [
+    { id: "vacuum.robot", name: "Dreamebot L10 Prime Dreamebot L10 Prime" },
+    { id: "light.salon", name: "Lumière du salon", area: "Salon" },
+  ], scripts: [] }, { ...options, size: 400 });
+  const words = train.filter((e) => e.kind === "vacuum").map((e) => (e.messages.at(-2) as Msg).content!.toLowerCase());
+
+  it("calls the only vacuum the vacuum, and says a doubled name once", () => {
+    expect(words.some((w) => /l'aspirateur|le robot/.test(w))).toBe(true);
+    expect(words.some((w) => w.includes("dreamebot l10 prime dreamebot"))).toBe(false);
+  });
+});

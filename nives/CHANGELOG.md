@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.1 — "Lance l'aspirateur", not "allume le Dreamebot"
+
+- Training set: a device the house has only one of gets its everyday name too ("l'aspirateur", "le robot", "le chauffage", "la serrure", "la tondeuse", "le chauffe-eau"), and the vacuum starts, docks and stops in those words.
+- A name Home Assistant built by repeating the device's ("Dreamebot L10 Prime Dreamebot L10 Prime") is said once.
+- A name no one says whole (over 45 characters, or with brackets or a colon: "Météo-France forecast for city Paris (75)…", "Disk pve: Samsung SSD…") counts as technical: read when asked by its full name, never in the everyday examples.
+- Scenes: "active / lance / déclenche la scène …", no more "mets l'ambiance éteindre". "Tablette" is feminine.
+
 ## 0.20.0 — The training set learns from real requests and real use
 
 - Every request the local model handles is kept on the house's disk (`/data/local-turns.jsonl`, 5,000 newest): the words, the exchange before them, what it did and whether it worked. A request followed within two minutes by "non, l'autre…", "annule" or "c'est pas ça" marks the one before as corrected. Option `local_turn_log` (on by default).
