@@ -43,11 +43,12 @@ describe("readHouse", () => {
       getRooms: () => [{ name: "Salon", entities: [{ id: "light.a", name: null }, { id: "light.b", name: null }] }],
     } as unknown as TopologyScanner;
     const scanner = { refreshIfStale: vi.fn(), getProfiles: () => [] } as unknown as DeviceScanner;
-    const { house, technical } = await readHouse(ha, topology, scanner, async () => new Set(["switch.diag"]));
+    const { house, technical } = await readHouse(ha, topology, scanner, async () => ({ hidden: new Set(["switch.diag"]), aliases: new Map([["light.a", ["ampoule gauche", "lampe de lecture"]]]) }));
     expect(house.devices.map((d) => d.id)).toEqual(["light.salon", "light.a", "light.b", "sensor.bat", "switch.diag"]);
     expect(technical).toBe(2);
     expect(house.devices.filter((d) => d.technical).map((d) => d.id)).toEqual(["sensor.bat", "switch.diag"]);
     expect(house.devices[0]).toMatchObject({ area: "Salon", members: ["light.a", "light.b"] });
+    expect(house.devices[1].aliases).toEqual(["ampoule gauche", "lampe de lecture"]);
   });
 });
 

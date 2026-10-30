@@ -49,15 +49,30 @@ export function isUnspeakable(entityId: string, name: string): boolean {
   return [entityId, name].some((t) => (t.match(/[0-9a-f]{8,}/gi) ?? []).some((run) => /\d/.test(run) && /[a-f]/i.test(run)));
 }
 
-/** Entities the registry marks as setup knobs or diagnostics, or hidden: read once per dataset. */
-export type RegistryReader = () => Promise<Set<string>>;
+/**
+ * What the entity registry says, read once per dataset: the entities marked
+ * as setup knobs or diagnostics, or hidden; and the aliases the owner gave
+ * for Assist (Settings → Voice assistants → Expose → the entity → Aliases),
+ * the words they really use ("aspirateur", "robot").
+ */
+export interface RegistryInfo {
+  hidden: Set<string>;
+  aliases: Map<string, string[]>;
+}
+
+export type RegistryReader = () => Promise<RegistryInfo>;
 
 export function registryReader(haUrl: string, token: string): RegistryReader {
   return async () => {
-    const entries = await wsCommand<{ entity_id: string; entity_category?: string | null; hidden_by?: string | null }[]>(
+    const entries = await wsCommand<{ entity_id: string; entity_category?: string | null; hidden_by?: string | null; aliases?: unknown }[]>(
       haUrl, token, { type: "config/entity_registry/list" }, 30000
     );
-    return new Set(entries.filter((e) => e.entity_category || e.hidden_by).map((e) => e.entity_id));
+    const aliases = new Map<string, string[]>();
+    for (const e of entries) {
+      const list = Array.isArray(e.aliases) ? e.aliases.filter((a): a is string => typeof a === "string" && a.trim() !== "") : [];
+      if (list.length) aliases.set(e.entity_id, list.map((a) => a.trim()));
+    }
+    return { hidden: new Set(entries.filter((e) => e.entity_category || e.hidden_by).map((e) => e.entity_id)), aliases };
   };
 }
 
@@ -82,11 +97,13 @@ export async function readHouse(
   usage?: Map<string, number>
 ): Promise<{ house: HouseInventory; scripts: ScriptInfo[]; technical: number; unspeakable: number }> {
   await Promise.all([topology.refreshIfStale(), scanner.refreshIfStale()]);
-  const [entities, scripts, hidden] = await Promise.all([
+  const [entities, scripts, { hidden, aliases }] = await Promise.all([
     ha.getEntities(),
     ha.listScripts().catch(() => [] as ScriptInfo[]),
     // Without the registry (old Home Assistant, no websocket), the name rules still apply.
-    registry ? registry().catch(() => new Set<string>()) : Promise.resolve(new Set<string>()),
+    registry
+      ? registry().catch(() => ({ hidden: new Set<string>(), aliases: new Map<string, string[]>() }))
+      : Promise.resolve({ hidden: new Set<string>(), aliases: new Map<string, string[]>() }),
   ]);
   const areaOf = new Map<string, string>();
   for (const room of topology.getRooms()) for (const e of room.entities) areaOf.set(e.id, room.name);
@@ -105,6 +122,8 @@ export async function readHouse(
       continue;
     }
     const device: HouseDevice = { id: e.entity_id, name, area: areaOf.get(e.entity_id) };
+    const said = aliases.get(e.entity_id);
+    if (said?.length) device.aliases = said;
     const used = usage?.get(e.entity_id);
     if (used) device.usage = used;
     if (hidden.has(e.entity_id) || isTechnical(e)) {

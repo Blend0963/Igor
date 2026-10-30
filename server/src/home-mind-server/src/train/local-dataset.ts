@@ -21,6 +21,7 @@ import { LOCAL_PROMPT_HISTORY } from "../llm/local-llm.js";
 import { buildLocalPrompt, localDate } from "../llm/local-protocol.js";
 import { isFeminine } from "../llm/action-sentence.js";
 import type { LoggedTurn } from "./turn-log.js";
+import type { Phrase } from "./phrasebook.js";
 
 /** A device as the generator needs it. */
 export interface HouseDevice {
@@ -36,6 +37,8 @@ export interface HouseDevice {
   technical?: boolean;
   /** How often it was switched by a person lately (logbook, voice): used devices get more examples. */
   usage?: number;
+  /** The owner's own words for it (Home Assistant's Assist aliases): "aspirateur", "robot". */
+  aliases?: string[];
 }
 
 export interface HouseInventory {
@@ -56,6 +59,8 @@ export interface DatasetOptions {
   testShare?: number;
   /** The owner's real requests (train/turn-log.ts): those that worked become examples. */
   real?: LoggedTurn[];
+  /** The owner's own phrases (igor-phrases.txt, train/phrasebook.ts). */
+  phrases?: Phrase[];
 }
 
 type Message = OpenAI.ChatCompletionMessageParam & { training?: boolean };
@@ -299,6 +304,8 @@ function namings(devices: HouseDevice[]): Named[] {
   const grouped = groupedMembers(devices);
   return devices.map((d) => {
     const says = new Set<string>([the(d.name)]);
+    // The owner's own words come first, and twice, so they are drawn most.
+    const own = (d.aliases ?? []).map((a) => the(a));
     const domain = domainOf(d.id);
     if (!d.technical && devices.filter((o) => domainOf(o.id) === domain && !o.technical).length === 1) {
       for (const noun of HOUSE_NOUNS[domain] ?? []) says.add(noun);
@@ -312,7 +319,7 @@ function namings(devices: HouseDevice[]): Named[] {
         if (first && !lower(d.area).includes(first) && first.length > 2) says.add(`${the(first)} ${of(d.area)}`);
       }
     }
-    return { device: d, says: [...says] };
+    return { device: d, says: [...own, ...own, ...says.values()].filter((w, i, all) => i < own.length * 2 || !own.includes(w)) };
   });
 }
 
@@ -929,7 +936,27 @@ export function buildLocalDataset(house: HouseInventory, options: DatasetOptions
     else train.push({ kind: "real", messages }, { kind: "real", messages });
     counts.real = (counts.real ?? 0) + 1;
   }
+  // The owner's own phrases: three ways each as speech-to-text may hand them
+  // over in training, a sixth of them held out as they were written.
+  for (const p of options.phrases ?? []) {
+    const answer = () => (p.calls.length ? callMessage(p.calls, n++, p.line) : say(p.line));
+    const turn = (words: string) => [
+      ...localTurnMessages({ rules: options.rules, scriptSection: options.scriptSection, facts: [], history: [], message: words, date: randomDate(rng) }),
+      answer(),
+    ];
+    if (hashOf(p.words) % 6 === 0) test.push({ kind: "phrase", messages: turn(p.words) });
+    else for (let i = 0; i < 3; i++) train.push({ kind: "phrase", messages: turn(spoken(rng, p.words, asksSomething(p.words))) });
+    counts.phrase = (counts.phrase ?? 0) + 1;
+  }
   return { train, test, counts };
+}
+
+/** The devices the training set knows, for writing igor-phrases.txt: id, name, room, aliases, use. */
+export function deviceList(house: HouseInventory): string {
+  const rows = [...house.devices]
+    .sort((a, b) => (a.area ?? "~").localeCompare(b.area ?? "~") || a.id.localeCompare(b.id))
+    .map((d) => [d.id, d.name, d.area ?? "-", d.aliases?.join(", ") || "-", d.technical ? "technique" : "", d.usage ? `utilisé ${d.usage} fois` : ""].filter(Boolean).join(" | "));
+  return `# entité | nom | pièce | alias | …\n${rows.join("\n")}\n`;
 }
 
 /** Tools whose answer depends on what the logged request does not keep (memories, a search's results). */

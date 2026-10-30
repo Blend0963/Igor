@@ -28,6 +28,20 @@ handled and that worked are replayed in the training set (kind `real`), and a
 sixth of them is held out in `test.jsonl`. Devices you switch often get more
 examples. A week or two of use before training makes the biggest difference.
 
+Your own words: give devices **aliases** in Home Assistant (Settings → Voice
+assistants → Expose → the entity → Aliases); they become their preferred names.
+And write phrases in **`igor-phrases.txt`** in Home Assistant's config folder,
+one per line, from the ids in `appareils.txt`:
+
+    passe l'aspirateur => vacuum.start vacuum.dreamebot_l10_prime
+    mets la lumière du salon à fond => light.turn_on light.salon {"brightness_pct": 100}
+    il fait combien dehors => get_state sensor.temperature_exterieure
+    ferme tout et dis-moi quand c'est fait => cover.close_cover cover.salon >dire
+    qui a gagné le match => web
+
+Several actions are joined with ` + `; a trailing `>dire`, `>rep`… replaces the
+default line. Unreadable lines are listed in `phrases-erreurs.txt`.
+
 The file describes your house. Keep it to yourself.
 
 ## 2. Training (rented NVIDIA GPU, 24 GB or more)
