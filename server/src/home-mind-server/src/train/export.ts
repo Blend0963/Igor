@@ -24,6 +24,9 @@ train.jsonl  examples to train on
 test.jsonl   examples held out for the bench, phrased in ways training never sees
 sample.txt   a few examples to read
 a-revoir.txt your real requests that failed or that you corrected (not trained on)
+maison.json  everything the training set is built from (devices, rooms, aliases, light
+             capabilities, your local_llm_prompt rules, the scripts section), to build
+             it elsewhere with buildLocalDataset()
 appareils.txt the devices the training set knows (id, name, room, aliases), to write
              your own phrases in igor-phrases.txt, in Home Assistant's config folder
 
@@ -78,6 +81,10 @@ export async function buildDatasetZip(
     { name: "sample.txt", data: Buffer.from(readableSample(dataset.train, 80)) },
     { name: "a-revoir.txt", data: Buffer.from(reviewList(real)) },
     { name: "appareils.txt", data: Buffer.from(deviceList(read.house)) },
+    {
+      name: "maison.json",
+      data: Buffer.from(JSON.stringify({ house: read.house, rules: config.localLlmPrompt ?? null, scriptSection: formatScriptSection(read.scripts) ?? null }, null, 1)),
+    },
     ...(book.errors.length ? [{ name: "phrases-erreurs.txt", data: Buffer.from(`${book.errors.join("\n")}\n`) }] : []),
   ], { deflate: true });
   const used = read.house.devices.filter((d) => d.usage).length;
