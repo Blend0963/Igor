@@ -37,3 +37,13 @@ describe("actionSentence", () => {
     expect(actionSentence([])).toBeUndefined();
   });
 });
+
+describe("needsLocalFollowUp once the line is written", () => {
+  it("leaves a script's answer to the online model when the local model already wrote its line", async () => {
+    const { needsLocalFollowUp } = await import("./action-sentence.js");
+    const call = [{ name: "call_service", input: { domain: "script", service: "activer_le_mode_avion" }, result: { service_response: { ok: true } } }];
+    expect(needsLocalFollowUp(call)).toBe(true);
+    expect(needsLocalFollowUp(call, true)).toBe(false);
+    expect(needsLocalFollowUp([{ name: "search_entities", input: { query: "x" }, result: [] }], true)).toBe(true);
+  });
+});

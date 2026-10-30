@@ -70,3 +70,10 @@ describe("long names", () => {
     expect(isTechnical(state("sensor.temp", "Température couloir", { device_class: "temperature", unit_of_measurement: "°C" }))).toBe(false);
   });
 });
+
+describe("numbers in names", () => {
+  it("counts a name carrying an account number as technical", () => {
+    expect(isTechnical(state("sensor.bnp_x", "BNP Paribas FR7630004000000000000000001", { unit_of_measurement: "€" }))).toBe(true);
+    expect(isTechnical(state("sensor.bnp_solde", "BNP Paribas Solde total", { unit_of_measurement: "€" }))).toBe(false);
+  });
+});

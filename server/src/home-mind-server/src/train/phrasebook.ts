@@ -47,7 +47,8 @@ export function parsePhrasebook(text: string, known?: Set<string>): { phrases: P
     }
     const calls: Phrase["calls"] = [];
     for (const part of action.split(/\s\+\s/)) {
-      const m = /^(\S+)(?:\s+(\S+))?(?:\s+(\{.*\}))?$/.exec(part.trim());
+      // A script with fields and no entity: "script.shield_lancer_app {"app": "netflix"}".
+      const m = /^(\S+)(?:\s+([^{\s]\S*))?(?:\s+(\{.*\}))?$/.exec(part.trim());
       if (!m) return errors.push(`ligne ${lineNo} : action illisible (${part})`);
       const [, what, entity, json] = m;
       let data: Record<string, unknown> | undefined;

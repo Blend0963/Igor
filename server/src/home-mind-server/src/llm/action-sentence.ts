@@ -139,9 +139,13 @@ export function actionSentence(calls: DoneCall[]): string | undefined {
  * something (the calendar's date conversion before the event). Anything
  * else is handed straight to the online model, which answers.
  */
-export function needsLocalFollowUp(calls: DoneCall[]): boolean {
+export function needsLocalFollowUp(calls: DoneCall[], lineWritten = false): boolean {
   return calls.some((call) => {
     if (call.name === "search_entities" || call.name === "get_entities") return true;
+    // A script whose answer the model has already said what to do with ("-",
+    // ">rep"…): the online model reads it, if anyone needs to. Many scripts
+    // return something (a Tasker acknowledgement) even for a plain action.
+    if (lineWritten) return false;
     if (call.name !== "call_service" || call.input.domain !== "script") return false;
     const r = call.result as { error?: unknown; service_response?: unknown } | undefined;
     if (!r || typeof r !== "object" || r.error) return false;

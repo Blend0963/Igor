@@ -44,3 +44,11 @@ describe("parsePhrasebook", () => {
     expect((blague.messages.at(-1) as { content: string }).content).toBe(">libre");
   });
 });
+
+describe("scripts with fields", () => {
+  it("reads a script's data without an entity", () => {
+    const { phrases, errors } = parsePhrasebook('mets netflix => script.shield_lancer_app {"app": "netflix"}\n');
+    expect(errors).toEqual([]);
+    expect(phrases[0].calls[0].args).toEqual({ domain: "script", service: "shield_lancer_app", data: { app: "netflix" } });
+  });
+});

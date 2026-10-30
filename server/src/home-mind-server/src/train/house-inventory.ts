@@ -84,7 +84,8 @@ export function isTechnical(entity: EntityState): boolean {
   if (typeof deviceClass === "string" && TECHNICAL_CLASSES.has(deviceClass)) return true;
   if (typeof unit === "string" && TECHNICAL_UNITS.has(unit)) return true;
   // A name no one would say whole: "Météo-France forecast for city Paris (75) freeze chance", "Disk pve: Samsung SSD…".
-  if (name.length > 45 || /[():]/.test(name)) return true;
+  // …or carries an account or serial number ("BNP Paribas FR7630004…").
+  if (name.length > 45 || /[():]/.test(name) || /\d{10,}/.test(name)) return true;
   return TECHNICAL_NAME.test(name) || TECHNICAL_NAME.test(entity.entity_id.replace(/[._]/g, " "));
 }
 

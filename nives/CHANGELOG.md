@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.21.2 — Scripts that answer, Shield, account numbers
+
+- A script that returns something (Tasker scripts acknowledge every action) no longer makes the local model read its answer again once it has written its line: "mode avion" is one pass. The two-step calendar, written without a line on its first pass, still reads the converted dates.
+- `local_llm_prompt.fr.txt`: the Shield scripts (launch an app, press a key), and the calendar script's `recipent` field as the script spells it.
+- A name carrying a long number (an account number, a serial) counts as technical: it never appears in everyday examples.
+- Phrasebook: a script with fields and no entity (`script.shield_lancer_app {"app": "netflix"}`) is read correctly.
+
 ## 0.21.1 — The phone, the silent way
 
 - Calls and texts with the silent local model: it finds the contact and hands over (`>demande`); Mistral reads the name, the number and, for a text, the proposed message back ("Jean Martin, sur son mobile au 06…, je l'appelle ?"); on "oui" the local model runs `script.appeler` or `script.envoyer_sms` with the confirmed number and text. "Non" leaves it there.
