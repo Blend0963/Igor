@@ -53,8 +53,10 @@ PY="$WORK/venv/bin/python"
   || "$PY" -m pip install -q torch || fail "installation de PyTorch"
 "$PY" -m pip install -q "transformers==4.56.2" "peft==0.17.1" "accelerate==1.10.1" safetensors sentencepiece protobuf cmake \
   || fail "installation de transformers et peft"
-"$PY" -c 'import torch; assert torch.cuda.is_available(), "CUDA"' \
-  || fail "PyTorch ne voit pas la carte : la machine louée est en panne (sur une carte SXM, « Error 802 » = Fabric Manager arrêté chez l'hébergeur). Supprime-la (Terminate) et prends-en une autre"
+# A real computation, not just is_available(): a PyTorch too old for the card
+# (Blackwell needs CUDA 12.8) sees it but has no code to run on it.
+"$PY" -c 'import torch; assert torch.cuda.is_available(), "CUDA"; x = torch.ones(64, 64, device="cuda"); assert float((x @ x).sum()) == 64 ** 3' \
+  || fail "PyTorch ne sait pas calculer sur la carte. « no kernel image » : PyTorch trop ancien pour elle (Blackwell : modèle PyTorch avec CUDA 12.8 ou plus). Sinon la machine louée est en panne (sur une carte SXM, « Error 802 » = Fabric Manager arrêté chez l'hébergeur). Supprime-la (Terminate) et prends-en une autre"
 # Facultatif : sans lui l'entraînement tourne quand même, un exemple à la fois, plus lentement.
 "$PY" -m pip install -q "liger-kernel==0.6.2" || printf 'ATTENTION — Liger Kernel non installé : entraînement plus lent\n'
 ok "$("$PY" -c 'import torch, transformers, peft; print(f"torch {torch.__version__}, transformers {transformers.__version__}, peft {peft.__version__}")')"
