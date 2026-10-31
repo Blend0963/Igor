@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.8 — The tablet's journal
+
+- Wall tablet: while Igor works it shows a plain terminal journal instead of the eye: your words, each step of the local model (the local model's time, each Home Assistant call with its entity, then "rien envoyé" or the online model and its time), each marked local or online, what was done, and Igor's answer as it is written. One solid background, no blur, no glow, nothing animated but a cursor: light enough for an old tablet. The tablet's microphone is no longer used.
+- The server returns this trace with every local turn, and the integration (0.1.15) keeps it on the voice sensor (`trace` attribute, not recorded). Restart Home Assistant once after updating.
+
 ## 0.21.7 — A silent order is remembered as done
 
 - An order the local model carried out in silence ("active la scène tamisée") is now kept in the conversation as done ("Scène tamisée activée."), though never said. Before, only the request was kept, unanswered: at the next spoken answer Mistral read it in the last exchanges and announced that the scene could not be activated. Mistral is also told to answer only the last message, never to come back to an earlier request.

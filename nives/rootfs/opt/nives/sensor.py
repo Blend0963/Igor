@@ -41,7 +41,7 @@ MAX_CHIPS = 12
 
 STATES = ["idle", "heard", "thinking", "answering", "done", "error"]
 TEXT_ATTRIBUTES = frozenset(
-    {"question", "answer", "status", "actions", "satellite", "started", "turn", VOICE_SENSOR_MARKER}
+    {"question", "answer", "status", "actions", "trace", "satellite", "started", "turn", VOICE_SENSOR_MARKER}
 )
 
 
@@ -58,6 +58,28 @@ async def async_setup_entry(
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+MAX_TRACE = 12
+
+
+def _clean_trace(trace: Any) -> list[dict[str, Any]]:
+    """The server's steps, kept short and to the expected shape."""
+    steps: list[dict[str, Any]] = []
+    if not isinstance(trace, list):
+        return steps
+    for item in trace[:MAX_TRACE]:
+        if not isinstance(item, dict) or not isinstance(item.get("step"), str):
+            continue
+        step: dict[str, Any] = {
+            "step": item["step"][:20],
+            "detail": str(item.get("detail") or "")[:120],
+            "where": item.get("where") if item.get("where") in ("local", "online", "none") else "none",
+        }
+        if isinstance(item.get("ms"), (int, float)):
+            step["ms"] = int(item["ms"])
+        steps.append(step)
+    return steps
 
 
 class IgorVoiceSensor(SensorEntity):
@@ -80,6 +102,7 @@ class IgorVoiceSensor(SensorEntity):
         self._answer = ""
         self._status = ""
         self._actions: list[dict[str, str]] = []
+        self._trace: list[dict[str, Any]] = []
         self._satellite: str | None = None
         self._started: str | None = None
         self._last_write = 0.0
@@ -95,6 +118,7 @@ class IgorVoiceSensor(SensorEntity):
             "answer": self._answer,
             "status": self._status,
             "actions": self._actions,
+            "trace": self._trace,
             "satellite": self._satellite,
             "started": self._started,
         }
@@ -135,6 +159,7 @@ class IgorVoiceSensor(SensorEntity):
         self._question = self._answer = ""
         self._status = "listening" if waiting else ""
         self._actions = []
+        self._trace = []
         self._satellite = satellite
         self._started = _now_iso()
         self._attr_native_value = "heard"
@@ -150,6 +175,7 @@ class IgorVoiceSensor(SensorEntity):
         self._answer = ""
         self._status = ""
         self._actions = []
+        self._trace = []
         self._satellite = satellite
         self._started = _now_iso()
         self._attr_native_value = "thinking"
@@ -177,8 +203,9 @@ class IgorVoiceSensor(SensorEntity):
             self._pending = async_call_later(self.hass, wait, self._write)
 
     @callback
-    def finish(self, answer: str | None, actions: Any = None, error: bool = False) -> None:
-        """The turn is over: the final answer, its chips, or an error."""
+    def finish(self, answer: str | None, actions: Any = None, error: bool = False, trace: Any = None) -> None:
+        """The turn is over: the final answer, its chips, or an error; and
+        the local turn's steps, for the tablet's journal."""
         self._cancel_timers()
         if answer:
             self._answer = answer[:MAX_TEXT]
@@ -188,6 +215,7 @@ class IgorVoiceSensor(SensorEntity):
                 if isinstance(chip, dict) and isinstance(chip.get("label"), str):
                     chips.append({"kind": str(chip.get("kind") or "set"), "label": chip["label"][:80]})
         self._actions = chips
+        self._trace = _clean_trace(trace)
         self._attr_native_value = "error" if error else "done"
         self._write()
         self._clear = async_call_later(self.hass, CLEAR_AFTER, self._reset)
@@ -202,6 +230,7 @@ class IgorVoiceSensor(SensorEntity):
         self._clear = None
         self._question = self._answer = self._status = ""
         self._actions = []
+        self._trace = []
         self._satellite = None
         self._attr_native_value = "idle"
         self._write()
