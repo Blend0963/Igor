@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.6 — The eye, all the way through
+
+- Wall tablet: Igor's eye replaces the bow tie in every phase (the bow tie stays, etched in the iris). Each phase has its own look: the iris opens at the name and breathes while Igor listens; it draws in to a bright point with one racing arc while the words are transcribed; it narrows and pulses, circled by two counter-turning arcs, while Igor thinks; it opens wide and pulses as it answers; it settles half open when done; it dims and flickers on an error.
+- The iris follows the voice in the room while Igor listens to you and while it speaks, from the tablet's own microphone: a loudness measured in the browser, never recorded or sent, used only while the display shows (the microphone is let go a minute after). The tablet asks for microphone permission the first time; some browsers also need one touch on the screen. `?igor_tablet_mic=0` turns it off; without it the iris keeps its own animations. Integration 0.1.14.
+
 ## 0.21.5 — Igor's eye
 
 - Wall tablet: while Igor listens (its name heard, or waiting for your answer), the bow tie gives way to Igor's eye, a black glass lens in a steel ring whose blue iris opens at its name, then breathes; the bow tie is etched in its centre. Thinking and answering keep the bow tie. Home Assistant loads the new display after the restart it asks for (integration 0.1.13).
