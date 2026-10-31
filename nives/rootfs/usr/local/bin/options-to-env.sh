@@ -82,6 +82,7 @@ MISTRAL_LIBRARY_IDS=$(jq -r '.mistral_library_ids // ""' "$OPTIONS")
 MISTRAL_CONNECTORS=$(jq -r '.mistral_connectors // ""' "$OPTIONS")
 OCR_PRICE=$(jq -r '.ocr_price_per_1000_pages // ""' "$OPTIONS")
 FAST_MODEL=$(jq -r '.fast_model // ""' "$OPTIONS")
+VOICE_REPLY_MODEL=$(jq -r '.voice_reply_model // ""' "$OPTIONS")
 LOCAL_LLM_URL=$(jq -r '.local_llm_url // ""' "$OPTIONS")
 LOCAL_LLM_KEY=$(jq -r '.local_llm_key // ""' "$OPTIONS")
 LOCAL_LLM_PROMPT=$(jq -r '.local_llm_prompt // ""' "$OPTIONS")
@@ -313,6 +314,7 @@ write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$MISTRAL_CONNECTORS" ] && write_env "MISTRAL_CONNECTORS" "$MISTRAL_CONNECTORS"
 [ -n "$OCR_PRICE" ] && write_env "OCR_PRICE_PER_1000_PAGES" "$OCR_PRICE"
 [ -n "$FAST_MODEL" ] && write_env "FAST_MODEL" "$FAST_MODEL"
+[ -n "$VOICE_REPLY_MODEL" ] && write_env "VOICE_REPLY_MODEL" "$VOICE_REPLY_MODEL"
 [ -n "$LOCAL_LLM_URL" ] && write_env "LOCAL_LLM_URL" "$LOCAL_LLM_URL"
 [ -n "$LOCAL_LLM_KEY" ] && write_env "LOCAL_LLM_KEY" "$LOCAL_LLM_KEY"
 [ -n "$LOCAL_LLM_PROMPT" ] && write_env "LOCAL_LLM_PROMPT" "$LOCAL_LLM_PROMPT"

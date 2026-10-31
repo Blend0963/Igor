@@ -98,6 +98,28 @@ class OwnVoice:
         while not done() and self.clock() < limit:
             self.sleep(0.05)
 
+    def _played(self, began: float, watched: bool, busy_before: bool) -> str:
+        """Wait until the voice started at `began` has come out of the
+        speakers and they are quiet; how it was judged."""
+        sp = self.speakers
+        if watched and not busy_before:
+            # The voice must have come out, then stopped.
+            self._wait(lambda: sp.last_sound >= began, max(0.0, began + self.start_wait - self.clock()))
+            heard = sp.last_sound >= began
+            self._wait(lambda: sp.quiet_for(self.tail), self.longest)
+            return "voice seen on the speakers" if heard else "voice never seen on the speakers"
+        if watched:
+            self._wait(lambda: sp.quiet_for(self.tail), self.settle)
+            return "something else playing"
+        return "speakers not watched"
+
+    def between(self, began: float, busy_before: bool = False) -> None:
+        """Inside `say`, between two sentences: the one announced at `began`
+        is heard to its end before the next is announced, which would
+        otherwise cut it off."""
+        sp = self.speakers
+        self._played(began, sp is not None and sp.listening, busy_before)
+
     def say(self, speak: Callable[[], None]) -> None:
         with self._lock:
             self._speaking += 1
@@ -109,16 +131,7 @@ class OwnVoice:
             speak()
         finally:
             returned = self.clock()
-            how = "speakers not watched"
-            if watched and not busy_before:
-                # The voice must have come out, then stopped.
-                self._wait(lambda: sp.last_sound >= began, max(0.0, began + self.start_wait - self.clock()))
-                heard = sp.last_sound >= began
-                self._wait(lambda: sp.quiet_for(self.tail), self.longest)
-                how = "voice seen on the speakers" if heard else "voice never seen on the speakers"
-            elif watched:
-                self._wait(lambda: sp.quiet_for(self.tail), self.settle)
-                how = "something else playing"
+            how = self._played(began, watched, busy_before)
             with self._lock:
                 self._speaking -= 1
                 self._until = max(self._until, self.clock() + self.tail)

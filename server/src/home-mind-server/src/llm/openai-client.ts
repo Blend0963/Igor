@@ -914,7 +914,7 @@ export class OpenAIChatEngine implements IChatEngine {
       ? `${result.text.trimEnd()}${result.text.trim() ? "\n\n" : ""}*[Réponse interrompue]*`
       : result.text + extraMedia;
 
-    console.log(`[usage] ${promptMode} ${turnUsage.describe()} tools=${toolsUsed.length} model=${local ? `${local.model} (acts) + ${this.config.llmModel} (answers)` : model}`);
+    console.log(`[usage] ${promptMode} ${turnUsage.describe()} tools=${toolsUsed.length} model=${local ? `${local.model} (acts) + ${this.answerModel(isVoice)} (answers)` : model}`);
     console.log(
       `[timing] ${promptMode} ${Object.entries(timing).map(([k, v]) => `${k}=${v}ms`).join(" ")} ` +
         `model_start=${modelStartedAt - startedAt}ms first_text=${firstTextAt ? `${firstTextAt - startedAt}ms` : "none"} ` +
@@ -1087,7 +1087,7 @@ export class OpenAIChatEngine implements IChatEngine {
     toolCtx?: ToolContext;
   }): Promise<{ text: string; usage?: TokenUsage }> {
     const { isVoice, signal, fallback } = opts;
-    const model = this.config.llmModel;
+    const model = this.answerModel(isVoice);
     // Without today's date it took "cette année" for the year it was trained
     // in, and searched the web for the wrong one.
     const now = `Date et heure actuelles : ${formatDateTimeWithOffset().display}.`;
@@ -1151,6 +1151,12 @@ export class OpenAIChatEngine implements IChatEngine {
       if (timer) clearTimeout(timer);
       signal?.removeEventListener("abort", stop);
     }
+  }
+
+  /** The online model that words the local model's replies: a faster one
+   *  for spoken replies when voice_reply_model is set, else the main one. */
+  private answerModel(isVoice: boolean): string {
+    return (isVoice && this.config.voiceReplyModel) || this.config.llmModel;
   }
 
   /**

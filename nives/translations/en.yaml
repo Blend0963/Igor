@@ -179,6 +179,14 @@ configuration:
       stays on the main model. Example on Mistral: ministral-8b-latest or
       mistral-small-latest. If it fails, the main model answers instead.
       Leave empty to use the main model for everything.
+  voice_reply_model:
+    name: Spoken replies model (local model)
+    description: >-
+      With the local model, the online model that words what Igor says aloud
+      (answers, readings, confirmations). A smaller one answers sooner, in a
+      plainer style; the chat panel and everything else keep the main model.
+      Example on Mistral: mistral-medium-latest or mistral-small-latest.
+      Empty = the main model.
   notify_service:
     name: Notification Service
     description: >-

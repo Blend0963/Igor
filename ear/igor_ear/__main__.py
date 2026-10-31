@@ -94,6 +94,7 @@ def run(settings: Settings) -> None:
     from collections import deque
 
     from .segmenter import Segmenter, Utterance
+    from .speech import Sentences, Speaker
     from .stt import Transcriber
     from .vad import Vad
 
@@ -176,6 +177,11 @@ def run(settings: Settings) -> None:
         listener.said(text)
         voice.say(lambda: ha.announce(settings.ha_url, settings.ha_token, settings.satellite, text))
 
+    def say_one(text: str) -> None:
+        """One sentence of a longer answer, inside the Speaker's voice.say."""
+        listener.said(text)
+        ha.announce(settings.ha_url, settings.ha_token, settings.satellite, text)
+
     def players_sounding(unknown: bool) -> bool:
         if settings.sound_from not in {"players", "both"} or not settings.media_players or watcher is None:
             return False
@@ -217,16 +223,39 @@ def run(settings: Settings) -> None:
     def act(audio: np.ndarray, conversation: str | None) -> Outcome:
         pcm = (np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes()
         started = time.monotonic()
+        # The answer is said a sentence at a time as it is written: the first
+        # one does not wait for the rest, nor for the voice of the rest.
+        sentences, streamed = Sentences(), []
+        speaker = Speaker(say_one, voice)
+
+        def on_text(text: str) -> None:
+            streamed.append(text)
+            for sentence in sentences.push(text):
+                if not speaker.started:
+                    log.info("First sentence said after %.1f s", time.monotonic() - started)
+                speaker.add(sentence)
+
         try:
             r = ha.run_pipeline(settings.ha_url, settings.ha_token, pcm, settings.pipeline or None,
-                                conversation, device_id)
+                                conversation, device_id, on_text=on_text)
         except Exception as err:  # noqa: BLE001
+            speaker.finish()
             return Outcome(error=str(err))
         # From the sentence sent to Igor's answer in hand: Home Assistant's
         # transcription and Igor itself, before the satellite speaks.
         log.info("Igor answered in %.1f s (transcription %.1f s by Home Assistant, then Igor)",
                  time.monotonic() - started, r.stt_seconds)
-        if r.speech:
+        if speaker.started:
+            # What was written but not yet said, and anything the final
+            # answer adds to what was streamed.
+            rest, written = sentences.rest(), "".join(streamed)
+            if r.speech.startswith(written):
+                rest = f"{rest} {r.speech[len(written):]}".strip()
+            speaker.add(rest)
+            speaker.finish()
+            if speaker.errors:
+                r.error = r.error or f"announce: {speaker.errors[0]}"
+        elif r.speech:
             try:
                 say(r.speech)
             except Exception as err:  # noqa: BLE001

@@ -135,6 +135,16 @@ sentence still works as always, and `addressing = "name"` switches back.
   `smart_would_act` in the observations. Read a few days of it, then set
   `act = true`.
 
+## Answers said as they are written
+
+Igor's answer streams in from Home Assistant (intent-progress events, a
+recent Home Assistant). Each whole sentence is announced as soon as it is
+written, the next one once the previous has been heard to its end, so a
+long answer starts speaking without waiting for the rest nor for the voice
+of the rest. The journal says when the first sentence went out ("First
+sentence said after …"). With a Home Assistant that does not stream the
+answer, it is said whole at the end, as before.
+
 ## Resources
 
 **On an AMD card, or any machine running whisper-server** (the Radeon VII

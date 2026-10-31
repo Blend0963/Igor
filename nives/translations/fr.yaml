@@ -179,6 +179,14 @@ configuration:
       images, analyses) reste sur le modèle principal. Exemples chez Mistral :
       mistral-small-latest ou ministral-8b-latest. S'il échoue, le modèle
       principal répond. Vide = le modèle principal pour tout.
+  voice_reply_model:
+    name: Modèle des réponses parlées (modèle local)
+    description: >-
+      Avec le modèle local, le modèle en ligne qui formule ce qu'Igor dit à
+      voix haute (réponses, lectures, confirmations). Un modèle plus petit
+      répond plus vite, dans un style plus simple ; le panneau de discussion
+      et tout le reste gardent le modèle principal. Exemples chez Mistral :
+      mistral-medium-latest ou mistral-small-latest. Vide = le modèle principal.
   notify_service:
     name: Service de notification
     description: >-

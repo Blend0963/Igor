@@ -30,6 +30,10 @@ def handler(ws):
                 for event in [
                     {"type": "stt-start", "data": {}},
                     {"type": "stt-end", "data": {"stt_output": {"text": "Igor éteins la lumière"}}},
+                    {"type": "intent-start", "data": {}},
+                    {"type": "intent-progress", "data": {"chat_log_delta": {"role": "assistant"}}},
+                    {"type": "intent-progress", "data": {"chat_log_delta": {"content": "C'est fait. "}}},
+                    {"type": "intent-progress", "data": {"chat_log_delta": {"content": "Autre chose ?"}}},
                     {"type": "intent-end", "data": {"intent_output": {
                         "conversation_id": "conv-9", "continue_conversation": True,
                         "response": {"speech": {"plain": {"speech": "C'est fait. Autre chose ?"}}}}}},
@@ -98,6 +102,13 @@ def test_pipeline_sends_audio_and_reads_answer(server):
     assert r.heard == "Igor éteins la lumière"
     assert r.speech == "C'est fait. Autre chose ?"
     assert r.conversation_id == "conv-9" and r.continue_conversation and not r.error
+
+
+def test_pipeline_streams_the_answer_as_it_is_written(server):
+    parts = []
+    r = ha.run_pipeline(server[0], TOKEN, b"\0\0" * 100, on_text=parts.append)
+    assert parts == ["C'est fait. ", "Autre chose ?"]
+    assert r.speech == "C'est fait. Autre chose ?" and r.stt_seconds >= 0
 
 
 def test_device_of(server):

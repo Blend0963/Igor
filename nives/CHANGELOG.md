@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.21.4 — Faster spoken answers, a faster ear
+
+- New option `voice_reply_model`: with the local model, the online model that words what Igor says aloud (answers, readings, confirmations). A smaller one (`mistral-medium-latest`, `mistral-small-latest`) answers sooner; the chat panel and everything else keep the main model. Empty = the main model, as before.
+- igor-ear 0.2.0 (`ear/`, update it on its machine):
+  - `[stt] server`: the name is heard by whisper.cpp's `whisper-server` on the machine's GPU, any GPU, AMD included, instead of faster-whisper on the CPU (it only knows NVIDIA cards).
+  - Igor's answer is said a sentence at a time while it is still being written, instead of once whole.
+  - The journal says how long Igor took to answer and when its first sentence went out; a silent order is no longer called "not for Igor"; `run.sh report` works again. The README advises Home Assistant's local address: a public name made each sentence leave the house, and cost one install 5 seconds a sentence.
+
 ## 0.21.3 — Silent orders stay silent
 
 - An order the local model carries out without a word ("allume le salon") no longer makes Home Assistant say "I received your request but got no response.": the server marks the empty reply `silent`, and the integration (0.1.12) says nothing, as for a sentence not said to Igor. Restart Home Assistant once after updating so it loads the new integration.
