@@ -428,3 +428,46 @@ def test_a_full_sentence_with_the_name_opens_no_window():
     listener.handle(audio())
     clock.t = 4
     assert listener.handle(audio())["reason"] == "not_addressed"
+
+
+# --- a television sounding: stricter -------------------------------------------
+def make_strict(texts, sounding=True):
+    from igor_ear.addressing import Addressing
+    from igor_ear.listener import Listener, Outcome
+
+    heard = iter(texts)
+    sent = []
+
+    def stt(a):
+        return Transcript(next(heard), 0.3, 0.1, -0.2)
+
+    def do(a, conversation):
+        sent.append(a)
+        return Outcome("x", "Très bien.", "conv", True)
+
+    listener = Listener(stt, Addressing(), do, strict=lambda: sounding)
+    return listener, sent
+
+
+def test_with_a_television_the_followup_takes_an_order_or_a_short_answer_only():
+    listener, sent = make_strict(["Igor, quelle heure est-il ?", "Il y a un humain pour tenter d'être un monstre.",
+                                  "oui", "éteins la lumière du salon"])
+    assert listener.handle(audio())["sent"]
+    e = listener.handle(audio())
+    assert not e["accepted"] and e["reason"] == "media_not_request" and e["media"]
+    assert listener.handle(audio())["reason"] == "followup"
+    assert listener.handle(audio())["accepted"]
+
+
+def test_without_a_television_the_followup_takes_anything():
+    listener, sent = make_strict(["Igor, quelle heure est-il ?", "Il y a un humain pour tenter d'être un monstre."],
+                                 sounding=False)
+    listener.handle(audio())
+    e = listener.handle(audio())
+    assert e["accepted"] and e["reason"] == "followup"
+
+
+def test_with_a_television_a_name_one_letter_off_is_not_taken():
+    listener, sent = make_strict(["Egor, éteins la lumière du salon"])
+    e = listener.handle(audio())
+    assert not e["accepted"] and e["reason"] == "near_name_media" and not sent

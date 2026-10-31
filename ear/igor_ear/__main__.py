@@ -127,9 +127,10 @@ def run(settings: Settings) -> None:
         elif entity == settings.presence_entity:
             log.info("Presence: %s", state)
 
-    # Sound in the house matters to the smart judge, and to closing the ear
-    # while it plays ([media] when_media = "closed"), in either mode.
-    watch_sound = settings.addressing == "smart" or settings.when_media == "closed"
+    # Sound in the house matters to the smart judge, to closing the ear while
+    # it plays ([media] when_media = "closed"), and to a stricter ear while it
+    # plays ("name", the default), in either mode.
+    watch_sound = settings.addressing == "smart" or settings.when_media in {"closed", "name"}
 
     watcher = None
     if connected:
@@ -326,6 +327,8 @@ def run(settings: Settings) -> None:
         judge_allowed=lambda: not media_sounding(),
         judge_acts=settings.smart_act,
         spotter=make_spotter(settings),
+        # Unknown (monitor unreadable) is not taken as sounding: the name works.
+        strict=lambda: settings.when_media == "name" and media_sounding(False),
     )
     utterances: queue.Queue[Utterance] = queue.Queue(maxsize=8)
     pending: deque[Utterance] = deque()

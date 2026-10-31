@@ -84,3 +84,11 @@ def test_settings_names(tmp_path):
     assert s.names == ["mado"] and s.hotwords == "Mado" and s.spotter == "vosk"
     f.write_text('[name]\nspotter = "off"\n')
     assert load(f).spotter == "off" and load(f).hotwords == "Igor"
+
+
+def test_with_a_television_vosk_alone_does_not_wake_igor():
+    heard, spotted, sent = iter([t("Hector, allume la lumière")]), iter([Spot(["igor"], 3, first=True)]), []
+    listener = Listener(lambda a: next(heard), Addressing(), lambda a, c: sent.append(a) or Outcome(),
+                        clock=lambda: 0.0, spotter=lambda a: next(spotted), strict=lambda: True)
+    e = listener.handle(np.zeros(16000, dtype=np.float32))
+    assert not e["accepted"] and e["vosk_ignored"] and not sent
