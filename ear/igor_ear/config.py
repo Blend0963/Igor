@@ -177,8 +177,8 @@ def load(path: Path = CONFIG) -> Settings:
     s.sink = str(media.get("sink", s.sink))
     s.quiet_db = float(media.get("quiet_db", s.quiet_db))
     s.when_media = str(media.get("when_media", s.when_media)).strip().lower()
-    if s.when_media not in {"name", "closed"}:
-        raise ValueError(f'[media] when_media must be "name" or "closed", not "{s.when_media}"')
+    if s.when_media not in {"name", "strict", "closed"}:
+        raise ValueError(f'[media] when_media must be "name", "strict" or "closed", not "{s.when_media}"')
     s.followup = bool(mode.get("followup", s.followup))
     s.followup_seconds = float(mode.get("followup_seconds", s.followup_seconds))
     s.name_wait = float(mode.get("name_wait", s.name_wait))

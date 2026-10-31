@@ -86,6 +86,18 @@
 
   // ----- the overlay -----
   var BOW = '<svg viewBox="0 0 64 40" aria-hidden="true"><path d="M27 15.5 L8 6 Q5 4.5 5 8 V32 Q5 35.5 8 34 L27 24.5 Z M37 15.5 L56 6 Q59 4.5 59 8 V32 Q59 35.5 56 34 L37 24.5 Z" fill="#fff"/><rect x="26" y="13" width="12" height="14" rx="3.5" fill="#81D4FA"/></svg>';
+  // Igor's eye, shown while it listens: a black glass lens in a steel ring,
+  // whose blue iris opens at its name, then breathes; the bow tie is etched
+  // in its centre.
+  var EYE = '<svg viewBox="0 0 120 120" aria-hidden="true"><defs>' +
+    '<radialGradient id="igor-lens" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#E1F5FE"/><stop offset="0.25" stop-color="#4FC3F7"/><stop offset="0.6" stop-color="#0277BD"/><stop offset="1" stop-color="#01325A" stop-opacity="0"/></radialGradient>' +
+    '<radialGradient id="igor-glass" cx="50%" cy="50%" r="50%"><stop offset="0.55" stop-color="#05080B"/><stop offset="1" stop-color="#16202A"/></radialGradient></defs>' +
+    '<circle class="halo" cx="60" cy="60" r="58" fill="none" stroke="#03A9F4" stroke-width="2"/>' +
+    '<circle cx="60" cy="60" r="54" fill="#0B1117" stroke="#3B4A56" stroke-width="3"/>' +
+    '<circle cx="60" cy="60" r="44" fill="url(#igor-glass)" stroke="#202C36" stroke-width="2"/>' +
+    '<circle class="iris" cx="60" cy="60" r="34" fill="url(#igor-lens)"/>' +
+    '<svg x="49" y="53" width="22" height="14" viewBox="0 0 64 40"><path d="M27 15.5 L8 6 Q5 4.5 5 8 V32 Q5 35.5 8 34 L27 24.5 Z M37 15.5 L56 6 Q59 4.5 59 8 V32 Q59 35.5 56 34 L37 24.5 Z" fill="#04090E"/><rect x="26" y="13" width="12" height="14" rx="3.5" fill="#fff"/></svg>' +
+    '<ellipse cx="44" cy="38" rx="14" ry="7" fill="#fff" opacity="0.18" transform="rotate(-30 44 38)"/></svg>';
   var CSS = [
     ":host { all: initial; }",
     ".veil { position: fixed; inset: 0; z-index: 2147483000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 6vh 6vw; box-sizing: border-box;",
@@ -94,13 +106,19 @@
     ".veil.on { opacity: 1; pointer-events: auto; }",
     ".bow { width: 120px; height: 75px; filter: drop-shadow(0 8px 18px rgba(3,169,244,0.55)); }",
     ".bow svg { width: 100%; height: 100%; }",
-    ".veil[data-phase=listening] .bow { animation: flap 1.1s ease-in-out infinite; }",
+    ".bow, .eye { transition: opacity 0.3s ease, transform 0.3s ease; }",
+    ".eye { position: absolute; width: 150px; height: 150px; opacity: 0; transform: scale(0.8); filter: drop-shadow(0 0 22px rgba(3,169,244,0.45)); }",
+    ".eye > svg { width: 100%; height: 100%; overflow: visible; }",
+    ".eye .iris { transform-box: fill-box; transform-origin: center; transform: scale(0.35); opacity: 0.35; }",
+    ".eye .halo { opacity: 0.15; filter: drop-shadow(0 0 8px #03A9F4); }",
+    ".veil[data-phase=listening] .eye { opacity: 1; transform: none; }",
+    ".veil[data-phase=listening] .bow { opacity: 0; transform: scale(0.6); }",
+    ".veil[data-phase=listening] .eye .iris { animation: awaken 0.9s cubic-bezier(0.4,0,0.2,1) both, breathe 2.6s ease-in-out 0.9s infinite; }",
+    ".veil[data-phase=listening] .eye .halo { animation: halo-on 0.9s ease-out both, halo-breathe 2.6s ease-in-out 0.9s infinite; }",
     ".veil[data-phase=thinking] .bow { animation: flap 0.8s ease-in-out infinite; }",
     ".veil[data-phase=answering] .bow { animation: float 3s ease-in-out infinite; }",
     ".veil[data-phase=done] .bow { animation: adjust 0.9s ease both; }",
-    ".rings { position: absolute; width: 120px; height: 120px; border-radius: 50%; border: 2px solid rgba(129,212,250,0.6); opacity: 0; }",
-    ".veil[data-phase=listening] .rings { animation: ring 1.8s ease-out infinite; }",
-    ".head { position: relative; display: flex; align-items: center; justify-content: center; }",
+    ".head { position: relative; display: flex; align-items: center; justify-content: center; width: 150px; height: 150px; }",
     ".label { font-size: clamp(18px, 2.4vw, 26px); letter-spacing: 0.04em; color: #B3E5FC; min-height: 1.4em; text-align: center; transition: opacity 0.2s; }",
     ".label .time { opacity: 0.75; font-variant-numeric: tabular-nums; margin-left: 8px; }",
     ".label.swap { opacity: 0; }",
@@ -115,7 +133,10 @@
     "@keyframes flap { 0%,100% { transform: scaleX(1); } 50% { transform: scaleX(0.6); } }",
     "@keyframes float { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-6px) rotate(-4deg); } }",
     "@keyframes adjust { 0% { transform: rotate(0); } 25% { transform: rotate(-14deg); } 55% { transform: rotate(9deg); } 80% { transform: rotate(-3deg); } 100% { transform: rotate(0); } }",
-    "@keyframes ring { 0% { transform: scale(0.8); opacity: 0.7; } 100% { transform: scale(2.2); opacity: 0; } }",
+    "@keyframes awaken { 0% { transform: scale(0.35); opacity: 0.35; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }",
+    "@keyframes breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(0.94); opacity: 0.88; } }",
+    "@keyframes halo-on { from { opacity: 0.15; } to { opacity: 1; } }",
+    "@keyframes halo-breathe { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }",
     "@keyframes msg { from { opacity: 0; transform: translateY(14px) scale(0.98); } to { opacity: 1; transform: none; } }",
     "@keyframes chip { from { opacity: 0; transform: translateY(5px) scale(0.7); } 70% { transform: scale(1.06); } to { opacity: 1; transform: none; } }",
     "@media (prefers-reduced-motion: reduce) { .veil *, .veil { animation: none !important; transition: none !important; } }"
@@ -134,12 +155,13 @@
     veil.setAttribute("aria-live", "polite");
     var head = document.createElement("div");
     head.className = "head";
-    var rings = document.createElement("div");
-    rings.className = "rings";
+    var eye = document.createElement("div");
+    eye.className = "eye";
+    eye.innerHTML = EYE;
     var bow = document.createElement("div");
     bow.className = "bow";
     bow.innerHTML = BOW;
-    head.appendChild(rings);
+    head.appendChild(eye);
     head.appendChild(bow);
     labelEl = document.createElement("div");
     labelEl.className = "label";
