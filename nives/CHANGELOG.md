@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.3 — Silent orders stay silent
+
+- An order the local model carries out without a word ("allume le salon") no longer makes Home Assistant say "I received your request but got no response.": the server marks the empty reply `silent`, and the integration (0.1.12) says nothing, as for a sentence not said to Igor. Restart Home Assistant once after updating so it loads the new integration.
+- Training (`ear/tools/llm-train`): `train.sh` hands the model, `eval.json` and `train.log` straight to the VM (`runpodctl send`, step 7) and stops the pod only once they are received; a pod restarted without a GPU can come back empty. The card is checked with a real computation, and a broken rented machine (Error 802 on SXM cards, a PyTorch too old for Blackwell) is named as such.
+
 ## 0.21.2 — Scripts that answer, Shield, account numbers
 
 - A script that returns something (Tasker scripts acknowledge every action) no longer makes the local model read its answer again once it has written its line: "mode avion" is one pass. The two-step calendar, written without a line on its first pass, still reads the converted dates.

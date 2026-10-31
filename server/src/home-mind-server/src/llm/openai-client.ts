@@ -968,6 +968,7 @@ export class OpenAIChatEngine implements IChatEngine {
       ...(error && !interrupted ? { error } : {}),
       usage: { model, ...turnUsage.totals() },
       ...(interrupted ? { interrupted: true } : {}),
+      ...(localSilent && response === "" ? { silent: true } : {}),
     };
   }
 

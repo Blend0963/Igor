@@ -78,6 +78,9 @@ export interface ChatResponse {
   /** A sentence from the always-on microphone that was not said to Igor:
    *  no answer is given, nothing is spoken or shown. */
   notForMe?: boolean;
+  /** An order carried out without a word (the local model's "-"): the empty
+   *  reply is the answer, not a failure, and nothing is spoken. */
+  silent?: boolean;
 }
 
 export type StreamCallback = (chunk: string) => void;

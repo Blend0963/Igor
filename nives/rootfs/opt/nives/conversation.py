@@ -601,8 +601,9 @@ class IgorConversationAgent(ConversationEntity):
             response_text = data.get("response")
             if response_text:
                 return response_text
-            if data.get("notForMe"):
-                # The always-on microphone's sentence was not said to Igor.
+            if data.get("notForMe") or data.get("silent"):
+                # The always-on microphone's sentence was not said to Igor,
+                # or an order was carried out without a word.
                 return ""
             error = data.get("error")
             if isinstance(error, dict):

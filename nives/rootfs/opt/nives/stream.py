@@ -123,8 +123,9 @@ class DeltaBuilder:
         for an empty reply, becomes its own message.
         """
         final = data.get("response")
-        if data.get("notForMe") and not final:
-            # A sentence that was not said to Igor: no answer, not even a hint.
+        if (data.get("notForMe") or data.get("silent")) and not final:
+            # A sentence that was not said to Igor, or an order carried out
+            # without a word: no answer, not even a hint.
             return
         if not isinstance(final, str) or final == "":
             error = data.get("error")
