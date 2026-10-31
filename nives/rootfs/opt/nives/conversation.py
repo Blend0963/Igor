@@ -299,7 +299,7 @@ class IgorConversationAgent(ConversationEntity):
                 # Not said to Igor: the tablet goes back to rest, showing nothing.
                 sensor.dismiss()
             else:
-                sensor.finish(builder.current_text, payload.get("actions"))
+                sensor.finish(builder.current_text, payload.get("actions"), trace=payload.get("trace"))
 
     async def _stream_events(
         self,

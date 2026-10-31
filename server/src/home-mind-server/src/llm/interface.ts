@@ -65,6 +65,15 @@ export interface ChatError {
   hint: string;
 }
 
+/** One step of a local turn: which part worked, on what, how long, and
+ *  whether it stayed in the house ("local"), went online, or was skipped. */
+export interface TraceStep {
+  step: string;
+  detail: string;
+  ms?: number;
+  where: "local" | "online" | "none";
+}
+
 export interface ChatResponse {
   response: string;
   toolsUsed: string[];
@@ -78,6 +87,8 @@ export interface ChatResponse {
   /** A sentence from the always-on microphone that was not said to Igor:
    *  no answer is given, nothing is spoken or shown. */
   notForMe?: boolean;
+  /** What a local turn did, step by step, for the wall tablet's journal. */
+  trace?: TraceStep[];
   /** An order carried out without a word (the local model's "-"): the empty
    *  reply is the answer, not a failure, and nothing is spoken. */
   silent?: boolean;

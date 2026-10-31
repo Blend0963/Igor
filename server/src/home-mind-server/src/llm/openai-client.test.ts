@@ -827,6 +827,7 @@ describe("OpenAIChatEngine", () => {
       const r = await engine.chat({ message: "quelle est la batterie de la télécommande ?", userId: "u", isVoice: true });
       expect(r.response).toBe("La télécommande est à 64 %.");
       expect(mockCreate.mock.calls[1][0].model).toBe("mistral-small-latest");
+      expect(r.trace?.at(-1)).toMatchObject({ step: "mistral", detail: "mistral-small-latest · ligne « >rep »", where: "online" });
     });
 
     it("always has a failed order said, even after the local model's '-'", async () => {
@@ -862,6 +863,9 @@ describe("OpenAIChatEngine", () => {
       expect(r.error).toBeFalsy();
       // Told apart from an empty failure, so the integration says nothing.
       expect(r.silent).toBe(true);
+      // The tablet's journal: the local model, the call, nothing sent online.
+      expect(r.trace?.map((t) => [t.step, t.where])).toEqual([["local", "local"], ["ha", "local"], ["en ligne", "none"]]);
+      expect(r.trace?.[1].detail).toBe("light.turn_on light.salon");
       // Kept in the conversation though not said: the next turn sees it done.
       expect(conversations.storeMessage).toHaveBeenLastCalledWith(expect.any(String), "u", "assistant", "Lumière salon allumée.");
       expect(mockCreate).toHaveBeenCalledTimes(1);
@@ -2216,5 +2220,15 @@ describe("OpenRouter session affinity", () => {
     const line = log.mock.calls.map((c) => String(c[0])).find((l) => l.includes("turn ok"));
     expect(line).toContain("provider=OpenAI");
     log.mockRestore();
+  });
+});
+
+describe("traceDetail", () => {
+  it("says a call in a few words", async () => {
+    const { traceDetail } = await import("./openai-client.js");
+    expect(traceDetail("call_service", { domain: "cover", service: "close_cover", entity_id: "cover.salon" })).toBe("cover.close_cover cover.salon");
+    expect(traceDetail("call_service", { domain: "script", service: "shield_lancer_app", data: { app: "netflix" } })).toBe("script.shield_lancer_app netflix");
+    expect(traceDetail("get_state", { entity_id: "sensor.th06_temperature" })).toBe("get_state sensor.th06_temperature");
+    expect(traceDetail("find_contact", { query: "Jean Martin" })).toBe("find_contact « Jean Martin »");
   });
 });

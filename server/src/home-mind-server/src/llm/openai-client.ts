@@ -14,6 +14,7 @@ import { isActionCommand, isSimpleRequest, mayBeOrder, selectThreadReasoning } f
 import { formatLiveState } from "./live-state.js";
 import { askIsOrder } from "./order-check.js";
 import { BRIEFING_HISTORY, BRIEFING_THREAD_ID, leanMode, SPOKEN_LENGTH_REMINDER, spokenSentenceCap } from "./lean.js";
+import type { TraceStep } from "./interface.js";
 import { ADDRESSEE_INSTRUCTIONS, addresseeQuestion, checkAddressee, needsAddresseeCheck } from "./addressee-check.js";
 import { SpokenGuard } from "./runaway.js";
 import { RECENT_FILE_MESSAGES, shortenAttachedFiles } from "../files/extract.js";
@@ -313,10 +314,12 @@ export class OpenAIChatEngine implements IChatEngine {
     // 0. A spoken sentence that names Igor after its opening may only talk
     // about it ("c'est Igor qui a éteint"): a small call decides, alongside
     // the memory loading below, before the main model is ever called.
+    const addresseeStart = Date.now();
     const addressee =
       isVoice && !scope.isThread && !request.unattended && needsAddresseeCheck(message)
         ? checkAddressee((signal) => this.askAddressee(message, signal), request.signal)
         : undefined;
+    let addresseeMs: number | undefined;
 
     // 1-3. Everything the prompt needs, read at once: none of these reads
     // depends on another, and run one after the other they cost a second
@@ -526,6 +529,7 @@ export class OpenAIChatEngine implements IChatEngine {
 
     if (addressee) {
       const verdict = await addressee;
+      addresseeMs = Date.now() - addresseeStart;
       if (!verdict.forMe) {
         // Not said to Igor: nothing answered, spoken or kept.
         const usage = new UsageTally();
@@ -639,8 +643,12 @@ export class OpenAIChatEngine implements IChatEngine {
       if (!firstTextAt && chunk.trim()) firstTextAt = Date.now();
       onChunk?.(chunk);
     };
+    // The wall tablet's journal of a local turn: each step, on what, how long, where.
+    const trace: TraceStep[] = [];
+    let localModelMs = 0;
     const call = async (forceAnswer: boolean, toolChoice?: "required") => {
       turnText = "";
+      const callStart = Date.now();
       const once = () =>
         this.streamCompletion(messages, isVoice, sink, forceAnswer, conversationId || effectiveConversationId, cacheKey, {
           tools,
@@ -658,8 +666,11 @@ export class OpenAIChatEngine implements IChatEngine {
           },
         });
       try {
-        return await once();
+        const answer = await once();
+        if (local) localModelMs += Date.now() - callStart;
+        return answer;
       } catch (error) {
+        if (local) localModelMs += Date.now() - callStart;
         // A fast model that is misspelled or unavailable must not cost the
         // user an answer: fall back to the main model for the rest of the turn.
         if (local || model === this.config.llmModel || signal?.aborted) throw error;
@@ -772,9 +783,14 @@ export class OpenAIChatEngine implements IChatEngine {
             };
           }
 
+          const toolStart = Date.now();
           const toolResult = local && tc.function.name === SHARE_MEMORY
             ? shareMemory(args.facts, factContents)
             : await handleToolCall(this.ha, tc.function.name, args, toolCtx);
+          if (local && tc.function.name !== SHARE_MEMORY) {
+            const failed = Boolean(toolResult && typeof toolResult === "object" && "error" in (toolResult as object));
+            trace.push({ step: "ha", detail: traceDetail(tc.function.name, args) + (failed ? " · échec" : ""), ms: Date.now() - toolStart, where: "local" });
+          }
           done.push({ name: tc.function.name, input: args, result: toolResult });
           return {
             role: "tool" as const,
@@ -848,10 +864,12 @@ export class OpenAIChatEngine implements IChatEngine {
           if (said) speak(said);
           localSilent = !said;
           if (localSilent) silentRecord = plainSentence ?? "C'est fait.";
+          trace.push({ step: "en ligne", detail: said ? "rien envoyé · phrase dite sur place" : "rien envoyé · ligne « - »", where: "none" });
           result = { text: said, finishReason: "stop", toolCalls: [], usage: undefined };
         } else {
           const brief = onlineBrief(tag, localTag?.note, localDone, message);
           console.log(`[route] local → ${this.config.llmModel}: ${brief.replace(/\n/g, " | ").slice(0, 400)}`);
+          const onlineStart = Date.now();
           const reply = await this.askOnline({
             instructions: ONLINE_BRIEF_INSTRUCTIONS,
             content: [
@@ -868,6 +886,7 @@ export class OpenAIChatEngine implements IChatEngine {
             toolCtx,
           });
           turnUsage.add(reply.usage);
+          trace.push({ step: "mistral", detail: `${this.answerModel(isVoice)} · ligne « >${tag} »`, ms: Date.now() - onlineStart, where: "online" });
           result = { text: reply.text, finishReason: "stop", toolCalls: [], usage: undefined };
         }
       }
@@ -974,6 +993,7 @@ export class OpenAIChatEngine implements IChatEngine {
       usage: { model, ...turnUsage.totals() },
       ...(interrupted ? { interrupted: true } : {}),
       ...(localSilent && response === "" ? { silent: true } : {}),
+      ...(local && trace.length ? { trace: this.fullTrace(trace, local.model, localModelMs, addresseeMs) } : {}),
     };
   }
 
@@ -1156,6 +1176,15 @@ export class OpenAIChatEngine implements IChatEngine {
       if (timer) clearTimeout(timer);
       signal?.removeEventListener("abort", stop);
     }
+  }
+
+  /** The journal as the tablet shows it: the addressee check and the local
+   *  model's own time first, then its calls and the route it chose. */
+  private fullTrace(steps: TraceStep[], localModel: string, modelMs: number, addresseeMs?: number): TraceStep[] {
+    const head: TraceStep[] = [];
+    if (addresseeMs !== undefined) head.push({ step: "destinataire", detail: `${this.addresseeModel()} · pour Igor`, ms: addresseeMs, where: "online" });
+    head.push({ step: "local", detail: localModel, ms: modelMs, where: "local" });
+    return [...head, ...steps].slice(0, 12);
   }
 
   /** The online model that words the local model's replies: a faster one
@@ -1396,4 +1425,17 @@ function parseArgs(tc: FunctionToolCall): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+/** A tool call in a few words for the tablet's journal: "light.turn_on light.salon". */
+export function traceDetail(name: string, args: Record<string, unknown>): string {
+  const target = (v: unknown) => (Array.isArray(v) ? v.join(",") : typeof v === "string" ? v : "");
+  if (name === "call_service") {
+    const service = `${String(args.domain ?? "")}.${String(args.service ?? "")}`;
+    const data = args.data && typeof args.data === "object" ? (args.data as Record<string, unknown>) : {};
+    const what = target(args.entity_id) || target(data.entity_id) || Object.values(data).filter((v) => typeof v === "string" || typeof v === "number").slice(0, 2).join(" ");
+    return `${service}${what ? ` ${what}` : ""}`.slice(0, 120);
+  }
+  const what = target(args.entity_id) || (typeof args.query === "string" ? `« ${args.query} »` : "");
+  return `${name}${what ? ` ${what}` : ""}`.slice(0, 120);
 }
