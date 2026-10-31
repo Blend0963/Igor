@@ -242,4 +242,6 @@ export const ONLINE_BRIEF_INSTRUCTIONS =
   "Dis les choses en mots (light.salon=on : la lumière du salon est allumée), jamais un identifiant ni une balise à voix haute. " +
   "Si rien n'a été trouvé, dis-le. Pour l'actualité, un résultat sportif, un prix, une élection ou tout ce qui change avec le temps, " +
   "cherche toujours avec web_search, quelle que soit la balise : ta mémoire peut être dépassée. Si la personne demande de chercher " +
-  "ou de vérifier, cherche à nouveau.";
+  "ou de vérifier, cherche à nouveau. " +
+  "Tu réponds seulement à ce dernier message : les échanges précédents ne sont que du contexte, tu ne reviens jamais " +
+  "sur une demande passée ni sur son résultat (une action faite en silence apparaît comme une réponse d'Igor déjà donnée).";

@@ -6,7 +6,8 @@ whether something is playing is to listen to what goes out: the monitor of
 the output sink, read at a low rate (parec, 8 kHz mono, a few kilobytes a
 second). A level above `quiet_db` means sound; it counts for `hold` seconds
 more, so the pauses in a film or a song do not reopen the smart judge
-between two lines.
+between two lines ([media] sound_hold; 0.3 s when the ear closes, so it
+reopens as soon as the sound stops).
 
 With PipeWire the monitor carries the sound before the sink's volume, so a
 muted sink, or one at 0 %, still shows the music there. Its mute and volume
@@ -28,7 +29,7 @@ import numpy as np
 log = logging.getLogger(__name__)
 
 RATE = 8000
-CHUNK = RATE // 4          # samples per measure: a quarter of a second
+CHUNK = RATE // 8          # samples per measure: an eighth of a second
 VOLUME_EVERY = 2.0         # seconds between two mute/volume readings
 # pactl is localised ("Muet : non"); its English output is what is parsed.
 C_LOCALE = {**os.environ, "LC_ALL": "C"}
@@ -60,9 +61,13 @@ class Speakers:
         quiet_db: float = -50.0,
         hold: float = 3.0,
         clock: Callable[[], float] = time.monotonic,
+        source: str = "",
     ) -> None:
         self.sink = sink
-        self.monitor = "@DEFAULT_MONITOR@" if sink == "@DEFAULT_SINK@" else f"{sink}.monitor"
+        # A source read directly (the input the television comes in on): only
+        # its own sound counts, not Igor's voice nor the sink's volume.
+        self.source = source
+        self.monitor = source or ("@DEFAULT_MONITOR@" if sink == "@DEFAULT_SINK@" else f"{sink}.monitor")
         self.quiet_db, self.hold, self.clock = quiet_db, hold, clock
         self.last_sound = -math.inf
         self.muted: bool | None = None
@@ -80,7 +85,7 @@ class Speakers:
         """Sound is coming out. `unknown` when the monitor cannot be read."""
         if not self.listening:
             return unknown
-        if self.muted or self.volume == 0:
+        if not self.source and (self.muted or self.volume == 0):
             return False
         return self.clock() - self.last_sound < self.hold
 
@@ -91,7 +96,8 @@ class Speakers:
     # --- reading -----------------------------------------------------------
     def start(self) -> None:
         threading.Thread(target=self._read_monitor, daemon=True).start()
-        threading.Thread(target=self._read_volume, daemon=True).start()
+        if not self.source:
+            threading.Thread(target=self._read_volume, daemon=True).start()
 
     def _read_monitor(self) -> None:
         delay = 5
@@ -99,7 +105,7 @@ class Speakers:
             try:
                 proc = subprocess.Popen(
                     ["parec", f"--device={self.monitor}", "--format=s16le", f"--rate={RATE}",
-                     "--channels=1", "--latency-msec=100", "--client-name=igor-ear-speakers"],
+                     "--channels=1", "--latency-msec=50", "--client-name=igor-ear-speakers"],
                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 )
                 log.info("Speakers: watching %s (sound above %.0f dB counts as playing)", self.monitor, self.quiet_db)

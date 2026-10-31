@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.7 — A silent order is remembered as done
+
+- An order the local model carried out in silence ("active la scène tamisée") is now kept in the conversation as done ("Scène tamisée activée."), though never said. Before, only the request was kept, unanswered: at the next spoken answer Mistral read it in the last exchanges and announced that the scene could not be activated. Mistral is also told to answer only the last message, never to come back to an earlier request.
+- igor-ear 0.2.4 (`ear/`, update it on its machine): with `[media] when_media = "closed"` the ear reopens about 0.4 s after the sound stops (`sound_hold`, 0.3 s), and `[media] watch_source` reads the television where it comes in (the sound card's input), so only its signal counts.
+
 ## 0.21.6 — The eye, all the way through
 
 - Wall tablet: Igor's eye replaces the bow tie in every phase (the bow tie stays, etched in the iris). Each phase has its own look: the iris opens at the name and breathes while Igor listens; it draws in to a bright point with one racing arc while the words are transcribed; it narrows and pulses, circled by two counter-turning arcs, while Igor thinks; it opens wide and pulses as it answers; it settles half open when done; it dims and flickers on an error.

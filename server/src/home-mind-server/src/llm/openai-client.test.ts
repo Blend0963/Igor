@@ -862,6 +862,8 @@ describe("OpenAIChatEngine", () => {
       expect(r.error).toBeFalsy();
       // Told apart from an empty failure, so the integration says nothing.
       expect(r.silent).toBe(true);
+      // Kept in the conversation though not said: the next turn sees it done.
+      expect(conversations.storeMessage).toHaveBeenLastCalledWith(expect.any(String), "u", "assistant", "Lumière salon allumée.");
       expect(mockCreate).toHaveBeenCalledTimes(1);
     });
 
