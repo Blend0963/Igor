@@ -58,6 +58,8 @@ class PipelineResult:
     conversation_id: str | None = None
     continue_conversation: bool = False
     error: str = ""
+    # Seconds from the end of the audio to Home Assistant's transcription.
+    stt_seconds: float = 0.0
 
 
 def run_pipeline(
@@ -68,8 +70,11 @@ def run_pipeline(
     conversation_id: str | None = None,
     device_id: str | None = None,
     timeout: float = 90,
+    on_text: Callable[[str], None] | None = None,
 ) -> PipelineResult:
-    """Speech in, Igor's answer out (as text; the satellite speaks it)."""
+    """Speech in, Igor's answer out (as text; the satellite speaks it).
+    `on_text` gets Igor's answer as it is written (Home Assistant's
+    intent-progress events), so it can be said before it ends."""
     result = PipelineResult()
     conn = connect(url, token)
     try:
@@ -94,6 +99,7 @@ def run_pipeline(
         conn.send(json.dumps(request))
         deadline = time.monotonic() + timeout
         sent = False
+        audio_done = 0.0
         while time.monotonic() < deadline:
             msg = json.loads(conn.recv(timeout=max(1.0, deadline - time.monotonic())))
             if msg.get("type") == "result":
@@ -115,8 +121,18 @@ def run_pipeline(
                     conn.send(prefix + pcm16[i:i + AUDIO_CHUNK])
                 conn.send(prefix)  # end of audio
                 sent = True
+                audio_done = time.monotonic()
             elif kind == "stt-end":
+                if sent:
+                    result.stt_seconds = time.monotonic() - audio_done
                 result.heard = str((data.get("stt_output") or {}).get("text", ""))
+            elif kind == "intent-progress" and on_text is not None:
+                content = (data.get("chat_log_delta") or {}).get("content")
+                if isinstance(content, str) and content:
+                    try:
+                        on_text(content)
+                    except Exception as err:  # noqa: BLE001 - the answer still arrives whole
+                        log.warning("Streamed answer not handled: %s", err)
             elif kind == "intent-end":
                 output = data.get("intent_output") or {}
                 response = output.get("response") or {}

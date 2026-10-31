@@ -813,6 +813,22 @@ describe("OpenAIChatEngine", () => {
       );
     });
 
+    it("words spoken replies with voice_reply_model when it is set", async () => {
+      vi.mocked(handleToolCall).mockResolvedValue({ entity_id: "sensor.tele_bat", state: "64", attributes: { friendly_name: "Batterie télécommande", unit_of_measurement: "%" } });
+      const engine = new OpenAIChatEngine(
+        { ...config, localLlmUrl: "http://192.168.1.20:8180/", localLlmKey: "k", localLlmModel: "qwen3-8b", voiceReplyModel: "mistral-small-latest" },
+        memory, conversations, extractor, ha,
+        { refreshIfStale: vi.fn(), hasProfiles: () => false } as unknown as DeviceScanner,
+        { refreshIfStale: vi.fn(), hasLayout: () => false } as unknown as TopologyScanner
+      );
+      mockCreate
+        .mockResolvedValueOnce(makeStream([{ choices: [{ delta: { content: ">rep", tool_calls: [{ index: 0, id: "c1", function: { name: "get_state", arguments: '{"entity_id":"sensor.tele_bat"}' } }] }, finish_reason: "tool_calls" }] }]))
+        .mockResolvedValueOnce(reply("La télécommande est à 64 %."));
+      const r = await engine.chat({ message: "quelle est la batterie de la télécommande ?", userId: "u", isVoice: true });
+      expect(r.response).toBe("La télécommande est à 64 %.");
+      expect(mockCreate.mock.calls[1][0].model).toBe("mistral-small-latest");
+    });
+
     it("always has a failed order said, even after the local model's '-'", async () => {
       vi.mocked(handleToolCall).mockResolvedValue({ error: "Home Assistant refused the call" });
       mockCreate

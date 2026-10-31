@@ -154,3 +154,20 @@ def test_just_spoke_covers_the_speakers_hold():
     assert voice.just_spoke(3.5)
     t[0] = voice.ended + 3.6
     assert not voice.just_spoke(3.5)
+
+
+def test_between_waits_for_the_first_sentence_to_be_heard():
+    # Sentence one is announced at 0, returns at 0.2 and plays 1.0 to 2.0:
+    # the second is announced only once it has been heard to its end.
+    t = [0.0]
+    voice = voice_with(FakeSpeakers(t, start=1.0, stop=2.0), t)
+    times = []
+
+    def speak():
+        began = t[0]
+        t[0] += 0.2
+        voice.between(began)
+        times.append(t[0])
+
+    voice.say(speak)
+    assert 2.3 <= times[0] < 2.5

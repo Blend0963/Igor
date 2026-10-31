@@ -1,15 +1,23 @@
-"""Local transcription with faster-whisper.
+"""Local transcription: whisper.cpp's server, or faster-whisper.
 
-On the GTX 960 (compute capability 5.2) CTranslate2 only runs float32, so
-the default is the "small" model in float32 on the GPU (about 1 GB of its
-2 GB), falling back to int8 on the CPU when the GPU cannot be used.
+With `[stt] server` set, each sentence goes to whisper-server on this
+machine (whisper.cpp, Vulkan: any GPU, AMD included, about half a second a
+sentence), the one Home Assistant's own speech-to-text uses. Otherwise
+faster-whisper runs here: on an NVIDIA GPU (the GTX 960, compute capability
+5.2, runs float32 only: "small" takes about 1 GB of its 2 GB), else int8 on
+the CPU, slow and poor at a distance.
 """
 from __future__ import annotations
 
+import io
+import json
 import logging
 import subprocess
 import sys
 import time
+import urllib.request
+import uuid
+import wave
 from dataclasses import dataclass
 
 import numpy as np
@@ -62,6 +70,47 @@ def louder(audio: np.ndarray) -> np.ndarray:
     return (audio * min(TARGET_PEAK / peak, MAX_GAIN)).astype(np.float32)
 
 
+def wav_bytes(audio: np.ndarray, rate: int = 16000) -> bytes:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes((np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes())
+    return buffer.getvalue()
+
+
+def server_transcribe(url: str, audio: np.ndarray, language: str, prompt: str, timeout: float = 30) -> dict:
+    """POST one sentence to whisper.cpp's /inference; its verbose JSON."""
+    boundary = uuid.uuid4().hex
+    fields = [("response_format", "verbose_json"), ("temperature", "0.0"), ("language", language)]
+    if prompt:
+        fields.append(("prompt", prompt))
+    parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode() for k, v in fields]
+    parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="a.wav"\r\n'
+                 "Content-Type: audio/wav\r\n\r\n".encode() + wav_bytes(audio) + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode())
+    request = urllib.request.Request(
+        f"{url.rstrip('/')}/inference",
+        data=b"".join(parts),
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read())
+
+
+def read_server(reply: dict) -> tuple[str, float, float]:
+    """Text, doubt that it is speech, and confidence, from whisper.cpp's
+    reply. Older servers give no doubt or confidence: taken as speech."""
+    segments = [s for s in reply.get("segments") or [] if isinstance(s, dict)]
+    text = str(reply.get("text") or " ".join(str(s.get("text", "")) for s in segments)).strip()
+    if not segments:
+        return text, (0.0 if text else 1.0), 0.0
+    no_speech = max(float(s.get("no_speech_prob", 0.0)) for s in segments)
+    logprob = min(float(s.get("avg_logprob", 0.0)) for s in segments)
+    return text, no_speech, logprob
+
+
 class Transcriber:
     def __init__(
         self,
@@ -71,10 +120,23 @@ class Transcriber:
         cpu_threads: int = 2,
         hotwords: str = "Igor",
         beam_size: int = 0,
+        server: str = "",
     ) -> None:
+        self.language = language
+        self.server = ""
+        if server:
+            try:
+                start = time.monotonic()
+                server_transcribe(server, np.zeros(16000, dtype=np.float32), language, hotwords)
+                self.server, self.device, self.beam_size = server, f"whisper-server {server}", 0
+                self.hotwords = hotwords
+                log.info("Transcription: whisper-server at %s (%.1f s for one second of silence)",
+                         server, time.monotonic() - start)
+                return
+            except Exception as err:  # noqa: BLE001 - faster-whisper here instead
+                log.warning("whisper-server at %s unavailable (%s); transcribing here instead", server, err)
         from faster_whisper import WhisperModel
 
-        self.language = language
         # "Igor" is no French word: told to expect it, Whisper writes it the
         # same way every time.
         self.hotwords = hotwords or None
@@ -121,6 +183,14 @@ class Transcriber:
 
     def __call__(self, audio: np.ndarray) -> Transcript:
         start = time.monotonic()
+        if self.server:
+            try:
+                text, no_speech, logprob = read_server(
+                    server_transcribe(self.server, louder(audio), self.language, self.hotwords or ""))
+            except Exception as err:  # noqa: BLE001 - one sentence lost, not the service
+                log.warning("whisper-server failed on this sentence: %s", err)
+                text, no_speech, logprob = "", 1.0, -10.0
+            return Transcript(text, time.monotonic() - start, no_speech, logprob)
         segments = self._run(louder(audio))
         text = " ".join(s.text.strip() for s in segments).strip()
         no_speech = max((s.no_speech_prob for s in segments), default=1.0)

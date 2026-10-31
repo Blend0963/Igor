@@ -57,8 +57,10 @@ def sent_summary(entry: dict) -> str:
     """What Home Assistant made of a sent sentence, for the journal."""
     heard = entry.get("voxtral") or ""
     if heard and not entry.get("error") and not entry.get("answer"):
-        # Igor judged the sentence was said about it, not to it: silence.
-        return f" -> heard {heard!r}, not for Igor: no answer"
+        # Silence: an order carried out without a word ("ferme les volets"),
+        # or a sentence Igor judged was said about it, not to it. Home
+        # Assistant gives the same empty answer for both.
+        return f" -> heard {heard!r}, no spoken answer (an order done in silence, or not said to Igor)"
     outcome = entry.get("error") or entry.get("answer") or "no answer"
     return f" -> heard {heard!r}, {'error' if entry.get('error') else 'answered'}: {outcome}" if heard or entry.get("error") \
         else f" -> Home Assistant transcribed nothing ({outcome})"
@@ -92,6 +94,7 @@ def run(settings: Settings) -> None:
     from collections import deque
 
     from .segmenter import Segmenter, Utterance
+    from .speech import Sentences, Speaker
     from .stt import Transcriber
     from .vad import Vad
 
@@ -174,6 +177,11 @@ def run(settings: Settings) -> None:
         listener.said(text)
         voice.say(lambda: ha.announce(settings.ha_url, settings.ha_token, settings.satellite, text))
 
+    def say_one(text: str) -> None:
+        """One sentence of a longer answer, inside the Speaker's voice.say."""
+        listener.said(text)
+        ha.announce(settings.ha_url, settings.ha_token, settings.satellite, text)
+
     def players_sounding(unknown: bool) -> bool:
         if settings.sound_from not in {"players", "both"} or not settings.media_players or watcher is None:
             return False
@@ -214,12 +222,40 @@ def run(settings: Settings) -> None:
 
     def act(audio: np.ndarray, conversation: str | None) -> Outcome:
         pcm = (np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes()
+        started = time.monotonic()
+        # The answer is said a sentence at a time as it is written: the first
+        # one does not wait for the rest, nor for the voice of the rest.
+        sentences, streamed = Sentences(), []
+        speaker = Speaker(say_one, voice)
+
+        def on_text(text: str) -> None:
+            streamed.append(text)
+            for sentence in sentences.push(text):
+                if not speaker.started:
+                    log.info("First sentence said after %.1f s", time.monotonic() - started)
+                speaker.add(sentence)
+
         try:
             r = ha.run_pipeline(settings.ha_url, settings.ha_token, pcm, settings.pipeline or None,
-                                conversation, device_id)
+                                conversation, device_id, on_text=on_text)
         except Exception as err:  # noqa: BLE001
+            speaker.finish()
             return Outcome(error=str(err))
-        if r.speech:
+        # From the sentence sent to Igor's answer in hand: Home Assistant's
+        # transcription and Igor itself, before the satellite speaks.
+        log.info("Igor answered in %.1f s (transcription %.1f s by Home Assistant, then Igor)",
+                 time.monotonic() - started, r.stt_seconds)
+        if speaker.started:
+            # What was written but not yet said, and anything the final
+            # answer adds to what was streamed.
+            rest, written = sentences.rest(), "".join(streamed)
+            if r.speech.startswith(written):
+                rest = f"{rest} {r.speech[len(written):]}".strip()
+            speaker.add(rest)
+            speaker.finish()
+            if speaker.errors:
+                r.error = r.error or f"announce: {speaker.errors[0]}"
+        elif r.speech:
             try:
                 say(r.speech)
             except Exception as err:  # noqa: BLE001
@@ -274,7 +310,7 @@ def run(settings: Settings) -> None:
 
     vad, segmenter = Vad(), Segmenter()
     stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords,
-                      settings.beam_size)
+                      settings.beam_size, settings.stt_server)
     listener = Listener(
         stt,
         Addressing(extra_targets=settings.extra_targets, names=settings.names),
@@ -422,7 +458,7 @@ def bench(settings: Settings, seconds: float) -> None:
     print(f"Loading the model ({settings.model}, {settings.device})…", flush=True)
     t0 = time.monotonic()
     stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords,
-                      settings.beam_size)
+                      settings.beam_size, settings.stt_server)
     print(f"Ready on {stt.device} (beam {stt.beam_size}) in {time.monotonic() - t0:.1f}s")
     print(f"Speak now: recording {seconds:.0f}s from {settings.source}…", flush=True)
     vad, chunks, probs = Vad(), [], []
@@ -468,7 +504,8 @@ def report(settings: Settings) -> None:
         print("Nothing noted yet.")
         return
     reasons = Counter(e["reason"] for e in entries)
-    stt = [e["stt_s"] for e in entries]
+    # A sentence dropped before transcription (satellite busy) has no time.
+    stt = [e["stt_s"] for e in entries if "stt_s" in e] or [0.0]
     print(f"{len(entries)} sentences since {entries[0]['time']}; transcription {np.mean(stt):.2f}s on average, {max(stt):.2f}s at worst")
     for reason, count in reasons.most_common():
         print(f"  {reason:14} {count}")

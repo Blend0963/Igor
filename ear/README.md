@@ -81,7 +81,10 @@ bash ~/MaDo/ear/install.sh
 ```
 
 Then edit `~/.config/igor-ear/config.toml`: microphone source (from
-`pactl list short sources`), Home Assistant URL, a long-lived token
+`pactl list short sources`), Home Assistant URL (its address on the local
+network, `http://<ip>:8123`: through a public name, every sentence leaves the
+house and back, and a name that resolves slowly adds seconds to each one;
+one install measured 5.1 s against 0.014 s), a long-lived token
 (Profile > Security), the satellite entity and optionally a presence entity.
 `act = true` once observation looks right. Then:
 
@@ -132,7 +135,26 @@ sentence still works as always, and `addressing = "name"` switches back.
   `smart_would_act` in the observations. Read a few days of it, then set
   `act = true`.
 
+## Answers said as they are written
+
+Igor's answer streams in from Home Assistant (intent-progress events, a
+recent Home Assistant). Each whole sentence is announced as soon as it is
+written, the next one once the previous has been heard to its end, so a
+long answer starts speaking without waiting for the rest nor for the voice
+of the rest. The journal says when the first sentence went out ("First
+sentence said after …"). With a Home Assistant that does not stream the
+answer, it is said whole at the end, as before.
+
 ## Resources
+
+**On an AMD card, or any machine running whisper-server** (the Radeon VII
+VM): set `[stt] server = "http://127.0.0.1:8178"`. Each sentence is then
+transcribed by whisper.cpp on the GPU, about half a second, instead of
+faster-whisper on two CPU cores at low priority (faster-whisper only knows
+NVIDIA cards; on an AMD one it falls back to the CPU and logs "GPU
+unusable"). The journal says which one runs at start ("Transcription:"),
+and after each sentence sent, how long Igor took to answer ("Igor answered
+in …").
 
 The service runs at low priority (nice 10, at most two CPUs, idle I/O,
 2 GB of memory) so that sound and Bluetooth on the same machine come first.

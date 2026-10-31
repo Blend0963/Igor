@@ -51,6 +51,11 @@ source = "alsa_input.usb-Generalplus_Usb_Audio_Device-00.mono-fallback"
 [stt]
 # Local transcription, used only to hear the name; Igor gets the audio
 # itself, transcribed by the Assist pipeline (Voxtral).
+# whisper.cpp's server on this machine (whisper-server, the one igor-stt
+# uses): any GPU, AMD included, about half a second a sentence and a far
+# better ear than "base" on the CPU. Empty: faster-whisper below (NVIDIA GPU,
+# else the CPU). Falls back to it when the server does not answer at start.
+# server = "http://127.0.0.1:8178"
 model = "base"       # on a CPU: base (tiny hears too little; small is slow)
 device = "auto"      # auto (GPU, else CPU), cuda or cpu
 language = "fr"
