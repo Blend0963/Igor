@@ -163,10 +163,11 @@ def run(settings: Settings) -> None:
     if watch_sound and settings.sound_from in {"speakers", "both"}:
         from .speakers import Speakers
 
-        speakers = Speakers(settings.sink, settings.quiet_db, settings.sound_hold)
+        speakers = Speakers(settings.sink, settings.quiet_db, settings.sound_hold, source=settings.watch_source)
         speakers.start()
-    # Igor's own voice is not heard: the ear closes while it speaks.
-    own = speakers
+    # Igor's own voice is not heard: the ear closes while it speaks. Its voice
+    # comes out of the speakers, never in on the television's input.
+    own = speakers if not settings.watch_source else None
     if own is None and settings.act:
         from .speakers import Speakers
 
@@ -488,7 +489,7 @@ def sound(settings: Settings, seconds: float) -> None:
     """What the speakers' watch sees, every half second, to set quiet_db."""
     from .speakers import Speakers
 
-    speakers = Speakers(settings.sink, settings.quiet_db, settings.sound_hold)
+    speakers = Speakers(settings.sink, settings.quiet_db, settings.sound_hold, source=settings.watch_source)
     speakers.start()
     print(f"Watching {speakers.monitor} for {seconds:.0f}s; sound above {settings.quiet_db:.0f} dB counts as playing.")
     end = time.monotonic() + seconds

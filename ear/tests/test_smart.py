@@ -245,3 +245,11 @@ def test_speakers_quiet_at_once_with_no_hold():
     assert sp.sounding()
     t[0] += 0.15
     assert not sp.sounding()
+
+
+def test_a_watched_source_is_read_directly_and_ignores_the_sink_volume():
+    sp = Speakers(source="alsa_input.pci-tv.analog-stereo", clock=lambda: 0.0, hold=0.3)
+    assert sp.monitor == "alsa_input.pci-tv.analog-stereo"
+    sp.listening, sp.muted, sp.volume = True, True, 0
+    sp.feed(-20)
+    assert sp.sounding()

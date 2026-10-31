@@ -111,6 +111,10 @@ class Settings:
     sound_from: str = "speakers"
     sink: str = "@DEFAULT_SINK@"
     quiet_db: float = -50.0
+    # Where the television's sound is read: empty, the monitor of `sink`
+    # (everything the speakers play); or a source's name, read directly (the
+    # input the television comes in on, `pactl list short sources`).
+    watch_source: str = ""
     when_media: str = "name"
     # How long sound still counts after it stops (seconds): long enough that a
     # film's pauses keep the smart judge paused, none when the ear closes.
@@ -180,6 +184,7 @@ def load(path: Path = CONFIG) -> Settings:
         raise ValueError(f'[media] sound_from must be "speakers", "players" or "both", not "{s.sound_from}"')
     s.sink = str(media.get("sink", s.sink))
     s.quiet_db = float(media.get("quiet_db", s.quiet_db))
+    s.watch_source = str(media.get("watch_source", s.watch_source)).strip()
     s.when_media = str(media.get("when_media", s.when_media)).strip().lower()
     if s.when_media not in {"name", "strict", "closed"}:
         raise ValueError(f'[media] when_media must be "name", "strict" or "closed", not "{s.when_media}"')

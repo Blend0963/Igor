@@ -131,7 +131,9 @@ sentence still works as always, and `addressing = "name"` switches back.
   measure, then `sound_hold`, 0.3 s by default in this mode; 3 s in the
   others so a film's pauses keep the smart judge paused). Measure the
   silence first with `run.sh sound`: a hiss above `quiet_db` keeps the ear
-  closed.
+  closed. When the television comes in on one of the machine's inputs
+  (its sound card's line or mic input), `[media] watch_source` reads that
+  input directly: only the television counts, never Igor's own voice.
   These settings are in `[media]` and `when_media = "closed"` works in the
   "name" mode too: while the television plays, the ear is closed, except
   for the answer to a question Igor has just asked.

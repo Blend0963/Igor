@@ -61,9 +61,13 @@ class Speakers:
         quiet_db: float = -50.0,
         hold: float = 3.0,
         clock: Callable[[], float] = time.monotonic,
+        source: str = "",
     ) -> None:
         self.sink = sink
-        self.monitor = "@DEFAULT_MONITOR@" if sink == "@DEFAULT_SINK@" else f"{sink}.monitor"
+        # A source read directly (the input the television comes in on): only
+        # its own sound counts, not Igor's voice nor the sink's volume.
+        self.source = source
+        self.monitor = source or ("@DEFAULT_MONITOR@" if sink == "@DEFAULT_SINK@" else f"{sink}.monitor")
         self.quiet_db, self.hold, self.clock = quiet_db, hold, clock
         self.last_sound = -math.inf
         self.muted: bool | None = None
@@ -81,7 +85,7 @@ class Speakers:
         """Sound is coming out. `unknown` when the monitor cannot be read."""
         if not self.listening:
             return unknown
-        if self.muted or self.volume == 0:
+        if not self.source and (self.muted or self.volume == 0):
             return False
         return self.clock() - self.last_sound < self.hold
 
@@ -92,7 +96,8 @@ class Speakers:
     # --- reading -----------------------------------------------------------
     def start(self) -> None:
         threading.Thread(target=self._read_monitor, daemon=True).start()
-        threading.Thread(target=self._read_volume, daemon=True).start()
+        if not self.source:
+            threading.Thread(target=self._read_volume, daemon=True).start()
 
     def _read_monitor(self) -> None:
         delay = 5
