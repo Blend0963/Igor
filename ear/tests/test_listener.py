@@ -471,3 +471,17 @@ def test_with_a_television_a_name_one_letter_off_is_not_taken():
     listener, sent = make_strict(["Egor, éteins la lumière du salon"])
     e = listener.handle(audio())
     assert not e["accepted"] and e["reason"] == "near_name_media" and not sent
+
+
+def test_the_end_of_igors_own_words_heard_alone_is_its_voice():
+    from igor_ear.addressing import Addressing
+    from igor_ear.listener import Listener, Outcome
+
+    heard = iter(["Vous savez ?", "le salon"])
+    listener = Listener(lambda a: Transcript(next(heard), 0.3, 0.1, -0.2), Addressing(),
+                        lambda a, c: Outcome(speech="Fait."))
+    listener.said("Oui, que voulez-vous savoir ?")
+    e = listener.handle(audio())
+    assert e["reason"] == "own_voice" and not e.get("sent")
+    listener.said("Lequel, le salon ou la cuisine ?")
+    assert listener.handle(audio())["reason"] != "own_voice"      # one word: an answer

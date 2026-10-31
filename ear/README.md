@@ -130,13 +130,15 @@ sentence still works as always, and `addressing = "name"` switches back.
   These settings are in `[media]` and `when_media = "closed"` works in the
   "name" mode too: while the television plays, the ear is closed, except
   for the answer to a question Igor has just asked.
-  In either mode, with the default `when_media = "name"`, the ear is
+  With `when_media = "strict"`, in either mode, the ear is
   stricter while sound plays, since a film's voices were most of its false
   starts: the name must be heard by Whisper (Vosk alone or a name one
   letter off is ignored, `vosk_ignored` / `near_name_media`), and Igor's
   listening windows (after "Igor" alone, after its question) take only an
   order, a question or an answer of three words at most
-  (`media_not_request` otherwise).
+  (`media_not_request` otherwise). Measure the silence first with
+  `run.sh sound`: if it reads above `quiet_db`, the ear takes the house for
+  noisy all the time and stays strict.
 - **Try it first**: with `[smart] act = false` (the default) Igor only notes
   what it would have done, `WOULD ACT` in the journal and
   `smart_would_act` in the observations. Read a few days of it, then set

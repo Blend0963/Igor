@@ -105,10 +105,14 @@ sink = "@DEFAULT_SINK@"    # the output to watch (pactl list short sinks)
 quiet_db = -50             # below this level, silence (run.sh sound to measure)
 media_players = []         # for "players": e.g. ["media_player.nvidia_shield"]
 # While sound plays:
-#   "name":   only the name works, heard by Whisper (Vosk alone, or a name
-#             one letter off, is not enough), and Igor's listening windows
-#             (after "Igor" alone, after its question) take only an order, a
-#             question or a short answer; the smart judge pauses
+#   "name":   only the name works (the smart judge pauses; in "name" mode
+#             nothing changes)
+#   "strict": as "name", and the name must be heard by Whisper (Vosk alone,
+#             or a name one letter off, is not enough), and Igor's listening
+#             windows (after "Igor" alone, after its question) take only an
+#             order, a question or a short answer. Check first with
+#             run.sh sound that silence reads below quiet_db: a hiss above it
+#             counts as sound all the time
 #   "closed": nothing is heard, not even the name, in either mode; Igor still
 #             hears the answer to a question it has just asked
 when_media = "name"

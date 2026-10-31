@@ -62,6 +62,10 @@ CONTEXT_SECONDS = 90.0
 # come back through the microphone.
 OWN_VOICE_SECONDS = 30.0
 OWN_VOICE_LIKENESS = 0.7
+# The end of Igor's own words, heard alone when the ear reopened in a pause
+# of its voice ("Oui, | que voulez-vous savoir ?" heard as "Vous savez ?").
+# Stricter than the start: an answer may echo the end of a question.
+OWN_VOICE_TAIL_LIKENESS = 0.75
 
 # Below these, Whisper is guessing words into noise.
 MAX_NO_SPEECH = 0.6
@@ -192,7 +196,8 @@ class Listener:
     def _own_voice(self, text: str) -> tuple[str, str] | None:
         """(what Igor said, what was heard after it), when this sentence
         starts with Igor's own words: its voice came back. An answer that
-        only repeats some of them ("oui, tous les volets") starts otherwise."""
+        only repeats some of them ("oui, tous les volets") starts otherwise.
+        Or (what Igor said, "") when it is only the end of them."""
         heard = normalize(text).split()
         now = self.clock()
         for t, said in reversed(self._said):
@@ -202,6 +207,12 @@ class Listener:
             head = " ".join(heard[: len(words)])
             if difflib.SequenceMatcher(None, head, " ".join(words)).ratio() >= OWN_VOICE_LIKENESS:
                 return said, " ".join(heard[len(words):])
+            # Word by word, "voulez-vous" as two words, as Whisper may hear it.
+            heard_words, said_words = " ".join(heard).replace("-", " ").split(), said.replace("-", " ").split()
+            if 2 <= len(heard_words) < len(said_words):
+                tail = " ".join(said_words[-len(heard_words):])
+                if difflib.SequenceMatcher(None, " ".join(heard_words), tail).ratio() >= OWN_VOICE_TAIL_LIKENESS:
+                    return said, ""
         return None
 
     def _spot(self, audio: np.ndarray):

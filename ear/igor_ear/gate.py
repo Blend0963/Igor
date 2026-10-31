@@ -74,7 +74,7 @@ class OwnVoice:
     `speakers` needs `listening`, `last_sound` (its clock) and
     `quiet_for(seconds)`, like speakers.Speakers."""
 
-    def __init__(self, speakers=None, tail: float = 0.3, settle: float = 2.0, start_wait: float = 4.0,
+    def __init__(self, speakers=None, tail: float = 0.8, settle: float = 2.0, start_wait: float = 4.0,
                  longest: float = 60.0, clock: Callable[[], float] = time.monotonic,
                  sleep: Callable[[float], None] = time.sleep) -> None:
         self.speakers, self.tail, self.settle = speakers, tail, settle
