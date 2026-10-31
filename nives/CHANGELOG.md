@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.5 — Igor's eye
+
+- Wall tablet: while Igor listens (its name heard, or waiting for your answer), the bow tie gives way to Igor's eye, a black glass lens in a steel ring whose blue iris opens at its name, then breathes; the bow tie is etched in its centre. Thinking and answering keep the bow tie. Home Assistant loads the new display after the restart it asks for (integration 0.1.13).
+- igor-ear 0.2.2 (`ear/`, update it on its machine): Igor no longer answers the end of its own words, heard when the ear reopened in a pause of its voice; the ear waits for 0.8 s of quiet, not 0.3 s, before reopening. A stricter ear while a television sounds is available as `[media] when_media = "strict"` (the name must be heard by Whisper; the listening windows take only an order, a question or a short answer); `"name"` keeps the behaviour it had.
+
 ## 0.21.4 — Faster spoken answers, a faster ear
 
 - New option `voice_reply_model`: with the local model, the online model that words what Igor says aloud (answers, readings, confirmations). A smaller one (`mistral-medium-latest`, `mistral-small-latest`) answers sooner; the chat panel and everything else keep the main model. Empty = the main model, as before.
