@@ -134,6 +134,15 @@ sentence still works as always, and `addressing = "name"` switches back.
 
 ## Resources
 
+**On an AMD card, or any machine running whisper-server** (the Radeon VII
+VM): set `[stt] server = "http://127.0.0.1:8178"`. Each sentence is then
+transcribed by whisper.cpp on the GPU, about half a second, instead of
+faster-whisper on two CPU cores at low priority (faster-whisper only knows
+NVIDIA cards; on an AMD one it falls back to the CPU and logs "GPU
+unusable"). The journal says which one runs at start ("Transcription:"),
+and after each sentence sent, how long Igor took to answer ("Igor answered
+in …").
+
 The service runs at low priority (nice 10, at most two CPUs, idle I/O,
 2 GB of memory) so that sound and Bluetooth on the same machine come first.
 On a GTX 960 (2 GB, compute capability 5.2) CTranslate2 runs float32 only:

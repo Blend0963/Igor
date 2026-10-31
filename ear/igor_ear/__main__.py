@@ -214,11 +214,16 @@ def run(settings: Settings) -> None:
 
     def act(audio: np.ndarray, conversation: str | None) -> Outcome:
         pcm = (np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes()
+        started = time.monotonic()
         try:
             r = ha.run_pipeline(settings.ha_url, settings.ha_token, pcm, settings.pipeline or None,
                                 conversation, device_id)
         except Exception as err:  # noqa: BLE001
             return Outcome(error=str(err))
+        # From the sentence sent to Igor's answer in hand: Home Assistant's
+        # transcription and Igor itself, before the satellite speaks.
+        log.info("Igor answered in %.1f s (transcription %.1f s by Home Assistant, then Igor)",
+                 time.monotonic() - started, r.stt_seconds)
         if r.speech:
             try:
                 say(r.speech)
@@ -274,7 +279,7 @@ def run(settings: Settings) -> None:
 
     vad, segmenter = Vad(), Segmenter()
     stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords,
-                      settings.beam_size)
+                      settings.beam_size, settings.stt_server)
     listener = Listener(
         stt,
         Addressing(extra_targets=settings.extra_targets, names=settings.names),
@@ -422,7 +427,7 @@ def bench(settings: Settings, seconds: float) -> None:
     print(f"Loading the model ({settings.model}, {settings.device})…", flush=True)
     t0 = time.monotonic()
     stt = Transcriber(settings.model, settings.device, settings.language, settings.cpu_threads, settings.hotwords,
-                      settings.beam_size)
+                      settings.beam_size, settings.stt_server)
     print(f"Ready on {stt.device} (beam {stt.beam_size}) in {time.monotonic() - t0:.1f}s")
     print(f"Speak now: recording {seconds:.0f}s from {settings.source}…", flush=True)
     vad, chunks, probs = Vad(), [], []
@@ -468,7 +473,8 @@ def report(settings: Settings) -> None:
         print("Nothing noted yet.")
         return
     reasons = Counter(e["reason"] for e in entries)
-    stt = [e["stt_s"] for e in entries]
+    # A sentence dropped before transcription (satellite busy) has no time.
+    stt = [e["stt_s"] for e in entries if "stt_s" in e] or [0.0]
     print(f"{len(entries)} sentences since {entries[0]['time']}; transcription {np.mean(stt):.2f}s on average, {max(stt):.2f}s at worst")
     for reason, count in reasons.most_common():
         print(f"  {reason:14} {count}")

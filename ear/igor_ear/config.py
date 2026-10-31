@@ -95,6 +95,9 @@ class Settings:
     cpu_threads: int = 2
     hotwords: str = "Igor"
     beam_size: int = 0
+    # whisper.cpp's server on this machine (whisper-server, the GPU), e.g.
+    # "http://127.0.0.1:8178"; empty: faster-whisper in this process.
+    stt_server: str = ""
     extra_targets: list[str] = field(default_factory=list)
     names: list[str] = field(default_factory=lambda: ["igor"])
     spotter: str = "vosk"
@@ -154,6 +157,7 @@ def load(path: Path = CONFIG) -> Settings:
     if s.hotwords.strip().lower() in {"", "igor", "mado"}:
         s.hotwords = ", ".join(n.capitalize() for n in s.names)
     s.beam_size = int(stt.get("beam_size", s.beam_size))
+    s.stt_server = str(stt.get("server", s.stt_server)).strip()
     s.extra_targets = [str(t) for t in addressing.get("extra_targets", [])]
     s.act = bool(mode.get("act", s.act))
     s.addressing = str(mode.get("addressing", s.addressing)).strip().lower()

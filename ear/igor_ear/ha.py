@@ -58,6 +58,8 @@ class PipelineResult:
     conversation_id: str | None = None
     continue_conversation: bool = False
     error: str = ""
+    # Seconds from the end of the audio to Home Assistant's transcription.
+    stt_seconds: float = 0.0
 
 
 def run_pipeline(
@@ -94,6 +96,7 @@ def run_pipeline(
         conn.send(json.dumps(request))
         deadline = time.monotonic() + timeout
         sent = False
+        audio_done = 0.0
         while time.monotonic() < deadline:
             msg = json.loads(conn.recv(timeout=max(1.0, deadline - time.monotonic())))
             if msg.get("type") == "result":
@@ -115,7 +118,10 @@ def run_pipeline(
                     conn.send(prefix + pcm16[i:i + AUDIO_CHUNK])
                 conn.send(prefix)  # end of audio
                 sent = True
+                audio_done = time.monotonic()
             elif kind == "stt-end":
+                if sent:
+                    result.stt_seconds = time.monotonic() - audio_done
                 result.heard = str((data.get("stt_output") or {}).get("text", ""))
             elif kind == "intent-end":
                 output = data.get("intent_output") or {}
