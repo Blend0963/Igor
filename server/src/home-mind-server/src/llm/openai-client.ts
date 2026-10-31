@@ -679,6 +679,10 @@ export class OpenAIChatEngine implements IChatEngine {
     let localTag: ReturnType<typeof readLocalTag>;
     // An order carried out without a word: not an empty answer.
     let localSilent = false;
+    // What a silent order did, kept in the conversation though never said: the
+    // next turn (and the online model reading the last exchanges) must see the
+    // order answered, not a request left hanging that it then calls failed.
+    let silentRecord = "";
     let result: Awaited<ReturnType<typeof call>>;
     try {
       result = await call(false);
@@ -843,6 +847,7 @@ export class OpenAIChatEngine implements IChatEngine {
           console.log(`[route] done locally, nothing for ${this.config.llmModel}${said ? `; said: ${said}` : ""}`);
           if (said) speak(said);
           localSilent = !said;
+          if (localSilent) silentRecord = plainSentence ?? "C'est fait.";
           result = { text: said, finishReason: "stop", toolCalls: [], usage: undefined };
         } else {
           const brief = onlineBrief(tag, localTag?.note, localDone, message);
@@ -922,8 +927,8 @@ export class OpenAIChatEngine implements IChatEngine {
     );
 
     // 6. Store assistant response
-    if (effectiveConversationId && responseText) {
-      const stored = this.conversations.storeMessage(effectiveConversationId, userId, "assistant", responseText);
+    if (effectiveConversationId && (responseText || silentRecord)) {
+      const stored = this.conversations.storeMessage(effectiveConversationId, userId, "assistant", responseText || silentRecord);
       if (toolCtx.actions?.length) void this.conversations.setMessageActions?.(stored, toolCtx.actions);
     }
 
