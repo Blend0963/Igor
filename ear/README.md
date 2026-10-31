@@ -81,7 +81,10 @@ bash ~/MaDo/ear/install.sh
 ```
 
 Then edit `~/.config/igor-ear/config.toml`: microphone source (from
-`pactl list short sources`), Home Assistant URL, a long-lived token
+`pactl list short sources`), Home Assistant URL (its address on the local
+network, `http://<ip>:8123`: through a public name, every sentence leaves the
+house and back, and a name that resolves slowly adds seconds to each one;
+one install measured 5.1 s against 0.014 s), a long-lived token
 (Profile > Security), the satellite entity and optionally a presence entity.
 `act = true` once observation looks right. Then:
 

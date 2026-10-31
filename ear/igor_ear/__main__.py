@@ -57,8 +57,10 @@ def sent_summary(entry: dict) -> str:
     """What Home Assistant made of a sent sentence, for the journal."""
     heard = entry.get("voxtral") or ""
     if heard and not entry.get("error") and not entry.get("answer"):
-        # Igor judged the sentence was said about it, not to it: silence.
-        return f" -> heard {heard!r}, not for Igor: no answer"
+        # Silence: an order carried out without a word ("ferme les volets"),
+        # or a sentence Igor judged was said about it, not to it. Home
+        # Assistant gives the same empty answer for both.
+        return f" -> heard {heard!r}, no spoken answer (an order done in silence, or not said to Igor)"
     outcome = entry.get("error") or entry.get("answer") or "no answer"
     return f" -> heard {heard!r}, {'error' if entry.get('error') else 'answered'}: {outcome}" if heard or entry.get("error") \
         else f" -> Home Assistant transcribed nothing ({outcome})"
