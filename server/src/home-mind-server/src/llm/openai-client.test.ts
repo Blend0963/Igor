@@ -844,6 +844,8 @@ describe("OpenAIChatEngine", () => {
       const r = await localEngine.chat({ message: "allume la lumière du salon", userId: "u", isVoice: true });
       expect(r.response).toBe("");
       expect(r.error).toBeFalsy();
+      // Told apart from an empty failure, so the integration says nothing.
+      expect(r.silent).toBe(true);
       expect(mockCreate).toHaveBeenCalledTimes(1);
     });
 
@@ -854,6 +856,7 @@ describe("OpenAIChatEngine", () => {
       const r = await orderEngine("sentence").chat({ message: "allume la lumière du salon", userId: "u", isVoice: true }, { onChunk: (c) => chunks.push(c) });
       expect(r.response).toBe("Lumière salon allumée.");
       expect(chunks.join("")).toBe("Lumière salon allumée.");
+      expect(r.silent).toBeUndefined();
       expect(mockCreate).toHaveBeenCalledTimes(1);
       expect(endpoint(0)).toBe("http://192.168.1.20:8180/v1");
     });

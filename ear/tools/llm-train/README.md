@@ -65,26 +65,35 @@ Each step prints OK or ÉCHEC and the script stops at the first failure:
    4 hours), merges it, and scores 200 held-out requests (`out/eval.json`,
    with the words, the expected answer and the model's for each miss);
 5. builds llama.cpp's converter;
-6. writes `out/igor-local-q4_k_m.gguf` (about 2.5 GB).
+6. writes `out/igor-local-q4_k_m.gguf` (about 2.5 GB);
+7. hands the model, `eval.json` and `train.log` straight to the VM: it prints
+   a `runpodctl receive <code>` command to type on the VM, and waits up to
+   3 hours (`SEND_WAIT`, in seconds).
 
 Settings, as environment variables: `BASE_MODEL`, `EPOCHS`, `LR`, `BATCH`,
-`ACCUM`, `MAX_LEN`, `EVAL`, `WORK`.
+`ACCUM`, `MAX_LEN`, `EVAL`, `WORK`, `SEND_WAIT`.
 
 Only the model's own answers are learned: past messages in an example (what
 the online model said) are marked `"training": false` and masked.
 
-On RunPod the machine **stops by itself** a minute after the end, success or
-failure (`AUTO_STOP=0` to keep it running): nothing is billed overnight but
-its disk. `/workspace` stays on that disk: start the machine again (without a
-GPU if RunPod offers it), download `out/igor-local-q4_k_m.gguf` and
-`out/eval.json` from JupyterLab, then **Terminate** it: it holds the training
-set.
+On RunPod the machine **stops by itself** once the VM has received the model
+(`AUTO_STOP=0` to keep it running), and a minute after a failure that left no
+model. If nobody receives it, it stays on, so nothing is lost: send it again
+with `runpodctl send /workspace/igor-train/igor-modele`. Do not count on a
+stopped pod to keep its files: restarted without a GPU, it can come back
+empty. Once the model is on the VM, **Terminate** the pod: it holds the
+training set.
+
+On the VM, `runpodctl` installs with:
+
+    wget -qO- cli.runpod.net | sudo bash
 
 ## 3. On the VM
 
-Copy the GGUF file to the VM, then install it as the `igor-llm` service:
+The model is already in the folder where you ran `runpodctl receive`.
+Install it as the `igor-llm` service:
 
-    bash ../llm/install.sh ~/igor-local-q4_k_m.gguf
+    bash ../llm/install.sh ~/igor-modele/igor-local-q4_k_m.gguf
 
 In the add-on, turn on `local_llm_tuned`, and turn off `tools_from_exposed`
 so it can drive every entity, not only those exposed to Assist. To go back: `bash ../llm/install.sh`
