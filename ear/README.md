@@ -126,7 +126,12 @@ sentence still works as always, and `addressing = "name"` switches back.
   with `~/.local/share/igor-ear/run.sh sound` (once with music playing, once
   in silence) and `quiet_db`. `sound_from = "players"` uses the Home
   Assistant media players listed in `media_players` instead, `"both"` both.
-  `when_media = "closed"` goes further: nothing is heard, not even the name.
+  `when_media = "closed"` goes further: nothing is heard, not even the name,
+  and the ear reopens as soon as the sound stops (an eighth of a second's
+  measure, then `sound_hold`, 0.3 s by default in this mode; 3 s in the
+  others so a film's pauses keep the smart judge paused). Measure the
+  silence first with `run.sh sound`: a hiss above `quiet_db` keeps the ear
+  closed.
   These settings are in `[media]` and `when_media = "closed"` works in the
   "name" mode too: while the television plays, the ear is closed, except
   for the answer to a question Igor has just asked.

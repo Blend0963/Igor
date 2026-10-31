@@ -114,5 +114,10 @@ media_players = []         # for "players": e.g. ["media_player.nvidia_shield"]
 #             run.sh sound that silence reads below quiet_db: a hiss above it
 #             counts as sound all the time
 #   "closed": nothing is heard, not even the name, in either mode; Igor still
-#             hears the answer to a question it has just asked
+#             hears the answer to a question it has just asked. The ear
+#             reopens as soon as the sound stops (sound_hold below)
 when_media = "name"
+# How long sound still counts once it stops (seconds). Default: 0.3 with
+# "closed" (the ear reopens at once), 3 otherwise (a film's pauses keep the
+# smart judge paused).
+# sound_hold = 0.3

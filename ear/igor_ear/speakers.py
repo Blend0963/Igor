@@ -6,7 +6,8 @@ whether something is playing is to listen to what goes out: the monitor of
 the output sink, read at a low rate (parec, 8 kHz mono, a few kilobytes a
 second). A level above `quiet_db` means sound; it counts for `hold` seconds
 more, so the pauses in a film or a song do not reopen the smart judge
-between two lines.
+between two lines ([media] sound_hold; 0.3 s when the ear closes, so it
+reopens as soon as the sound stops).
 
 With PipeWire the monitor carries the sound before the sink's volume, so a
 muted sink, or one at 0 %, still shows the music there. Its mute and volume
@@ -28,7 +29,7 @@ import numpy as np
 log = logging.getLogger(__name__)
 
 RATE = 8000
-CHUNK = RATE // 4          # samples per measure: a quarter of a second
+CHUNK = RATE // 8          # samples per measure: an eighth of a second
 VOLUME_EVERY = 2.0         # seconds between two mute/volume readings
 # pactl is localised ("Muet : non"); its English output is what is parsed.
 C_LOCALE = {**os.environ, "LC_ALL": "C"}
@@ -99,7 +100,7 @@ class Speakers:
             try:
                 proc = subprocess.Popen(
                     ["parec", f"--device={self.monitor}", "--format=s16le", f"--rate={RATE}",
-                     "--channels=1", "--latency-msec=100", "--client-name=igor-ear-speakers"],
+                     "--channels=1", "--latency-msec=50", "--client-name=igor-ear-speakers"],
                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 )
                 log.info("Speakers: watching %s (sound above %.0f dB counts as playing)", self.monitor, self.quiet_db)

@@ -221,3 +221,27 @@ def test_the_listener_says_when_it_waits_for_words():
     assert not listener.waiting()            # gave up on the order
     listener.handle(audio())                 # Igor asks back
     assert listener.waiting()
+
+
+def test_the_ear_reopens_at_once_when_closed_by_sound(tmp_path):
+    from igor_ear.config import load
+
+    path = tmp_path / "config.toml"
+    path.write_text('[media]\nwhen_media = "closed"\n', encoding="utf-8")
+    assert load(path).sound_hold == 0.3
+    path.write_text('[media]\nwhen_media = "name"\n', encoding="utf-8")
+    assert load(path).sound_hold == 3.0
+    path.write_text('[media]\nwhen_media = "closed"\nsound_hold = 0\n', encoding="utf-8")
+    assert load(path).sound_hold == 0.0
+
+
+def test_speakers_quiet_at_once_with_no_hold():
+    t = [0.0]
+    sp = Speakers(hold=0.3, quiet_db=-50, clock=lambda: t[0])
+    sp.listening = True
+    sp.feed(-20)
+    assert sp.sounding()
+    t[0] += 0.2
+    assert sp.sounding()
+    t[0] += 0.15
+    assert not sp.sounding()

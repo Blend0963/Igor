@@ -112,6 +112,10 @@ class Settings:
     sink: str = "@DEFAULT_SINK@"
     quiet_db: float = -50.0
     when_media: str = "name"
+    # How long sound still counts after it stops (seconds): long enough that a
+    # film's pauses keep the smart judge paused, none when the ear closes.
+    # None: 0.3 with when_media = "closed", else 3.
+    sound_hold: float | None = None
     followup: bool = True
     followup_seconds: float = 8.0
     name_wait: float = 8.0
@@ -179,6 +183,10 @@ def load(path: Path = CONFIG) -> Settings:
     s.when_media = str(media.get("when_media", s.when_media)).strip().lower()
     if s.when_media not in {"name", "strict", "closed"}:
         raise ValueError(f'[media] when_media must be "name", "strict" or "closed", not "{s.when_media}"')
+    if "sound_hold" in media:
+        s.sound_hold = max(0.0, float(media["sound_hold"]))
+    if s.sound_hold is None:
+        s.sound_hold = 0.3 if s.when_media == "closed" else 3.0
     s.followup = bool(mode.get("followup", s.followup))
     s.followup_seconds = float(mode.get("followup_seconds", s.followup_seconds))
     s.name_wait = float(mode.get("name_wait", s.name_wait))
