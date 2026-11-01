@@ -176,6 +176,8 @@ class Screen:
         self.on = True
         self.keyboard = False
         self.pc_state: str | None = None
+        self.idle = False
+        self.idle_file = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "igor-idle")
         self.lock = threading.Lock()
 
     # what can be done
@@ -264,8 +266,32 @@ class Screen:
                 self.keyboard_seen(self.read_keyboard(self.s.keyboard), time.monotonic())
                 if ticks % 6 == 0:
                     self.refullscreen()
+                    self.sync_power()
             except Exception as err:  # noqa: BLE001 - the watch must go on
                 log.warning("Screen: %s", err)
+
+    def sync_power(self) -> None:
+        """The output woken by a key or the mouse (swayidle, see sway.conf),
+        or switched off elsewhere: the state follows, and Home Assistant
+        is told."""
+        idle = os.path.exists(self.idle_file)
+        if idle != self.idle:
+            self.idle = idle
+            self.publish()
+        try:
+            out = subprocess.run(["swaymsg", "-t", "get_outputs", "-r"], capture_output=True, text=True, timeout=5)
+            outputs = json.loads(out.stdout or "[]")
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            return
+        for o in outputs if isinstance(outputs, list) else []:
+            if o.get("name") != self.s.output:
+                continue
+            power = o.get("power", o.get("dpms"))
+            if isinstance(power, bool) and power != self.on:
+                self.on = power
+                log.info("Screen: %s (from the session)", "on" if power else "off")
+                self.publish()
+            return
 
     def refullscreen(self) -> None:
         """Chromium back to fullscreen once no settings window is open (closed
@@ -296,7 +322,8 @@ class Screen:
             return
         body = {"state": "on" if self.on else "off",
                 "attributes": {"friendly_name": "Igor screen", "icon": "mdi:monitor-dashboard",
-                               "keyboard": "here" if self.keyboard else "away", "output": self.s.output}}
+                               "keyboard": "here" if self.keyboard else "away", "output": self.s.output,
+                               "idle": self.idle}}
         try:
             from .machine import post
 

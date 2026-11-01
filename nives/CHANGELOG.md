@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.23.7 — A key wakes the desk screen
+
+- Desk screen (igor-ear 0.3.4): asleep, a key or the mouse wakes it (swayidle in the kiosk session), and `sensor.igor_screen` follows the output's real state, however it was switched. After a minute without a key or the mouse, its `idle` attribute turns true, so an automation can put it back to sleep. Rerun `ear/screen/install-vm.sh` on Igor's machine (it installs swayidle).
+- Igor's ear waits up to 90 s for whisper-server at start (it loads its model on the graphics card after the ear starts at boot) instead of staying on the CPU until the next restart; its service starts after whisper-server. Reinstall with `ear/install.sh` or copy `igor-ear.service` again.
+- The walls' journal was empty with an old Igor entry left in Home Assistant (an add-on that is gone): `nives.journal` stopped at that entry's error. It now tries every entry until one answers.
+- Wall bar: `tap: /a-page` opens that page (the homelab) on a tap instead of the machines' detail.
+- `igor-tiles-card`: a last row short of tiles no longer leaves a hole; its last tile widens to the end.
+- `igor-tiles-card`: a lit light's tile (border, icon and background) takes the light's colour; `invert`, `icon_off` and `text` for a tile lit while its entity is off (a camera's privacy switch: grey and crossed out while private).
+- Tablet overlay: the steps' column is wider, so « destinataire » no longer runs into its detail.
+
 ## 0.23.6 — The keyboard switch, headlines, the wall's panels
 
 - Wall bar: « igor » (top left) opens Igor's panel (the satellite, listening on or off, the graphics card, today's exchanges, the last conversations, buttons to open them, talk or stop listening); the clock (top right) opens a time panel (sunrise and sunset, week, chosen entities, a timer's 5/10/20/60 min buttons, the screen's sleep). Both under `bar: panels:`. The machines' detail now closes with its « fermer » only, no longer on any tap.
