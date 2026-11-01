@@ -2,6 +2,7 @@
 
 ## 0.23.14 — No empty « transcription »
 
+- With two Igor entries in Home Assistant (an old one left behind), the tablet followed the old entry's voice sensor: « heard » reached it, the turn itself only the working one, so the display stayed on « transcription ». The tablet and the wall cards now follow the voice sensor that moved last.
 - When the name is heard and nothing reaches Igor within 15 s (30 s while it waits for an answer), the display says « rien reçu · sans suite » and leaves, instead of holding an empty « transcription » for two minutes.
 
 ## 0.23.13 — The tablet's live display, tidy

@@ -390,12 +390,18 @@
     var ha = document.querySelector("home-assistant");
     return ha && ha.hass;
   }
+  // Igor's voice sensor. With two Igor entries (an old one left behind), each
+  // has one: « heard » reaches both, the turn itself only the working one,
+  // so follow whichever moved last, not the first found.
   function findSensor(states) {
-    if (view.sensorId && states[view.sensorId]) return states[view.sensorId];
+    var best = null, bestAt = -1;
     for (var id in states) {
-      if (id.indexOf("sensor.") === 0 && states[id].attributes && states[id].attributes.igor_voice) { view.sensorId = id; return states[id]; }
+      var st = states[id];
+      if (id.indexOf("sensor.") !== 0 || !st.attributes || !st.attributes.igor_voice) continue;
+      var at = Math.max(Date.parse(st.attributes.started) || 0, Date.parse(st.last_changed) || 0, Date.parse(st.last_updated) || 0);
+      if (at > bestAt) { best = st; bestAt = at; }
     }
-    return null;
+    return best;
   }
   // A state held far longer than any real exchange is a stuck satellite, or
   // one that reports "listening" all the time (wake word handled in Home
