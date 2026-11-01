@@ -16,7 +16,7 @@ step() { if eval "$2" >/tmp/igor-screen-step.log 2>&1; then ok "$1"; else ko "$1
 [ -x "$APP/run.sh" ] || { ko "igor-ear n'est pas installé ($APP/run.sh) : lance d'abord ear/install.sh"; exit 1; }
 rm -rf "$APP/igor_ear" && cp -r "$HERE/../igor_ear" "$APP/" && ok "programme d'igor-ear mis à jour" || ko "programme d'igor-ear"
 
-step "paquets (sway, greetd, chromium, ddcutil)" "sudo apt-get install -y sway greetd chromium ddcutil i2c-tools"
+step "paquets (sway, greetd, chromium, ddcutil, réglages son et Bluetooth)" "sudo apt-get install -y sway greetd chromium ddcutil i2c-tools pavucontrol blueman easyeffects"
 step "module i2c-dev (DDC/CI)" "echo i2c-dev | sudo tee /etc/modules-load.d/igor-screen.conf && sudo modprobe i2c-dev"
 step "groupes i2c, video, render, input pour $USER" "sudo usermod -aG i2c,video,render,input $USER"
 step "nom fixe de la carte graphique (/dev/dri/igor-screen)" \
@@ -46,6 +46,14 @@ command = "env WLR_DRM_DEVICES=/dev/dri/igor-screen sway --config $CONF/sway.con
 user = "$USER"
 TOML
 [ $? -eq 0 ] && ok "ouverture automatique de la session (greetd)" || ko "greetd"
+# Another login manager (LightDM for XFCE…) holds the place: it is switched
+# off, its desktop stays installed. The kiosk session starts what it started
+# for the sound (EasyEffects) and Bluetooth (blueman-applet).
+DM=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null)
+DM=$(basename "${DM:-}" 2>/dev/null)
+if [ -n "$DM" ] && [ "$DM" != "greetd.service" ]; then
+    step "$DM désactivé (le bureau reste installé)" "sudo systemctl disable $DM"
+fi
 step "greetd au démarrage" "sudo systemctl enable greetd"
 
 # [screen] in igor-ear's settings, once.

@@ -8,8 +8,9 @@ wall dashboard on its graphics card's output, and hands the screen over.
   back, the screen wakes and comes here. The machine that loses the keyboard
   sends the screen away: a monitor obeys DDC/CI on the input it shows.
 - orders from Home Assistant, the `igor_screen` event: `pc`, `dashboard`
-  (also `vm`), `off`, `on`, `toggle`. A script fires it from a dashboard
-  button, an automation or Igor.
+  (also `vm`), `off`, `on`, `toggle`; `app` with `app: sound | equalizer |
+  bluetooth` opens that settings window over the dashboard, `close` closes
+  them. A script fires it from a dashboard button, an automation or Igor.
 - its state, `sensor.igor_screen` (`on` or `off`, with the keyboard).
 
 The display is put to sleep by switching the output off (swaymsg): the
@@ -30,6 +31,16 @@ from dataclasses import dataclass, field
 log = logging.getLogger("igor-ear")
 
 INPUT_DEVICES = "/proc/bus/input/devices"
+
+# The settings windows a dashboard button may open over the dashboard: these
+# only, never a command sent by Home Assistant.
+APPS = {
+    "sound": "pavucontrol",
+    "equalizer": "easyeffects",
+    "bluetooth": "blueman-manager",
+}
+# Their windows, as sway knows them (sway.conf floats them the same way).
+APP_WINDOWS = r"^(org\.pulseaudio\.pavucontrol|pavucontrol|com\.github\.wwmm\.easyeffects|blueman-manager|\.blueman-manager-wrapped)$"
 
 
 # ----- the keyboard -----
@@ -156,7 +167,7 @@ class Screen:
     def pc_off(self) -> bool:
         return (self.pc_state or "").lower() in {"off", "not_home", "unavailable"}
 
-    def act(self, action: str) -> None:
+    def act(self, action: str, data: dict | None = None) -> None:
         action = (action or "").strip().lower()
         with self.lock:
             if action == "pc":
@@ -174,6 +185,19 @@ class Screen:
                 self.power(True)
             elif action == "toggle":
                 self.power(not self.on)
+            elif action == "app":
+                name = str((data or {}).get("app", "")).strip().lower()
+                if name not in APPS:
+                    log.warning("Screen: unknown settings window %r (%s)", name, ", ".join(APPS))
+                    return
+                if not self.on:
+                    self.power(True)
+                # Chromium's kiosk asks to be fullscreen, which would hide the window.
+                self.run(["swaymsg", '[app_id="^chromium"]', "fullscreen", "disable"])
+                if self.run(["swaymsg", "exec", APPS[name]]):
+                    log.info("Screen: %s opened", APPS[name])
+            elif action == "close":
+                self.run(["swaymsg", f'[app_id="{APP_WINDOWS}"]', "kill"])
             else:
                 log.warning("Screen: unknown order %r", action)
 
@@ -218,7 +242,8 @@ class Screen:
             return
         event = msg.get("event") or {}
         if event.get("event_type") == self.s.event:
-            self.act(str((event.get("data") or {}).get("action", "")))
+            data = event.get("data") or {}
+            self.act(str(data.get("action", "")), data)
             return
         for entity, data in ((event.get("a") or {}) | (event.get("c") or {})).items():
             if entity != self.s.pc_entity:

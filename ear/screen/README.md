@@ -11,7 +11,9 @@ between them, and the screen follows:
 - On the PC, an **Igor** icon in the dock sends the screen to the dashboard.
 - From Home Assistant, the `igor_screen` event: `pc`, `dashboard`, `off`
   (sleep: the output is switched off and the monitor goes to standby), `on`,
-  `toggle`. A dashboard button, an automation or Igor fires it through a
+  `toggle`. `app` with `app: sound`, `equalizer` or `bluetooth` opens
+  pavucontrol, EasyEffects or Blueman over the dashboard (those three only);
+  `close` closes them. A dashboard button, an automation or Igor fires it through a
   script. The state is `sensor.igor_screen`.
 - While the PC is off (`pc_entity`, a ping), the screen stays on the dashboard.
 
@@ -31,8 +33,10 @@ It installs sway, greetd, Chromium and ddcutil; opens a kiosk session at boot
 on the graphics card only (`/dev/dri/igor-screen`); runs Chromium full screen
 on the dashboard with the **Igor Journal (tablette)** theme (asked for in the
 address, `?igor_theme=`); starts `igor-screen` (user service) for the keyboard
-and Home Assistant's orders; and turns off the graphics card's HDMI sound so
-Igor keeps speaking through the sound card. Settings: `[screen]` in
+and Home Assistant's orders; starts EasyEffects (as a service) and Bluetooth's
+agent in the kiosk session; switches off another login manager (LightDM for
+XFCE…; the desktop stays installed); and turns off the graphics card's HDMI
+sound so Igor keeps speaking through the sound card. Settings: `[screen]` in
 `~/.config/igor-ear/config.toml`. Ctrl+Alt+Backspace leaves the kiosk.
 
 Home Assistant should let the kiosk in without a password: a

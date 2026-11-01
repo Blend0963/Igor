@@ -72,3 +72,15 @@ def test_orders_from_home_assistant():
     sc.handle({"type": "event", "event": {"c": {"binary_sensor.pc": {"+": {"s": "on"}}}}})
     sc.handle({"type": "event", "event": {"event_type": "igor_screen", "data": {"action": "pc"}}})
     assert calls[-1][-1] == "0x0f"
+
+
+def test_settings_windows_from_the_dashboard():
+    sc, calls = make()
+    sc.handle({"type": "event", "event": {"event_type": "igor_screen", "data": {"action": "app", "app": "equalizer"}}})
+    assert calls[-1] == ["swaymsg", "exec", "easyeffects"]
+    assert calls[-2][-2:] == ["fullscreen", "disable"]
+    n = len(calls)
+    sc.handle({"type": "event", "event": {"event_type": "igor_screen", "data": {"action": "app", "app": "rm -rf /"}}})
+    assert len(calls) == n
+    sc.handle({"type": "event", "event": {"event_type": "igor_screen", "data": {"action": "close"}}})
+    assert calls[-1][0] == "swaymsg" and calls[-1][2] == "kill" and "easyeffects" in calls[-1][1]
