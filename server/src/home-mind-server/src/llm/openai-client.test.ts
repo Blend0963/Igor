@@ -858,6 +858,8 @@ describe("OpenAIChatEngine", () => {
     it("carries out a plain order in silence by default, with no online call", async () => {
       vi.mocked(handleToolCall).mockResolvedValue({ changed_states: [{ entity_id: "light.salon", state: "on", name: "Lumière salon" }] });
       mockCreate.mockResolvedValueOnce(orderCall());
+      const record = vi.fn();
+      localEngine.setJournal({ record } as never);
       const r = await localEngine.chat({ message: "allume la lumière du salon", userId: "u", isVoice: true });
       expect(r.response).toBe("");
       expect(r.error).toBeFalsy();
@@ -866,6 +868,9 @@ describe("OpenAIChatEngine", () => {
       // The tablet's journal: the local model, the call, nothing sent online.
       expect(r.trace?.map((t) => [t.step, t.where])).toEqual([["local", "local"], ["ha", "local"], ["en ligne", "none"]]);
       expect(r.trace?.[1].detail).toBe("light.turn_on light.salon");
+      // And in the tablet's history, with its steps.
+      expect(record).toHaveBeenCalledWith(expect.objectContaining({ user: "u", words: "allume la lumière du salon", answer: "", silent: true }));
+      expect(record.mock.calls[0][0].trace.map((t: { step: string }) => t.step)).toEqual(["local", "ha", "en ligne"]);
       // Kept in the conversation though not said: the next turn sees it done.
       expect(conversations.storeMessage).toHaveBeenLastCalledWith(expect.any(String), "u", "assistant", "Lumière salon allumée.");
       expect(mockCreate).toHaveBeenCalledTimes(1);

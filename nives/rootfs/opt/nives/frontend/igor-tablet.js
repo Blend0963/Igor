@@ -81,6 +81,18 @@
     ".done span + span::before { content: ' · '; color: #39424c; }",
     ".cur { display: inline-block; width: 0.55em; height: 1.05em; background: #6cc4f5; vertical-align: -0.15em; margin-left: 3px; animation: blink 1s steps(1) infinite; }",
     ".hint { position: absolute; right: 4vw; bottom: 1.5vh; font-size: 12px; color: #39424c; }",
+    ".x { background: none; border: 1px solid #1d242c; color: #8b96a3; font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 4px; cursor: pointer; margin-left: 14px; }",
+    ".fab { position: fixed; left: max(14px, env(safe-area-inset-left, 0px)); bottom: max(14px, env(safe-area-inset-bottom, 0px)); z-index: 2147482999; display: flex; align-items: center; gap: 8px;",
+    "  background: #0d1014; color: #8b96a3; border: 1px solid #1d242c; border-radius: 6px; padding: 7px 12px; font-family: " + MONO + "; font-size: 13px; cursor: pointer; opacity: 0.8; }",
+    ".fab:focus-visible, .x:focus-visible { outline: 2px solid #6cc4f5; outline-offset: 2px; }",
+    ".hist { flex: 1; overflow-y: auto; padding: 2vh 4vw 4vh; display: none; flex-direction: column; gap: 6px; -webkit-overflow-scrolling: touch; }",
+    ".veil[data-mode=history] .hist { display: flex; }",
+    ".veil[data-mode=history] .log, .veil[data-mode=history] .hint { display: none; }",
+    ".day { margin: 22px 0 4px; color: #39424c; font-size: clamp(12px, 1.4vw, 15px); border-bottom: 1px solid #1d242c; padding-bottom: 4px; }",
+    ".entry { padding: 6px 0 12px; border-bottom: 1px solid #141a20; }",
+    ".entry .say { font-size: clamp(17px, 2.3vw, 26px); margin-top: 6px; }",
+    ".when { color: #39424c; font-size: 0.55em; text-align: right; padding-top: 0.55em; }",
+    ".empty { color: #6b7682; margin: auto; font-size: clamp(14px, 1.8vw, 18px); }",
     "@keyframes blink { 50% { opacity: 0; } }",
     "@media (prefers-reduced-motion: reduce) { .cur { animation: none; } .veil { transition: none; } }"
   ].join("\n");
@@ -93,7 +105,7 @@
   }
   function seconds(ms) { return (ms / 1000).toFixed(1).replace(".", ",") + " s"; }
 
-  var host, veil, stateEl, logEl, earEl, qEl, traceEl, doneEl, aEl;
+  var host, veil, stateEl, closeEl, logEl, histEl, earEl, qEl, traceEl, doneEl, aEl;
   function el(tag, cls, parent) { var d = document.createElement(tag); if (cls) d.className = cls; if (parent) parent.appendChild(d); return d; }
   function build() {
     host = document.createElement("igor-tablet");
@@ -109,9 +121,21 @@
     var st = el("span", "state", bar);
     el("span", "dot", st);
     stateEl = el("span", "", st);
+    closeEl = el("button", "x", st);
+    closeEl.type = "button";
+    closeEl.textContent = "fermer";
+    closeEl.hidden = true;
+    closeEl.addEventListener("click", function (ev) { ev.stopPropagation(); closeHistory(); });
     logEl = el("div", "log", veil);
+    histEl = el("div", "hist", veil);
     el("div", "hint", veil).textContent = "toucher pour fermer";
-    veil.addEventListener("click", function () { dismissed = view.turnKey; hide(); });
+    veil.addEventListener("click", function () { if (veil.dataset.mode === "history") return; dismissed = view.turnKey; hide(); });
+    // The way to the history, always in a corner of the page.
+    var fab = el("button", "fab", root);
+    fab.type = "button";
+    el("span", "lens", fab);
+    el("span", "", fab).textContent = "journal";
+    fab.addEventListener("click", openHistory);
     root.appendChild(veil);
     document.body.appendChild(host);
   }
@@ -207,6 +231,62 @@
     if (earEl && Date.now() - view.heardAt > 20000) { earEl.parentNode && earEl.parentNode.removeChild(earEl); earEl = null; }
   }
 
+  // ----- the history: Igor's last exchanges, from the integration -----
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function dayOf(d) {
+    var today = new Date(), y = new Date(Date.now() - 86400000);
+    if (d.toDateString() === today.toDateString()) return "aujourd'hui";
+    if (d.toDateString() === y.toDateString()) return "hier";
+    return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+  }
+  function sayRow(parent, cls, who, text) {
+    var r = el("div", "say " + cls, parent);
+    el("span", "w", r).textContent = who;
+    el("span", "t", r).textContent = text;
+    return r;
+  }
+  function renderHistory(entries) {
+    histEl.innerHTML = "";
+    if (!entries.length) { el("div", "empty", histEl).textContent = "Aucun échange enregistré pour l'instant."; return; }
+    var lastDay = "";
+    entries.forEach(function (e) {
+      var d = new Date(e.at), day = dayOf(d);
+      if (day !== lastDay) { el("div", "day", histEl).textContent = day; lastDay = day; }
+      var box = el("div", "entry", histEl);
+      var q = sayRow(box, "q", pad(d.getHours()) + ":" + pad(d.getMinutes()), e.words || "");
+      q.firstChild.className = "when";
+      (e.trace || []).forEach(function (s) { trRow(box, s.step, s.detail, s.where || "none", typeof s.ms === "number" ? s.ms : null); });
+      if (e.done && e.done.length) {
+        var dn = el("div", "done", box);
+        e.done.forEach(function (label) { el("span", "", dn).textContent = label; });
+      }
+      if (e.answer) sayRow(box, "a", "igor", e.answer);
+    });
+    histEl.scrollTop = histEl.scrollHeight;
+  }
+  function openHistory() {
+    var hass = hassObj();
+    if (!hass) return;
+    show();
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+    view.phase = "";
+    veil.dataset.mode = "history";
+    veil.dataset.phase = "done";
+    closeEl.hidden = false;
+    stateEl.textContent = "historique";
+    histEl.innerHTML = "";
+    el("div", "empty", histEl).textContent = "Chargement…";
+    hass.callWS({ type: "call_service", domain: "nives", service: "journal", service_data: { limit: 100 }, return_response: true })
+      .then(function (r) { renderHistory((r && r.response && r.response.entries) || []); })
+      .catch(function () { histEl.innerHTML = ""; el("div", "empty", histEl).textContent = "Journal indisponible (mettez à jour l'intégration Igor)."; });
+  }
+  function closeHistory() {
+    if (!veil || veil.dataset.mode !== "history") return;
+    veil.dataset.mode = "";
+    closeEl.hidden = true;
+    hide();
+  }
+
   // ----- reading Home Assistant -----
   function hassObj() {
     var ha = document.querySelector("home-assistant");
@@ -257,6 +337,13 @@
     var fromWanted = !onlySatellite || attrs.satellite === onlySatellite;
     var turnKey = String(attrs.turn || "") + "|" + (attrs.started || "");
     var live = fromWanted && (sensorState === "thinking" || sensorState === "answering");
+    if (veil && veil.dataset.mode === "history") {
+      // A new request takes the screen back from the history.
+      var heardNow = fromWanted && sensorState === "heard" && attrs.started && Date.now() - Date.parse(attrs.started) < 15000;
+      if (sat !== "listening" && !live && !heardNow) return;
+      veil.dataset.mode = "";
+      closeEl.hidden = true;
+    }
 
     if (sat === "listening") {
       if (view.phase !== "listening") {
@@ -348,6 +435,7 @@
   }
 
   function start() {
+    if (!host) build();
     setInterval(function () {
       try { update(); } catch (e) { /* the display must never break the page */ }
     }, 250);

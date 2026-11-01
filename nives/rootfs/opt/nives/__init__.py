@@ -17,7 +17,7 @@ import voluptuous as vol
 from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
@@ -40,6 +40,8 @@ from .const import (
     RESTART_ISSUE_ID,
     RESTART_NOTIFY_ID,
     SERVICE_HEARD,
+    SERVICE_JOURNAL,
+    API_JOURNAL_ENDPOINT,
     TOKEN_ACK_RELPATH,
     TOKEN_FILE_RELPATH,
 )
@@ -408,6 +410,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     if voice_display:
         entry.runtime_data.frontend_url = await _async_setup_frontend(hass)
         _async_register_heard(hass)
+        _async_register_journal(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await _async_setup_update_watch(hass, entry)
@@ -445,6 +448,47 @@ def _async_register_heard(hass: HomeAssistant) -> None:
                 sensor.heard(satellite, call.data["waiting"], call.data.get("seconds"))
 
     hass.services.async_register(DOMAIN, SERVICE_HEARD, _heard, schema=HEARD_SCHEMA)
+
+
+JOURNAL_SCHEMA = vol.Schema(
+    {vol.Optional("limit", default=50): vol.All(vol.Coerce(int), vol.Range(min=1, max=200))}
+)
+
+
+@callback
+def _async_register_journal(hass: HomeAssistant) -> None:
+    """The wall tablet's history: Igor's last spoken exchanges with their
+    steps, read from the server (GET /api/journal/<user>) and returned to the
+    caller (the tablet calls it with return_response)."""
+    if hass.services.has_service(DOMAIN, SERVICE_JOURNAL):
+        return
+
+    async def _journal(call: ServiceCall) -> ServiceResponse:
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            data = getattr(entry, "runtime_data", None)
+            if data is None:
+                continue
+            headers = {"Authorization": f"Bearer {data.api_token}"} if data.api_token else {}
+            url = f"{data.api_url}{API_JOURNAL_ENDPOINT}/{data.user_id}"
+            try:
+                async with async_get_clientsession(hass).get(
+                    url, params={"limit": call.data["limit"]}, headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        _LOGGER.warning("Igor's journal: HTTP %s", response.status)
+                        return {"entries": []}
+                    body = await response.json()
+                    entries = body.get("entries") if isinstance(body, dict) else None
+                    return {"entries": entries if isinstance(entries, list) else []}
+            except (aiohttp.ClientError, TimeoutError) as err:
+                _LOGGER.warning("Igor's journal unavailable: %s", err)
+                return {"entries": []}
+        return {"entries": []}
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_JOURNAL, _journal, schema=JOURNAL_SCHEMA, supports_response=SupportsResponse.ONLY
+    )
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: IgorConfigEntry) -> None:
