@@ -530,14 +530,15 @@ def _async_register_journal(hass: HomeAssistant) -> None:
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status != 200:
-                        _LOGGER.warning("Igor's journal: HTTP %s", response.status)
-                        return {"entries": []}
+                        _LOGGER.warning("Igor's journal at %s: HTTP %s", data.api_url, response.status)
+                        continue
                     body = await response.json()
                     entries = body.get("entries") if isinstance(body, dict) else None
                     return {"entries": entries if isinstance(entries, list) else []}
-            except (aiohttp.ClientError, TimeoutError) as err:
-                _LOGGER.warning("Igor's journal unavailable: %s", err)
-                return {"entries": []}
+            except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+                # An old entry pointing at an add-on that is gone: try the next.
+                _LOGGER.warning("Igor's journal unavailable at %s: %s", data.api_url, err)
+                continue
         return {"entries": []}
 
     hass.services.async_register(
