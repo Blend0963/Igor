@@ -126,6 +126,11 @@ class FeedCache:
         hit = self._store.get(url)
         return hit[1] if hit and time.monotonic() - hit[0] < CACHE_SECONDS else None
 
+    def stale(self, url: str) -> dict | None:
+        """The last good feed, however old: better than an error card."""
+        hit = self._store.get(url)
+        return hit[1] if hit else None
+
     def put(self, url: str, feed: dict) -> None:
         if len(self._store) > 20:
             self._store.clear()

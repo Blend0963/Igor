@@ -569,23 +569,38 @@ def _async_register_news(hass: HomeAssistant) -> None:
         url, limit = call.data["url"], call.data["limit"]
         feed = cache.get(url)
         if feed is None:
-            try:
-                async with async_get_clientsession(hass).get(
-                    url, timeout=aiohttp.ClientTimeout(total=15), headers={"User-Agent": "Igor (Home Assistant)"}
-                ) as response:
-                    if response.status != 200:
-                        return {"source": "", "items": [], "error": f"HTTP {response.status}"}
-                    data = await response.content.read(MAX_BYTES + 1)
-                if len(data) > MAX_BYTES:
-                    return {"source": "", "items": [], "error": "feed too large"}
-                parse = parse_mediapart if is_mediapart_wire(url) else parse_feed
-                feed = await hass.async_add_executor_job(parse, data, 50)
-            except (aiohttp.ClientError, TimeoutError) as err:
-                _LOGGER.warning("News feed %s unavailable: %s", url, err)
-                return {"source": "", "items": [], "error": "unreachable"}
-            except ValueError as err:
-                _LOGGER.warning("News feed %s unreadable: %s", url, err)
-                return {"source": "", "items": [], "error": "not a feed"}
+            error = ""
+            # Twice: a site sometimes answers a busy or consent page once.
+            for attempt in range(2):
+                try:
+                    async with async_get_clientsession(hass).get(
+                        url, timeout=aiohttp.ClientTimeout(total=15),
+                        headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Igor/Home Assistant",
+                                 "Accept": "text/html,application/rss+xml,application/xml;q=0.9,*/*;q=0.8",
+                                 "Accept-Language": "fr-FR,fr;q=0.9"},
+                    ) as response:
+                        if response.status != 200:
+                            raise ValueError(f"HTTP {response.status}")
+                        data = await response.content.read(MAX_BYTES + 1)
+                    if len(data) > MAX_BYTES:
+                        raise ValueError("feed too large")
+                    parse = parse_mediapart if is_mediapart_wire(url) else parse_feed
+                    feed = await hass.async_add_executor_job(parse, data, 50)
+                    break
+                except (aiohttp.ClientError, TimeoutError) as err:
+                    error = "unreachable"
+                    _LOGGER.debug("News feed %s unavailable (try %s): %s", url, attempt + 1, err)
+                except ValueError as err:
+                    error = str(err) if str(err).startswith("HTTP") else "not a feed"
+                    _LOGGER.debug("News feed %s unreadable (try %s): %s", url, attempt + 1, err)
+                if attempt == 0:
+                    await asyncio.sleep(2)
+            if feed is None:
+                old = cache.stale(url)
+                if old is not None:
+                    return {"source": old["source"], "items": old["items"][:limit], "stale": True}
+                _LOGGER.warning("News feed %s: %s", url, error)
+                return {"source": "", "items": [], "error": error}
             cache.put(url, feed)
         return {"source": feed["source"], "items": feed["items"][:limit]}
 
