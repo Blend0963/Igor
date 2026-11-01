@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.22.2 — The VM's settings from the dashboard
+
+- igor-ear 0.3.1 (`ear/`): the desk screen's kiosk session now starts EasyEffects and Bluetooth's agent itself (what an XFCE session did), and `install-vm.sh` switches off the login manager in place (LightDM…) before enabling greetd. Home Assistant's `igor_screen` event takes `app` (`sound`, `equalizer`, `bluetooth`) to open pavucontrol, EasyEffects or Blueman over the dashboard, and `close`.
+
 ## 0.22.1 — Igor's desk screen
 
 - igor-ear 0.3.0 (`ear/`, update it on its machine): Igor's machine can show the wall dashboard on its graphics card's output, on a monitor shared with your PC (`ear/screen/`). `install-vm.sh` sets up a kiosk session at boot (sway, Chromium full screen on the dashboard, no password with Home Assistant's trusted networks) and `run.sh screen`: the machine that loses the USB keyboard sends the monitor to the other input (DDC/CI), and Home Assistant's `igor_screen` event (`pc`, `dashboard`, `off`, `on`, `toggle`) switches it or puts it to sleep; its state is `sensor.igor_screen`. `install-pc.sh` gives the PC (Fedora Silverblue/secureblue or any GNOME) its keyboard watch and an **Igor** icon in the dock.
