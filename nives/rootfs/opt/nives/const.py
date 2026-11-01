@@ -140,6 +140,8 @@ VOICE_SENSOR_MARKER = "igor_voice"
 # Service a listener calls the moment it hears the name (sensor.py, heard).
 SERVICE_HEARD = "heard"
 SERVICE_JOURNAL = "journal"
+# Headlines of an RSS or Atom feed for the wall's news card.
+SERVICE_NEWS = "news"
 # The desk screen (igor-ear's `run.sh screen`): the service fires this event.
 SERVICE_SCREEN = "screen"
 SCREEN_EVENT = "igor_screen"

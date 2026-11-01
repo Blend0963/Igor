@@ -45,6 +45,7 @@ from .const import (
     SCREEN_APPS,
     SCREEN_EVENT,
     SERVICE_JOURNAL,
+    SERVICE_NEWS,
     SERVICE_SCREEN,
     API_JOURNAL_ENDPOINT,
     TOKEN_ACK_RELPATH,
@@ -435,6 +436,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
         entry.runtime_data.frontend_url = await _async_setup_frontend(hass)
         _async_register_heard(hass)
         _async_register_journal(hass)
+        _async_register_news(hass)
         _async_register_screen(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
@@ -540,6 +542,54 @@ def _async_register_journal(hass: HomeAssistant) -> None:
 
     hass.services.async_register(
         DOMAIN, SERVICE_JOURNAL, _journal, schema=JOURNAL_SCHEMA, supports_response=SupportsResponse.ONLY
+    )
+
+
+NEWS_SCHEMA = vol.Schema(
+    {
+        vol.Required("url"): vol.All(str, vol.Match(r"^https?://", msg="an http(s) address")),
+        vol.Optional("limit", default=20): vol.All(vol.Coerce(int), vol.Range(min=1, max=50)),
+    }
+)
+
+
+@callback
+def _async_register_news(hass: HomeAssistant) -> None:
+    """The wall's news card: an RSS or Atom feed's newest headlines, fetched
+    here (a browser cannot read another site) and kept ten minutes. Also
+    Mediapart's page of AFP dispatches, which has no feed."""
+    if hass.services.has_service(DOMAIN, SERVICE_NEWS):
+        return
+    from .news import MAX_BYTES, FeedCache, is_mediapart_wire, parse_feed, parse_mediapart
+
+    cache = FeedCache()
+
+    async def _news(call: ServiceCall) -> ServiceResponse:
+        url, limit = call.data["url"], call.data["limit"]
+        feed = cache.get(url)
+        if feed is None:
+            try:
+                async with async_get_clientsession(hass).get(
+                    url, timeout=aiohttp.ClientTimeout(total=15), headers={"User-Agent": "Igor (Home Assistant)"}
+                ) as response:
+                    if response.status != 200:
+                        return {"source": "", "items": [], "error": f"HTTP {response.status}"}
+                    data = await response.content.read(MAX_BYTES + 1)
+                if len(data) > MAX_BYTES:
+                    return {"source": "", "items": [], "error": "feed too large"}
+                parse = parse_mediapart if is_mediapart_wire(url) else parse_feed
+                feed = await hass.async_add_executor_job(parse, data, 50)
+            except (aiohttp.ClientError, TimeoutError) as err:
+                _LOGGER.warning("News feed %s unavailable: %s", url, err)
+                return {"source": "", "items": [], "error": "unreachable"}
+            except ValueError as err:
+                _LOGGER.warning("News feed %s unreadable: %s", url, err)
+                return {"source": "", "items": [], "error": "not a feed"}
+            cache.put(url, feed)
+        return {"source": feed["source"], "items": feed["items"][:limit]}
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_NEWS, _news, schema=NEWS_SCHEMA, supports_response=SupportsResponse.ONLY
     )
 
 

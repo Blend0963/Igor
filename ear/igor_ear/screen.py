@@ -31,6 +31,9 @@ from dataclasses import dataclass, field
 log = logging.getLogger("igor-ear")
 
 INPUT_DEVICES = "/proc/bus/input/devices"
+# A keyboard on a long or weak USB link drops for a moment and comes back:
+# only this long without it is the USB switch pressed towards the PC.
+GONE_AFTER = 3.0
 
 # The settings windows a dashboard button may open over the dashboard: these
 # only, never a command sent by Home Assistant.
@@ -44,11 +47,32 @@ APP_WINDOWS = r"^(org\.pulseaudio\.pavucontrol|pavucontrol|com\.github\.wwmm\.ea
 
 
 # ----- the keyboard -----
+# Letter keys and the space bar (linux/input-event-codes.h): a USB sound card,
+# a headset or a remote also declares itself a keyboard ("kbd", for its volume
+# keys), but only a real keyboard has these.
+TYPING_KEYS = (16, 30, 44, 57)  # KEY_Q, KEY_A, KEY_Z, KEY_SPACE
+
+
+def key_bits(text: str) -> int:
+    """The `B: KEY=` bitmap: hex words, the most significant first, each one a
+    64-bit word with its leading zeros left out."""
+    value = 0
+    for word in text.split():
+        value = (value << 64) | int(word, 16)
+    return value
+
+
 @dataclass
 class InputDevice:
     name: str = ""
     bus: str = ""
     handlers: list[str] = field(default_factory=list)
+    keys: int | None = None  # None: the bitmap was not listed
+
+    def types(self) -> bool:
+        if self.keys is None:
+            return True
+        return all(self.keys >> k & 1 for k in TYPING_KEYS)
 
 
 def parse_inputs(text: str) -> list[InputDevice]:
@@ -65,6 +89,11 @@ def parse_inputs(text: str) -> list[InputDevice]:
                 dev.name = m.group(1) if m else ""
             elif line.startswith("H:"):
                 dev.handlers = line.split("=", 1)[1].split() if "=" in line else []
+            elif line.startswith("B: KEY="):
+                try:
+                    dev.keys = key_bits(line.split("=", 1)[1])
+                except ValueError:
+                    dev.keys = None
         if dev.name:
             out.append(dev)
     return out
@@ -72,9 +101,10 @@ def parse_inputs(text: str) -> list[InputDevice]:
 
 def keyboard_here(devices: list[InputDevice], match: str = "") -> bool:
     """A real USB keyboard is plugged in: the virtual machine's own devices
-    (QEMU's tablet and keyboard) do not count. `match`: a part of its name."""
+    (QEMU's tablet and keyboard) and USB devices with a few media keys only
+    (a sound card) do not count. `match`: a part of its name."""
     for d in devices:
-        if d.bus != "0003" or "kbd" not in d.handlers:
+        if d.bus != "0003" or "kbd" not in d.handlers or not d.types():
             continue
         if d.name.upper().startswith("QEMU"):
             continue
@@ -214,14 +244,24 @@ class Screen:
             self.act("pc")
         self.publish()
 
+    def keyboard_seen(self, present: bool, now: float) -> None:
+        """One reading of the keyboard: back at once, gone only after
+        GONE_AFTER seconds without it (a flaky link resets it every second)."""
+        if present:
+            self.last_seen = now
+            self.keyboard_changed(True)
+        elif now - getattr(self, "last_seen", 0.0) >= GONE_AFTER:
+            self.keyboard_changed(False)
+
     def watch_keyboard(self) -> None:
         self.keyboard = self.read_keyboard(self.s.keyboard)
+        self.last_seen = time.monotonic()
         ticks = 0
         while True:
             time.sleep(0.5)
             ticks += 1
             try:
-                self.keyboard_changed(self.read_keyboard(self.s.keyboard))
+                self.keyboard_seen(self.read_keyboard(self.s.keyboard), time.monotonic())
                 if ticks % 6 == 0:
                     self.refullscreen()
             except Exception as err:  # noqa: BLE001 - the watch must go on

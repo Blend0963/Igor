@@ -49,6 +49,15 @@ def keyboard_here(match):
             continue
         if match and match.lower() not in name.group(1).lower():
             continue
+        # A sound card or a headset declares itself a keyboard for its volume
+        # keys: a real keyboard has letters and a space bar.
+        keys = re.search(r"B: KEY=(.*)", block)
+        if keys:
+            bits = 0
+            for word in keys.group(1).split():
+                bits = (bits << 64) | int(word, 16)
+            if not all(bits >> k & 1 for k in (16, 30, 44, 57)):
+                continue
         return True
     return False
 
@@ -100,13 +109,17 @@ def main():
         return 0
     here = keyboard_here(s["KEYBOARD"])
     print("igor-screen-pc: watching the keyboard (" + ("here" if here else "not here") + ")", flush=True)
+    # A keyboard on a weak USB link drops for a moment: only 3 seconds
+    # without it is the USB switch pressed towards Igor's machine.
+    last_seen = time.monotonic()
     while True:
         time.sleep(0.5)
-        now = keyboard_here(s["KEYBOARD"])
-        if here and not now:
+        if keyboard_here(s["KEYBOARD"]):
+            last_seen, here = time.monotonic(), True
+        elif here and time.monotonic() - last_seen >= 3:
             print("igor-screen-pc: keyboard gone, screen to Igor", flush=True)
             switch(s)
-        here = now
+            here = False
 
 
 if __name__ == "__main__":

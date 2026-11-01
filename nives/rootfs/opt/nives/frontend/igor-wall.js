@@ -10,10 +10,12 @@
 //   custom:igor-net-card      a router's traffic over the last hour
 //   custom:igor-energy-card   power now and hour by hour today
 //   custom:igor-camera-card   a camera's picture, refreshed every few seconds
+//   custom:igor-news-card     the newest headlines of an RSS or Atom feed
 //
 // And the "Igor Journal (tablette)" theme: its --igor-hide-header variable
-// hides Home Assistant's top bar on the device that uses it. The bar comes
-// back while editing the dashboard (?edit=1) or with ?barre in the address.
+// hides Home Assistant's top bar on the device that uses it, on the pages
+// that show an igor-wall only (other dashboards keep their tabs). The bar
+// comes back while editing the dashboard (?edit=1) or with ?barre in the address.
 //
 // Written plainly for old tablets: no animation but the status bar's one
 // transform, no timer faster than a second, history read once a minute.
@@ -178,6 +180,16 @@
     // the detail, over the whole wall
     ".detail { position: fixed; inset: 0; z-index: 2147482990; background: var(--bg); color: var(--fg); display: none; flex-direction: column; padding: 18px 22px; box-sizing: border-box; overflow-y: auto; font-size: 13px; }",
     ".detail.on { display: flex; }",
+    // the clock's and Igor's panels, under the bar
+    ".pop { position: fixed; top: 36px; z-index: 2147482991; width: min(440px, calc(100vw - 24px)); background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; box-sizing: border-box; display: none; flex-direction: column; gap: 12px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }",
+    ".pop.on { display: flex; } .pop.l { left: 12px; } .pop.r { right: 12px; }",
+    ".pop h4 { margin: 0; font-size: 15px; font-weight: 500; display: flex; justify-content: space-between; align-items: center; gap: 10px; }",
+    ".pop .kv { grid-template-columns: 1fr auto; }",
+    ".pop .sub { color: var(--faint); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; }",
+    ".pop .btns { display: flex; flex-wrap: wrap; gap: 8px; }",
+    ".pop .btns button { background: none; border: 1px solid var(--line); color: var(--fg); font: inherit; padding: 6px 12px; border-radius: 16px; cursor: pointer; }",
+    ".pop .btns button.on { border-color: var(--acc); color: var(--acc); }",
+    ".pop .last div { padding: 3px 0; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
     ".dhead { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--line); margin-bottom: 8px; color: var(--dim); }",
     ".dhead b { color: var(--fg); font-weight: 500; }",
     ".dbtns { display: flex; gap: 8px; }",
@@ -229,8 +241,13 @@
       }
       this.clockEl = el("span", "fix right", this.root);
       this.detail = el("div", "detail", host);
+      this.pop = el("div", "pop", host);
+      this.host = host;
+      // The machines' detail closes with its « fermer » only; the clock and
+      // « igor » open their own panels.
       this.root.addEventListener("click", () => this.openDetail());
-      this.detail.addEventListener("click", () => this.closeDetail());
+      left.addEventListener("click", (ev) => { ev.stopPropagation(); this.togglePop("igor"); });
+      this.clockEl.addEventListener("click", (ev) => { ev.stopPropagation(); this.togglePop("time"); });
       this.page = 0;
       this.lastText = 0;
       if (this.paged) this.pager = setInterval(() => this.nextPage(), 8000);
@@ -276,6 +293,7 @@
         });
       });
       if (this.detail.classList.contains("on")) this.renderDetail();
+      if (this.pop.classList.contains("on") && now - (this.lastPop || 0) > 15000) { this.lastPop = now; this.renderPop(false); }
       if (this.paged && !this.pagedOnce) { this.pagedOnce = true; this.nextPage(true); }
     }
     // Pages: as many machines as the line holds, the next ones 8 s later.
@@ -295,6 +313,103 @@
       } while (i !== start);
       this.nextStart = i;
     }
+    togglePop(kind) {
+      if (this.pop.classList.contains("on") && this.popKind === kind) { this.closePop(); return; }
+      this.popKind = kind;
+      this.pop.className = "pop on " + (kind === "igor" ? "l" : "r");
+      this.renderPop(true);
+      clearTimeout(this.popClose);
+      this.popClose = setTimeout(() => this.closePop(), 90000);
+    }
+    closePop() { this.pop.classList.remove("on"); clearTimeout(this.popClose); this.popKind = null; }
+    renderPop(fresh) {
+      var hass = this._hass, p = this.pop;
+      if (!hass) return;
+      p.innerHTML = "";
+      var h = el("h4", "", p);
+      var close = el("button", "close", null, "fermer");
+      close.type = "button";
+      close.addEventListener("click", (ev) => { ev.stopPropagation(); this.closePop(); });
+      var btn = function (box, label, fn, on) {
+        var b = el("button", on ? "on" : "", box, label);
+        b.type = "button";
+        b.addEventListener("click", function (ev) { ev.stopPropagation(); fn(); });
+        return b;
+      };
+      var kv = function (rows) {
+        var k = el("div", "kv", p);
+        rows.forEach(function (r) { if (r && r[1] !== "" && r[1] != null) { el("span", "l", k, r[0]); el("span", "v", k, String(r[1])); } });
+      };
+      var c = (this.config.panels || {});
+      if (this.popKind === "time") {
+        var d = new Date();
+        el("span", "", h, d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) + " · " + hhmm(d));
+        h.appendChild(close);
+        var sun = hass.states["sun.sun"], at = function (v) { var x = v ? new Date(v) : null; return x && !isNaN(x) ? hhmm(x) : ""; };
+        var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+        var week = Math.ceil(((t - new Date(Date.UTC(t.getUTCFullYear(), 0, 1))) / 86400000 + 1) / 7);
+        kv([
+          ["lever", sun ? at(sun.attributes.next_rising) : ""],
+          ["coucher", sun ? at(sun.attributes.next_setting) : ""],
+          ["semaine", String(week)]
+        ].concat((c.time && c.time.entities || []).map(function (e) { return hass.states[e.entity] ? [e.name || e.entity, stateText(hass, e.entity)] : null; })));
+        var timer = c.time && c.time.timer && hass.states[c.time.timer];
+        if (timer) {
+          el("div", "sub", p, "minuteur" + (timer.state === "active" && timer.attributes.finishes_at ? " · fin à " + at(timer.attributes.finishes_at) : timer.state === "paused" ? " · en pause" : ""));
+          var tb = el("div", "btns", p), tid = c.time.timer;
+          [5, 10, 20, 60].forEach(function (m) {
+            btn(tb, m < 60 ? m + " min" : "1 h", function () { hass.callService("timer", "start", { duration: m === 60 ? "01:00:00" : "00:" + pad(m) + ":00" }, { entity_id: tid }); });
+          });
+          if (timer.state !== "idle") btn(tb, "arrêter", function () { hass.callService("timer", "cancel", {}, { entity_id: tid }); });
+        }
+        if (c.time && c.time.screen) {
+          el("div", "sub", p, "écran");
+          var sb = el("div", "btns", p);
+          btn(sb, "mettre en veille", function () { hass.callService("nives", "screen", { action: "off" }); });
+          btn(sb, "écran du PC", function () { hass.callService("nives", "screen", { action: "pc" }); });
+        }
+      } else {
+        var igor = igorSensor(hass), ic = c.igor || {};
+        el("span", "", h, "igor · " + (igor ? (IGOR_WORDS[igor.state] || igor.state) : "—"));
+        h.appendChild(close);
+        var rows = [];
+        if (ic.satellite && hass.states[ic.satellite]) rows.push(["satellite", stateText(hass, ic.satellite)]);
+        if (ic.assist && hass.states[ic.assist]) rows.push(["écoute", hass.states[ic.assist].state === "off" ? "coupée" : "ouverte"]);
+        Object.keys(hass.states).filter(function (id) { return /^sensor\.igor_ear_gpu_(busy|load|temp)/.test(id); }).slice(0, 3).forEach(function (id) {
+          rows.push([(hass.states[id].attributes.friendly_name || id).replace(/^igor ear gpu /i, "radeon "), stateText(hass, id)]);
+        });
+        kv(rows);
+        this.stats = el("div", "kv", p);
+        el("div", "sub", p, "dernières discussions");
+        this.lastBox = el("div", "last", p);
+        var b = el("div", "btns", p);
+        btn(b, "ouvrir les discussions", function () { window.dispatchEvent(new CustomEvent("ll-custom", { detail: { igor_journal: true } })); });
+        if (ic.satellite) btn(b, "parler", function () { hass.callService("assist_satellite", "start_conversation", { preannounce: false, start_message: ic.start_message || "Je vous écoute..." }, { entity_id: ic.satellite }); });
+        if (ic.assist && hass.states[ic.assist]) btn(b, hass.states[ic.assist].state === "off" ? "rouvrir l'écoute" : "couper l'écoute", function () { hass.callService("homeassistant", "toggle", {}, { entity_id: ic.assist }); }, hass.states[ic.assist].state !== "off");
+        if (fresh || !this.journal) this.loadJournal(); else this.fillJournal();
+      }
+    }
+    loadJournal() {
+      var hass = this._hass;
+      hass.callWS({ type: "call_service", domain: "nives", service: "journal", service_data: { limit: 50 }, return_response: true })
+        .then((r) => { this.journal = (r && r.response && r.response.entries) || []; this.fillJournal(); })
+        .catch(() => { this.journal = []; this.fillJournal(); });
+    }
+    fillJournal() {
+      if (!this.lastBox || !this.journal) return;
+      var today = new Date().toDateString(), n = 0, local = 0;
+      this.journal.forEach(function (e) {
+        if (new Date(e.at).toDateString() !== today) return;
+        n++;
+        if (!(e.trace || []).some(function (s) { return s.where === "online"; })) local++;
+      });
+      this.stats.innerHTML = "";
+      [["aujourd'hui", n + " échanges"], ["en local seul", String(local)]].forEach((r) => { el("span", "l", this.stats, r[0]); el("span", "v", this.stats, r[1]); });
+      this.lastBox.innerHTML = "";
+      this.journal.slice(-4).reverse().forEach((e) => { el("div", "", this.lastBox, hhmm(new Date(e.at)) + " · « " + (e.words || "") + " »"); });
+      if (!this.journal.length) el("div", "", this.lastBox, "aucune pour l'instant");
+    }
     openDetail() { this.detail.classList.add("on"); this.renderDetail(); clearTimeout(this.autoClose); this.autoClose = setTimeout(() => this.closeDetail(), 120000); }
     closeDetail() { this.detail.classList.remove("on"); clearTimeout(this.autoClose); }
     renderDetail() {
@@ -312,6 +427,7 @@
       });
       var close = el("button", "close", hb, "fermer");
       close.type = "button";
+      close.addEventListener("click", (ev) => { ev.stopPropagation(); this.closeDetail(); });
       // A table of the machines (one line each, the same columns), and on the
       // right the groups marked `side: true` (a router, the disks) as lists.
       var main = this.groups.filter(function (g) { return !g.side; });
@@ -1050,6 +1166,24 @@
     ["pointerup", "pointerleave", "pointercancel"].forEach(function (e) { node.addEventListener(e, function () { clearTimeout(timer); }); });
     node.addEventListener("click", function () { if (!held && onTap) onTap(); });
   }
+  // Home Assistant has no « stop » for a satellite: switching it off for a
+  // moment (its « satellite enabled » switch, or « mute » on and off) ends
+  // the conversation under way. The switch is found on the satellite's device.
+  function cancelSatellite(hass, satellite, sw) {
+    if (!sw) {
+      var dev = hass.entities && hass.entities[satellite] && hass.entities[satellite].device_id;
+      Object.keys(hass.entities || {}).some(function (id) {
+        if (id.indexOf("switch.") !== 0 || !dev || hass.entities[id].device_id !== dev) return false;
+        if (/satellite_enabled|mute/.test(id)) { sw = id; return true; }
+        return false;
+      });
+    }
+    if (!sw || !hass.states[sw]) return false;
+    var mute = /mute/.test(sw);
+    hass.callService("switch", mute ? "turn_on" : "turn_off", {}, { entity_id: sw });
+    setTimeout(function () { hass.callService("switch", mute ? "turn_off" : "turn_on", {}, { entity_id: sw }); }, 1200);
+    return true;
+  }
   function navigate(path) {
     window.history.pushState(null, "", path);
     window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
@@ -1092,6 +1226,11 @@
     talk() {
       var c = this.config;
       if (!c.satellite || !this._hass) return;
+      // A second press while Igor listens, thinks or answers cancels it.
+      var sat = this._hass.states[c.satellite], igor = igorSensor(this._hass);
+      var busy = (sat && ["listening", "processing", "responding"].indexOf(sat.state) >= 0) ||
+        (igor && ["heard", "thinking", "answering"].indexOf(igor.state) >= 0);
+      if (busy) { cancelSatellite(this._hass, c.satellite, c.cancel_switch); return; }
       this._hass.callService("assist_satellite", "start_conversation", { preannounce: false, start_message: c.start_message || "Je vous écoute..." }, { entity_id: c.satellite });
     }
     toggle() { if (this.config.assist && this._hass) this._hass.callService("homeassistant", "toggle", {}, { entity_id: this.config.assist }); }
@@ -1118,6 +1257,7 @@
   //     - { icon: mdi:monitor, name: PC, service: nives.screen, data: { action: pc } }
   //     - { icon: mdi:cog, name: Réglages, navigate: /config }    # a page of Home Assistant
   //     - { icon: mdi:menu, name: Menu, menu: true }               # Home Assistant's sidebar
+  //     - { icon: mdi:bow-tie, name: Igor, journal: true }         # Igor's conversations, over the page
   class IgorButtonsCard extends IgorCard {
     setConfig(config) {
       if (!config || !Array.isArray(config.buttons) || !config.buttons.length) throw new Error("igor-buttons-card: buttons est requis");
@@ -1134,6 +1274,7 @@
         icon(btn, b.icon || "mdi:gesture-tap");
         el("span", "", btn, b.name || "");
         btn.addEventListener("click", () => {
+          if (b.journal) { window.dispatchEvent(new CustomEvent("ll-custom", { detail: { igor_journal: true } })); return; }
           if (b.navigate) { navigate(String(b.navigate)); return; }
           if (b.menu) { this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })); return; }
           if (!this._hass) return;
@@ -1949,6 +2090,128 @@
     }
   }
 
+  // ----- igor-facts-card: a few states, one line each -----
+  //   type: custom:igor-facts-card
+  //   title: maison
+  //   rows:
+  //     - { entity: binary_sensor.portes, name: portes et fenêtres, ok: ["off"], text: { "off": fermées, "on": ouvertes } }
+  //     - { entity: sensor.ping_latence, name: latence, warn: 50, bad: 150 }
+  //     - { entity: sensor.x, name: …, attribute: last_backup }
+  // A row whose entity does not exist is left out: the card shows only what
+  // this house has (nothing at all: the card says so).
+  class IgorFactsCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !Array.isArray(config.rows) || !config.rows.length) throw new Error("igor-facts-card: rows est requis");
+      this.config = config;
+    }
+    getCardSize() { return 3; }
+    build() {
+      this.style([
+        ".rows { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 14px; font-variant-numeric: tabular-nums; }",
+        ".rows .l { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".rows .v { text-align: right; white-space: nowrap; }",
+        ".rows .v.warn { color: var(--wait); } .rows .v.bad { color: var(--bad); } .rows .v.ok { color: var(--okc); }",
+        ".rows .l.tap { cursor: pointer; }",
+        ".empty { color: var(--dim); }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t", top, this.config.title || "");
+      this.rows = el("div", "rows", card);
+      this.sig = "";
+    }
+    update(hass) {
+      var shown = this.config.rows.filter(function (r) { return r && r.entity && hass.states[r.entity]; });
+      var vals = shown.map(function (r) {
+        var st = hass.states[r.entity];
+        var raw = r.attribute ? st.attributes[r.attribute] : st.state;
+        var text = r.text && r.text[String(raw)] != null ? String(r.text[String(raw)]) : r.attribute ? (raw == null ? "—" : /^\d{4}-\d\d-\d\d[T ]\d/.test(String(raw)) ? hhmm(new Date(raw)) : String(raw)) : stateText(hass, r.entity);
+        var n = parseFloat(raw), level = "";
+        if (r.ok) level = r.ok.map(String).indexOf(String(raw)) >= 0 ? "ok" : "warn";
+        if (!isNaN(n) && r.bad != null && n >= r.bad) level = "bad";
+        else if (!isNaN(n) && r.warn != null && n >= r.warn) level = "warn";
+        return [r, text, level];
+      });
+      var sig = JSON.stringify(vals.map(function (v) { return [v[0].entity, v[1], v[2]]; }));
+      if (sig === this.sig) return;
+      this.sig = sig;
+      this.rows.innerHTML = "";
+      if (!vals.length) { el("span", "empty", this.rows, "Aucune de ces entités ici."); return; }
+      vals.forEach((v) => {
+        var l = el("span", "l tap", this.rows, v[0].name || (hass.states[v[0].entity].attributes.friendly_name || v[0].entity));
+        l.addEventListener("click", () => moreInfo(this, v[0].entity));
+        el("span", "v" + (v[2] ? " " + v[2] : ""), this.rows, v[1]);
+      });
+    }
+  }
+
+  // ----- igor-news-card: the newest headlines of a feed -----
+  //   type: custom:igor-news-card
+  //   url: https://example.org/rss.xml   # an RSS or Atom feed, or the AFP's
+  //        dispatches: https://www.mediapart.fr/journal/fil-dactualites
+  //   title: dépêches
+  //   limit: 15
+  // Read by Home Assistant (nives.news, kept ten minutes), refreshed here
+  // every ten minutes. A tap opens the article on a PC (not on a kiosk).
+  class IgorNewsCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !/^https?:\/\//.test(String(config.url || ""))) throw new Error("igor-news-card: url (http ou https) est requis");
+      this.config = config;
+    }
+    build() {
+      this.style([
+        ".list { flex: 1; min-height: 0; overflow: hidden; }",
+        ".n { display: grid; grid-template-columns: 5ch minmax(0, 1fr); gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--line); line-height: 1.35; }",
+        ".n:last-child { border-bottom: 0; }",
+        ".n .h { color: var(--faint); font-variant-numeric: tabular-nums; }",
+        ".n.old { color: var(--dim); }",
+        ".n.link { cursor: pointer; }",
+        ".src { color: var(--dim); font-size: 11px; }",
+        ".empty { color: var(--dim); padding: 8px 0; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t sub", top, (this.config.title || "dépêches").toUpperCase()).style.letterSpacing = "0.12em";
+      this.src = el("span", "src", top);
+      this.list = el("div", "list", card);
+      this.timer = setInterval(() => this.load(), 600000);
+      this.load();
+    }
+    load() {
+      var hass = this._hass;
+      if (!hass || this.loading) return;
+      this.loading = true;
+      var limit = Math.max(1, Math.min(50, Number(this.config.limit) || 15));
+      hass.callWS({ type: "call_service", domain: "nives", service: "news", service_data: { url: String(this.config.url), limit: limit }, return_response: true })
+        .then((r) => { this.render((r && r.response) || {}); })
+        .catch(() => { this.render({ error: "service" }); })
+        .then(() => { this.loading = false; });
+    }
+    render(feed) {
+      this.list.innerHTML = "";
+      this.src.textContent = feed.source || "";
+      var items = feed.items || [];
+      if (!items.length) {
+        el("div", "empty", this.list, feed.error ? "Flux indisponible (" + feed.error + ")" : "Aucune dépêche.");
+        return;
+      }
+      var today = new Date().toDateString();
+      var kiosk = (getComputedStyle(document.documentElement).getPropertyValue("--igor-hide-header").trim().replace(/["']/g, "") || "") !== "";
+      items.forEach(function (it) {
+        var d = it.at ? new Date(it.at) : null;
+        var same = d && d.toDateString() === today;
+        var row = el("div", "n" + (same ? "" : " old"), this.list);
+        el("span", "h", row, !d || isNaN(d) ? "" : same ? hhmm(d) : pad(d.getDate()) + "/" + pad(d.getMonth() + 1));
+        el("span", "", row, it.title || "");
+        if (it.link && !kiosk) {
+          row.classList.add("link");
+          row.addEventListener("click", function () { window.open(it.link, "_blank", "noopener"); });
+        }
+      }, this);
+    }
+    disconnectedCallback() { if (this.timer) { clearInterval(this.timer); this.timer = null; this._built = false; this.shadowRoot.innerHTML = ""; } }
+  }
+
   // ----- igor-alerts-card: what is wrong, first -----
   //   type: custom:igor-alerts-card
   //   gateway: sensor.opnsense_…_gateway_wan_dhcp_status   # the internet
@@ -2053,6 +2316,8 @@
   define("igor-control-card", IgorControlCard, "Igor · commande", "Un appareil et ses boutons (volet, aspirateur…).");
   define("igor-clock-card", IgorClockCard, "Igor · horloge", "L'heure en grand et la date.");
   define("igor-alerts-card", IgorAlertsCard, "Igor · alertes", "Ce qui ne va pas : machines, disques, conteneurs, mises à jour, internet.");
+  define("igor-facts-card", IgorFactsCard, "Igor · faits", "Quelques états, une ligne chacun ; une entité absente est ignorée.");
+  define("igor-news-card", IgorNewsCard, "Igor · dépêches", "Les derniers titres d'un flux RSS ou Atom (dépêches, actualités).");
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
 
   // ===== no top bar with the "Igor Journal (tablette)" theme =====
@@ -2065,12 +2330,27 @@
       return panel && panel.shadowRoot && panel.shadowRoot.querySelector("hui-root");
     } catch (e) { return null; }
   }
+  // Only a page that shows an igor-wall loses the bar: another dashboard
+  // (one with several tabs, say) keeps its tabs on the same device.
+  function viewHasWall(root) {
+    var cfg = root && root.lovelace && root.lovelace.config;
+    if (!cfg || !Array.isArray(cfg.views)) return true;
+    var seg = decodeURIComponent((window.location.pathname.split("/")[2] || ""));
+    var view = null;
+    for (var i = 0; i < cfg.views.length; i++) {
+      if (cfg.views[i] && String(cfg.views[i].path || "") === seg) { view = cfg.views[i]; break; }
+    }
+    if (!view) view = cfg.views[/^\d+$/.test(seg) ? Number(seg) : 0];
+    if (!view) return false;
+    try { return JSON.stringify(view).indexOf("custom:igor-wall") >= 0; } catch (e) { return false; }
+  }
   function wantsNoHeader(root) {
     var v = getComputedStyle(document.documentElement).getPropertyValue("--igor-hide-header").trim().replace(/["']/g, "");
     if (v !== "1" && v !== "true") return false;
     var q = window.location.search || "";
     if (/[?&](barre|edit)(=|&|$)/.test(q)) return false;
-    return !(root && root.lovelace && root.lovelace.editMode);
+    if (root && root.lovelace && root.lovelace.editMode) return false;
+    return viewHasWall(root);
   }
   setInterval(function () {
     var root = lovelaceRoot();
@@ -2111,6 +2391,35 @@
     if (!home || window.location.pathname === home || /[?&]edit=/.test(window.location.search)) return;
     if (Date.now() - lastTouch > after * 60000) { lastTouch = Date.now(); navigate(home); }
   }, 15000);
+
+  // ===== a « mur » button on every other page =====
+  // With the tablet theme the bar and the sidebar are hidden: on any other
+  // page (energy, history, lists, Igor's panel, another dashboard) a small
+  // button in the bottom left corner goes back to the wall.
+  var backBtn = null;
+  setInterval(function () {
+    var v = getComputedStyle(document.documentElement).getPropertyValue("--igor-hide-header").trim().replace(/["']/g, "");
+    var home = null;
+    try { home = window.localStorage.getItem("igor-wall-home"); } catch (e) { home = null; }
+    var want = (v === "1" || v === "true") && home && window.location.pathname !== home && !/[?&]edit=/.test(window.location.search);
+    if (want && !backBtn) {
+      backBtn = document.createElement("button");
+      backBtn.type = "button";
+      backBtn.textContent = "‹ mur";
+      backBtn.setAttribute("aria-label", "Revenir au mur");
+      backBtn.style.cssText = "position:fixed;left:calc(12px + env(safe-area-inset-left, 0px));bottom:calc(12px + env(safe-area-inset-bottom, 0px));z-index:2147482980;" +
+        "font:500 14px ui-monospace,Menlo,monospace;color:#d5dbe1;background:rgba(13,16,20,0.92);border:1px solid #2b3a46;border-radius:18px;padding:8px 16px;cursor:pointer;";
+      backBtn.addEventListener("click", function () {
+        var h = null;
+        try { h = window.localStorage.getItem("igor-wall-home"); } catch (e) { h = null; }
+        if (h) navigate(h);
+      });
+      document.body.appendChild(backBtn);
+    } else if (!want && backBtn) {
+      backBtn.remove();
+      backBtn = null;
+    }
+  }, 1000);
 
   // ===== the theme asked for in the address =====
   // ?igor_theme=Igor%20Journal%20(tablette) picks that theme for this device

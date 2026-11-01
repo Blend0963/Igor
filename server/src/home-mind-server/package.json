@@ -1,6 +1,6 @@
 {
   "name": "@igor/server",
-  "version": "0.23.5",
+  "version": "0.23.6",
   "description": "Igor API server - AI assistant with persistent memory for Home Assistant",
   "type": "module",
   "main": "dist/index.js",
