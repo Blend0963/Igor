@@ -398,6 +398,10 @@
     }
     getCardSize() { return 12; }
     connectedCallback() {
+      try {
+        window.localStorage.setItem("igor-wall-home", window.location.pathname);
+        if (this.config && this.config.return_after != null) window.localStorage.setItem("igor-wall-return", String(this.config.return_after));
+      } catch (e) { /* no storage: no way back by itself */ }
       if (!this._resize) {
         this._resize = () => this.fit();
         window.addEventListener("resize", this._resize);
@@ -1002,6 +1006,10 @@
     ["pointerup", "pointerleave", "pointercancel"].forEach(function (e) { node.addEventListener(e, function () { clearTimeout(timer); }); });
     node.addEventListener("click", function () { if (!held && onTap) onTap(); });
   }
+  function navigate(path) {
+    window.history.pushState(null, "", path);
+    window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
+  }
   function service(hass, name, data, target) {
     var parts = String(name || "").split(".");
     if (parts.length !== 2) return Promise.reject(new Error("service " + name));
@@ -1056,6 +1064,8 @@
   //   type: custom:igor-buttons-card
   //   buttons:
   //     - { icon: mdi:monitor, name: PC, service: nives.screen, data: { action: pc } }
+  //     - { icon: mdi:cog, name: Réglages, navigate: /config }    # a page of Home Assistant
+  //     - { icon: mdi:menu, name: Menu, menu: true }               # Home Assistant's sidebar
   class IgorButtonsCard extends IgorCard {
     setConfig(config) {
       if (!config || !Array.isArray(config.buttons) || !config.buttons.length) throw new Error("igor-buttons-card: buttons est requis");
@@ -1072,6 +1082,8 @@
         icon(btn, b.icon || "mdi:gesture-tap");
         el("span", "", btn, b.name || "");
         btn.addEventListener("click", () => {
+          if (b.navigate) { navigate(String(b.navigate)); return; }
+          if (b.menu) { this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })); return; }
           if (!this._hass) return;
           service(this._hass, b.service, b.data, b.target).then(() => {
             btn.classList.add("done");
@@ -1393,6 +1405,21 @@
     }
   }, 1000);
   var sidebarDone = false;
+
+  // ===== back to the wall =====
+  // With the tablet theme, the page that shows an igor-wall is the screen's
+  // home: after `return_after` minutes untouched on another page (settings,
+  // history…), the screen goes back to it.
+  var lastTouch = Date.now();
+  ["pointerdown", "keydown", "wheel"].forEach(function (e) { window.addEventListener(e, function () { lastTouch = Date.now(); }, true); });
+  setInterval(function () {
+    var v = getComputedStyle(document.documentElement).getPropertyValue("--igor-hide-header").trim().replace(/["']/g, "");
+    if (v !== "1" && v !== "true") return;
+    var home = null, after = 5;
+    try { home = window.localStorage.getItem("igor-wall-home"); after = Number(window.localStorage.getItem("igor-wall-return")) || 5; } catch (e) { return; }
+    if (!home || window.location.pathname === home || /[?&]edit=/.test(window.location.search)) return;
+    if (Date.now() - lastTouch > after * 60000) { lastTouch = Date.now(); navigate(home); }
+  }, 15000);
 
   // ===== the theme asked for in the address =====
   // ?igor_theme=Igor%20Journal%20(tablette) picks that theme for this device

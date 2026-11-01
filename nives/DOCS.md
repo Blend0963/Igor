@@ -112,7 +112,7 @@ The integration adds cards for a tablet screen filled to the bottom, in the them
 - `custom:igor-camera-card`: a camera's picture, refreshed every `interval` seconds (10 by default; light for an old tablet).
 - `custom:igor-weather-card`: now, hour by hour (`hours`) and the next days as temperature bars (`days`); when the weather entity's current state is unavailable, its forecast's first hour stands in.
 - `custom:igor-assist-card`: Igor himself, its state in words; a tap talks to it (`satellite`), a long press or the « assist » pill switches it on or off (`assist`).
-- `custom:igor-buttons-card`: a row of small buttons, each calling a service (`buttons: [{icon, name, service, data}]`).
+- `custom:igor-buttons-card`: a row of small buttons, each calling a service (`buttons: [{icon, name, service, data}]`), opening a page of Home Assistant (`navigate: /config`) or its sidebar (`menu: true`). With the tablet theme, a page left untouched for 5 minutes (`return_after` on the wall) goes back to the wall.
 - `custom:igor-alarm-card`: an alarm clock of the Alarm Clocks integration (`device_id`) on one line: time, days, time left, on/off pill, snooze and dismiss while it rings; a tap opens its full card.
 - `custom:igor-mini-card`: a sensor's value with its range and line over 24 hours.
 
