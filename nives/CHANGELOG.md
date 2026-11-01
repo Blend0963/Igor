@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.5 — New cards reach every screen
+
+- The cards' script kept the same address since 0.23.0, so browsers and the companion app could keep running an old copy: cards added since (`igor-tiles-card`, `igor-control-card`, `igor-clock-card`, `igor-alerts-card`…) showed « Custom element doesn't exist ». Each frontend script's address now carries a digest of its content, so any change is loaded fresh. Restart Home Assistant after updating.
+
 ## 0.23.4 — Fullscreen again, times as times
 
 - The kiosk's Chromium is fullscreen again (its own bar showed): it leaves fullscreen only while a settings window is open, and igor-screen (igor-ear 0.3.2) puts it back once none is left, however it was closed.
