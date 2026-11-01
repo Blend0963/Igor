@@ -33,15 +33,17 @@ if [ -f /etc/greetd/config.toml ] && ! grep -q igor-screen /etc/greetd/config.to
     sudo cp /etc/greetd/config.toml /etc/greetd/config.toml.avant-igor
 fi
 sudo tee /etc/greetd/config.toml >/dev/null <<TOML
-# igor-screen: the kiosk session opens by itself at boot.
+# igor-screen: the kiosk session, at boot and after any restart of greetd.
 [terminal]
 vt = 7
 
-[default_session]
-command = "agreety --cmd /bin/bash"
-user = "_greetd"
-
+# The kiosk at boot (initial_session, once per boot) and after any restart
+# of greetd (default_session): no login prompt that would only loop.
 [initial_session]
+command = "env WLR_DRM_DEVICES=/dev/dri/igor-screen sway --config $CONF/sway.conf"
+user = "$USER"
+
+[default_session]
 command = "env WLR_DRM_DEVICES=/dev/dri/igor-screen sway --config $CONF/sway.conf"
 user = "$USER"
 TOML
