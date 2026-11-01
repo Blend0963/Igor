@@ -1069,7 +1069,7 @@
     setConfig(config) { this.config = config || {}; }
     getCardSize() { return 1; }
     build() {
-      this.style(CARD_CSS + "\nha-card { border-color: #24394a; cursor: pointer; }\n.lens { width: 28px; height: 28px; border-radius: 50%; background: radial-gradient(circle, #e1f5fe 0, #4fc3f7 30%, #0277bd 65%, #0d1014 100%); box-shadow: 0 0 0 2px #2b3a46; }\n.lens.off { filter: grayscale(1) brightness(0.6); }\n.pn { font-size: 14px; }");
+      this.style(CARD_CSS + "\nha-card { border-color: #24394a; cursor: pointer; }\n.lens { width: 28px; height: 28px; border-radius: 50%; background: radial-gradient(circle, #e1f5fe 0, #4fc3f7 30%, #0277bd 65%, #0d1014 100%); box-shadow: 0 0 0 2px #2b3a46; }\n.lens.off { filter: grayscale(1) brightness(0.6); }\n.pn { font-size: 14px; }\nha-card.bigc { padding: 14px 16px; }\n.bigc .tile { grid-template-columns: 46px minmax(0, 1fr) auto auto; gap: 14px; }\n.bigc .lens { width: 46px; height: 46px; }\n.bigc .pn { font-size: 18px; }\n.mic { width: 50px; height: 50px; border-radius: 50%; border: 1px solid #24394a; background: none; color: var(--acc); display: grid; place-items: center; cursor: pointer; --mdc-icon-size: 26px; }");
       var card = el("ha-card", "", this.shadowRoot);
       var t = el("div", "tile", card);
       this.lens = el("span", "lens", t);
@@ -1080,6 +1080,14 @@
       this.pill.type = "button";
       this.pill.addEventListener("click", (ev) => { ev.stopPropagation(); this.toggle(); });
       longPress(card, () => this.talk(), () => this.toggle());
+      if (this.config.size === "big") {
+        // The tablet: a large eye and a microphone button to talk.
+        card.classList.add("bigc");
+        var mic = el("button", "mic", t);
+        mic.type = "button";
+        icon(mic, "mdi:microphone");
+        mic.addEventListener("click", (ev) => { ev.stopPropagation(); this.talk(); });
+      }
     }
     talk() {
       var c = this.config;
@@ -1182,6 +1190,7 @@
       var clock = el("div", "clock", now);
       this.time = el("div", "big num", clock);
       this.date = el("div", "sub", clock);
+      if (this.config.clock === false) clock.hidden = true;
       this.hoursEl = el("div", "hours", card);
       this.daysEl = el("div", "", card);
       this.hourly = [];
@@ -1454,7 +1463,9 @@
         ".dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--okc); margin-right: 7px; vertical-align: 1px; }",
         ".dot.off { background: var(--bad); } .dot.pause { background: var(--wait); }",
         ".badge { font-size: 9.5px; border: 1px solid rgba(217, 164, 65, 0.5); color: var(--wait); border-radius: 9px; padding: 0 6px; margin-left: 6px; cursor: pointer; background: none; font-family: inherit; }",
-        ".hid { color: var(--faint); font-size: 10.5px; padding-top: 5px; flex: none; }"
+        ".hid { color: var(--faint); font-size: 10.5px; padding-top: 5px; flex: none; }",
+        ".i2 { display: none; }",
+        "@media (max-width: 600px) { .ct { grid-template-columns: minmax(0, 1fr) auto; } .ct .v { display: none; } .ct .n .i2 { display: block; color: var(--dim); font-size: 10.5px; margin-left: 14px; } .sum b { font-size: 13px; } }"
       ].join("\n"));
       var card = el("ha-card", "", this.shadowRoot);
       var top = el("div", "top", card);
@@ -1525,6 +1536,7 @@
         if (up && started && started.state) { var sn = since(started.state); if (sn) info.push("depuis " + sn); }
         if (health && ["unknown", "unavailable", "none", ""].indexOf(String(health.state).toLowerCase()) < 0) info.push(health.state);
         el("span", "i", n, info.join(" · "));
+        el("span", "i2" + (up ? "" : " bad"), n, up ? fr(num(hass.states[c.cpu]), 1) + " % · " + sizeText(hass.states[c.mem]) : WORDS[st] || st);
         el("span", "v " + (up ? "" : "bad"), row, WORDS[st] || st);
         el("span", "v", row, up ? fr(num(hass.states[c.cpu]), 1) + " %" : "—");
         el("span", "v", row, sizeText(hass.states[c.mem]));
@@ -1597,7 +1609,8 @@
         ".x { color: var(--dim); font-size: 11px; text-align: right; }",
         ".hd { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); padding: 10px 0 4px; flex: none; }",
         ".disks { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; flex: none; }",
-        ".foot { color: var(--dim); font-size: 11px; padding-top: 7px; flex: none; }"
+        ".foot { color: var(--dim); font-size: 11px; padding-top: 7px; flex: none; }",
+        "@media (max-width: 600px) { .vm { grid-template-columns: minmax(0, 1fr) 54px 74px; gap: 10px; } .vm .x { display: none; } .vm .cell .l { display: none; } .vm .cell .v { font-size: 11px; white-space: nowrap; } }"
       ].join("\n"));
       var card = el("ha-card", "", this.shadowRoot);
       var top = el("div", "top", card);
@@ -1735,6 +1748,266 @@
     }
   }
 
+  // ===== cards for the tablet and the phone =====
+  var STATE_WORDS = {
+    on: "allumé", off: "éteint", open: "ouvert", closed: "fermé", opening: "s'ouvre", closing: "se ferme",
+    playing: "en lecture", paused: "en pause", idle: "en veille", standby: "en veille", buffering: "chargement",
+    docked: "à la base", cleaning: "nettoie", returning: "retour à la base", error: "erreur",
+    home: "présent", not_home: "absent", unavailable: "indisponible", unknown: "—", armed_away: "armée", disarmed: "désarmée"
+  };
+  function domainOf(id) { return String(id || "").split(".")[0]; }
+  function stateText(hass, id) {
+    var st = hass.states[id];
+    if (!st) return "—";
+    var d = domainOf(id), s = st.state, a = st.attributes || {};
+    if (d === "scene" || d === "script") return d === "scene" ? "scène" : "script";
+    if (d === "light" && s === "on" && a.brightness != null) return Math.round(a.brightness / 2.55) + " %";
+    if (d === "fan" && s === "on" && a.percentage != null) return a.percentage + " %";
+    if (d === "cover" && a.current_position != null && s !== "closed") return (STATE_WORDS[s] || s) + " · " + a.current_position + " %";
+    if (d === "vacuum" && a.battery_level != null) return (STATE_WORDS[s] || s) + " · " + a.battery_level + " %";
+    if (d === "media_player" && s === "playing" && (a.media_title || a.media_artist)) return a.media_title || a.media_artist;
+    if (/^\d{4}-\d\d-\d\dT/.test(s)) { var t = new Date(s); if (!isNaN(t)) return hhmm(t); }
+    var v = num(st);
+    if (v != null && a.unit_of_measurement) return fr(v, v < 10 ? 1 : 0) + " " + a.unit_of_measurement;
+    return STATE_WORDS[s] || s;
+  }
+  function isOn(hass, id) {
+    var st = hass.states[id];
+    return !!st && ["on", "open", "playing", "cleaning", "home", "opening"].indexOf(st.state) >= 0;
+  }
+  function tap(node, hass, id, how) {
+    var d = domainOf(id);
+    how = how || (d === "scene" ? "scene" : d === "script" ? "script" :
+      ["light", "switch", "fan", "input_boolean", "cover"].indexOf(d) >= 0 ? "toggle" : d === "media_player" ? "play_pause" : "more-info");
+    if (how === "scene") return hass.callService("scene", "turn_on", {}, { entity_id: id });
+    if (how === "script") return hass.callService("script", "turn_on", {}, { entity_id: id });
+    if (how === "toggle") return hass.callService("homeassistant", "toggle", {}, { entity_id: id });
+    if (how === "play_pause") return hass.callService("media_player", "media_play_pause", {}, { entity_id: id });
+    moreInfo(node, id);
+  }
+
+  // ----- igor-tiles-card: big buttons, for a finger from afar -----
+  //   type: custom:igor-tiles-card
+  //   columns: 2
+  //   tiles:
+  //     - { entity: scene.tamisee, name: Tamisée, icon: mdi:brightness-6 }
+  //     - { entity: light.salon, name: Salon }            # tap: on/off, hold: details
+  //     - { entity: sensor.next_train, name: Ligne J, secondary: [sensor.train_1, sensor.train_2], tap: more-info }
+  // size: small gives one line per tile (icon, name, state) instead of a square.
+  class IgorTilesCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !Array.isArray(config.tiles) || !config.tiles.length) throw new Error("igor-tiles-card: tiles est requis");
+      this.config = config;
+    }
+    getCardSize() { return 3; }
+    build() {
+      var small = this.config.size === "small";
+      this.style([
+        ":host { display: block; height: 100%; }",
+        ".grid { display: grid; gap: 10px; height: 100%; grid-auto-rows: " + (small ? "auto" : "1fr") + "; }",
+        "button { background: var(--card); border: 1px solid var(--line); border-radius: var(--ha-card-border-radius, 8px); color: var(--fg); font-family: inherit; text-align: left; cursor: pointer; min-width: 0; min-height: " + (small ? "0" : "86px") + "; }",
+        "button.big { padding: 14px 12px; display: flex; flex-direction: column; justify-content: flex-start; gap: 8px; --mdc-icon-size: 30px; }",
+        "button.small { padding: 10px 12px; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; --mdc-icon-size: 20px; }",
+        "button ha-icon { color: var(--dim); }",
+        "button.on { border-color: rgba(217, 164, 65, 0.4); } button.on ha-icon { color: var(--wait); }",
+        "button.scene ha-icon { color: var(--acc); }",
+        ".n { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".s { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        "button.small .s { text-align: right; }",
+        "button.done { border-color: var(--acc); }",
+        "button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }"
+      ].join("\n"));
+      var grid = el("div", "grid", this.shadowRoot);
+      grid.style.gridTemplateColumns = "repeat(" + (Number(this.config.columns) || (small ? 1 : 2)) + ", minmax(0, 1fr))";
+      this.tiles = this.config.tiles.map((t) => {
+        var b = el("button", small ? "small" : "big", grid);
+        b.type = "button";
+        var ic = icon(b, t.icon || "mdi:help-circle-outline");
+        var mid = small ? el("span", "", b) : b;
+        el("span", "n", mid, t.name || t.entity);
+        var sub = el("span", "s", small ? b : b);
+        if (small) b.appendChild(sub);
+        var held = false, timer = null;
+        b.addEventListener("pointerdown", () => { held = false; timer = setTimeout(() => { held = true; moreInfo(this, t.entity); }, 600); });
+        ["pointerup", "pointerleave", "pointercancel"].forEach((e) => b.addEventListener(e, () => clearTimeout(timer)));
+        b.addEventListener("click", () => {
+          if (held || !this._hass) return;
+          var r = tap(this, this._hass, t.entity, t.tap);
+          if (r && r.then) r.then(() => { b.classList.add("done"); setTimeout(() => b.classList.remove("done"), 700); });
+        });
+        return { t: t, b: b, ic: ic, sub: sub };
+      });
+    }
+    update(hass, prev) {
+      this.tiles.forEach((x) => {
+        var ids = [x.t.entity].concat(x.t.secondary || []);
+        if (!changed(prev, hass, ids)) return;
+        var st = hass.states[x.t.entity];
+        if (!x.t.icon && st && st.attributes.icon) x.ic.setAttribute("icon", st.attributes.icon);
+        var text = x.t.secondary ? x.t.secondary.map(function (id) { return stateText(hass, id); }).join(" · ") : stateText(hass, x.t.entity);
+        if (x.t.secondary && x.t.show_state) text = stateText(hass, x.t.entity) + " · " + text;
+        x.sub.textContent = text;
+        var d = domainOf(x.t.entity);
+        x.b.classList.toggle("scene", d === "scene" || d === "script");
+        x.b.classList.toggle("on", d !== "scene" && isOn(hass, x.t.entity));
+      });
+    }
+  }
+
+  // ----- igor-control-card: one thing and its buttons (a cover, a vacuum…) -----
+  //   type: custom:igor-control-card
+  //   entity: cover.volet
+  //   name: Volet
+  //   icon: mdi:window-shutter
+  //   buttons:
+  //     - { icon: mdi:arrow-up, service: cover.open_cover }
+  //     - { icon: mdi:stop, service: cover.stop_cover }
+  //     - { icon: mdi:arrow-down, service: cover.close_cover }
+  // Each button acts on the card's entity unless it names its own target.
+  class IgorControlCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !config.entity) throw new Error("igor-control-card: entity est requis");
+      this.config = config;
+    }
+    getCardSize() { return 1; }
+    build() {
+      this.style(CARD_CSS + [
+        "", "ha-card { justify-content: center; }",
+        ".ctl { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 12px; align-items: center; --mdc-icon-size: 22px; }",
+        ".ctl > ha-icon { color: var(--acc); cursor: pointer; }",
+        ".n { font-size: 14px; } .s { color: var(--dim); font-size: 11.5px; }",
+        ".bs { display: flex; gap: 8px; }",
+        ".bs button { width: 48px; height: 42px; border: 1px solid var(--line); border-radius: 6px; background: none; color: var(--fg); display: grid; place-items: center; cursor: pointer; --mdc-icon-size: 20px; }",
+        ".bs button.done { border-color: var(--acc); }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var c = el("div", "ctl", card);
+      var ic = icon(c, this.config.icon || "mdi:gesture-tap");
+      ic.addEventListener("click", () => moreInfo(this, this.config.entity));
+      var mid = el("span", "", c);
+      el("div", "n", mid, this.config.name || this.config.entity);
+      this.sub = el("div", "s", mid);
+      var bs = el("span", "bs", c);
+      (this.config.buttons || []).forEach((b) => {
+        var btn = el("button", "", bs);
+        btn.type = "button";
+        icon(btn, b.icon || "mdi:gesture-tap");
+        btn.addEventListener("click", () => {
+          if (!this._hass) return;
+          service(this._hass, b.service, b.data, b.target || { entity_id: this.config.entity }).then(() => {
+            btn.classList.add("done");
+            setTimeout(() => btn.classList.remove("done"), 700);
+          });
+        });
+      });
+    }
+    update(hass, prev) {
+      if (changed(prev, hass, [this.config.entity])) this.sub.textContent = stateText(hass, this.config.entity);
+    }
+  }
+
+  // ----- igor-clock-card: the time, large -----
+  //   type: custom:igor-clock-card
+  class IgorClockCard extends IgorCard {
+    setConfig(config) { this.config = config || {}; }
+    getCardSize() { return 2; }
+    build() {
+      this.style(".t { font-size: " + (Number(this.config.size) || 64) + "px; font-weight: 500; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }\n.d { color: var(--dim); font-size: 14px; margin-top: 6px; }\nha-card { justify-content: center; padding: 14px 16px; }");
+      var card = el("ha-card", "", this.shadowRoot);
+      this.t = el("div", "t", card);
+      this.d = el("div", "d", card);
+      this.tick = setInterval(() => this.clock(), 10000);
+      this.clock();
+    }
+    clock() {
+      var d = new Date();
+      this.t.textContent = hhmm(d);
+      this.d.textContent = d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+    }
+  }
+
+  // ----- igor-alerts-card: what is wrong, first -----
+  //   type: custom:igor-alerts-card
+  //   gateway: sensor.opnsense_…_gateway_wan_dhcp_status   # the internet
+  //   memory_warn: 90       # % of a machine's memory
+  //   temp_warn: 55         # °C of a disk
+  // Found by itself: Proxmox machines stopped or short of memory, disks too
+  // hot, containers stopped (a « relancer » button) and images to update.
+  class IgorAlertsCard extends IgorCard {
+    setConfig(config) { this.config = config || {}; }
+    build() {
+      this.style([
+        ".sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; padding: 4px 0 8px; border-bottom: 1px solid var(--line); flex: none; }",
+        ".sum b { display: block; font-size: 19px; font-weight: 500; }",
+        ".sum span { color: var(--dim); font-size: 10.5px; }",
+        ".al { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 8px 0; border-bottom: 1px dashed var(--line); --mdc-icon-size: 18px; }",
+        ".al:last-child { border-bottom: 0; }",
+        ".al .t div { color: var(--dim); font-size: 11px; }",
+        ".al.warn ha-icon { color: var(--wait); } .al.bad ha-icon { color: var(--bad); }",
+        ".chip { font-size: 10.5px; border: 1px solid var(--line); border-radius: 10px; padding: 2px 9px; color: var(--dim); background: none; font-family: inherit; cursor: pointer; white-space: nowrap; }",
+        ".ok { color: var(--okc); padding: 10px 0; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t", top, this.config.title || "ce qui ne va pas");
+      this.count = el("span", "sub", top);
+      this.sum = el("div", "sum", card);
+      this.list = el("div", "", card);
+    }
+    update(hass, prev) {
+      var now = Date.now();
+      if (prev && now - (this.drawn || 0) < 10000) return;
+      this.drawn = now;
+      var c = this.config, alerts = [], memWarn = Number(c.memory_warn) || 90, tempWarn = Number(c.temp_warn) || 55;
+      var S = function (id) { return id ? hass.states[id] : null; };
+      var P = proxmoxParts(hass, c.proxmox || "proxmoxve");
+      var machines = (P.node ? [P.node] : []).concat(P.guests), up = 0;
+      machines.forEach(function (m) {
+        var st = S(m.status), running = !st || ["on", "running", "online"].indexOf(st.state) >= 0;
+        if (running) up++;
+        else alerts.push(["bad", "mdi:server-off", m.label + " arrêtée", "", m.status, "voir"]);
+        var mp = num(S(m.memp));
+        if (running && mp != null && mp >= memWarn) alerts.push(["warn", "mdi:memory", m.label + " · mémoire " + Math.round(mp) + " %", m === P.node ? "l'hôte manque de mémoire" : "", m.memp, "voir"]);
+      });
+      P.disks.forEach(function (d) {
+        var t = num(S(d.temp));
+        if (t != null && t >= tempWarn) alerts.push(["warn", "mdi:thermometer-alert", d.label + " · " + Math.round(t) + "°", "disque chaud", d.temp, "voir"]);
+      });
+      var cts = dockerContainers(hass, c.docker || "portainer").filter(function (x) { var st = S(x.state); return st && ["unavailable", "unknown"].indexOf(String(st.state).toLowerCase()) < 0; });
+      var running = 0, updates = [];
+      cts.forEach(function (x) {
+        var st = String(S(x.state).state).toLowerCase();
+        if (st === "running") running++;
+        else alerts.push(["bad", "mdi:package-variant-closed-remove", x.name + " · " + (st === "exited" ? "arrêté" : st), "", x.restart ? { press: x.restart } : x.state, x.restart ? "relancer" : "voir"]);
+        if (S(x.update) && S(x.update).state === "on") updates.push(x);
+      });
+      if (updates.length) alerts.push(["warn", "mdi:update", updates.length + (updates.length > 1 ? " images à mettre à jour" : " image à mettre à jour"), updates.map(function (x) { return x.name; }).join(", "), updates[0].update, "voir"]);
+      var gw = c.gateway ? S(c.gateway) : null, net = gw ? String(gw.state).toLowerCase() : "";
+      if (gw && net !== "online") alerts.push(["bad", "mdi:web-off", "internet · " + (GW_WORDS[net] || net), "passerelle principale", c.gateway, "voir"]);
+      this.count.textContent = alerts.length ? String(alerts.length) : "";
+      this.sum.innerHTML = "";
+      [[up + "/" + machines.length, "machines", up < machines.length], [running + "/" + cts.length, "conteneurs", running < cts.length], [gw ? (net === "online" ? "ok" : "coupé") : "—", "internet", gw && net !== "online"]].forEach((x) => {
+        var s = el("span", "", this.sum);
+        el("b", x[2] ? "warn" : "okc", s, x[0]);
+        s.appendChild(document.createTextNode(x[1]));
+      });
+      this.list.innerHTML = "";
+      if (!alerts.length) { el("div", "ok", this.list, "Tout va bien."); return; }
+      alerts.forEach((a) => {
+        var row = el("div", "al " + a[0], this.list);
+        icon(row, a[1]);
+        var t = el("span", "t", row, a[2]);
+        if (a[3]) el("div", "", t, a[3]);
+        var b = el("button", "chip", row, a[5]);
+        b.type = "button";
+        b.addEventListener("click", () => {
+          if (a[4] && a[4].press) { press(this._hass, a[4].press); b.textContent = "envoyé"; }
+          else if (a[4]) moreInfo(this, a[4]);
+        });
+      });
+    }
+  }
+
   function define(name, cls, label, description) {
     if (!customElements.get(name)) customElements.define(name, cls);
     window.customCards = window.customCards || [];
@@ -1753,6 +2026,10 @@
   define("igor-docker-manage-card", IgorDockerManageCard, "Igor · Docker (gestion)", "Les conteneurs de Portainer, leurs totaux et leurs boutons.");
   define("igor-proxmox-card", IgorProxmoxCard, "Igor · Proxmox", "L'hôte Proxmox, ses machines et son stockage.");
   define("igor-history-card", IgorHistoryCard, "Igor · courbes", "Quelques capteurs sur les dernières heures.");
+  define("igor-tiles-card", IgorTilesCard, "Igor · tuiles", "De gros boutons : scènes, lumières, médias… (appui : action, appui long : détails).");
+  define("igor-control-card", IgorControlCard, "Igor · commande", "Un appareil et ses boutons (volet, aspirateur…).");
+  define("igor-clock-card", IgorClockCard, "Igor · horloge", "L'heure en grand et la date.");
+  define("igor-alerts-card", IgorAlertsCard, "Igor · alertes", "Ce qui ne va pas : machines, disques, conteneurs, mises à jour, internet.");
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
 
   // ===== no top bar with the "Igor Journal (tablette)" theme =====

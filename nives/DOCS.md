@@ -118,6 +118,12 @@ The integration adds cards for a tablet screen filled to the bottom, in the them
 - `custom:igor-proxmox-card`: the Proxmox VE integration's node, VMs and containers (state, uptime, processor, memory used of total, disk), then its storages, ZFS pools and disks, all found from its devices.
 - `custom:igor-docker-manage-card`: Portainer's totals and clean-up buttons, and each container with its state, an « maj » badge when a new image is out, and its buttons (pause, resume, restart, recreate, stop). Recreating, stopping and cleaning up act at the second press only, within 4 seconds.
 - `custom:igor-history-card`: a few sensors over the last hours (`entities`, `hours`).
+- `custom:igor-tiles-card`: large buttons for a finger from afar (`tiles: [{entity, name, icon, tap, secondary}]`): a scene activates, a light, switch, fan or cover toggles, a media player plays or pauses, a long press opens the details; `size: small` gives one line per tile.
+- `custom:igor-control-card`: one device and its buttons (a cover's up/stop/down, a vacuum's start and dock).
+- `custom:igor-clock-card`: the time, large, and the date; `igor-weather-card` takes `clock: false` beside it, and `igor-assist-card` takes `size: big` for a microphone button.
+- `custom:igor-alerts-card`: what is wrong, first: Proxmox machines stopped or short of memory, hot disks, stopped containers (with « relancer »), images to update and the internet gateway (`gateway`), under a summary of machines, containers and internet. For a phone dashboard.
+
+The Proxmox and Docker cards fold into one column on a phone.
 
 A second wall (another panel view with `home: false`, so the screen still comes back to the first one) makes a homelab page; `links: [{name, navigate}]` on the status bar puts a button to it in the bar's detail.
 

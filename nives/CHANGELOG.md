@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.23.2 — A tablet and a phone
+
+- Cards for a simple tablet page and a phone admin dashboard: `igor-tiles-card` (large buttons: scenes, lights, media…), `igor-control-card` (a device and its buttons), `igor-clock-card`, `igor-alerts-card` (what is wrong, first, with a summary); `igor-weather-card` without its clock (`clock: false`), `igor-assist-card` with a microphone button (`size: big`). The Proxmox and Docker cards fold into one column on a phone.
+- Desk screen: the kiosk starts without the page's stored service worker, which could keep Home Assistant's old frontend after an update and reload the page endlessly. Rerun `ear/screen/install-vm.sh` on Igor's machine.
+
 ## 0.23.1 — The homelab page
 
 - New wall cards for a second page of the desk screen: `igor-proxmox-card` (the node, each VM and container, storages, ZFS pools and disks, found from the Proxmox VE integration's devices), `igor-docker-manage-card` (Portainer's totals, clean-up, and each container's buttons, found by device so a button never acts on another container; recreate, stop and clean-up need a second press) and `igor-history-card` (sensors over the last hours).
