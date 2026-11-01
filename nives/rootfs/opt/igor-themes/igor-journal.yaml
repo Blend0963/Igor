@@ -13,6 +13,8 @@ Igor Journal: &igor_journal
   # buttons (Menu, Réglages…) lead elsewhere; the view tabs stay. Back with
   # ?menu in the address, or while editing a dashboard.
   igor-hide-menu: "1"
+  # A finger swipe left or right goes to the next or previous tab.
+  igor-swipe: "1"
   # A monospace face everywhere: the device's own (Menlo, Roboto Mono, DejaVu
   # Sans Mono…), nothing is downloaded.
   primary-font-family: &mono "ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, 'Roboto Mono', 'DejaVu Sans Mono', monospace"

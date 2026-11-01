@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.10 — Swipe between tabs
+
+- Theme « Igor Journal »: a finger swipe left or right goes to a dashboard's next or previous tab (not on a slider, a map or a text field, nor while editing).
+
 ## 0.23.9 — The tablet's page repairs itself
 
 - Theme « Igor Journal » (phone, PC, tablet): no « ☰ » button in the dashboards' top bar and no docked sidebar; the view tabs stay, and a wall's « Menu » button still opens the sidebar. Back with `?menu` in the address or while editing.

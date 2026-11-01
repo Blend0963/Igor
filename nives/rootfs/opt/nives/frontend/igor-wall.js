@@ -2448,6 +2448,44 @@
     if (Date.now() - lastTouch > after * 60000) { lastTouch = Date.now(); navigate(home); }
   }, 15000);
 
+  // ===== a finger swipe between a dashboard's tabs =====
+  // Theme igor-swipe: a clear horizontal swipe goes to the next tab (right
+  // to left) or the previous one; not on a slider, a map or while editing.
+  (function () {
+    var x0 = null, y0 = 0, t0 = 0;
+    function on() {
+      var v = getComputedStyle(document.documentElement).getPropertyValue("--igor-swipe").trim().replace(/["']/g, "");
+      return v === "1" || v === "true";
+    }
+    function blocked(ev) {
+      var path = ev.composedPath ? ev.composedPath() : [];
+      return path.some(function (n) {
+        var t = n && n.tagName;
+        return t === "INPUT" || t === "HA-SLIDER" || t === "HA-CONTROL-SLIDER" || t === "HA-MAP" || t === "TEXTAREA" ||
+          (n && n.classList && n.classList.contains && n.classList.contains("no-swipe"));
+      });
+    }
+    window.addEventListener("touchstart", function (ev) {
+      x0 = null;
+      if (!on() || ev.touches.length !== 1 || blocked(ev)) return;
+      x0 = ev.touches[0].clientX; y0 = ev.touches[0].clientY; t0 = Date.now();
+    }, { passive: true, capture: true });
+    window.addEventListener("touchend", function (ev) {
+      if (x0 === null) return;
+      var t = ev.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
+      x0 = null;
+      if (Date.now() - t0 > 600 || Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
+      var root = lovelaceRoot(), cfg = root && root.lovelace && root.lovelace.config;
+      if (!cfg || !Array.isArray(cfg.views) || cfg.views.length < 2 || root.lovelace.editMode) return;
+      var parts = window.location.pathname.split("/"), seg = decodeURIComponent(parts[2] || "");
+      var i = cfg.views.findIndex(function (v, k) { return String(v.path || k) === seg; });
+      if (i < 0) i = /^\d+$/.test(seg) ? Number(seg) : 0;
+      var j = i + (dx < 0 ? 1 : -1);
+      if (j < 0 || j >= cfg.views.length) return;
+      navigate("/" + parts[1] + "/" + (cfg.views[j].path || j) + window.location.search);
+    }, { passive: true, capture: true });
+  })();
+
   // ===== a page drawn before this script arrived =====
   // Home Assistant loads this script alongside the dashboard: on a slow
   // tablet it may draw the page first, find no igor card yet and show
