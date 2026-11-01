@@ -98,6 +98,19 @@ def test_a_key_waking_the_screen_is_seen(monkeypatch):
     assert sent == [True]
 
 
+def test_a_minute_without_input_is_told(tmp_path, monkeypatch):
+    sc, calls = make()
+    sc.idle_file = str(tmp_path / "igor-idle")
+    sent = []
+    sc.publish = lambda: sent.append(sc.idle)
+    monkeypatch.setattr(screen.subprocess, "run", lambda *a, **k: type("R", (), {"stdout": "[]"})())
+    sc.sync_power()
+    assert sent == []
+    (tmp_path / "igor-idle").write_text("")
+    sc.sync_power()
+    assert sent == [True]
+
+
 def test_orders_from_home_assistant():
     sc, calls = make("binary_sensor.pc")
     sc.handle({"type": "event", "event": {"event_type": "igor_screen", "data": {"action": "off"}}})

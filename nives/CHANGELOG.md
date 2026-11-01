@@ -2,7 +2,7 @@
 
 ## 0.23.7 — A key wakes the desk screen
 
-- Desk screen (igor-ear 0.3.4): asleep, a key or the mouse wakes it (swayidle in the kiosk session), and `sensor.igor_screen` follows the output's real state, however it was switched. Rerun `ear/screen/install-vm.sh` on Igor's machine (it installs swayidle).
+- Desk screen (igor-ear 0.3.4): asleep, a key or the mouse wakes it (swayidle in the kiosk session), and `sensor.igor_screen` follows the output's real state, however it was switched. After a minute without a key or the mouse, its `idle` attribute turns true, so an automation can put it back to sleep. Rerun `ear/screen/install-vm.sh` on Igor's machine (it installs swayidle).
 
 ## 0.23.6 — The keyboard switch, headlines, the wall's panels
 

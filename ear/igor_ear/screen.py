@@ -176,6 +176,8 @@ class Screen:
         self.on = True
         self.keyboard = False
         self.pc_state: str | None = None
+        self.idle = False
+        self.idle_file = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "igor-idle")
         self.lock = threading.Lock()
 
     # what can be done
@@ -272,6 +274,10 @@ class Screen:
         """The output woken by a key or the mouse (swayidle, see sway.conf),
         or switched off elsewhere: the state follows, and Home Assistant
         is told."""
+        idle = os.path.exists(self.idle_file)
+        if idle != self.idle:
+            self.idle = idle
+            self.publish()
         try:
             out = subprocess.run(["swaymsg", "-t", "get_outputs", "-r"], capture_output=True, text=True, timeout=5)
             outputs = json.loads(out.stdout or "[]")
@@ -316,7 +322,8 @@ class Screen:
             return
         body = {"state": "on" if self.on else "off",
                 "attributes": {"friendly_name": "Igor screen", "icon": "mdi:monitor-dashboard",
-                               "keyboard": "here" if self.keyboard else "away", "output": self.s.output}}
+                               "keyboard": "here" if self.keyboard else "away", "output": self.s.output,
+                               "idle": self.idle}}
         try:
             from .machine import post
 
