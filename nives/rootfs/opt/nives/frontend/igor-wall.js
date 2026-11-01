@@ -184,6 +184,7 @@
     ".close.link { color: var(--acc); border-color: var(--acc); }",
     ".close { background: none; border: 1px solid var(--line); color: var(--dim); font: inherit; padding: 4px 12px; border-radius: 4px; cursor: pointer; }",
     ".dwrap { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(220px, 1fr); gap: 28px; align-items: start; }",
+    ".dwrap.solo { grid-template-columns: 1fr; }",
     "table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: inherit; }",
     "th { text-align: left; font-weight: 400; color: var(--faint); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; padding: 0 12px 6px 0; }",
     "td { padding: 6px 12px 6px 0; border-top: 1px dashed var(--line); white-space: nowrap; vertical-align: middle; }",
@@ -315,7 +316,7 @@
       // right the groups marked `side: true` (a router, the disks) as lists.
       var main = this.groups.filter(function (g) { return !g.side; });
       var side = this.groups.filter(function (g) { return g.side; });
-      var wrap = el("div", "dwrap", d);
+      var wrap = el("div", "dwrap" + (side.length ? "" : " solo"), d);
       var left = el("div", "", wrap);
       var table = el("table", "", left);
       var hr = el("tr", "", table);
