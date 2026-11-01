@@ -180,8 +180,11 @@
     ".detail.on { display: flex; }",
     ".dhead { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--line); margin-bottom: 8px; color: var(--dim); }",
     ".dhead b { color: var(--fg); font-weight: 500; }",
+    ".dbtns { display: flex; gap: 8px; }",
+    ".close.link { color: var(--acc); border-color: var(--acc); }",
     ".close { background: none; border: 1px solid var(--line); color: var(--dim); font: inherit; padding: 4px 12px; border-radius: 4px; cursor: pointer; }",
     ".dwrap { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(220px, 1fr); gap: 28px; align-items: start; }",
+    ".dwrap.solo { grid-template-columns: 1fr; }",
     "table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: inherit; }",
     "th { text-align: left; font-weight: 400; color: var(--faint); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; padding: 0 12px 6px 0; }",
     "td { padding: 6px 12px 6px 0; border-top: 1px dashed var(--line); white-space: nowrap; vertical-align: middle; }",
@@ -301,13 +304,19 @@
       d.innerHTML = "";
       var head = el("div", "dhead", d);
       el("b", "", head, "machines");
-      var close = el("button", "close", head, "fermer");
+      var hb = el("span", "dbtns", head);
+      (this.config.links || []).forEach(function (l) {
+        var a = el("button", "close link", hb, (l.name || l.navigate) + " ›");
+        a.type = "button";
+        a.addEventListener("click", function (ev) { ev.stopPropagation(); navigate(String(l.navigate)); });
+      });
+      var close = el("button", "close", hb, "fermer");
       close.type = "button";
       // A table of the machines (one line each, the same columns), and on the
       // right the groups marked `side: true` (a router, the disks) as lists.
       var main = this.groups.filter(function (g) { return !g.side; });
       var side = this.groups.filter(function (g) { return g.side; });
-      var wrap = el("div", "dwrap", d);
+      var wrap = el("div", "dwrap" + (side.length ? "" : " solo"), d);
       var left = el("div", "", wrap);
       var table = el("table", "", left);
       var hr = el("tr", "", table);
@@ -399,7 +408,7 @@
     getCardSize() { return 12; }
     connectedCallback() {
       try {
-        window.localStorage.setItem("igor-wall-home", window.location.pathname);
+        if (!this.config || this.config.home !== false) window.localStorage.setItem("igor-wall-home", window.location.pathname);
         if (this.config && this.config.return_after != null) window.localStorage.setItem("igor-wall-return", String(this.config.return_after));
       } catch (e) { /* no storage: no way back by itself */ }
       if (!this._resize) {
@@ -570,12 +579,47 @@
     ["health", /(_health|_sante)(_\d+)?$/]
   ];
   var DOCKER_KEYS = { cpu_usage_total: "cpu", memory_usage_percentage: "memp", memory_usage: "mem", state: "state", image: "image", started: "started", health: "health" };
+  // A container's buttons (Portainer), in English or French entity ids.
+  var DOCKER_BUTTONS = [
+    ["pause", /_(pause_container|mettre_le_conteneur_en_pause)(_\d+)?$/],
+    ["resume", /_(resume_container|reprendre_le_conteneur)(_\d+)?$/],
+    ["restart", /_(restart_container|redemarrer_le_conteneur)(_\d+)?$/],
+    ["recreate", /_(recreate_container|recreer_le_conteneur)(_\d+)?$/],
+    ["kill", /_(kill_container|forcer_l_arret_du_conteneur)(_\d+)?$/],
+    ["start", /_(start_container|demarrer_le_conteneur)(_\d+)?$/],
+    ["stop", /_(stop_container|arreter_le_conteneur)(_\d+)?$/],
+    ["prune_images", /_prune_unused_images$/],
+    ["prune_volumes", /_prune_unused_volumes$/]
+  ];
+  // The endpoint (Portainer's "local"): its totals and clean-up buttons.
+  function dockerEndpoint(hass, platform) {
+    var reg = hass.entities || {}, out = {}, dev = null;
+    Object.keys(reg).forEach(function (id) {
+      var e = reg[id];
+      if (e && e.platform === platform && /^sensor\..*_containers_running$/.test(id)) dev = e.device_id;
+    });
+    if (!dev) return null;
+    var KEYS = [["running", /_containers_running$/], ["stopped", /_containers_stopped$/], ["containers", /_container_disk_usage_total_size$/],
+      ["images", /_image_disk_usage_total_size$/], ["volumes", /_volume_disk_usage_total_size$/], ["prune_images", /^button\..*_prune_unused_images$/], ["prune_volumes", /^button\..*_prune_unused_volumes$/]];
+    Object.keys(reg).forEach(function (id) {
+      if (!reg[id] || reg[id].device_id !== dev) return;
+      KEYS.forEach(function (k) { if (!out[k[0]] && k[1].test(id)) out[k[0]] = id; });
+    });
+    return out;
+  }
   function dockerContainers(hass, platform) {
     var byDevice = {};
     var reg = hass.entities || {};
     Object.keys(reg).forEach(function (id) {
       var e = reg[id];
-      if (!e || e.platform !== platform || !e.device_id || id.indexOf("sensor.") !== 0) return;
+      if (!e || e.platform !== platform || !e.device_id) return;
+      if (id.indexOf("sensor.") !== 0) {
+        var other = null;
+        if (id.indexOf("update.") === 0) other = "update";
+        else if (id.indexOf("button.") === 0) for (var b = 0; b < DOCKER_BUTTONS.length && !other; b++) if (DOCKER_BUTTONS[b][1].test(id)) other = DOCKER_BUTTONS[b][0];
+        if (other) { var ob = byDevice[e.device_id] || (byDevice[e.device_id] = {}); if (!ob[other]) ob[other] = id; }
+        return;
+      }
       var kind = e.translation_key && DOCKER_KEYS[e.translation_key];
       if (!kind) for (var i = 0; i < DOCKER_KINDS.length && !kind; i++) if (DOCKER_KINDS[i][1].test(id)) kind = DOCKER_KINDS[i][0];
       if (!kind) return;
@@ -1347,6 +1391,350 @@
     }
   }
 
+
+  // ===== press a button, a second time for what cuts =====
+  // A dangerous action turns red at the first press and acts at the second,
+  // within 4 seconds.
+  function actionButton(parent, iconName, title, onPress, danger) {
+    var b = el("button", "act" + (danger ? " danger" : ""), parent);
+    b.type = "button";
+    b.title = title;
+    icon(b, iconName);
+    var armed = null;
+    b.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      if (danger && !armed) {
+        b.classList.add("armed");
+        b.title = title + " : appuyer encore pour confirmer";
+        armed = setTimeout(function () { armed = null; b.classList.remove("armed"); b.title = title; }, 4000);
+        return;
+      }
+      clearTimeout(armed);
+      armed = null;
+      b.classList.remove("armed");
+      b.title = title;
+      onPress();
+    });
+    return b;
+  }
+  var ACT_CSS = [
+    ".act { width: 26px; height: 24px; border: 1px solid var(--line); border-radius: 4px; background: none; color: var(--dim); display: inline-grid; place-items: center; cursor: pointer; padding: 0; --mdc-icon-size: 15px; }",
+    ".act:hover { color: var(--fg); }",
+    ".act.danger { color: var(--bad); border-color: rgba(224, 103, 95, 0.35); }",
+    ".act.armed { background: rgba(224, 103, 95, 0.22); color: #ffb3b3; border-color: var(--bad); }",
+    ".act:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }",
+    ".acts { display: flex; gap: 4px; justify-content: flex-end; }"
+  ].join("\n");
+  function press(hass, id) { if (id) hass.callService("button", "press", {}, { entity_id: id }); }
+  function sizeText(st) {
+    var v = num(st);
+    if (v == null) return "—";
+    var u = (st.attributes.unit_of_measurement || "").replace(/iB$|B$/, "");
+    return fr(v, v < 10 ? 1 : 0) + " " + u;
+  }
+
+  // ----- igor-docker-manage-card: Portainer's containers, with their buttons -----
+  //   type: custom:igor-docker-manage-card
+  //   title: docker · vm-docker
+  class IgorDockerManageCard extends IgorCard {
+    setConfig(config) { this.config = config || {}; }
+    build() {
+      this.style(ACT_CSS + "\n" + [
+        ".sum { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; text-align: center; padding: 3px 0 7px; border-bottom: 1px solid var(--line); flex: none; }",
+        ".sum b { display: block; font-weight: 500; font-size: 15px; color: var(--fg); }",
+        ".sum span { font-size: 10.5px; color: var(--dim); }",
+        ".tools { display: flex; gap: 6px; padding: 7px 0; border-bottom: 1px solid var(--line); flex: none; }",
+        ".tool { border: 1px solid var(--line); border-radius: 4px; background: none; color: var(--dim); font-family: inherit; font-size: 11px; padding: 3px 9px; cursor: pointer; display: flex; gap: 5px; align-items: center; --mdc-icon-size: 14px; }",
+        ".tool.armed { background: rgba(224, 103, 95, 0.22); color: #ffb3b3; border-color: var(--bad); }",
+        ".list { flex: 1; min-height: 0; overflow-y: auto; }",
+        ".ct { display: grid; grid-template-columns: minmax(0, 1fr) 10ch 6ch 6ch auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); font-variant-numeric: tabular-nums; }",
+        ".ct .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".ct .n .i { display: block; color: var(--dim); font-size: 10.5px; margin-left: 14px; overflow: hidden; text-overflow: ellipsis; }",
+        ".ct .v { text-align: right; color: var(--dim); font-size: 11px; white-space: nowrap; }",
+        ".dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--okc); margin-right: 7px; vertical-align: 1px; }",
+        ".dot.off { background: var(--bad); } .dot.pause { background: var(--wait); }",
+        ".badge { font-size: 9.5px; border: 1px solid rgba(217, 164, 65, 0.5); color: var(--wait); border-radius: 9px; padding: 0 6px; margin-left: 6px; cursor: pointer; background: none; font-family: inherit; }",
+        ".hid { color: var(--faint); font-size: 10.5px; padding-top: 5px; flex: none; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t", top, this.config.title || "docker");
+      el("span", "sub", top, "portainer");
+      this.sumEl = el("div", "sum", card);
+      this.toolsEl = el("div", "tools", card);
+      this.list = el("div", "list", card);
+      this.hidEl = el("div", "hid", card);
+    }
+    update(hass, prev) {
+      var platform = this.config.platform || "portainer";
+      if (!this.found || (prev && prev.entities !== hass.entities)) {
+        this.found = dockerContainers(hass, platform);
+        this.endpoint = dockerEndpoint(hass, platform);
+        this.toolsBuilt = false;
+        prev = null;
+      }
+      var now = Date.now();
+      if (prev && now - (this.drawn || 0) < 5000) return;
+      this.drawn = now;
+      var ep = this.endpoint || {};
+      this.sumEl.innerHTML = "";
+      [["running", "en marche", "okc"], ["stopped", "arrêtés", "bad"], ["containers", "conteneurs"], ["images", "images"], ["volumes", "volumes"]].forEach((k) => {
+        var span = el("span", "", this.sumEl), st = hass.states[ep[k[0]]];
+        var val = k[0] === "running" || k[0] === "stopped" ? (num(st) == null ? "—" : String(Math.round(num(st)))) : sizeText(st);
+        el("b", "num " + (k[2] && num(st) ? k[2] : ""), span, val);
+        span.appendChild(document.createTextNode(k[1]));
+      });
+      if (!this.toolsBuilt) {
+        this.toolsBuilt = true;
+        this.toolsEl.innerHTML = "";
+        [["prune_images", "nettoyer les images"], ["prune_volumes", "nettoyer les volumes"]].forEach((t) => {
+          if (!ep[t[0]]) return;
+          var b = el("button", "tool", this.toolsEl);
+          b.type = "button";
+          icon(b, "mdi:broom");
+          el("span", "", b, t[1]);
+          var armed = null;
+          b.addEventListener("click", () => {
+            if (!armed) { b.classList.add("armed"); armed = setTimeout(() => { armed = null; b.classList.remove("armed"); }, 4000); return; }
+            clearTimeout(armed); armed = null; b.classList.remove("armed");
+            press(this._hass, ep[t[0]]);
+          });
+        });
+        this.toolsEl.hidden = !this.toolsEl.children.length;
+      }
+      var shown = this.found.filter(function (c) { var st = hass.states[c.state]; return st && ["unavailable", "unknown"].indexOf(String(st.state).toLowerCase()) < 0; });
+      var hidden = this.found.length - shown.length;
+      this.hidEl.textContent = hidden ? hidden + (hidden > 1 ? " anciens conteneurs masqués" : " ancien conteneur masqué") : "";
+      var WORDS = { running: "en marche", exited: "arrêté", paused: "en pause", restarting: "redémarre", created: "créé", dead: "mort" };
+      this.list.innerHTML = "";
+      shown.forEach((c) => {
+        var st = String((hass.states[c.state] || {}).state || "").toLowerCase();
+        var up = st === "running", paused = st === "paused";
+        var row = el("div", "ct", this.list);
+        var n = el("span", "n", row);
+        el("span", "dot" + (up ? "" : paused ? " pause" : " off"), n);
+        n.appendChild(document.createTextNode(c.name));
+        var upd = hass.states[c.update];
+        if (upd && upd.state === "on") {
+          var badge = el("button", "badge", n, "maj");
+          badge.type = "button";
+          badge.addEventListener("click", (ev) => { ev.stopPropagation(); moreInfo(this, c.update); });
+        }
+        var info = [], img = hass.states[c.image], started = hass.states[c.started], health = hass.states[c.health];
+        if (img && img.state && img.state !== "unknown") info.push(String(img.state).split("/").pop());
+        if (up && started && started.state) { var sn = since(started.state); if (sn) info.push("depuis " + sn); }
+        if (health && ["unknown", "unavailable", "none", ""].indexOf(String(health.state).toLowerCase()) < 0) info.push(health.state);
+        el("span", "i", n, info.join(" · "));
+        el("span", "v " + (up ? "" : "bad"), row, WORDS[st] || st);
+        el("span", "v", row, up ? fr(num(hass.states[c.cpu]), 1) + " %" : "—");
+        el("span", "v", row, sizeText(hass.states[c.mem]));
+        var acts = el("span", "acts", row), h = this._hass;
+        if (paused && c.resume) actionButton(acts, "mdi:play", "reprendre", function () { press(h, c.resume); });
+        else if (!up && c.start) actionButton(acts, "mdi:play", "démarrer", function () { press(h, c.start); });
+        if (up && c.pause) actionButton(acts, "mdi:pause", "mettre en pause", function () { press(h, c.pause); });
+        if (c.restart) actionButton(acts, "mdi:restart", up ? "redémarrer" : "démarrer", function () { press(h, c.restart); });
+        if (c.recreate) actionButton(acts, "mdi:autorenew", "recréer", function () { press(h, c.recreate); }, true);
+        if (up && (c.stop || c.kill)) actionButton(acts, "mdi:stop-circle-outline", c.stop ? "arrêter" : "forcer l'arrêt", function () { press(h, c.stop || c.kill); }, true);
+        row.addEventListener("click", () => moreInfo(this, c.state));
+      });
+    }
+  }
+
+  // ----- igor-proxmox-card: the Proxmox VE integration's machines -----
+  //   type: custom:igor-proxmox-card
+  //   title: proxmox
+  // Everything is found from the integration's devices: the node, each VM and
+  // container (state, uptime, processor, memory used of total, disk), then the
+  // storages, ZFS pools and disks (temperature, wear).
+  var PVE = [
+    ["cpu", /^sensor\..*_(cpu_used|cpu_utilise)$/], ["memp", /^sensor\..*_(memory_used_percentage|memoire_utilisee_en_pourcentage)$/],
+    ["mem", /^sensor\..*_(memory_used|memoire_utilisee)$/], ["free", /^sensor\..*_(memory_free|memoire_libre)$/],
+    ["disk", /^sensor\..*_(disk_used_percentage|disque_utilise_en_pourcentage)$/], ["boot", /^sensor\..*_(last_boot|dernier_demarrage)$/],
+    ["status", /^binary_sensor\..*_(status|etat)$/], ["io", /^sensor\..*_io_delay$/],
+    ["used", /^sensor\..*_used_percentage$/], ["health", /^sensor\..*_health$/],
+    ["temp", /^sensor\..*_temperature(_\d+)?$/], ["wear", /^sensor\..*_wearout(_\d+)?$/],
+    ["vms", /^sensor\..*_virtual_machines_running$/], ["failed", /^sensor\..*_(failed_tasks|taches_echouees)$/]
+  ];
+  function proxmoxParts(hass, platform) {
+    var reg = hass.entities || {}, devs = {};
+    Object.keys(reg).forEach(function (id) {
+      var e = reg[id];
+      if (!e || e.platform !== platform || !e.device_id) return;
+      var box = devs[e.device_id] || (devs[e.device_id] = {});
+      for (var i = 0; i < PVE.length; i++) if (PVE[i][1].test(id)) { if (!box[PVE[i][0]]) box[PVE[i][0]] = id; break; }
+    });
+    var out = { node: null, guests: [], storages: [], pools: [], disks: [] };
+    Object.keys(devs).forEach(function (dev) {
+      var d = (hass.devices || {})[dev] || {}, name = d.name || "", box = devs[dev], m;
+      box.label = d.name_by_user || name;
+      if ((m = /^Node (.+)$/.exec(name))) { box.label = d.name_by_user || m[1]; out.node = box; }
+      else if ((m = /^(QEMU|LXC) (.+) \((\d+)\)$/.exec(name))) { box.label = d.name_by_user || m[2].toLowerCase(); box.vmid = Number(m[3]); box.kind = m[1] === "LXC" ? "ct" : "vm"; out.guests.push(box); }
+      else if ((m = /^Storage (.+)$/.exec(name))) { box.label = d.name_by_user || m[1].split("/").pop(); out.storages.push(box); }
+      else if ((m = /^ZFS .*?(?:Pool )?(\S+)$/.exec(name)) && /^ZFS/.test(name)) { box.label = d.name_by_user || m[1]; out.pools.push(box); }
+      else if ((m = /^Disk [^:]+: (.+)$/.exec(name))) { box.label = d.name_by_user || m[1]; out.disks.push(box); }
+    });
+    out.guests.sort(function (a, b) { return a.vmid - b.vmid; });
+    return out;
+  }
+  class IgorProxmoxCard extends IgorCard {
+    setConfig(config) { this.config = config || {}; }
+    build() {
+      this.style([
+        ".rows { flex: none; }",
+        ".vm { display: grid; grid-template-columns: minmax(9rem, 1.2fr) 1fr 1fr 6.5rem; gap: 14px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); cursor: pointer; font-variant-numeric: tabular-nums; }",
+        ".vm .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".vm .n small { color: var(--dim); font-size: 10.5px; margin-left: 5px; }",
+        ".vm .n .s { display: block; color: var(--dim); font-size: 10.5px; margin-left: 14px; }",
+        ".vm.child .n::before { content: '├ '; color: var(--faint); }",
+        ".vm.child.last .n::before { content: '└ '; }",
+        ".vm.root .n { color: var(--acc); }",
+        ".vm.down { opacity: 0.55; }",
+        ".dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); margin-right: 7px; vertical-align: 1px; }",
+        ".dot.ok { background: var(--okc); } .dot.bad { background: var(--bad); }",
+        ".cell { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; align-items: center; }",
+        ".cell .l { color: var(--dim); font-size: 10.5px; } .cell .v { text-align: right; }",
+        ".cell .bar { grid-column: 1 / -1; } .cell .bar.warn i { background: var(--wait); } .cell .bar.bad i { background: var(--bad); }",
+        ".x { color: var(--dim); font-size: 11px; text-align: right; }",
+        ".hd { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); padding: 10px 0 4px; flex: none; }",
+        ".disks { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; flex: none; }",
+        ".foot { color: var(--dim); font-size: 11px; padding-top: 7px; flex: none; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t", top, this.config.title || "proxmox");
+      this.sumEl = el("span", "sub", top);
+      this.rows = el("div", "rows", card);
+      this.spacer = el("div", "", card);
+      this.spacer.style.flex = "1 1 0";
+      this.store = el("div", "", card);
+    }
+    update(hass, prev) {
+      var platform = this.config.platform || "proxmoxve";
+      if (!this.parts || (prev && prev.entities !== hass.entities)) { this.parts = proxmoxParts(hass, platform); prev = null; }
+      var now = Date.now();
+      if (prev && now - (this.drawn || 0) < 5000) return;
+      this.drawn = now;
+      var P = this.parts, S = function (id) { return id ? hass.states[id] : null; };
+      var pct = function (parent, label, id, text) {
+        var st = S(id), v = num(st), c = el("span", "cell", parent);
+        el("span", "l", c, label);
+        el("span", "v", c, text != null ? text : v == null ? "—" : fr(v < 10 ? Math.round(v * 10) / 10 : Math.round(v), v < 10 && v % 1 ? 1 : 0) + " %");
+        var lvl = v >= 95 ? "bad" : v >= 80 ? "warn" : "";
+        var b = el("span", "bar " + lvl, c);
+        el("i", "", b).style.width = Math.max(0, Math.min(100, v || 0)) + "%";
+      };
+      var memText = function (box) {
+        var u = num(S(box.mem)), f = num(S(box.free));
+        if (u == null) return null;
+        if (f == null) return fr(u, 1) + " G";
+        return fr(u, 1) + "/" + fr(u + f, u + f < 10 ? 1 : 0) + " G";
+      };
+      this.rows.innerHTML = "";
+      var all = (P.node ? [P.node] : []).concat(P.guests);
+      all.forEach((box, i) => {
+        var isNode = box === P.node, st = S(box.status);
+        var up = !st || st.state === "on" || st.state === "running" || st.state === "online";
+        var row = el("div", "vm " + (isNode ? "root" : "child" + (i === all.length - 1 ? " last" : "")) + (up ? "" : " down"), this.rows);
+        row.addEventListener("click", () => moreInfo(this, box.cpu || box.status));
+        var n = el("span", "n", row);
+        el("span", "dot " + (st ? (up ? "ok" : "bad") : ""), n);
+        n.appendChild(document.createTextNode(box.label));
+        el("small", "", n, isNode ? "hôte" : (box.kind === "ct" ? "ct " : "") + box.vmid);
+        var boot = S(box.boot), sn = boot ? since(boot.state) : "";
+        el("span", "s", n, !up ? "arrêtée" : sn ? (isNode ? "démarré il y a " : "il y a ") + sn : "");
+        pct(row, "cpu", box.cpu);
+        pct(row, "ram", box.memp, memText(box) || undefined);
+        var extra = isNode ? (box.io ? "io " + fr(num(S(box.io)), 1) + " %" : "") : (box.disk ? "disque " + Math.round(num(S(box.disk)) || 0) + " %" : "");
+        el("span", "x", row, extra);
+      });
+      if (P.node) {
+        var parts = [];
+        if (P.node.vms) parts.push((num(S(P.node.vms)) || 0) + " vm");
+        var failed = num(S(P.node.failed));
+        if (failed) parts.push(failed + " tâche" + (failed > 1 ? "s" : "") + " échouée" + (failed > 1 ? "s" : ""));
+        this.sumEl.textContent = parts.join(" · ");
+        this.sumEl.className = "sub " + (failed ? "warn" : "");
+      }
+      this.store.innerHTML = "";
+      if (P.storages.length) {
+        el("div", "hd", this.store, "stockage");
+        var grid = el("div", "disks", this.store);
+        P.storages.forEach(function (b) { pct(grid, b.label, b.disk || b.used); });
+      }
+      var foot = [];
+      P.pools.forEach(function (b) { var h = S(b.health); if (h) foot.push(b.label + " " + (String(h.state).toUpperCase() === "ONLINE" ? "en ligne" : h.state)); });
+      P.disks.forEach(function (b) {
+        var t = num(S(b.temp)), w = num(S(b.wear));
+        if (t == null && w == null) return;
+        foot.push(b.label.replace(/^Samsung SSD /, "").replace(/ \d+GB$/, "") + (t != null ? " " + Math.round(t) + "°" : "") + (w != null ? " (usure " + Math.round(w) + " %)" : ""));
+      });
+      if (foot.length) el("div", "foot", this.store, foot.join(" · "));
+    }
+  }
+
+  // ----- igor-history-card: a few sensors over the last hours -----
+  //   type: custom:igor-history-card
+  //   title: pve · 24 h
+  //   hours: 24
+  //   entities: [ { entity: sensor.cpu, name: cpu, color: "#6cc4f5" }, … ]
+  class IgorHistoryCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !Array.isArray(config.entities) || !config.entities.length) throw new Error("igor-history-card: entities est requis");
+      this.config = config;
+    }
+    build() {
+      this.style(".leg { display: flex; gap: 10px; font-size: 11px; flex: none; }\nsvg.chart { min-height: 50px; }");
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t", top, this.config.title || "");
+      this.leg = el("span", "leg", top);
+      this.svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      this.svg.setAttribute("class", "chart");
+      this.svg.setAttribute("viewBox", "0 0 100 100");
+      this.svg.setAttribute("preserveAspectRatio", "none");
+      card.appendChild(this.svg);
+      var h = Number(this.config.hours) || 24, axis = el("div", "axis", card);
+      el("span", "", axis, "-" + h + " h");
+      el("span", "", axis, "-" + fr(h / 2, h % 2 ? 1 : 0) + " h");
+      el("span", "", axis, "maintenant");
+      var COLORS = ["#6cc4f5", "#d9a441", "#5cc28f", "#e0675f"];
+      this.series = this.config.entities.map(function (e, i) { return Object.assign({ color: COLORS[i % COLORS.length] }, typeof e === "string" ? { entity: e } : e); });
+    }
+    connectedCallback() { if (this._built && !this.timer && this._hass) this.update(this._hass, null); }
+    disconnectedCallback() { clearInterval(this.timer); this.timer = null; }
+    update(hass, prev) {
+      // A fixed height, unless it is the card that takes the height left.
+      var grow = !!(this.parentElement && this.parentElement.classList.contains("grow"));
+      this.svg.style.flex = grow ? "" : "none";
+      this.svg.style.height = grow ? "" : (Number(this.config.chart_height) || 110) + "px";
+      if (changed(prev, hass, this.series.map(function (s) { return s.entity; }))) {
+        this.leg.innerHTML = "";
+        this.series.forEach((s) => {
+          var st = hass.states[s.entity], v = num(st), u = st ? st.attributes.unit_of_measurement || "" : "";
+          var span = el("span", "", this.leg, (s.name || "") + " " + (v == null ? "—" : fr(v, v < 10 ? 1 : 0) + (u === "%" ? " %" : u ? " " + u : "")));
+          span.style.color = s.color;
+        });
+      }
+      if (!this.timer) { this.fetch(); this.timer = setInterval(() => this.fetch(), 300000); }
+    }
+    fetch() {
+      var hass = this._hass, hours = Number(this.config.hours) || 24;
+      if (!hass) return;
+      loadHistory(hass, this.series.map(function (s) { return s.entity; }), hours).then((data) => {
+        var allPct = this.series.every(function (s) { var st = hass.states[s.entity]; return st && st.attributes.unit_of_measurement === "%"; });
+        var lines = this.series.map(function (s) { return resample(data[s.entity] || [], hours, 96); });
+        var max = allPct ? 100 : Math.max.apply(null, [].concat.apply([1], lines)) * 1.1;
+        var html = "";
+        lines.forEach((pts, i) => {
+          var c = this.series[i].color, d = areaPath(pts, max, 100);
+          if (!d) return;
+          html += '<path d="' + d + ' L100 100 L0 100 Z" fill="' + c + '" fill-opacity="0.10"/><path d="' + d + '" fill="none" stroke="' + c + '" stroke-width="1.3" vector-effect="non-scaling-stroke"/>';
+        });
+        this.svg.innerHTML = html;
+      }).catch(function () { /* the legend still shows */ });
+    }
+  }
+
   function define(name, cls, label, description) {
     if (!customElements.get(name)) customElements.define(name, cls);
     window.customCards = window.customCards || [];
@@ -1362,6 +1750,9 @@
   define("igor-buttons-card", IgorButtonsCard, "Igor · boutons", "Une rangée de petits boutons qui appellent un service.");
   define("igor-weather-card", IgorWeatherCard, "Igor · météo", "Maintenant, heure par heure, et les jours en barres de températures.");
   define("igor-alarm-card", IgorAlarmCard, "Igor · réveil", "Un réveil (intégration Alarm Clocks) en une ligne.");
+  define("igor-docker-manage-card", IgorDockerManageCard, "Igor · Docker (gestion)", "Les conteneurs de Portainer, leurs totaux et leurs boutons.");
+  define("igor-proxmox-card", IgorProxmoxCard, "Igor · Proxmox", "L'hôte Proxmox, ses machines et son stockage.");
+  define("igor-history-card", IgorHistoryCard, "Igor · courbes", "Quelques capteurs sur les dernières heures.");
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
 
   // ===== no top bar with the "Igor Journal (tablette)" theme =====

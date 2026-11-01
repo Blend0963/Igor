@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.23.1 — The homelab page
+
+- New wall cards for a second page of the desk screen: `igor-proxmox-card` (the node, each VM and container, storages, ZFS pools and disks, found from the Proxmox VE integration's devices), `igor-docker-manage-card` (Portainer's totals, clean-up, and each container's buttons, found by device so a button never acts on another container; recreate, stop and clean-up need a second press) and `igor-history-card` (sensors over the last hours).
+- The status bar's detail can link to other pages (`links`); a wall with `home: false` is not the one the screen comes back to.
+- Desk screen (`ear/screen/install-vm.sh`): greetd's fallback session is the kiosk too, so restarting greetd brings the dashboard back; before, it fell to a login prompt that looped into a black screen. The kiosk's Chromium now runs at low priority, capped near one core and 1.2 GB, drawn by the graphics card with at most two page processes, so Igor, Whisper and the sound keep the machine. Rerun the script on Igor's machine.
+
 ## 0.23.0 — The wall, reworked for the desk screen
 
 - The journal was empty on the wall: voice exchanges are kept under the speaker's Home Assistant user, and the integration read its own. The server's `GET /api/journal` now returns the whole house's, which `nives.journal` reads (integration 0.1.20).

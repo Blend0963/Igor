@@ -115,6 +115,11 @@ The integration adds cards for a tablet screen filled to the bottom, in the them
 - `custom:igor-buttons-card`: a row of small buttons, each calling a service (`buttons: [{icon, name, service, data}]`), opening a page of Home Assistant (`navigate: /config`) or its sidebar (`menu: true`). With the tablet theme, a page left untouched for 5 minutes (`return_after` on the wall) goes back to the wall.
 - `custom:igor-alarm-card`: an alarm clock of the Alarm Clocks integration (`device_id`) on one line: time, days, time left, on/off pill, snooze and dismiss while it rings; a tap opens its full card.
 - `custom:igor-mini-card`: a sensor's value with its range and line over 24 hours.
+- `custom:igor-proxmox-card`: the Proxmox VE integration's node, VMs and containers (state, uptime, processor, memory used of total, disk), then its storages, ZFS pools and disks, all found from its devices.
+- `custom:igor-docker-manage-card`: Portainer's totals and clean-up buttons, and each container with its state, an « maj » badge when a new image is out, and its buttons (pause, resume, restart, recreate, stop). Recreating, stopping and cleaning up act at the second press only, within 4 seconds.
+- `custom:igor-history-card`: a few sensors over the last hours (`entities`, `hours`).
+
+A second wall (another panel view with `home: false`, so the screen still comes back to the first one) makes a homelab page; `links: [{name, navigate}]` on the status bar puts a button to it in the bar's detail.
 
 The network card lists, with `gateways: auto` and `interfaces: auto`, the router's gateways and its interfaces busiest first (OPNsense's sensors, found from `down`). The Docker card leaves out containers whose entities are unavailable (removed from Docker); `show_unavailable: true` keeps them. In the status bar, a group with `side: true` goes to the right of the detail as a list (a router, the disks); the others form its table.
 
