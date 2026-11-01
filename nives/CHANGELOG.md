@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.22.0 — The wall dashboard
+
+- Wall dashboard cards (integration 0.1.18): `custom:igor-wall` fills a tablet's screen exactly, columns of cards down to the bottom (`grow: true` for the card that takes the height left), under a one-line status bar that scrolls slowly through the machines (Proxmox host and VMs, Docker, router…, each figure amber or red past its threshold; a touch opens the detail of all). With it, cards in the theme's style: `igor-journal-card` (Igor's last exchanges and today's figures), `igor-docker-card` (Portainer's containers), `igor-net-card` (a router's traffic over the last hour), `igor-energy-card` (power hour by hour today) and `igor-camera-card` (a picture refreshed every few seconds). Written for old tablets: one animation, no timer under a second, history read once a minute.
+- The floating **journal** button is gone: the journal card's « historique » opens the history, on any device.
+- New theme **Igor Journal (tablette)**: the same without Home Assistant's top bar, for the tablet only; it comes back while editing (`?edit=1`) or with `?barre` in the address.
+- igor-ear 0.2.5 (`ear/`, update it on its machine): sends its AMD graphics card's load, temperature and video memory to Home Assistant every 30 s (`sensor.igor_ear_gpu_*`, `[machine]` in its settings).
+
 ## 0.21.10 — Your cards in Igor's colours
 
 - Igor Journal theme: the named colours cards use (Mushroom's `green`, `amber`, `blue`, `red`, `pink`, `yellow`…, tile cards too) now take Igor's palette in both modes, so an existing dashboard follows the theme without being edited.

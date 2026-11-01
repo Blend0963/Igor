@@ -5,8 +5,10 @@
 #   frontend:
 #     themes: !include_dir_merge_named themes
 # Then Profile → Theme → "Igor Journal" (Auto follows the device's light or
-# dark setting).
-Igor Journal:
+# dark setting). On the wall tablet, "Igor Journal (tablette)": the same,
+# without Home Assistant's top bar (Igor's wall cards hide it; it comes back
+# while editing the dashboard, or with ?barre in the address).
+Igor Journal: &igor_journal
   # A monospace face everywhere: the device's own (Menlo, Roboto Mono, DejaVu
   # Sans Mono…), nothing is downloaded.
   primary-font-family: &mono "ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, 'Roboto Mono', 'DejaVu Sans Mono', monospace"
@@ -291,3 +293,7 @@ Igor Journal:
       rgb-disabled: "167, 176, 185"
       rgb-disabled-color: "167, 176, 185"
       disabled-color: "#a7b0b9"
+
+Igor Journal (tablette):
+  <<: *igor_journal
+  igor-hide-header: "1"

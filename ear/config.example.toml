@@ -73,6 +73,15 @@ pipeline = ""                  # empty: the preferred Assist pipeline
 presence_entity = ""           # e.g. "binary_sensor.presence"; empty: always listen
 home_states = ["on", "home"]
 
+[machine]
+# This machine's AMD graphics card (load, temperature, video memory) sent to
+# Home Assistant every `interval` seconds as sensor.igor_ear_gpu_load,
+# _gpu_temperature and _gpu_memory, for the wall tablet's status bar. Needs
+# [home_assistant] url and token; nothing is sent without an AMD card.
+stats = true
+interval = 30
+prefix = "igor_ear"
+
 [log]
 # Notes kept in ~/.local/state/igor-ear/observations.jsonl, on this machine only.
 keep_days = 7

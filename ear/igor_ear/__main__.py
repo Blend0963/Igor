@@ -139,6 +139,10 @@ def run(settings: Settings) -> None:
             watched += settings.media_players
         watcher = ha.Watcher(settings.ha_url, settings.ha_token, watched, changed)
         watcher.start()
+        if settings.stats:
+            from .machine import Publisher
+
+            Publisher(settings.ha_url, settings.ha_token, settings.stats_prefix, settings.stats_interval).start()
 
     def busy() -> bool:
         if watcher is None or not settings.satellite:

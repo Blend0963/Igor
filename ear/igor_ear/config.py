@@ -136,6 +136,11 @@ class Settings:
     keep_days: int = 7
     rejected_text: bool = True
     journal_all: bool = False
+    # This machine's graphics card (load, temperature, video memory) sent to
+    # Home Assistant as sensor.<stats_prefix>_gpu_*, for the wall tablet.
+    stats: bool = True
+    stats_interval: float = 30.0
+    stats_prefix: str = "igor_ear"
 
     @property
     def log_file(self) -> Path:
@@ -210,4 +215,8 @@ def load(path: Path = CONFIG) -> Settings:
     s.keep_days = int(log.get("keep_days", s.keep_days))
     s.rejected_text = bool(log.get("rejected_text", s.rejected_text))
     s.journal_all = bool(log.get("journal_all", s.journal_all))
+    machine = data.get("machine", {})
+    s.stats = bool(machine.get("stats", s.stats))
+    s.stats_interval = float(machine.get("interval", s.stats_interval))
+    s.stats_prefix = str(machine.get("prefix", s.stats_prefix)).strip() or "igor_ear"
     return s
