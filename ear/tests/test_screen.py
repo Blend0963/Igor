@@ -75,6 +75,16 @@ def test_the_machine_losing_the_keyboard_sends_the_screen_away():
     assert calls[-1][-1] == "0x11"
 
 
+def test_a_keyboard_dropping_for_a_moment_does_not_move_the_screen():
+    sc, calls = make()
+    sc.keyboard, sc.last_seen = True, 0.0
+    for t, present in ((0.5, False), (1.0, True), (1.5, False), (2.0, False)):
+        sc.keyboard_seen(present, 1.0 + t if present else t + 1.0)
+    assert not any("setvcp" in c for c in calls) and sc.keyboard
+    sc.keyboard_seen(False, 10.0)
+    assert not sc.keyboard and calls[-1][-1] == "0x0f"
+
+
 def test_orders_from_home_assistant():
     sc, calls = make("binary_sensor.pc")
     sc.handle({"type": "event", "event": {"event_type": "igor_screen", "data": {"action": "off"}}})

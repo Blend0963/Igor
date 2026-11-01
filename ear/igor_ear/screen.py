@@ -31,6 +31,9 @@ from dataclasses import dataclass, field
 log = logging.getLogger("igor-ear")
 
 INPUT_DEVICES = "/proc/bus/input/devices"
+# A keyboard on a long or weak USB link drops for a moment and comes back:
+# only this long without it is the USB switch pressed towards the PC.
+GONE_AFTER = 3.0
 
 # The settings windows a dashboard button may open over the dashboard: these
 # only, never a command sent by Home Assistant.
@@ -241,14 +244,24 @@ class Screen:
             self.act("pc")
         self.publish()
 
+    def keyboard_seen(self, present: bool, now: float) -> None:
+        """One reading of the keyboard: back at once, gone only after
+        GONE_AFTER seconds without it (a flaky link resets it every second)."""
+        if present:
+            self.last_seen = now
+            self.keyboard_changed(True)
+        elif now - getattr(self, "last_seen", 0.0) >= GONE_AFTER:
+            self.keyboard_changed(False)
+
     def watch_keyboard(self) -> None:
         self.keyboard = self.read_keyboard(self.s.keyboard)
+        self.last_seen = time.monotonic()
         ticks = 0
         while True:
             time.sleep(0.5)
             ticks += 1
             try:
-                self.keyboard_changed(self.read_keyboard(self.s.keyboard))
+                self.keyboard_seen(self.read_keyboard(self.s.keyboard), time.monotonic())
                 if ticks % 6 == 0:
                     self.refullscreen()
             except Exception as err:  # noqa: BLE001 - the watch must go on
