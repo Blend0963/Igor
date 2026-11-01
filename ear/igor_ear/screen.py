@@ -44,11 +44,32 @@ APP_WINDOWS = r"^(org\.pulseaudio\.pavucontrol|pavucontrol|com\.github\.wwmm\.ea
 
 
 # ----- the keyboard -----
+# Letter keys and the space bar (linux/input-event-codes.h): a USB sound card,
+# a headset or a remote also declares itself a keyboard ("kbd", for its volume
+# keys), but only a real keyboard has these.
+TYPING_KEYS = (16, 30, 44, 57)  # KEY_Q, KEY_A, KEY_Z, KEY_SPACE
+
+
+def key_bits(text: str) -> int:
+    """The `B: KEY=` bitmap: hex words, the most significant first, each one a
+    64-bit word with its leading zeros left out."""
+    value = 0
+    for word in text.split():
+        value = (value << 64) | int(word, 16)
+    return value
+
+
 @dataclass
 class InputDevice:
     name: str = ""
     bus: str = ""
     handlers: list[str] = field(default_factory=list)
+    keys: int | None = None  # None: the bitmap was not listed
+
+    def types(self) -> bool:
+        if self.keys is None:
+            return True
+        return all(self.keys >> k & 1 for k in TYPING_KEYS)
 
 
 def parse_inputs(text: str) -> list[InputDevice]:
@@ -65,6 +86,11 @@ def parse_inputs(text: str) -> list[InputDevice]:
                 dev.name = m.group(1) if m else ""
             elif line.startswith("H:"):
                 dev.handlers = line.split("=", 1)[1].split() if "=" in line else []
+            elif line.startswith("B: KEY="):
+                try:
+                    dev.keys = key_bits(line.split("=", 1)[1])
+                except ValueError:
+                    dev.keys = None
         if dev.name:
             out.append(dev)
     return out
@@ -72,9 +98,10 @@ def parse_inputs(text: str) -> list[InputDevice]:
 
 def keyboard_here(devices: list[InputDevice], match: str = "") -> bool:
     """A real USB keyboard is plugged in: the virtual machine's own devices
-    (QEMU's tablet and keyboard) do not count. `match`: a part of its name."""
+    (QEMU's tablet and keyboard) and USB devices with a few media keys only
+    (a sound card) do not count. `match`: a part of its name."""
     for d in devices:
-        if d.bus != "0003" or "kbd" not in d.handlers:
+        if d.bus != "0003" or "kbd" not in d.handlers or not d.types():
             continue
         if d.name.upper().startswith("QEMU"):
             continue

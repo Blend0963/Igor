@@ -15,6 +15,14 @@ H: Handlers=mouse0 event1
 I: Bus=0003 Vendor=046d Product=c31c Version=0110
 N: Name="Logitech USB Keyboard"
 H: Handlers=sysrq kbd leds event2
+B: KEY=1000000000007 ff9f207ac14057ff febeffdfffefffff fffffffffffffffe
+
+"""
+
+SOUND_CARD = """I: Bus=0003 Vendor=1b3f Product=2008 Version=0100
+N: Name="Generalplus Usb Audio Device"
+H: Handlers=kbd event5
+B: KEY=e000000000000 0
 
 """
 
@@ -26,6 +34,13 @@ def test_only_a_real_usb_keyboard_counts():
     assert screen.keyboard_here(devs, "logitech")
     assert not screen.keyboard_here(devs, "cherry")
     assert not screen.keyboard_here(screen.parse_inputs(DEVICES.split("\n\nI: Bus=0003 Vendor=046d")[0]))
+
+
+def test_a_sound_card_with_volume_keys_is_not_a_keyboard():
+    alone = screen.parse_inputs(DEVICES.split("\n\nI: Bus=0003 Vendor=046d")[0] + "\n\n" + SOUND_CARD)
+    assert alone[-1].name == "Generalplus Usb Audio Device"
+    assert not screen.keyboard_here(alone)
+    assert screen.keyboard_here(screen.parse_inputs(DEVICES + SOUND_CARD))
 
 
 def test_ddc_bus_from_the_connector(tmp_path):

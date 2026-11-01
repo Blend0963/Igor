@@ -49,6 +49,15 @@ def keyboard_here(match):
             continue
         if match and match.lower() not in name.group(1).lower():
             continue
+        # A sound card or a headset declares itself a keyboard for its volume
+        # keys: a real keyboard has letters and a space bar.
+        keys = re.search(r"B: KEY=(.*)", block)
+        if keys:
+            bits = 0
+            for word in keys.group(1).split():
+                bits = (bits << 64) | int(word, 16)
+            if not all(bits >> k & 1 for k in (16, 30, 44, 57)):
+                continue
         return True
     return False
 
