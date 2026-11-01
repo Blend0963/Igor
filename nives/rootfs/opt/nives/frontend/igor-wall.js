@@ -1956,7 +1956,9 @@
   //   columns: 2
   //   tiles:
   //     - { entity: scene.tamisee, name: Tamisée, icon: mdi:brightness-6 }
-  //     - { entity: light.salon, name: Salon }            # tap: on/off, hold: details
+  //     - { entity: light.salon, name: Salon }            # tap: on/off, hold: details; lit in the light's colour
+  //     - { entity: switch.camera_privacy_mode, name: Caméra, icon: mdi:cctv, icon_off: mdi:cctv-off,
+  //         invert: true, text: { "off": active, "on": privée } }   # lit while the switch is off
   //     - { entity: sensor.next_train, name: Ligne J, secondary: [sensor.train_1, sensor.train_2], tap: more-info }
   // size: small gives one line per tile (icon, name, state) instead of a square.
   class IgorTilesCard extends IgorCard {
@@ -1975,7 +1977,7 @@
         "button.big ha-icon { grid-row: 1 / 3; align-self: center; }",
         "button.small { padding: 10px 12px; display: grid; grid-template-columns: 20px max-content minmax(0, 1fr); gap: 10px; align-items: center; --mdc-icon-size: 18px; }",
         "button ha-icon { color: var(--dim); }",
-        "button.on { border-color: rgba(217, 164, 65, 0.4); } button.on ha-icon { color: var(--wait); }",
+        "button.on { border-color: var(--tile-on-border, rgba(217, 164, 65, 0.4)); } button.on ha-icon { color: var(--tile-on, var(--wait)); }",
         "button.scene ha-icon { color: var(--acc); }",
         ".n { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }",
         ".s { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }",
@@ -2016,10 +2018,18 @@
         if (!x.t.icon && st && st.attributes.icon) x.ic.setAttribute("icon", st.attributes.icon);
         var text = x.t.secondary ? x.t.secondary.map(function (id) { return stateText(hass, id); }).join(" · ") : stateText(hass, x.t.entity);
         if (x.t.secondary && x.t.show_state) text = stateText(hass, x.t.entity) + " · " + text;
-        x.sub.textContent = text;
         var d = domainOf(x.t.entity);
+        // invert: lit while the entity is off (a camera's privacy switch).
+        var on = d !== "scene" && isOn(hass, x.t.entity) !== Boolean(x.t.invert);
+        if (x.t.text && st && x.t.text[st.state] != null) text = String(x.t.text[st.state]);
+        x.sub.textContent = text;
+        if (x.t.icon_off) x.ic.setAttribute("icon", on ? (x.t.icon || "mdi:help-circle-outline") : x.t.icon_off);
         x.b.classList.toggle("scene", d === "scene" || d === "script");
-        x.b.classList.toggle("on", d !== "scene" && isOn(hass, x.t.entity));
+        x.b.classList.toggle("on", on);
+        // A light lit in a colour: the tile takes that colour.
+        var rgb = on && d === "light" && st && Array.isArray(st.attributes.rgb_color) ? st.attributes.rgb_color : null;
+        x.b.style.setProperty("--tile-on", rgb ? "rgb(" + rgb.join(",") + ")" : "");
+        x.b.style.setProperty("--tile-on-border", rgb ? "rgba(" + rgb.join(",") + ",0.55)" : "");
       });
     }
   }
