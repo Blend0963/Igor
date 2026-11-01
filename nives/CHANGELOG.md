@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.23.0 — The wall, reworked for the desk screen
+
+- The journal was empty on the wall: voice exchanges are kept under the speaker's Home Assistant user, and the integration read its own. The server's `GET /api/journal` now returns the whole house's, which `nives.journal` reads (integration 0.1.20).
+- New wall cards: `igor-weather-card` (now, hour by hour, days as temperature bars; the forecast stands in when the current state is unavailable), `igor-assist-card` (Igor's state, tap to talk, hold or pill to switch it), `igor-buttons-card` (a row of small service buttons), `igor-alarm-card` (an Alarm Clocks alarm on one line, its full card on tap) and `igor-mini-card` (a sensor and its 24 hours on one line).
+- The network card shows the router's gateways and its busiest interfaces (`gateways: auto`, `interfaces: auto`); the Docker card leaves out removed containers and no longer overlaps its columns; the energy card keeps a small chart unless it is the one that grows; the status bar's detail is a table of the machines with the router and disks listed beside it (`side: true`).
+- `nives.screen`: the desk screen's orders as a service any user can call (a dashboard button), where firing the `igor_screen` event needs an administrator.
+- Igor Journal theme: Mushroom cards more compact (icons, text, spacing).
+
 ## 0.22.2 — The VM's settings from the dashboard
 
 - igor-ear 0.3.1 (`ear/`): the desk screen's kiosk session now starts EasyEffects and Bluetooth's agent itself (what an XFCE session did), and `install-vm.sh` switches off the login manager in place (LightDM…) before enabling greetd. Home Assistant's `igor_screen` event takes `app` (`sound`, `equalizer`, `bluetooth`) to open pavucontrol, EasyEffects or Blueman over the dashboard, and `close`.

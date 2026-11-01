@@ -47,7 +47,9 @@ export class VoiceJournal {
     }
   }
 
-  /** The newest exchanges of one user, newest last, at most `limit`. */
+  /** The newest exchanges, newest last, at most `limit`: of one user, or
+   * of the whole house when `user` is empty (a voice turn is recorded under
+   * the speaker's Home Assistant user, not the integration's). */
   read(user: string, limit = 50): JournalEntry[] {
     if (!existsSync(this.path)) return [];
     const out: JournalEntry[] = [];
@@ -55,7 +57,7 @@ export class VoiceJournal {
       if (!line.trim()) continue;
       try {
         const e = JSON.parse(line) as JournalEntry;
-        if (e.user === user && typeof e.words === "string") out.push(e);
+        if ((!user || e.user === user) && typeof e.words === "string") out.push(e);
       } catch {
         // a torn line: skip it
       }

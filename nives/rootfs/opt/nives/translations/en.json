@@ -108,6 +108,20 @@
           "description": "How many exchanges, the newest ones."
         }
       }
+    },
+    "screen": {
+      "name": "Desk screen",
+      "description": "Orders for the desk screen shared with a PC (igor-ear's screen service): show the PC or the dashboard, sleep, wake, or open a settings window over the dashboard.",
+      "fields": {
+        "action": {
+          "name": "Action",
+          "description": "pc, dashboard, off (sleep), on, toggle, app (open a settings window) or close (close them)."
+        },
+        "app": {
+          "name": "Settings window",
+          "description": "With app: sound (pavucontrol), equalizer (EasyEffects) or bluetooth (Blueman)."
+        }
+      }
     }
   }
 }

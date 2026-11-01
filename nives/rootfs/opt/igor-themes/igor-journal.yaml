@@ -26,6 +26,15 @@ Igor Journal: &igor_journal
   ha-badge-border-radius: "6px"
   mdc-shape-small: "4px"
   mdc-shape-medium: "6px"
+  # Mushroom cards more compact: a whole screen of them fits without scrolling.
+  mush-spacing: "8px"
+  mush-icon-size: "30px"
+  mush-control-height: "32px"
+  mush-card-primary-font-size: "13px"
+  mush-card-secondary-font-size: "11px"
+  mush-card-primary-line-height: "17px"
+  mush-card-secondary-line-height: "15px"
+  mush-chip-height: "30px"
   modes:
     dark:
       primary-color: "#6cc4f5"

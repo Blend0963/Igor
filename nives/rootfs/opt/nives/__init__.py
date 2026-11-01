@@ -41,7 +41,11 @@ from .const import (
     RESTART_ISSUE_ID,
     RESTART_NOTIFY_ID,
     SERVICE_HEARD,
+    SCREEN_ACTIONS,
+    SCREEN_APPS,
+    SCREEN_EVENT,
     SERVICE_JOURNAL,
+    SERVICE_SCREEN,
     API_JOURNAL_ENDPOINT,
     TOKEN_ACK_RELPATH,
     TOKEN_FILE_RELPATH,
@@ -414,6 +418,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
         entry.runtime_data.frontend_url = await _async_setup_frontend(hass)
         _async_register_heard(hass)
         _async_register_journal(hass)
+        _async_register_screen(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await _async_setup_update_watch(hass, entry)
@@ -453,6 +458,32 @@ def _async_register_heard(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_HEARD, _heard, schema=HEARD_SCHEMA)
 
 
+SCREEN_SCHEMA = vol.Schema(
+    {
+        vol.Required("action"): vol.In(SCREEN_ACTIONS),
+        vol.Optional("app"): vol.In(SCREEN_APPS),
+    }
+)
+
+
+@callback
+def _async_register_screen(hass: HomeAssistant) -> None:
+    """The desk screen's orders (igor-ear's `run.sh screen` listens to the
+    igor_screen event): a dashboard button calls this service, which any
+    user may call, where firing an event needs an administrator."""
+    if hass.services.has_service(DOMAIN, SERVICE_SCREEN):
+        return
+
+    @callback
+    def _screen(call: ServiceCall) -> None:
+        data = {"action": call.data["action"]}
+        if call.data.get("app"):
+            data["app"] = call.data["app"]
+        hass.bus.async_fire(SCREEN_EVENT, data, context=call.context)
+
+    hass.services.async_register(DOMAIN, SERVICE_SCREEN, _screen, schema=SCREEN_SCHEMA)
+
+
 JOURNAL_SCHEMA = vol.Schema(
     {vol.Optional("limit", default=50): vol.All(vol.Coerce(int), vol.Range(min=1, max=200))}
 )
@@ -472,7 +503,8 @@ def _async_register_journal(hass: HomeAssistant) -> None:
             if data is None:
                 continue
             headers = {"Authorization": f"Bearer {data.api_token}"} if data.api_token else {}
-            url = f"{data.api_url}{API_JOURNAL_ENDPOINT}/{data.user_id}"
+            # The whole house: a voice turn is kept under the speaker's user.
+            url = f"{data.api_url}{API_JOURNAL_ENDPOINT}"
             try:
                 async with async_get_clientsession(hass).get(
                     url, params={"limit": call.data["limit"]}, headers=headers,
