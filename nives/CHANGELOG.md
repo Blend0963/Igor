@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.13 — The tablet's live display, tidy
+
+- The live display when the name is heard was broken by 0.23.8: the ear's line spread over the screen's width, everything sat at the bottom, and the bar and chips were not aligned with the words. It is now centred, the ear's line reads « oreille · nom entendu », a blinking cursor holds the place of your words while they are transcribed, and the time bar and chips line up under them.
+
 ## 0.23.12 — Dépêches that stay
 
 - Dépêches: the feed is fetched twice before giving up (a site sometimes answers a busy page once), with a browser-like request; a failure shows the last good list instead of « Flux indisponible »; with nothing yet, the card tries again every 30 s instead of waiting ten minutes.
