@@ -2497,8 +2497,8 @@
     var found = [], root = lovelaceRoot(), pageHasIgor = false;
     try { pageHasIgor = /custom:igor-/.test(JSON.stringify(root && root.lovelace && root.lovelace.config)); } catch (e) { pageHasIgor = false; }
     (function walk(node, depth) {
-      if (!node || depth > 40) return;
-      if (node.tagName === "HUI-ERROR-CARD") {
+      if (!node || depth > 400) return;
+      if (node.tagName === "HUI-ERROR-CARD" || node.tagName === "HUI-WARNING") {
         var c = node._config || node.config || {};
         var orig = c.origConfig || c.config || {};
         if (pageHasIgor || /igor/.test(JSON.stringify(orig || {})) || /igor/i.test(String(c.error || ""))) found.push(node);
@@ -2508,19 +2508,33 @@
     })(document.querySelector("home-assistant"), 0);
     return found;
   }
-  [500, 1500, 3500].forEach(function (ms) {
+  [300, 1000, 2000].forEach(function (ms) {
     setTimeout(function () {
       igorErrorCards().forEach(function (n) { n.dispatchEvent(new Event("ll-rebuild", { bubbles: true, composed: true })); });
     }, ms);
   });
+  // The page should show a wall (its view's configuration says so) and none
+  // is drawn: broken too, whatever Home Assistant put in its place.
+  function wallMissing() {
+    var root = lovelaceRoot();
+    if (!root || !root.lovelace || !root.lovelace.config || !viewHasWall(root)) return false;
+    var seen = false;
+    (function walk(node, depth) {
+      if (!node || seen || depth > 400) return;
+      if (node.tagName === "IGOR-WALL") { seen = true; return; }
+      if (node.shadowRoot) walk(node.shadowRoot, depth + 1);
+      for (var ch = node.firstElementChild; ch; ch = ch.nextElementSibling) walk(ch, depth + 1);
+    })(document.querySelector("home-assistant"), 0);
+    return !seen;
+  }
   setTimeout(function () {
-    if (!igorErrorCards().length) return;
+    if (!igorErrorCards().length && !wallMissing()) return;
     var last = 0;
     try { last = Number(window.sessionStorage.getItem("igor-heal")) || 0; } catch (e) { last = 0; }
-    if (Date.now() - last < 60000) return;
+    if (Date.now() - last < 30000) return;
     try { window.sessionStorage.setItem("igor-heal", String(Date.now())); } catch (e) { return; }
     window.location.reload();
-  }, 7000);
+  }, 3500);
 
   // ===== a « mur » button on every other page =====
   // With the tablet theme the bar and the sidebar are hidden: on any other
