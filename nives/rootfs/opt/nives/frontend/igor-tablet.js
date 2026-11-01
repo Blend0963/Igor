@@ -67,9 +67,9 @@
     ".veil[data-phase=transcribing] .dot, .veil[data-phase=thinking] .dot { background: #d9a441; }",
     ".veil[data-phase=answering] .dot, .veil[data-phase=done] .dot { background: #5cc28f; }",
     ".veil[data-phase=error] .dot { background: #e0675f; }",
-    ".log { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; padding: 3vh 4vw 4vh; overflow: hidden; }",
-    ".say { display: grid; grid-template-columns: 6ch 1fr; gap: 14px; font-size: clamp(18px, 2.6vw, 30px); line-height: 1.32; margin-top: 10px; }",
-    ".say .w { color: #6b7682; font-size: 0.55em; text-align: right; padding-top: 0.55em; }",
+    ".log { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 3vh 4vw 4vh; overflow: hidden; width: 100%; max-width: 1100px; margin: 0 auto; box-sizing: border-box; }",
+    ".say { display: grid; grid-template-columns: 4.5rem 1fr; gap: 14px; font-size: clamp(18px, 2.6vw, 30px); line-height: 1.32; margin-top: 10px; }",
+    ".say .w { color: #6b7682; font-size: 14px; text-align: right; padding-top: 0.7em; }",
     ".say.q { color: #eef2f6; }",
     ".say.a { color: #6cc4f5; }",
     ".veil[data-phase=error] .say.a { color: #e0675f; }",
@@ -119,7 +119,9 @@
     ".filters { display: flex; gap: 6px; margin: 10px 0 2px; flex-wrap: wrap; }",
     ".fb { background: none; border: 1px solid #1d242c; border-radius: 99px; padding: 3px 11px; color: #6b7682; font: inherit; font-size: 12px; cursor: pointer; } .fb.sel { border-color: #6cc4f5; color: #6cc4f5; }",
     // the live turn, the same way
-    ".log .tb, .log .chips { padding-left: calc(6ch + 14px); }",
+    ".log .tb, .log .chips, .log .ear { padding-left: calc(4.5rem + 14px); }",
+    ".log .ear { color: #5cc28f; font-size: clamp(12px, 1.4vw, 15px); }",
+    ".log .ear::before { content: '● '; }",
     ".log .say.a .t { border-left: 2px solid #6cc4f5; padding-left: 12px; }",
     "@keyframes blink { 50% { opacity: 0; } }",
     "@media (prefers-reduced-motion: reduce) { .cur { animation: none; } .veil { transition: none; } }"
@@ -205,8 +207,7 @@
   function setEar() {
     view.heardAt = Date.now();
     earEl = slot(earEl, "ear", logEl.firstChild);
-    earEl.innerHTML = "";
-    trRow(earEl, "oreille", "nom entendu", "local", null);
+    earEl.textContent = "oreille · nom entendu";
   }
   function setSay(which, text, typing) {
     var cur = which === "q" ? qEl : aEl;
@@ -470,6 +471,8 @@
         view.phase = phase;
         show();
         setEar();
+        // Your words are on their way: a blinking cursor holds their place.
+        if (!qEl) setSay("q", "…", true);
         veil.dataset.phase = phase;
         setState(waiting ? "écoute" : "transcription", false);
       }
