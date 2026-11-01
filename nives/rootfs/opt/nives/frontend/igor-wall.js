@@ -597,11 +597,19 @@
     build() {
       this.style([
         ".list { flex: 1; min-height: 0; overflow: hidden; }",
-        ".e { display: grid; grid-template-columns: 5ch 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px dashed var(--line); }",
+        ".e { display: grid; grid-template-columns: 5ch minmax(0, 1fr) auto; gap: 4px 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }",
+        ".e > .b { grid-column: 2 / 4; display: grid; gap: 4px; min-width: 0; }",
+        ".q { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
+        ".a { border-left: 2px solid var(--acc); padding-left: 8px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }",
+        ".r { font-size: 10px; border-radius: 99px; padding: 1px 8px; border: 1px solid; white-space: nowrap; align-self: start; }",
+        ".r.local { color: var(--okc); border-color: rgba(92,194,143,0.4); } .r.online { color: var(--wait); border-color: rgba(217,164,65,0.4); } .r.fail { color: var(--bad); border-color: rgba(224,103,95,0.4); }",
+        ".chips { display: flex; flex-wrap: wrap; gap: 4px; }",
+        ".chip { font-size: 11px; padding: 1px 7px; border-radius: 3px; background: rgba(92,194,143,0.1); color: var(--okc); }",
+        ".chip.fail { background: rgba(224,103,95,0.12); color: var(--bad); }",
         ".e:last-child { border-bottom: 0; }",
         ".h { color: var(--faint); }",
         ".q { color: var(--fg); }",
-        ".q::before { content: '› '; color: var(--dim); }",
+
         ".a { color: var(--acc); }",
         ".m { color: var(--dim); font-size: 11px; }",
         ".m .okc + span::before, .m span + span::before { content: ' · '; color: var(--faint); }",
@@ -646,19 +654,30 @@
     render(entries) {
       this.list.innerHTML = "";
       if (!entries.length) el("div", "empty", this.list, "Aucun échange pour l'instant.");
+      var states = (this._hass && this._hass.states) || {};
+      var nice = function (t) {
+        return String(t || "")
+          .replace(/\b([a-z_]+\.[a-z0-9_]+)\b/g, function (id) { var st = states[id]; return st && st.attributes && st.attributes.friendly_name ? st.attributes.friendly_name : id; })
+          .replace(/\d{4}-\d\d-\d\dT[\d:.]+(Z|[+-]\d\d:\d\d)?/g, "activée")
+          .replace(/\bturn[ _]on\b/g, "allumé").replace(/\bturn[ _]off\b/g, "éteint");
+      };
       entries.slice().reverse().forEach((e) => {
+        var t = e.trace || [];
+        var failed = t.filter(function (s) { return /échec/.test(s.detail || ""); });
+        var online = t.some(function (s) { return s.where === "online" && s.step !== "destinataire" && typeof s.ms === "number"; });
+        var total = t.reduce(function (a, s) { return a + (typeof s.ms === "number" ? s.ms : 0); }, 0);
         var row = el("div", "e", this.list);
         el("span", "h", row, hhmm(new Date(e.at)));
-        var body = el("span", "", row);
-        el("div", "q", body, e.words || "");
-        if (e.answer && !e.silent) el("div", "a", body, e.answer);
-        var meta = el("div", "m", body);
-        (e.done || []).forEach(function (d) { el("span", "okc", meta, d); });
-        (e.trace || []).forEach(function (s) {
-          if (typeof s.ms !== "number") return;
-          if (s.step === "local") el("span", "", meta, "local " + fr(s.ms / 1000, 1) + " s");
-          else if (s.where === "online" && s.step === "mistral") el("span", "", meta, "en ligne " + fr(s.ms / 1000, 1) + " s");
-        });
+        el("span", "q", row, e.words || "");
+        el("span", "r " + (failed.length ? "fail" : online ? "online" : "local"), row,
+          (failed.length ? "échec" : online ? "en ligne" : "local") + (total ? " · " + fr(total / 1000, 1) + " s" : ""));
+        var b = el("div", "b", row);
+        if (e.answer && !e.silent) el("div", "a", b, e.answer);
+        if ((e.done && e.done.length) || failed.length) {
+          var ch = el("div", "chips", b);
+          (e.done || []).forEach(function (d) { el("span", "chip", ch, nice(d)); });
+          failed.forEach(function (s) { el("span", "chip fail", ch, nice(String(s.detail).replace(/ · échec$/, "")) + " · échec"); });
+        }
       });
       // Today: exchanges, those done without going online, the local model's mean time.
       var today = new Date().toDateString(), n = 0, localOnly = 0, sum = 0, count = 0;
@@ -1979,7 +1998,8 @@
         "button ha-icon { color: var(--dim); }",
         "button.on { border-color: var(--tile-on-border, rgba(217, 164, 65, 0.4)); background: var(--tile-on-bg, var(--card)); } button.on ha-icon { color: var(--tile-on, var(--wait)); }",
         "button.scene ha-icon { color: var(--acc); }",
-        ".n { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }",
+        // The name always whole: on two lines rather than cut.
+        ".n { font-size: 14px; line-height: 1.2; overflow-wrap: break-word; min-width: 0; }",
         ".s { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }",
         "button.small .s { text-align: right; }",
         "button.done { border-color: var(--acc); }",

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.23.8 — A cleaner journal, whole names on the tiles
+
+- Igor's journal (the tablet's history, its live display when the name is heard, and the walls' journal card): one row per exchange with the time, the words (two lines, a tap for all), Igor's answer under a rule, what was done as chips named as in the house (« Salon · éteint », not the entity id; a scene's timestamp reads « activée »), failures in red, the route (local, en ligne, échec) and the total time; the steps as one coloured time bar with a short legend, the full calls on a tap. The history opens on the day's four figures and filters (tout, actions, réponses, échecs), newest first.
+- `igor-tiles-card`: a long name goes on two lines instead of being cut (« Projecteur »).
+
 ## 0.23.7 — A key wakes the desk screen
 
 - Desk screen (igor-ear 0.3.4): asleep, a key or the mouse wakes it (swayidle in the kiosk session), and `sensor.igor_screen` follows the output's real state, however it was switched. After a minute without a key or the mouse, its `idle` attribute turns true, so an automation can put it back to sleep. Rerun `ear/screen/install-vm.sh` on Igor's machine (it installs swayidle).

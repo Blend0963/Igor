@@ -47,7 +47,7 @@
   var setting = readSetting();
   var onlySatellite = /^assist_satellite\./.test(setting) ? setting : null;
 
-  // ----- the journal: a plain terminal, Igor's turn written out -----
+  // ----- the journal: Igor's turn, laid out like a log -----
   // Sober on purpose (the tablet may be old): one solid background, no blur,
   // no glow, nothing animated but a blinking cursor. Your words, what the
   // local model did step by step (each marked "local" or "en ligne", with
@@ -68,13 +68,13 @@
     ".veil[data-phase=answering] .dot, .veil[data-phase=done] .dot { background: #5cc28f; }",
     ".veil[data-phase=error] .dot { background: #e0675f; }",
     ".log { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; padding: 3vh 4vw 4vh; overflow: hidden; }",
-    ".say { display: grid; grid-template-columns: 6ch 1fr; gap: 14px; font-size: clamp(20px, 3vw, 34px); line-height: 1.32; margin-top: 10px; }",
+    ".say { display: grid; grid-template-columns: 6ch 1fr; gap: 14px; font-size: clamp(18px, 2.6vw, 30px); line-height: 1.32; margin-top: 10px; }",
     ".say .w { color: #6b7682; font-size: 0.55em; text-align: right; padding-top: 0.55em; }",
     ".say.q { color: #eef2f6; }",
     ".say.a { color: #6cc4f5; }",
     ".veil[data-phase=error] .say.a { color: #e0675f; }",
     ".say .t { overflow-wrap: anywhere; max-height: 40vh; overflow: hidden; }",
-    ".tr { display: grid; grid-template-columns: 6ch 13ch minmax(0, 1fr) auto; gap: 18px; font-size: clamp(12px, 1.5vw, 16px); color: #6b7682; }",
+    ".tr { display: grid; grid-template-columns: 6ch 15ch minmax(0, 1fr) auto; gap: 18px; font-size: clamp(12px, 1.5vw, 16px); color: #6b7682; }",
     ".tr .ms { text-align: right; color: #39424c; font-variant-numeric: tabular-nums; }",
     ".tr .d { color: #aeb7c0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
     ".tr .local { color: #5cc28f; } .tr .online { color: #d9a441; } .tr .none { color: #39424c; }",
@@ -92,6 +92,35 @@
     ".entry .say { font-size: clamp(17px, 2.3vw, 26px); margin-top: 6px; }",
     ".when { color: #39424c; font-size: 0.55em; text-align: right; padding-top: 0.55em; }",
     ".empty { color: #6b7682; margin: auto; font-size: clamp(14px, 1.8vw, 18px); }",
+    // one exchange: time | words, answer, what was done, where the seconds went | route and total
+    ".ex { display: grid; grid-template-columns: 6ch minmax(0, 1fr) auto; gap: 6px 18px; padding: 14px 0; border-top: 1px solid #1d242c; cursor: pointer; }",
+    ".ex .time { color: #6b7682; font-variant-numeric: tabular-nums; padding-top: 3px; font-size: clamp(12px, 1.4vw, 15px); }",
+    ".ex .said { font-size: clamp(15px, 1.9vw, 19px); line-height: 1.4; color: #eef2f6; min-width: 0; overflow-wrap: anywhere; }",
+    ".ex .said.long { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
+    ".ex.open .said.long { display: block; }",
+    ".side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }",
+    ".route { font-size: 11px; border-radius: 99px; padding: 2px 10px; border: 1px solid; white-space: nowrap; }",
+    ".route.local { color: #5cc28f; border-color: rgba(92,194,143,0.4); } .route.online { color: #d9a441; border-color: rgba(217,164,65,0.4); } .route.fail { color: #e0675f; border-color: rgba(224,103,95,0.4); }",
+    ".total { font-size: 18px; font-variant-numeric: tabular-nums; } .total small { color: #6b7682; font-size: 11px; }",
+    ".exb { grid-column: 2; display: grid; gap: 8px; min-width: 0; }",
+    ".ans { color: #6cc4f5; line-height: 1.45; border-left: 2px solid #6cc4f5; padding-left: 10px; font-size: clamp(14px, 1.7vw, 17px); overflow-wrap: anywhere; }",
+    ".chips { display: flex; flex-wrap: wrap; gap: 6px; }",
+    ".chip { font-size: clamp(12px, 1.4vw, 14px); padding: 3px 10px; border-radius: 4px; background: rgba(92,194,143,0.1); color: #5cc28f; }",
+    ".chip.fail { background: rgba(224,103,95,0.12); color: #e0675f; }",
+    ".tb { display: grid; gap: 6px; }",
+    ".tbar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; gap: 2px; max-width: 520px; }",
+    ".legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: clamp(11px, 1.3vw, 13px); color: #6b7682; }",
+    ".legend span::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; background: var(--c); }",
+    ".steps { display: none; } .ex.open .steps { display: block; }",
+    ".more { color: #39424c; font-size: 11px; }",
+    ".stats { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid #1d242c; }",
+    ".stats div { padding: 10px 0; } .stats b { display: block; font-size: clamp(16px, 2.2vw, 22px); font-weight: 500; font-variant-numeric: tabular-nums; }",
+    ".stats span { color: #6b7682; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }",
+    ".filters { display: flex; gap: 6px; margin: 10px 0 2px; flex-wrap: wrap; }",
+    ".fb { background: none; border: 1px solid #1d242c; border-radius: 99px; padding: 3px 11px; color: #6b7682; font: inherit; font-size: 12px; cursor: pointer; } .fb.sel { border-color: #6cc4f5; color: #6cc4f5; }",
+    // the live turn, the same way
+    ".log .tb, .log .chips { padding-left: calc(6ch + 14px); }",
+    ".log .say.a .t { border-left: 2px solid #6cc4f5; padding-left: 12px; }",
     "@keyframes blink { 50% { opacity: 0; } }",
     "@media (prefers-reduced-motion: reduce) { .cur { animation: none; } .veil { transition: none; } }"
   ].join("\n");
@@ -196,6 +225,43 @@
     t.textContent = text;
     if (typing) el("span", "cur", t);
   }
+  // Where the seconds went: one coloured bar, a short legend.
+  var STEP = { local: ["modèle local", "#5cc28f"], ha: ["home assistant", "#2f8fc4"], mistral: ["mistral", "#d9a441"],
+    destinataire: ["destinataire", "#c98a3a"], oreille: ["oreille", "#6cc4f5"] };
+  function timeBar(parent, list) {
+    var sums = [], by = {};
+    (list || []).forEach(function (s) {
+      if (typeof s.ms !== "number" || s.ms <= 0) return;
+      if (!by[s.step]) { by[s.step] = { step: s.step, ms: 0 }; sums.push(by[s.step]); }
+      by[s.step].ms += s.ms;
+    });
+    if (!sums.length) return null;
+    var box = el("div", "tb", parent), bar = el("div", "tbar", box), leg = el("div", "legend", box);
+    sums.forEach(function (x) {
+      var k = STEP[x.step] || [x.step, "#6b7682"];
+      var seg = el("i", "", bar); seg.style.flex = String(x.ms); seg.style.background = k[1];
+      var l = el("span", "", leg); l.style.setProperty("--c", k[1]); l.textContent = k[0] + " " + seconds(x.ms);
+    });
+    return box;
+  }
+  // « light.10_45_30_3 · éteint » → « Salon · éteint »; a scene's timestamp → « activée ».
+  function niceLabel(text) {
+    var hass = hassObj(), states = (hass && hass.states) || {};
+    return String(text || "")
+      .replace(/\b([a-z_]+\.[a-z0-9_]+)\b/g, function (id) { var st = states[id]; return st && st.attributes && st.attributes.friendly_name ? st.attributes.friendly_name : id; })
+      .replace(/\d{4}-\d\d-\d\dT[\d:.]+(Z|[+-]\d\d:\d\d)?/g, "activée")
+      .replace(/\bturn[ _]on\b/g, "allumé").replace(/\bturn[ _]off\b/g, "éteint");
+  }
+  function chipsOf(parent, labels, failed) {
+    if (!labels.length && !failed.length) return null;
+    var box = el("div", "chips", parent);
+    labels.forEach(function (l) { el("span", "chip", box).textContent = niceLabel(l); });
+    failed.forEach(function (l) { el("span", "chip fail", box).textContent = niceLabel(l); });
+    return box;
+  }
+  function failedSteps(list) {
+    return (list || []).filter(function (s) { return /échec/.test(s.detail || ""); }).map(function (s) { return String(s.detail).replace(/ · échec$/, "") + " · échec"; });
+  }
   function setTrace(list) {
     var key = JSON.stringify(list || []);
     if (key === view.trace) return;
@@ -204,7 +270,7 @@
     traceEl = null;
     if (!list || !list.length) return;
     traceEl = el("div", "trace");
-    list.forEach(function (s) { trRow(traceEl, s.step, s.detail, s.where || "none", typeof s.ms === "number" ? s.ms : null); });
+    timeBar(traceEl, list);
     logEl.insertBefore(traceEl, doneEl && doneEl.parentNode ? doneEl : (aEl && aEl.parentNode ? aEl : null));
   }
   function setDone(list) {
@@ -214,8 +280,8 @@
     if (doneEl && doneEl.parentNode) doneEl.parentNode.removeChild(doneEl);
     doneEl = null;
     if (!list || !list.length) return;
-    doneEl = el("div", "done");
-    list.forEach(function (c) { el("span", "", doneEl).textContent = c.label; });
+    doneEl = el("div", "");
+    chipsOf(doneEl, list.map(function (c) { return c.label; }), []);
     logEl.insertBefore(doneEl, aEl && aEl.parentNode ? aEl : null);
   }
   // A new turn starts clean; the ear's line stays when the name was heard just before.
@@ -238,24 +304,62 @@
     el("span", "t", r).textContent = text;
     return r;
   }
+  var histEntries = [], histFilter = "tout";
+  function routeOf(e) {
+    var t = e.trace || [];
+    if (failedSteps(t).length) return ["fail", "échec"];
+    if (t.some(function (s) { return s.where === "online" && s.step !== "destinataire" && typeof s.ms === "number"; })) return ["online", "en ligne"];
+    return ["local", "local"];
+  }
+  function totalOf(e) { return (e.trace || []).reduce(function (a, s) { return a + (typeof s.ms === "number" ? s.ms : 0); }, 0); }
   function renderHistory(entries) {
+    if (entries) histEntries = entries;
     histEl.innerHTML = "";
-    if (!entries.length) { el("div", "empty", histEl).textContent = "Aucun échange enregistré pour l'instant."; return; }
+    if (!histEntries.length) { el("div", "empty", histEl).textContent = "Aucun échange enregistré pour l'instant."; return; }
+    // The day in four figures, then the filters.
+    var today = new Date().toDateString(), n = 0, local = 0, lsum = 0, lc = 0, tsum = 0;
+    histEntries.forEach(function (e) {
+      if (new Date(e.at).toDateString() !== today) return;
+      n++; tsum += totalOf(e);
+      if (routeOf(e)[0] === "local") local++;
+      (e.trace || []).forEach(function (s) { if (s.step === "local" && typeof s.ms === "number") { lsum += s.ms; lc++; } });
+    });
+    var stats = el("div", "stats", histEl);
+    [[String(n), "échanges aujourd'hui"], [String(local), "en local seul"], [lc ? seconds(lsum / lc) : "—", "local moyen"], [n ? seconds(tsum / n) : "—", "réponse moyenne"]]
+      .forEach(function (p) { var d = el("div", "", stats); el("b", "", d).textContent = p[0]; el("span", "", d).textContent = p[1]; });
+    var fl = el("div", "filters", histEl);
+    ["tout", "actions", "réponses", "échecs"].forEach(function (f) {
+      var b = el("button", "fb" + (f === histFilter ? " sel" : ""), fl);
+      b.type = "button"; b.textContent = f;
+      b.addEventListener("click", function (ev) { ev.stopPropagation(); histFilter = f; renderHistory(); });
+    });
     var lastDay = "";
-    entries.forEach(function (e) {
+    histEntries.slice().reverse().forEach(function (e) {
+      var route = routeOf(e);
+      if (histFilter === "actions" && !(e.done && e.done.length)) return;
+      if (histFilter === "réponses" && !(e.answer && !e.silent)) return;
+      if (histFilter === "échecs" && route[0] !== "fail") return;
       var d = new Date(e.at), day = dayOf(d);
       if (day !== lastDay) { el("div", "day", histEl).textContent = day; lastDay = day; }
-      var box = el("div", "entry", histEl);
-      var q = sayRow(box, "q", pad(d.getHours()) + ":" + pad(d.getMinutes()), e.words || "");
-      q.firstChild.className = "when";
-      (e.trace || []).forEach(function (s) { trRow(box, s.step, s.detail, s.where || "none", typeof s.ms === "number" ? s.ms : null); });
-      if (e.done && e.done.length) {
-        var dn = el("div", "done", box);
-        e.done.forEach(function (label) { el("span", "", dn).textContent = label; });
-      }
-      if (e.answer) sayRow(box, "a", "igor", e.answer);
+      var ex = el("div", "ex", histEl);
+      el("span", "time", ex).textContent = pad(d.getHours()) + ":" + pad(d.getMinutes());
+      var said = el("span", "said" + ((e.words || "").length > 140 ? " long" : ""), ex);
+      said.textContent = e.words || "";
+      var side = el("span", "side", ex);
+      el("span", "route " + route[0], side).textContent = route[1];
+      var tot = el("span", "total", side), ms = totalOf(e);
+      tot.textContent = ms ? (ms / 1000).toFixed(1).replace(".", ",") + " " : "—";
+      if (ms) el("small", "", tot).textContent = "s";
+      var body = el("div", "exb", ex);
+      if (e.answer && !e.silent) el("div", "ans", body).textContent = e.answer;
+      chipsOf(body, e.done || [], failedSteps(e.trace));
+      timeBar(body, e.trace);
+      var steps = el("div", "steps", body);
+      (e.trace || []).forEach(function (s) { trRow(steps, (STEP[s.step] || [s.step])[0], niceLabel(s.detail), s.where || "none", typeof s.ms === "number" ? s.ms : null); });
+      el("span", "more", body).textContent = "toucher pour le détail ›";
+      ex.addEventListener("click", function (ev) { ev.stopPropagation(); ex.classList.toggle("open"); });
     });
-    histEl.scrollTop = histEl.scrollHeight;
+    histEl.scrollTop = 0;
   }
   function openHistory() {
     var hass = hassObj();
