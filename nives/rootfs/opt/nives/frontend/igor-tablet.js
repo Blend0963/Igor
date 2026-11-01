@@ -74,7 +74,7 @@
     ".say.a { color: #6cc4f5; }",
     ".veil[data-phase=error] .say.a { color: #e0675f; }",
     ".say .t { overflow-wrap: anywhere; max-height: 40vh; overflow: hidden; }",
-    ".tr { display: grid; grid-template-columns: 6ch 10ch 1fr auto; gap: 14px; font-size: clamp(12px, 1.5vw, 16px); color: #6b7682; }",
+    ".tr { display: grid; grid-template-columns: 6ch 13ch minmax(0, 1fr) auto; gap: 18px; font-size: clamp(12px, 1.5vw, 16px); color: #6b7682; }",
     ".tr .ms { text-align: right; color: #39424c; font-variant-numeric: tabular-nums; }",
     ".tr .d { color: #aeb7c0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
     ".tr .local { color: #5cc28f; } .tr .online { color: #d9a441; } .tr .none { color: #39424c; }",
