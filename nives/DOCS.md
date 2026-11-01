@@ -98,7 +98,7 @@ frontend:
 
 The theme also recolours the named colours cards use (Mushroom's `green`, `amber`, `pink`…), so an existing dashboard follows it. Restart Home Assistant once after adding it, then pick **Igor Journal** in your profile (Profile → Theme). Each device keeps its own choice.
 
-**Igor Journal (tablette)** is the same theme without Home Assistant's top bar, for a wall tablet: pick it on the tablet only. The bar comes back while you edit the dashboard (open it with `?edit=1` at the end of the address), or with `?barre` in the address.
+**Igor Journal (tablette)** is the same theme without Home Assistant's top bar, for a wall tablet: pick it on the tablet only (or add `?igor_theme=Igor%20Journal%20(tablette)` to the dashboard's address on that device); its sidebar is hidden too. A monitor shared with a PC can show the dashboard from Igor's machine: see `ear/screen/README.md`. The bar comes back while you edit the dashboard (open it with `?edit=1` at the end of the address), or with `?barre` in the address.
 
 ## Wall dashboard cards
 

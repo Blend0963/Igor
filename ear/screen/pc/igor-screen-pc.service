@@ -1,0 +1,11 @@
+[Unit]
+Description=Igor's desk screen: the keyboard leaving the PC sends the screen to Igor
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/python3 %h/.local/bin/igor-screen-pc watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

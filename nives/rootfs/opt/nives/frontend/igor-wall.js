@@ -887,5 +887,35 @@
       style.remove();
       window.dispatchEvent(new Event("resize"));
     }
+    // A wide screen keeps Home Assistant's sidebar docked on the left: on
+    // the kiosk it goes too (this device only; the menu brings it back).
+    var ha = document.querySelector("home-assistant");
+    if (want && ha && ha.hass && ha.hass.dockedSidebar && ha.hass.dockedSidebar !== "always_hidden" && !sidebarDone) {
+      sidebarDone = true;
+      ha.dispatchEvent(new CustomEvent("hass-dock-sidebar", { detail: { dock: "always_hidden" } }));
+    }
   }, 1000);
+  var sidebarDone = false;
+
+  // ===== the theme asked for in the address =====
+  // ?igor_theme=Igor%20Journal%20(tablette) picks that theme for this device
+  // (a kiosk without a keyboard): Home Assistant keeps the choice.
+  (function () {
+    var wanted = null;
+    try { wanted = new URLSearchParams(window.location.search).get("igor_theme"); } catch (e) { wanted = null; }
+    if (!wanted) return;
+    var tries = 0;
+    var t = setInterval(function () {
+      var ha = document.querySelector("home-assistant");
+      tries++;
+      if (ha && ha.hass && ha.hass.themes && ha.hass.themes.themes) {
+        clearInterval(t);
+        if (!ha.hass.themes.themes[wanted]) return;
+        var sel = ha.hass.selectedTheme || {};
+        if (sel.theme !== wanted) ha.dispatchEvent(new CustomEvent("settheme", { detail: { theme: wanted, dark: true } }));
+      } else if (tries > 60) {
+        clearInterval(t);
+      }
+    }, 1000);
+  })();
 })();

@@ -1,0 +1,8 @@
+[Unit]
+Description=Igor's desk screen: keyboard, Home Assistant orders, sleep
+# Started by the kiosk session (sway.conf), which gives it SWAYSOCK.
+
+[Service]
+ExecStart=%h/.local/share/igor-ear/run.sh screen
+Restart=always
+RestartSec=5

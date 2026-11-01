@@ -141,10 +141,35 @@ class Settings:
     stats: bool = True
     stats_interval: float = 30.0
     stats_prefix: str = "igor_ear"
+    # The desk screen shared with a PC (`run.sh screen`, screen/README.md).
+    screen_output: str = "HDMI-A-1"
+    screen_here: int = 0x11
+    screen_pc: int = 0x0F
+    screen_bus: int | None = None
+    screen_keyboard: str = ""
+    screen_pc_entity: str = ""
+    screen_url: str = ""
 
     @property
     def log_file(self) -> Path:
         return STATE / "observations.jsonl"
+
+
+# A monitor's inputs by name (MCCS VCP 0x60), or a number ("0x11", 17).
+INPUT_NAMES = {"vga": 0x01, "dvi": 0x03, "dp": 0x0F, "displayport": 0x0F, "dp2": 0x10,
+               "hdmi": 0x11, "hdmi1": 0x11, "hdmi2": 0x12}
+
+
+def _input_code(value) -> int:
+    if isinstance(value, int):
+        return value
+    text = str(value).strip().lower()
+    if text in INPUT_NAMES:
+        return INPUT_NAMES[text]
+    try:
+        return int(text, 0)
+    except ValueError:
+        raise ValueError(f'[screen] input "{value}": use dp, hdmi, hdmi2, vga or a number such as 0x11') from None
 
 
 def load(path: Path = CONFIG) -> Settings:
@@ -219,4 +244,13 @@ def load(path: Path = CONFIG) -> Settings:
     s.stats = bool(machine.get("stats", s.stats))
     s.stats_interval = float(machine.get("interval", s.stats_interval))
     s.stats_prefix = str(machine.get("prefix", s.stats_prefix)).strip() or "igor_ear"
+    screen = data.get("screen", {})
+    s.screen_output = str(screen.get("output", s.screen_output)).strip() or "HDMI-A-1"
+    s.screen_here = _input_code(screen.get("here_input", s.screen_here))
+    s.screen_pc = _input_code(screen.get("pc_input", s.screen_pc))
+    if screen.get("bus") not in (None, ""):
+        s.screen_bus = int(screen["bus"])
+    s.screen_keyboard = str(screen.get("keyboard", "")).strip()
+    s.screen_pc_entity = str(screen.get("pc_entity", "")).strip()
+    s.screen_url = str(screen.get("url", "")).strip()
     return s

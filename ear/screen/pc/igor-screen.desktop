@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Igor
+Comment=Afficher le tableau de bord d'Igor sur l'écran
+Exec=/usr/bin/python3 %h/.local/bin/igor-screen-pc switch
+Icon=video-display
+Terminal=false
+Categories=Utility;

@@ -1,0 +1,3 @@
+# The AMD graphics card's display device under a fixed name, for sway
+# (WLR_DRM_DEVICES): card0 and card1 can swap from one boot to the next.
+SUBSYSTEM=="drm", KERNEL=="card[0-9]*", ATTRS{vendor}=="0x1002", SYMLINK+="dri/igor-screen"

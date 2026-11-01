@@ -82,6 +82,17 @@ stats = true
 interval = 30
 prefix = "igor_ear"
 
+[screen]
+# The desk screen shared with a PC (screen/README.md): this machine shows the
+# wall dashboard on its graphics card and hands the screen over with the USB
+# keyboard. Inputs: dp, hdmi, hdmi2, vga or a number (ddcutil capabilities).
+url = ""                       # the dashboard, e.g. "http://homeassistant.local:8123/dashboard-igor/maison"
+output = "HDMI-A-1"            # this machine's output (ls /sys/class/drm)
+here_input = "hdmi"            # the monitor's input this machine is plugged into
+pc_input = "dp"                # the PC's input
+keyboard = ""                  # part of the keyboard's name; empty: any USB keyboard
+pc_entity = ""                 # e.g. "binary_sensor.pc": while it is off the screen stays here
+
 [log]
 # Notes kept in ~/.local/state/igor-ear/observations.jsonl, on this machine only.
 keep_days = 7
