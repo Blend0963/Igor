@@ -198,6 +198,7 @@ class Screen:
                     log.info("Screen: %s opened", APPS[name])
             elif action == "close":
                 self.run(["swaymsg", f'[app_id="{APP_WINDOWS}"]', "kill"])
+                self.run(["swaymsg", '[app_id="^chromium"]', "fullscreen", "enable"])
             else:
                 log.warning("Screen: unknown order %r", action)
 
@@ -215,12 +216,39 @@ class Screen:
 
     def watch_keyboard(self) -> None:
         self.keyboard = self.read_keyboard(self.s.keyboard)
+        ticks = 0
         while True:
             time.sleep(0.5)
+            ticks += 1
             try:
                 self.keyboard_changed(self.read_keyboard(self.s.keyboard))
+                if ticks % 6 == 0:
+                    self.refullscreen()
             except Exception as err:  # noqa: BLE001 - the watch must go on
                 log.warning("Screen: %s", err)
+
+    def refullscreen(self) -> None:
+        """Chromium back to fullscreen once no settings window is open (closed
+        by « Fermer » or by its own close button): its bar never stays."""
+        try:
+            out = subprocess.run(["swaymsg", "-t", "get_tree", "-r"], capture_output=True, text=True, timeout=5)
+            tree = json.loads(out.stdout or "{}")
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            return
+        apps, chromium = [], []
+
+        def walk(node: dict) -> None:
+            app = node.get("app_id") or ""
+            if re.match(APP_WINDOWS, app):
+                apps.append(node)
+            elif app.startswith("chromium"):
+                chromium.append(node)
+            for child in (node.get("nodes") or []) + (node.get("floating_nodes") or []):
+                walk(child)
+
+        walk(tree)
+        if not apps and any(not c.get("fullscreen_mode") for c in chromium):
+            self.run(["swaymsg", '[app_id="^chromium"]', "fullscreen", "enable"])
 
     # Home Assistant
     def publish(self) -> None:
