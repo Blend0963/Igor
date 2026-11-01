@@ -1,8 +1,11 @@
 # Changelog
 
-## 0.23.11 — The tablet's page repairs itself, surely
+## 0.23.12 — Dépêches that stay
 
 - Dépêches: the feed is fetched twice before giving up (a site sometimes answers a busy page once), with a browser-like request; a failure shows the last good list instead of « Flux indisponible »; with nothing yet, the card tries again every 30 s instead of waiting ten minutes.
+
+## 0.23.11 — The tablet's page repairs itself, surely
+
 - The repair of a page drawn before the cards' script arrived looks deeper into the page, also notices a wall page with no wall drawn at all (whatever Home Assistant shows instead), and reloads after 3.5 s (at most every 30 s) instead of 7 s.
 
 ## 0.23.10 — Swipe between tabs
