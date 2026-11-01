@@ -2389,6 +2389,12 @@
     if (root && root.lovelace && root.lovelace.editMode) return false;
     return viewHasWall(root);
   }
+  function wantsNoMenu(root) {
+    var v = getComputedStyle(document.documentElement).getPropertyValue("--igor-hide-menu").trim().replace(/["']/g, "");
+    if (v !== "1" && v !== "true") return false;
+    if (/[?&](menu|edit)(=|&|$)/.test(window.location.search || "")) return false;
+    return !(root && root.lovelace && root.lovelace.editMode);
+  }
   setInterval(function () {
     var root = lovelaceRoot();
     if (!root || !root.shadowRoot) return;
@@ -2404,8 +2410,21 @@
       style.remove();
       window.dispatchEvent(new Event("resize"));
     }
+    // The « ☰ » button gone from the dashboards (theme igor-hide-menu), tabs kept.
+    var noMenu = wantsNoMenu(root);
+    var mstyle = root.shadowRoot.getElementById("igor-nomenu");
+    if (noMenu && !mstyle) {
+      mstyle = document.createElement("style");
+      mstyle.id = "igor-nomenu";
+      mstyle.textContent = "ha-menu-button { display: none !important; }";
+      root.shadowRoot.appendChild(mstyle);
+    } else if (!noMenu && mstyle) {
+      mstyle.remove();
+    }
     // A wide screen keeps Home Assistant's sidebar docked on the left: on
-    // the kiosk it goes too (this device only; the menu brings it back).
+    // the kiosk, or without the menu button, it goes too (this device only;
+    // a wall's « Menu » button still opens it).
+    want = want || noMenu;
     var ha = document.querySelector("home-assistant");
     if (want && ha && ha.hass && ha.hass.dockedSidebar && ha.hass.dockedSidebar !== "always_hidden" && !sidebarDone) {
       sidebarDone = true;
@@ -2428,6 +2447,42 @@
     if (!home || window.location.pathname === home || /[?&]edit=/.test(window.location.search)) return;
     if (Date.now() - lastTouch > after * 60000) { lastTouch = Date.now(); navigate(home); }
   }, 15000);
+
+  // ===== a page drawn before this script arrived =====
+  // Home Assistant loads this script alongside the dashboard: on a slow
+  // tablet it may draw the page first, find no igor card yet and show
+  // « Erreur de configuration » (no detail for a non-admin), which stays.
+  // Once here, the cards are defined: ask those error cards to rebuild, and
+  // if one is still there a few seconds later, reload the page (at most once
+  // a minute, so a real configuration error never loops).
+  function igorErrorCards() {
+    var found = [], root = lovelaceRoot(), pageHasIgor = false;
+    try { pageHasIgor = /custom:igor-/.test(JSON.stringify(root && root.lovelace && root.lovelace.config)); } catch (e) { pageHasIgor = false; }
+    (function walk(node, depth) {
+      if (!node || depth > 40) return;
+      if (node.tagName === "HUI-ERROR-CARD") {
+        var c = node._config || node.config || {};
+        var orig = c.origConfig || c.config || {};
+        if (pageHasIgor || /igor/.test(JSON.stringify(orig || {})) || /igor/i.test(String(c.error || ""))) found.push(node);
+      }
+      if (node.shadowRoot) walk(node.shadowRoot, depth + 1);
+      for (var ch = node.firstElementChild; ch; ch = ch.nextElementSibling) walk(ch, depth + 1);
+    })(document.querySelector("home-assistant"), 0);
+    return found;
+  }
+  [500, 1500, 3500].forEach(function (ms) {
+    setTimeout(function () {
+      igorErrorCards().forEach(function (n) { n.dispatchEvent(new Event("ll-rebuild", { bubbles: true, composed: true })); });
+    }, ms);
+  });
+  setTimeout(function () {
+    if (!igorErrorCards().length) return;
+    var last = 0;
+    try { last = Number(window.sessionStorage.getItem("igor-heal")) || 0; } catch (e) { last = 0; }
+    if (Date.now() - last < 60000) return;
+    try { window.sessionStorage.setItem("igor-heal", String(Date.now())); } catch (e) { return; }
+    window.location.reload();
+  }, 7000);
 
   // ===== a « mur » button on every other page =====
   // With the tablet theme the bar and the sidebar are hidden: on any other
