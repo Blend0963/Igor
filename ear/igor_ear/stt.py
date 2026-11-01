@@ -121,20 +121,30 @@ class Transcriber:
         hotwords: str = "Igor",
         beam_size: int = 0,
         server: str = "",
+        server_wait: float = 90.0,
     ) -> None:
         self.language = language
         self.server = ""
         if server:
-            try:
-                start = time.monotonic()
-                server_transcribe(server, np.zeros(16000, dtype=np.float32), language, hotwords)
-                self.server, self.device, self.beam_size = server, f"whisper-server {server}", 0
-                self.hotwords = hotwords
-                log.info("Transcription: whisper-server at %s (%.1f s for one second of silence)",
-                         server, time.monotonic() - start)
-                return
-            except Exception as err:  # noqa: BLE001 - faster-whisper here instead
-                log.warning("whisper-server at %s unavailable (%s); transcribing here instead", server, err)
+            # At boot whisper-server loads its model (some seconds on the
+            # graphics card) after this starts: wait for it rather than
+            # settle for the CPU until the next restart.
+            deadline = time.monotonic() + server_wait
+            while True:
+                try:
+                    start = time.monotonic()
+                    server_transcribe(server, np.zeros(16000, dtype=np.float32), language, hotwords)
+                    self.server, self.device, self.beam_size = server, f"whisper-server {server}", 0
+                    self.hotwords = hotwords
+                    log.info("Transcription: whisper-server at %s (%.1f s for one second of silence)",
+                             server, time.monotonic() - start)
+                    return
+                except Exception as err:  # noqa: BLE001 - faster-whisper here instead
+                    if time.monotonic() < deadline:
+                        time.sleep(3)
+                        continue
+                    log.warning("whisper-server at %s unavailable (%s); transcribing here instead", server, err)
+                    break
         from faster_whisper import WhisperModel
 
         # "Igor" is no French word: told to expect it, Whisper writes it the

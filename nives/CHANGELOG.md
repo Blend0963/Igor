@@ -3,6 +3,7 @@
 ## 0.23.7 — A key wakes the desk screen
 
 - Desk screen (igor-ear 0.3.4): asleep, a key or the mouse wakes it (swayidle in the kiosk session), and `sensor.igor_screen` follows the output's real state, however it was switched. After a minute without a key or the mouse, its `idle` attribute turns true, so an automation can put it back to sleep. Rerun `ear/screen/install-vm.sh` on Igor's machine (it installs swayidle).
+- Igor's ear waits up to 90 s for whisper-server at start (it loads its model on the graphics card after the ear starts at boot) instead of staying on the CPU until the next restart; its service starts after whisper-server. Reinstall with `ear/install.sh` or copy `igor-ear.service` again.
 
 ## 0.23.6 — The keyboard switch, headlines, the wall's panels
 

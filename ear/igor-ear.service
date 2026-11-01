@@ -1,6 +1,6 @@
 [Unit]
 Description=Igor listening without a wake word (observation mode)
-After=pipewire-pulse.service
+After=pipewire-pulse.service whisper-server.service
 Wants=pipewire-pulse.service
 
 [Service]
