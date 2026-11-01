@@ -83,4 +83,21 @@ def test_settings_windows_from_the_dashboard():
     sc.handle({"type": "event", "event": {"event_type": "igor_screen", "data": {"action": "app", "app": "rm -rf /"}}})
     assert len(calls) == n
     sc.handle({"type": "event", "event": {"event_type": "igor_screen", "data": {"action": "close"}}})
-    assert calls[-1][0] == "swaymsg" and calls[-1][2] == "kill" and "easyeffects" in calls[-1][1]
+    assert calls[-2][0] == "swaymsg" and calls[-2][2] == "kill" and "easyeffects" in calls[-2][1]
+    assert calls[-1] == ["swaymsg", '[app_id="^chromium"]', "fullscreen", "enable"]
+
+
+def test_chromium_back_to_fullscreen_without_settings_windows(monkeypatch):
+    sc, calls = make()
+    tree = {"nodes": [{"nodes": [{"app_id": "chromium", "fullscreen_mode": 0, "nodes": []}], "floating_nodes": []}]}
+
+    class R:
+        stdout = __import__("json").dumps(tree)
+    monkeypatch.setattr(screen.subprocess, "run", lambda *a, **k: R())
+    sc.refullscreen()
+    assert calls[-1] == ["swaymsg", '[app_id="^chromium"]', "fullscreen", "enable"]
+    n = len(calls)
+    tree["nodes"][0]["floating_nodes"] = [{"app_id": "pavucontrol", "nodes": []}]
+    R.stdout = __import__("json").dumps(tree)
+    sc.refullscreen()
+    assert len(calls) == n

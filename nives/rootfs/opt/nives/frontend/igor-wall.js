@@ -1203,11 +1203,33 @@
       this.time.textContent = hhmm(d);
       this.date.textContent = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
     }
+    // The forecasts by the service, when the subscription brings none (some
+    // frontends and integrations), then every 30 minutes.
+    poll() {
+      var hass = this._hass, id = this.config.entity;
+      if (!hass) return;
+      ["hourly", "daily"].forEach((type) => {
+        if (this.gotSub && this.gotSub[type]) return;
+        hass.callWS({ type: "call_service", domain: "weather", service: "get_forecasts", service_data: { type: type }, target: { entity_id: id }, return_response: true })
+          .then((r) => {
+            var f = r && r.response && r.response[id] && r.response[id].forecast;
+            if (f && f.length) { this[type] = f; this.draw(); }
+          }).catch(function () { /* that kind of forecast is not offered */ });
+      });
+    }
     subscribe(hass) {
+      if (!this.pollTimer) {
+        this.pollTimer = setTimeout(() => this.poll(), 5000);
+        this.pollEvery = setInterval(() => this.poll(), 1800000);
+      }
       if (this.subs || !hass.connection) return;
       this.subs = [];
+      this.gotSub = this.gotSub || {};
       ["hourly", "daily"].forEach((type) => {
-        hass.connection.subscribeMessage((msg) => { this[type] = (msg && msg.forecast) || []; this.draw(); },
+        hass.connection.subscribeMessage((msg) => {
+          var f = (msg && msg.forecast) || [];
+          if (f.length) { this.gotSub[type] = true; this[type] = f; this.draw(); }
+        },
           { type: "weather/subscribe_forecast", forecast_type: type, entity_id: this.config.entity })
           .then((unsub) => { this.subs.push(unsub); })
           .catch(() => { /* this kind of forecast is not offered */ });
@@ -1766,7 +1788,7 @@
     if (d === "cover" && a.current_position != null && s !== "closed") return (STATE_WORDS[s] || s) + " · " + a.current_position + " %";
     if (d === "vacuum" && a.battery_level != null) return (STATE_WORDS[s] || s) + " · " + a.battery_level + " %";
     if (d === "media_player" && s === "playing" && (a.media_title || a.media_artist)) return a.media_title || a.media_artist;
-    if (/^\d{4}-\d\d-\d\dT/.test(s)) { var t = new Date(s); if (!isNaN(t)) return hhmm(t); }
+    if (/^\d{4}-\d\d-\d\d[T ]\d/.test(s)) { var t = new Date(s.replace(" ", "T")); if (!isNaN(t)) return hhmm(t); }
     var v = num(st);
     if (v != null && a.unit_of_measurement) return fr(v, v < 10 ? 1 : 0) + " " + a.unit_of_measurement;
     return STATE_WORDS[s] || s;
@@ -1806,13 +1828,14 @@
         ":host { display: block; height: 100%; }",
         ".grid { display: grid; gap: 10px; height: 100%; grid-auto-rows: " + (small ? "auto" : "1fr") + "; }",
         "button { background: var(--card); border: 1px solid var(--line); border-radius: var(--ha-card-border-radius, 8px); color: var(--fg); font-family: inherit; text-align: left; cursor: pointer; min-width: 0; min-height: " + (small ? "0" : "86px") + "; }",
-        "button.big { padding: 14px 12px; display: flex; flex-direction: column; justify-content: flex-start; gap: 8px; --mdc-icon-size: 30px; }",
-        "button.small { padding: 10px 12px; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; --mdc-icon-size: 20px; }",
+        "button.big { padding: 12px 14px; display: grid; grid-template-columns: 26px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 12px; align-content: center; --mdc-icon-size: 22px; }",
+        "button.big ha-icon { grid-row: 1 / 3; align-self: center; }",
+        "button.small { padding: 10px 12px; display: grid; grid-template-columns: 20px max-content minmax(0, 1fr); gap: 10px; align-items: center; --mdc-icon-size: 18px; }",
         "button ha-icon { color: var(--dim); }",
         "button.on { border-color: rgba(217, 164, 65, 0.4); } button.on ha-icon { color: var(--wait); }",
         "button.scene ha-icon { color: var(--acc); }",
-        ".n { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
-        ".s { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".n { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }",
+        ".s { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }",
         "button.small .s { text-align: right; }",
         "button.done { border-color: var(--acc); }",
         "button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }"
@@ -1873,7 +1896,7 @@
     build() {
       this.style(CARD_CSS + [
         "", "ha-card { justify-content: center; }",
-        ".ctl { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 12px; align-items: center; --mdc-icon-size: 22px; }",
+        ".ctl { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: center; --mdc-icon-size: 20px; }",
         ".ctl > ha-icon { color: var(--acc); cursor: pointer; }",
         ".n { font-size: 14px; } .s { color: var(--dim); font-size: 11.5px; }",
         ".bs { display: flex; gap: 8px; }",

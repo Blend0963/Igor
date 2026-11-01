@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.23.4 — Fullscreen again, times as times
+
+- The kiosk's Chromium is fullscreen again (its own bar showed): it leaves fullscreen only while a settings window is open, and igor-screen (igor-ear 0.3.2) puts it back once none is left, however it was closed.
+- Wall cards: a time given as « 2026-11-01 18:31:50+01:00 » shows as « 18:31 »; small tiles no longer let their state run over the name; big tiles with smaller icons, beside the name; the weather card asks for the forecasts by the service when the subscription brings none.
+
 ## 0.23.3 — The desk screen stops reloading
 
 - The kiosk page reloaded every few seconds: `kiosk.sh` outlived its session (logind keeps a closed session's processes), so each restart of greetd added one more; a second Chromium on the same profile hands its address to the one on screen, which reloads the page. `kiosk.sh` now runs once (a lock) and stops with its sway session. Rerun `ear/screen/install-vm.sh` on Igor's machine.
