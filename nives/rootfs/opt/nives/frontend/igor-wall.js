@@ -1984,10 +1984,14 @@
         "button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }"
       ].join("\n"));
       var grid = el("div", "grid", this.shadowRoot);
-      grid.style.gridTemplateColumns = "repeat(" + (Number(this.config.columns) || (small ? 1 : 2)) + ", minmax(0, 1fr))";
-      this.tiles = this.config.tiles.map((t) => {
+      var cols = Number(this.config.columns) || (small ? 1 : 2);
+      grid.style.gridTemplateColumns = "repeat(" + cols + ", minmax(0, 1fr))";
+      // A last row short of tiles: its last tile widens to the end, no hole.
+      var rest = this.config.tiles.length % cols;
+      this.tiles = this.config.tiles.map((t, i) => {
         var b = el("button", small ? "small" : "big", grid);
         b.type = "button";
+        if (rest && i === this.config.tiles.length - 1) b.style.gridColumn = "span " + (cols - rest + 1);
         var ic = icon(b, t.icon || "mdi:help-circle-outline");
         var mid = small ? el("span", "", b) : b;
         el("span", "n", mid, t.name || t.entity);

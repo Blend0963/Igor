@@ -6,6 +6,7 @@
 - Igor's ear waits up to 90 s for whisper-server at start (it loads its model on the graphics card after the ear starts at boot) instead of staying on the CPU until the next restart; its service starts after whisper-server. Reinstall with `ear/install.sh` or copy `igor-ear.service` again.
 - The walls' journal was empty with an old Igor entry left in Home Assistant (an add-on that is gone): `nives.journal` stopped at that entry's error. It now tries every entry until one answers.
 - Wall bar: `tap: /a-page` opens that page (the homelab) on a tap instead of the machines' detail.
+- `igor-tiles-card`: a last row short of tiles no longer leaves a hole; its last tile widens to the end.
 - Tablet overlay: the steps' column is wider, so « destinataire » no longer runs into its detail.
 
 ## 0.23.6 — The keyboard switch, headlines, the wall's panels
