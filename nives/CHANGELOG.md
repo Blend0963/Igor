@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.10 — Your cards in Igor's colours
+
+- Igor Journal theme: the named colours cards use (Mushroom's `green`, `amber`, `blue`, `red`, `pink`, `yellow`…, tile cards too) now take Igor's palette in both modes, so an existing dashboard follows the theme without being edited.
+- Wall tablet: a dashboard card can open the journal's history with the action `{action: fire-dom-event, igor_journal: true}` (integration 0.1.17). Restart Home Assistant once after updating.
+
 ## 0.21.9 — The Igor Journal theme, and the journal's history
 
 - A Home Assistant theme in the style of the wall tablet's journal: dark grey, thin lines, small corners, a monospace face everywhere (the device's own, nothing downloaded), green for what is on, amber for warnings, Igor's blue as the accent, and a light version (Auto follows the device). The add-on installs it in `/config/themes/igor-journal.yaml` and reloads Home Assistant's themes; `configuration.yaml` needs `frontend: themes: !include_dir_merge_named themes` once (the add-on's log says when it is missing). Then Profile → Theme → Igor Journal.

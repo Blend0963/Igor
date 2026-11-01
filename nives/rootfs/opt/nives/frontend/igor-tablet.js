@@ -436,6 +436,12 @@
 
   function start() {
     if (!host) build();
+    // A dashboard card can open the history too: its action
+    //   { action: fire-dom-event, igor_journal: true }
+    // reaches the page as an "ll-custom" event.
+    window.addEventListener("ll-custom", function (ev) {
+      if (ev && ev.detail && ev.detail.igor_journal) openHistory();
+    });
     setInterval(function () {
       try { update(); } catch (e) { /* the display must never break the page */ }
     }, 250);
