@@ -458,9 +458,24 @@
     }
     // Igor heard its name (igor-ear, no wake word): shown at once, before
     // the words reach Igor a few seconds later.
-    var heardFresh = attrs.started && Date.now() - Date.parse(attrs.started) < 120000;
+    var heardAge = attrs.started ? Date.now() - Date.parse(attrs.started) : Infinity;
+    var heardFresh = heardAge < 120000;
     if (fromWanted && sensorState === "heard" && heardFresh) {
       if (dismissed === turnKey) return;
+      // The name heard, then nothing reached Igor (a sentence not for it, a
+      // satellite busy, the words lost): say so and leave, rather than hold
+      // an empty « transcription » on screen for two minutes.
+      var waitingNow = attrs.status === "listening";
+      if (heardAge > (waitingNow ? 30000 : 15000)) {
+        if (view.turnKey === turnKey && view.phase !== "gone") {
+          view.phase = "gone";
+          setSay("q", "rien reçu", false);
+          setState("sans suite", false);
+          hideSoon(3000);
+          dismissed = turnKey;
+        }
+        return;
+      }
       var waiting = attrs.status === "listening";
       var phase = waiting ? "listening" : "transcribing";
       if (view.phase !== phase || view.turnKey !== turnKey) {
