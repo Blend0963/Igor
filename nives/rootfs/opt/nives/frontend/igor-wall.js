@@ -10,6 +10,7 @@
 //   custom:igor-net-card      a router's traffic over the last hour
 //   custom:igor-energy-card   power now and hour by hour today
 //   custom:igor-camera-card   a camera's picture, refreshed every few seconds
+//   custom:igor-news-card     the newest headlines of an RSS or Atom feed
 //
 // And the "Igor Journal (tablette)" theme: its --igor-hide-header variable
 // hides Home Assistant's top bar on the device that uses it, on the pages
@@ -1950,6 +1951,72 @@
     }
   }
 
+  // ----- igor-news-card: the newest headlines of a feed -----
+  //   type: custom:igor-news-card
+  //   url: https://example.org/rss.xml   # an RSS or Atom feed
+  //   title: dépêches
+  //   limit: 15
+  // Read by Home Assistant (nives.news, kept ten minutes), refreshed here
+  // every ten minutes. A tap opens the article on a PC (not on a kiosk).
+  class IgorNewsCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !/^https?:\/\//.test(String(config.url || ""))) throw new Error("igor-news-card: url (http ou https) est requis");
+      this.config = config;
+    }
+    build() {
+      this.style([
+        ".list { flex: 1; min-height: 0; overflow: hidden; }",
+        ".n { display: grid; grid-template-columns: 5ch minmax(0, 1fr); gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--line); line-height: 1.35; }",
+        ".n:last-child { border-bottom: 0; }",
+        ".n .h { color: var(--faint); font-variant-numeric: tabular-nums; }",
+        ".n.old { color: var(--dim); }",
+        ".n.link { cursor: pointer; }",
+        ".src { color: var(--dim); font-size: 11px; }",
+        ".empty { color: var(--dim); padding: 8px 0; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t sub", top, (this.config.title || "dépêches").toUpperCase()).style.letterSpacing = "0.12em";
+      this.src = el("span", "src", top);
+      this.list = el("div", "list", card);
+      this.timer = setInterval(() => this.load(), 600000);
+      this.load();
+    }
+    load() {
+      var hass = this._hass;
+      if (!hass || this.loading) return;
+      this.loading = true;
+      var limit = Math.max(1, Math.min(50, Number(this.config.limit) || 15));
+      hass.callWS({ type: "call_service", domain: "nives", service: "news", service_data: { url: String(this.config.url), limit: limit }, return_response: true })
+        .then((r) => { this.render((r && r.response) || {}); })
+        .catch(() => { this.render({ error: "service" }); })
+        .then(() => { this.loading = false; });
+    }
+    render(feed) {
+      this.list.innerHTML = "";
+      this.src.textContent = feed.source || "";
+      var items = feed.items || [];
+      if (!items.length) {
+        el("div", "empty", this.list, feed.error ? "Flux indisponible (" + feed.error + ")" : "Aucune dépêche.");
+        return;
+      }
+      var today = new Date().toDateString();
+      var kiosk = (getComputedStyle(document.documentElement).getPropertyValue("--igor-hide-header").trim().replace(/["']/g, "") || "") !== "";
+      items.forEach(function (it) {
+        var d = it.at ? new Date(it.at) : null;
+        var same = d && d.toDateString() === today;
+        var row = el("div", "n" + (same ? "" : " old"), this.list);
+        el("span", "h", row, !d || isNaN(d) ? "" : same ? hhmm(d) : pad(d.getDate()) + "/" + pad(d.getMonth() + 1));
+        el("span", "", row, it.title || "");
+        if (it.link && !kiosk) {
+          row.classList.add("link");
+          row.addEventListener("click", function () { window.open(it.link, "_blank", "noopener"); });
+        }
+      }, this);
+    }
+    disconnectedCallback() { if (this.timer) { clearInterval(this.timer); this.timer = null; this._built = false; this.shadowRoot.innerHTML = ""; } }
+  }
+
   // ----- igor-alerts-card: what is wrong, first -----
   //   type: custom:igor-alerts-card
   //   gateway: sensor.opnsense_…_gateway_wan_dhcp_status   # the internet
@@ -2054,6 +2121,7 @@
   define("igor-control-card", IgorControlCard, "Igor · commande", "Un appareil et ses boutons (volet, aspirateur…).");
   define("igor-clock-card", IgorClockCard, "Igor · horloge", "L'heure en grand et la date.");
   define("igor-alerts-card", IgorAlertsCard, "Igor · alertes", "Ce qui ne va pas : machines, disques, conteneurs, mises à jour, internet.");
+  define("igor-news-card", IgorNewsCard, "Igor · dépêches", "Les derniers titres d'un flux RSS ou Atom (dépêches, actualités).");
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
 
   // ===== no top bar with the "Igor Journal (tablette)" theme =====

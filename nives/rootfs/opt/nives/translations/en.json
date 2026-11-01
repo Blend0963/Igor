@@ -122,6 +122,20 @@
           "description": "With app: sound (pavucontrol), equalizer (EasyEffects) or bluetooth (Blueman)."
         }
       }
+    },
+    "news": {
+      "name": "News",
+      "description": "The newest headlines of an RSS or Atom feed, for the wall's news card. Returns them to the caller.",
+      "fields": {
+        "url": {
+          "name": "Feed",
+          "description": "The feed's address (RSS or Atom)."
+        },
+        "limit": {
+          "name": "Count",
+          "description": "How many headlines, the newest ones."
+        }
+      }
     }
   }
 }

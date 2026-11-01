@@ -24,6 +24,19 @@ journal:
         number:
           min: 1
           max: 200
+news:
+  fields:
+    url:
+      required: true
+      selector:
+        text:
+          type: url
+    limit:
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 50
 screen:
   fields:
     action:

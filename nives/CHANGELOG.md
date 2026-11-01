@@ -1,9 +1,10 @@
 # Changelog
 
-## 0.23.6 — The keyboard switch, other dashboards' tabs
+## 0.23.6 — The keyboard switch, other dashboards' tabs, headlines
 
 - Desk screen (igor-ear 0.3.3): a USB sound card counted as a keyboard (it declares its volume keys), so the keyboard never seemed to leave and the USB switch did not move the screen. Only a device with letter keys and a space bar counts now, on Igor's machine and on the PC (`igor-screen-pc`). The screen moves only after 3 seconds without the keyboard: a long USB link that drops it for a moment does not flip the screen. Pull the sources on both.
 - With the tablet theme, Home Assistant's top bar is hidden only on pages that show an `igor-wall`: another dashboard opened from a wall button (one with several tabs) keeps its tabs.
+- New `igor-news-card`: the newest headlines of an RSS or Atom feed (`url`), read by Home Assistant (`nives.news`, kept ten minutes) and refreshed every ten minutes; a tap opens the article on a PC. Restart Home Assistant after updating.
 
 ## 0.23.5 — New cards reach every screen
 
