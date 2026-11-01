@@ -43,7 +43,7 @@ A tablet that shows Home Assistant all day (Fully Kiosk Browser, the companion a
 With igor-ear (the listener in `ear/` that needs no wake word), the tablet shows "Je vous ai entendu…" the moment it hears "Igor", a few seconds before the words reach Igor ("Je vous écoute…" when the name came alone, and while Igor waits for the answer to a question of its own). igor-ear calls the integration's `nives.heard` service for this.
 
 1. Restart Home Assistant once after updating, so it loads the new integration files.
-2. On the tablet, open Home Assistant once with `?igor_tablet=1` at the end of the address, for example `http://homeassistant.local:8123/lovelace/0?igor_tablet=1`. In Fully Kiosk Browser, put it in the Start URL. With several satellites, `?igor_tablet=assist_satellite.living_room` follows that one only. `?igor_tablet=0` switches it off. The choice is kept by that browser only; other devices are not affected. The tablet then shows Igor's journal while it works: your words, each step of the local model (marked local or online, with its time), what was done, and Igor's answer, in a plain terminal light enough for an old tablet. A small **journal** button in a corner of the page opens the history: Igor's last 100 spoken exchanges, by day, each with its steps; **fermer** closes it, and a new request takes the screen back. The history is kept on the add-on's disk (the newest 1,000 exchanges), never sent anywhere.
+2. On the tablet, open Home Assistant once with `?igor_tablet=1` at the end of the address, for example `http://homeassistant.local:8123/lovelace/0?igor_tablet=1`. In Fully Kiosk Browser, put it in the Start URL. With several satellites, `?igor_tablet=assist_satellite.living_room` follows that one only. `?igor_tablet=0` switches it off. The choice is kept by that browser only; other devices are not affected. The tablet then shows Igor's journal while it works: your words, each step of the local model (marked local or online, with its time), what was done, and Igor's answer, in a plain terminal light enough for an old tablet. The history, Igor's last 100 spoken exchanges by day, each with its steps, opens from the **Igor journal** card's « historique » (below), or from any card with the action `tap_action: {action: fire-dom-event, igor_journal: true}` (tap, hold or double tap); **fermer** closes it, and a new request takes the screen back. The history is kept on the add-on's disk (the newest 1,000 exchanges), never sent anywhere.
 
 It reads the satellite's state and the **Igor Assist** sensor, which follows each voice request. The texts are not kept in the history and are cleared three minutes after the answer, but any Home Assistant account can read the latest exchange while it is there. To turn the sensor and the display off: Settings → Devices & services → Igor → Configure → Wall-tablet display.
 
@@ -96,5 +96,52 @@ frontend:
   themes: !include_dir_merge_named themes
 ```
 
-Restart Home Assistant once after adding it, then pick **Igor Journal** in your profile (Profile → Theme). Each device keeps its own choice.
+The theme also recolours the named colours cards use (Mushroom's `green`, `amber`, `pink`…), so an existing dashboard follows it. Restart Home Assistant once after adding it, then pick **Igor Journal** in your profile (Profile → Theme). Each device keeps its own choice.
+
+**Igor Journal (tablette)** is the same theme without Home Assistant's top bar, for a wall tablet: pick it on the tablet only. The bar comes back while you edit the dashboard (open it with `?edit=1` at the end of the address), or with `?barre` in the address.
+
+## Wall dashboard cards
+
+The integration adds cards for a tablet screen filled to the bottom, in the theme's style. Put them in a **panel** view:
+
+- `custom:igor-wall` takes the whole screen: a one-line **status bar** on top that scrolls slowly through your machines (a touch opens the detail of each), then **columns** of cards that reach the bottom of the screen. Each column lists cards, `heading: <title>` for a small title, and `grow: true` with `card: <a card>` for the card that takes the height left. On a phone the columns stack.
+- `custom:igor-journal-card`: Igor's last exchanges (newest on top), what was done and how long each step took, today's count; « historique » opens the full history.
+- `custom:igor-docker-card`: the containers of the Portainer integration, each with its load, memory, image and uptime; a stopped one turns red.
+- `custom:igor-net-card`: a router's traffic down and up over the last hour (`down`, `up`, with `scale: 0.008` for kB/s shown in Mb/s), its gateway and extra figures.
+- `custom:igor-energy-card`: a power sensor now, and hour by hour today (from Home Assistant's statistics).
+- `custom:igor-camera-card`: a camera's picture, refreshed every `interval` seconds (10 by default; light for an old tablet).
+
+```yaml
+type: custom:igor-wall
+bar:
+  speed: 60            # seconds per turn; 0 shows the machines page by page, without movement
+  groups:
+    - name: pve
+      kind: hôte
+      status: binary_sensor.node_pve_status        # the name turns red when it is off
+      items:
+        - { entity: sensor.node_pve_cpu_used, label: cpu }
+        - { entity: sensor.disk_pve_ssd_temperature, label: ssd, warn: 50, bad: 60 }
+    - name: vm-docker
+      kind: vm 103
+      items:
+        - { entity: sensor.local_containers_running, of: sensor.local_container_count, label: conteneurs }
+    - name: router
+      kind: routeur
+      items:
+        - { entity: sensor.router_wan_in, label: "↓", scale: 0.008, unit: Mb/s }
+        - { entity: sensor.router_gateway_status, label: wan, good: [online] }
+columns:
+  - cards:
+      - heading: énergie
+      - grow: true
+        card: { type: custom:igor-energy-card, entity: sensor.power }
+  - width: 1.15
+    cards:
+      - heading: igor
+      - grow: true
+        card: { type: custom:igor-journal-card }
+```
+
+A figure in % turns amber from 80 and red from 95, a temperature from 65 °C and 80 °C (`warn` and `bad` change it). `detail:` on a group lists more figures for the detail than the bar shows. igor-ear 0.2.5 sends its machine's AMD graphics card (load, temperature, video memory) as `sensor.igor_ear_gpu_load`, `_gpu_temperature` and `_gpu_memory`, ready for the bar.
 

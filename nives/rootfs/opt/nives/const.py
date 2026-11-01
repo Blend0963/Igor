@@ -133,6 +133,9 @@ DEFAULT_VOICE_DISPLAY = True
 # sensor so the script finds it whatever the user renamed its entity id to.
 FRONTEND_URL_BASE = "/nives_static"
 FRONTEND_SCRIPT = "igor-tablet.js"
+# The dashboard cards (igor-wall, its status bar, the journal, Docker, network
+# and camera cards) and the header hiding of the "Igor Journal (tablette)" theme.
+FRONTEND_CARDS = "igor-wall.js"
 VOICE_SENSOR_MARKER = "igor_voice"
 # Service a listener calls the moment it hears the name (sensor.py, heard).
 SERVICE_HEARD = "heard"

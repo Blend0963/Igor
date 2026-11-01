@@ -35,6 +35,7 @@ from .const import (
     DEFAULT_USER_ID,
     DEFAULT_VOICE_DISPLAY,
     DOMAIN,
+    FRONTEND_CARDS,
     FRONTEND_SCRIPT,
     FRONTEND_URL_BASE,
     RESTART_ISSUE_ID,
@@ -245,14 +246,15 @@ def _get_platforms(
     return platforms
 
 
-async def _async_setup_frontend(hass: HomeAssistant) -> str | None:
+async def _async_setup_frontend(hass: HomeAssistant) -> list[str] | None:
     """Serve the wall-tablet script and add it to every Home Assistant page.
 
     It is loaded everywhere but does nothing until switched on for a device
     (frontend/igor-tablet.js). The version in the URL makes each update load
     fresh instead of from the browser cache. Served once per Core run: a
     static path cannot be registered twice, while the page script is added
-    and removed with the entry. Returns the script's URL, or None when the
+    and removed with the entry. The dashboard cards (frontend/igor-wall.js)
+    come along. Returns the scripts' URLs, or None when the
     frontend cannot take it (the display then simply does not appear).
     """
     try:
@@ -269,9 +271,10 @@ async def _async_setup_frontend(hass: HomeAssistant) -> str | None:
             [StaticPathConfig(FRONTEND_URL_BASE, str(folder), False)]
         )
         store["static_registered"] = True
-    url = f"{FRONTEND_URL_BASE}/{FRONTEND_SCRIPT}?v={integration.version}"
-    frontend.add_extra_js_url(hass, url)
-    return url
+    urls = [f"{FRONTEND_URL_BASE}/{name}?v={integration.version}" for name in (FRONTEND_SCRIPT, FRONTEND_CARDS)]
+    for url in urls:
+        frontend.add_extra_js_url(hass, url)
+    return urls
 
 
 async def _async_server_capabilities(hass: HomeAssistant, api_url: str) -> dict:
@@ -383,7 +386,7 @@ class IgorData:
     # (sensor.py, set once that platform is up) and the page script's URL.
     voice_display: bool = DEFAULT_VOICE_DISPLAY
     voice_sensor: Any = None
-    frontend_url: str | None = None
+    frontend_url: list[str] | None = None
 
 
 type IgorConfigEntry = ConfigEntry[IgorData]
@@ -500,9 +503,12 @@ async def _async_update_listener(hass: HomeAssistant, entry: IgorConfigEntry) ->
 async def async_unload_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool:
     """Unload a config entry."""
     platforms = getattr(entry.runtime_data, "platforms", None) or _get_platforms()
-    url = getattr(entry.runtime_data, "frontend_url", None)
-    if url:
+    urls = getattr(entry.runtime_data, "frontend_url", None) or []
+    if isinstance(urls, str):
+        urls = [urls]
+    if urls:
         from homeassistant.components import frontend
 
-        frontend.remove_extra_js_url(hass, url)
+        for url in urls:
+            frontend.remove_extra_js_url(hass, url)
     return await hass.config_entries.async_unload_platforms(entry, platforms)

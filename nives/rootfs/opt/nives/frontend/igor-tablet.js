@@ -2,7 +2,7 @@
 // screen, in Igor's style.
 //
 // Home Assistant loads this on every page (frontend.add_extra_js_url); it
-// does nothing until switched on for the device, by opening Home Assistant
+// shows nothing by itself until switched on for the device, by opening Home Assistant
 // once with ?igor_tablet=1 (any satellite) or ?igor_tablet=assist_satellite.x
 // (that one only); ?igor_tablet=0 switches it off. The choice is kept in this
 // browser only.
@@ -42,8 +42,9 @@
       return param && param !== "0" && param !== "off" ? param : null;
     }
   }
+  // Off, the page still answers a dashboard card asking for the history (the
+  // Igor journal card's "historique"): only the live display stays away.
   var setting = readSetting();
-  if (!setting) return;
   var onlySatellite = /^assist_satellite\./.test(setting) ? setting : null;
 
   // ----- the journal: a plain terminal, Igor's turn written out -----
@@ -82,9 +83,7 @@
     ".cur { display: inline-block; width: 0.55em; height: 1.05em; background: #6cc4f5; vertical-align: -0.15em; margin-left: 3px; animation: blink 1s steps(1) infinite; }",
     ".hint { position: absolute; right: 4vw; bottom: 1.5vh; font-size: 12px; color: #39424c; }",
     ".x { background: none; border: 1px solid #1d242c; color: #8b96a3; font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 4px; cursor: pointer; margin-left: 14px; }",
-    ".fab { position: fixed; left: max(14px, env(safe-area-inset-left, 0px)); bottom: max(14px, env(safe-area-inset-bottom, 0px)); z-index: 2147482999; display: flex; align-items: center; gap: 8px;",
-    "  background: #0d1014; color: #8b96a3; border: 1px solid #1d242c; border-radius: 6px; padding: 7px 12px; font-family: " + MONO + "; font-size: 13px; cursor: pointer; opacity: 0.8; }",
-    ".fab:focus-visible, .x:focus-visible { outline: 2px solid #6cc4f5; outline-offset: 2px; }",
+    ".x:focus-visible { outline: 2px solid #6cc4f5; outline-offset: 2px; }",
     ".hist { flex: 1; overflow-y: auto; padding: 2vh 4vw 4vh; display: none; flex-direction: column; gap: 6px; -webkit-overflow-scrolling: touch; }",
     ".veil[data-mode=history] .hist { display: flex; }",
     ".veil[data-mode=history] .log, .veil[data-mode=history] .hint { display: none; }",
@@ -130,12 +129,6 @@
     histEl = el("div", "hist", veil);
     el("div", "hint", veil).textContent = "toucher pour fermer";
     veil.addEventListener("click", function () { if (veil.dataset.mode === "history") return; dismissed = view.turnKey; hide(); });
-    // The way to the history, always in a corner of the page.
-    var fab = el("button", "fab", root);
-    fab.type = "button";
-    el("span", "lens", fab);
-    el("span", "", fab).textContent = "journal";
-    fab.addEventListener("click", openHistory);
     root.appendChild(veil);
     document.body.appendChild(host);
   }
@@ -435,6 +428,13 @@
   }
 
   function start() {
+    // The history opens from a dashboard: the Igor journal card, or any
+    // card whose action is { action: fire-dom-event, igor_journal: true }
+    // (it reaches the page as an "ll-custom" event).
+    window.addEventListener("ll-custom", function (ev) {
+      if (ev && ev.detail && ev.detail.igor_journal) openHistory();
+    });
+    if (!setting) return;
     if (!host) build();
     setInterval(function () {
       try { update(); } catch (e) { /* the display must never break the page */ }

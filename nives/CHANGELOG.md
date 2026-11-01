@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.22.0 — The wall dashboard
+
+- Wall dashboard cards (integration 0.1.18): `custom:igor-wall` fills a tablet's screen exactly, columns of cards down to the bottom (`grow: true` for the card that takes the height left), under a one-line status bar that scrolls slowly through the machines (Proxmox host and VMs, Docker, router…, each figure amber or red past its threshold; a touch opens the detail of all). With it, cards in the theme's style: `igor-journal-card` (Igor's last exchanges and today's figures), `igor-docker-card` (Portainer's containers), `igor-net-card` (a router's traffic over the last hour), `igor-energy-card` (power hour by hour today) and `igor-camera-card` (a picture refreshed every few seconds). Written for old tablets: one animation, no timer under a second, history read once a minute.
+- The floating **journal** button is gone: the journal card's « historique » opens the history, on any device.
+- New theme **Igor Journal (tablette)**: the same without Home Assistant's top bar, for the tablet only; it comes back while editing (`?edit=1`) or with `?barre` in the address.
+- igor-ear 0.2.5 (`ear/`, update it on its machine): sends its AMD graphics card's load, temperature and video memory to Home Assistant every 30 s (`sensor.igor_ear_gpu_*`, `[machine]` in its settings).
+
+## 0.21.10 — Your cards in Igor's colours
+
+- Igor Journal theme: the named colours cards use (Mushroom's `green`, `amber`, `blue`, `red`, `pink`, `yellow`…, tile cards too) now take Igor's palette in both modes, so an existing dashboard follows the theme without being edited.
+- Wall tablet: a dashboard card can open the journal's history with the action `{action: fire-dom-event, igor_journal: true}` (integration 0.1.17). Restart Home Assistant once after updating.
+
 ## 0.21.9 — The Igor Journal theme, and the journal's history
 
 - A Home Assistant theme in the style of the wall tablet's journal: dark grey, thin lines, small corners, a monospace face everywhere (the device's own, nothing downloaded), green for what is on, amber for warnings, Igor's blue as the accent, and a light version (Auto follows the device). The add-on installs it in `/config/themes/igor-journal.yaml` and reloads Home Assistant's themes; `configuration.yaml` needs `frontend: themes: !include_dir_merge_named themes` once (the add-on's log says when it is missing). Then Profile → Theme → Igor Journal.
