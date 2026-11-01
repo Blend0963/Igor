@@ -1979,7 +1979,8 @@
         "button ha-icon { color: var(--dim); }",
         "button.on { border-color: var(--tile-on-border, rgba(217, 164, 65, 0.4)); background: var(--tile-on-bg, var(--card)); } button.on ha-icon { color: var(--tile-on, var(--wait)); }",
         "button.scene ha-icon { color: var(--acc); }",
-        ".n { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }",
+        // The name always whole: on two lines rather than cut.
+        ".n { font-size: 14px; line-height: 1.2; overflow-wrap: break-word; min-width: 0; }",
         ".s { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }",
         "button.small .s { text-align: right; }",
         "button.done { border-color: var(--acc); }",
