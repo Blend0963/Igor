@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""The PC's half of Igor's desk screen (Linux, GNOME or any desktop).
+
+  igor-screen-pc watch    when the USB keyboard leaves the PC (the USB switch
+                          pressed towards Igor's machine), send the screen to
+                          Igor's input (a monitor obeys DDC/CI on the input it
+                          shows: the machine losing the keyboard sends it away)
+  igor-screen-pc switch   send the screen to Igor's dashboard now (the dock icon)
+  igor-screen-pc check    show what it sees
+
+Settings in ~/.config/igor-screen-pc.conf (KEY=value):
+  VM_INPUT=0x11     the monitor's input of Igor's machine (0x11 HDMI 1, 0x0f DisplayPort 1)
+  BUS=              the monitor's I2C bus; empty: found from the connected output
+  KEYBOARD=         part of the keyboard's name; empty: any USB keyboard
+"""
+import os
+import re
+import subprocess
+import sys
+import time
+
+CONF = os.path.expanduser("~/.config/igor-screen-pc.conf")
+DRM = "/sys/class/drm"
+
+
+def settings():
+    s = {"VM_INPUT": "0x11", "BUS": "", "KEYBOARD": ""}
+    try:
+        for line in open(CONF, encoding="utf-8"):
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                s[k.strip().upper()] = v.strip().strip('"')
+    except OSError:
+        pass
+    return s
+
+
+def keyboard_here(match):
+    try:
+        text = open("/proc/bus/input/devices", encoding="utf-8", errors="replace").read()
+    except OSError:
+        return False
+    for block in text.split("\n\n"):
+        bus = re.search(r"Bus=([0-9a-fA-F]+)", block)
+        name = re.search(r'Name="(.*)"', block)
+        handlers = re.search(r"H: Handlers=(.*)", block)
+        if not (bus and name and handlers) or bus.group(1).lower() != "0003" or "kbd" not in handlers.group(1).split():
+            continue
+        if match and match.lower() not in name.group(1).lower():
+            continue
+        return True
+    return False
+
+
+def find_bus(s):
+    if s["BUS"]:
+        return s["BUS"]
+    for card in sorted(os.listdir(DRM)):
+        path = os.path.join(DRM, card)
+        if "-" not in card or "eDP" in card:
+            continue
+        try:
+            if open(os.path.join(path, "status")).read().strip() != "connected":
+                continue
+        except OSError:
+            continue
+        ddc = os.path.join(path, "ddc")
+        m = re.search(r"i2c-(\d+)$", os.path.realpath(ddc)) if os.path.exists(ddc) else None
+        if not m:
+            for entry in os.listdir(path):
+                m = re.fullmatch(r"i2c-(\d+)", entry)
+                if m:
+                    break
+        if m:
+            return m.group(1)
+    return ""
+
+
+def switch(s):
+    bus = find_bus(s)
+    cmd = ["ddcutil", "--noverify", "setvcp", "60", s["VM_INPUT"]]
+    if bus:
+        cmd[1:1] = ["--bus", bus]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        print("igor-screen-pc: " + (r.stderr or r.stdout).strip(), file=sys.stderr)
+    return r.returncode == 0
+
+
+def main():
+    s = settings()
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "watch"
+    if cmd == "switch":
+        return 0 if switch(s) else 1
+    if cmd == "check":
+        print("Bus DDC :", find_bus(s) or "introuvable (écran branché ? DDC/CI activé ?)")
+        print("Entrée d'Igor :", s["VM_INPUT"])
+        print("Clavier :", "ici" if keyboard_here(s["KEYBOARD"]) else "absent", "(" + (s["KEYBOARD"] or "tout clavier USB") + ")")
+        return 0
+    here = keyboard_here(s["KEYBOARD"])
+    print("igor-screen-pc: watching the keyboard (" + ("here" if here else "not here") + ")", flush=True)
+    while True:
+        time.sleep(0.5)
+        now = keyboard_here(s["KEYBOARD"])
+        if here and not now:
+            print("igor-screen-pc: keyboard gone, screen to Igor", flush=True)
+            switch(s)
+        here = now
+
+
+if __name__ == "__main__":
+    sys.exit(main())

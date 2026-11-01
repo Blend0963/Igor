@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.22.1 — Igor's desk screen
+
+- igor-ear 0.3.0 (`ear/`, update it on its machine): Igor's machine can show the wall dashboard on its graphics card's output, on a monitor shared with your PC (`ear/screen/`). `install-vm.sh` sets up a kiosk session at boot (sway, Chromium full screen on the dashboard, no password with Home Assistant's trusted networks) and `run.sh screen`: the machine that loses the USB keyboard sends the monitor to the other input (DDC/CI), and Home Assistant's `igor_screen` event (`pc`, `dashboard`, `off`, `on`, `toggle`) switches it or puts it to sleep; its state is `sensor.igor_screen`. `install-pc.sh` gives the PC (Fedora Silverblue/secureblue or any GNOME) its keyboard watch and an **Igor** icon in the dock.
+- Wall cards (integration 0.1.19): `?igor_theme=<theme>` in the address picks the theme for that device (a kiosk without a keyboard), and with the tablet theme Home Assistant's sidebar is hidden too.
+
 ## 0.22.0 — The wall dashboard
 
 - Wall dashboard cards (integration 0.1.18): `custom:igor-wall` fills a tablet's screen exactly, columns of cards down to the bottom (`grow: true` for the card that takes the height left), under a one-line status bar that scrolls slowly through the machines (Proxmox host and VMs, Docker, router…, each figure amber or red past its threshold; a touch opens the detail of all). With it, cards in the theme's style: `igor-journal-card` (Igor's last exchanges and today's figures), `igor-docker-card` (Portainer's containers), `igor-net-card` (a router's traffic over the last hour), `igor-energy-card` (power hour by hour today) and `igor-camera-card` (a picture refreshed every few seconds). Written for old tablets: one animation, no timer under a second, history read once a minute.

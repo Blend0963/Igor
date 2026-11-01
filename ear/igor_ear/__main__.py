@@ -524,6 +524,29 @@ def report(settings: Settings) -> None:
             print(f"  {e['time']}  [{e['reason']}]  {e.get('text', '')}{sent}")
 
 
+def screen(settings: Settings, check: bool = False) -> int:
+    from .screen import Screen, ScreenSettings, read_keyboard
+
+    s = ScreenSettings(output=settings.screen_output, here=settings.screen_here, pc=settings.screen_pc,
+                       bus=settings.screen_bus, keyboard=settings.screen_keyboard,
+                       pc_entity=settings.screen_pc_entity)
+    sc = Screen(s, settings.ha_url, settings.ha_token)
+    if check:
+        print(f"Output:     {s.output}")
+        print(f"DDC bus:    {sc.bus if sc.bus is not None else 'NOT FOUND (is the monitor plugged in, DDC/CI on?)'}")
+        print(f"Inputs:     here 0x{s.here:02x}, PC 0x{s.pc:02x}")
+        print(f"Keyboard:   {'here' if read_keyboard(s.keyboard) else 'not here'} ({s.keyboard or 'any USB keyboard'})")
+        print(f"Home Assistant: {'yes' if settings.ha_url and settings.ha_token else 'NO ([home_assistant] url and token)'}")
+        if sc.bus is not None:
+            import subprocess
+
+            r = subprocess.run(["ddcutil", "--bus", str(sc.bus), "getvcp", "60"], capture_output=True, text=True)
+            print("Monitor:    " + ((r.stdout or r.stderr).strip() or "no answer"))
+        return 0
+    sc.serve()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="igor-ear", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -536,6 +559,8 @@ def main(argv: list[str] | None = None) -> int:
     so.add_argument("--seconds", type=float, default=15)
     c = sub.add_parser("check")
     c.add_argument("text")
+    sc = sub.add_parser("screen", help="the desk screen shared with a PC (started by the kiosk session)")
+    sc.add_argument("--check", action="store_true", help="show what the screen service sees, change nothing")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
     # faster-whisper announces every clip it processes; only its problems matter here.
@@ -559,6 +584,8 @@ def main(argv: list[str] | None = None) -> int:
         sound(settings, args.seconds)
     elif args.command == "report":
         report(settings)
+    elif args.command == "screen":
+        return screen(settings, args.check)
     elif args.command == "check":
         d = Addressing(extra_targets=settings.extra_targets, names=settings.names).decide(args.text)
         print(f"{'WOULD SEND' if d.accepted else 'ignored'} ({d.reason})")
