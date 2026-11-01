@@ -9,6 +9,10 @@
 # without Home Assistant's top bar (Igor's wall cards hide it; it comes back
 # while editing the dashboard, or with ?barre in the address).
 Igor Journal: &igor_journal
+  # No « ☰ » in the dashboards' top bar and no docked sidebar: the wall's
+  # buttons (Menu, Réglages…) lead elsewhere; the view tabs stay. Back with
+  # ?menu in the address, or while editing a dashboard.
+  igor-hide-menu: "1"
   # A monospace face everywhere: the device's own (Menlo, Roboto Mono, DejaVu
   # Sans Mono…), nothing is downloaded.
   primary-font-family: &mono "ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, 'Roboto Mono', 'DejaVu Sans Mono', monospace"

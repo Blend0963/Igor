@@ -2389,6 +2389,12 @@
     if (root && root.lovelace && root.lovelace.editMode) return false;
     return viewHasWall(root);
   }
+  function wantsNoMenu(root) {
+    var v = getComputedStyle(document.documentElement).getPropertyValue("--igor-hide-menu").trim().replace(/["']/g, "");
+    if (v !== "1" && v !== "true") return false;
+    if (/[?&](menu|edit)(=|&|$)/.test(window.location.search || "")) return false;
+    return !(root && root.lovelace && root.lovelace.editMode);
+  }
   setInterval(function () {
     var root = lovelaceRoot();
     if (!root || !root.shadowRoot) return;
@@ -2404,8 +2410,21 @@
       style.remove();
       window.dispatchEvent(new Event("resize"));
     }
+    // The « ☰ » button gone from the dashboards (theme igor-hide-menu), tabs kept.
+    var noMenu = wantsNoMenu(root);
+    var mstyle = root.shadowRoot.getElementById("igor-nomenu");
+    if (noMenu && !mstyle) {
+      mstyle = document.createElement("style");
+      mstyle.id = "igor-nomenu";
+      mstyle.textContent = "ha-menu-button { display: none !important; }";
+      root.shadowRoot.appendChild(mstyle);
+    } else if (!noMenu && mstyle) {
+      mstyle.remove();
+    }
     // A wide screen keeps Home Assistant's sidebar docked on the left: on
-    // the kiosk it goes too (this device only; the menu brings it back).
+    // the kiosk, or without the menu button, it goes too (this device only;
+    // a wall's « Menu » button still opens it).
+    want = want || noMenu;
     var ha = document.querySelector("home-assistant");
     if (want && ha && ha.hass && ha.hass.dockedSidebar && ha.hass.dockedSidebar !== "always_hidden" && !sidebarDone) {
       sidebarDone = true;
