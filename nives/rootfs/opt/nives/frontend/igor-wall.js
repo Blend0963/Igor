@@ -1977,7 +1977,7 @@
         "button.big ha-icon { grid-row: 1 / 3; align-self: center; }",
         "button.small { padding: 10px 12px; display: grid; grid-template-columns: 20px max-content minmax(0, 1fr); gap: 10px; align-items: center; --mdc-icon-size: 18px; }",
         "button ha-icon { color: var(--dim); }",
-        "button.on { border-color: var(--tile-on-border, rgba(217, 164, 65, 0.4)); } button.on ha-icon { color: var(--tile-on, var(--wait)); }",
+        "button.on { border-color: var(--tile-on-border, rgba(217, 164, 65, 0.4)); background: var(--tile-on-bg, var(--card)); } button.on ha-icon { color: var(--tile-on, var(--wait)); }",
         "button.scene ha-icon { color: var(--acc); }",
         ".n { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }",
         ".s { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }",
@@ -2029,7 +2029,8 @@
         // A light lit in a colour: the tile takes that colour.
         var rgb = on && d === "light" && st && Array.isArray(st.attributes.rgb_color) ? st.attributes.rgb_color : null;
         x.b.style.setProperty("--tile-on", rgb ? "rgb(" + rgb.join(",") + ")" : "");
-        x.b.style.setProperty("--tile-on-border", rgb ? "rgba(" + rgb.join(",") + ",0.55)" : "");
+        x.b.style.setProperty("--tile-on-border", rgb ? "rgba(" + rgb.join(",") + ",0.7)" : "");
+        x.b.style.setProperty("--tile-on-bg", rgb ? "rgba(" + rgb.join(",") + ",0.18)" : "");
       });
     }
   }

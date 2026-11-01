@@ -7,7 +7,7 @@
 - The walls' journal was empty with an old Igor entry left in Home Assistant (an add-on that is gone): `nives.journal` stopped at that entry's error. It now tries every entry until one answers.
 - Wall bar: `tap: /a-page` opens that page (the homelab) on a tap instead of the machines' detail.
 - `igor-tiles-card`: a last row short of tiles no longer leaves a hole; its last tile widens to the end.
-- `igor-tiles-card`: a lit light's tile takes the light's colour; `invert`, `icon_off` and `text` for a tile lit while its entity is off (a camera's privacy switch: grey and crossed out while private).
+- `igor-tiles-card`: a lit light's tile (border, icon and background) takes the light's colour; `invert`, `icon_off` and `text` for a tile lit while its entity is off (a camera's privacy switch: grey and crossed out while private).
 - Tablet overlay: the steps' column is wider, so « destinataire » no longer runs into its detail.
 
 ## 0.23.6 — The keyboard switch, headlines, the wall's panels
