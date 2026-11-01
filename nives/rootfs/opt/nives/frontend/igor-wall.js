@@ -93,11 +93,16 @@
     });
     return d;
   }
+  // With two Igor entries (an old one left behind), the one that moved last.
   function igorSensor(hass) {
+    var best = null, bestAt = -1;
     for (var id in hass.states) {
-      if (id.indexOf("sensor.") === 0 && hass.states[id].attributes && hass.states[id].attributes.igor_voice) return hass.states[id];
+      var st = hass.states[id];
+      if (id.indexOf("sensor.") !== 0 || !st.attributes || !st.attributes.igor_voice) continue;
+      var at = Math.max(Date.parse(st.attributes.started) || 0, Date.parse(st.last_changed) || 0, Date.parse(st.last_updated) || 0);
+      if (at > bestAt) { best = st; bestAt = at; }
     }
-    return null;
+    return best;
   }
 
   class IgorCard extends HTMLElement {

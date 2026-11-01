@@ -390,12 +390,18 @@
     var ha = document.querySelector("home-assistant");
     return ha && ha.hass;
   }
+  // Igor's voice sensor. With two Igor entries (an old one left behind), each
+  // has one: « heard » reaches both, the turn itself only the working one,
+  // so follow whichever moved last, not the first found.
   function findSensor(states) {
-    if (view.sensorId && states[view.sensorId]) return states[view.sensorId];
+    var best = null, bestAt = -1;
     for (var id in states) {
-      if (id.indexOf("sensor.") === 0 && states[id].attributes && states[id].attributes.igor_voice) { view.sensorId = id; return states[id]; }
+      var st = states[id];
+      if (id.indexOf("sensor.") !== 0 || !st.attributes || !st.attributes.igor_voice) continue;
+      var at = Math.max(Date.parse(st.attributes.started) || 0, Date.parse(st.last_changed) || 0, Date.parse(st.last_updated) || 0);
+      if (at > bestAt) { best = st; bestAt = at; }
     }
-    return null;
+    return best;
   }
   // A state held far longer than any real exchange is a stuck satellite, or
   // one that reports "listening" all the time (wake word handled in Home
@@ -458,9 +464,24 @@
     }
     // Igor heard its name (igor-ear, no wake word): shown at once, before
     // the words reach Igor a few seconds later.
-    var heardFresh = attrs.started && Date.now() - Date.parse(attrs.started) < 120000;
+    var heardAge = attrs.started ? Date.now() - Date.parse(attrs.started) : Infinity;
+    var heardFresh = heardAge < 120000;
     if (fromWanted && sensorState === "heard" && heardFresh) {
       if (dismissed === turnKey) return;
+      // The name heard, then nothing reached Igor (a sentence not for it, a
+      // satellite busy, the words lost): say so and leave, rather than hold
+      // an empty « transcription » on screen for two minutes.
+      var waitingNow = attrs.status === "listening";
+      if (heardAge > (waitingNow ? 30000 : 15000)) {
+        if (view.turnKey === turnKey && view.phase !== "gone") {
+          view.phase = "gone";
+          setSay("q", "rien reçu", false);
+          setState("sans suite", false);
+          hideSoon(3000);
+          dismissed = turnKey;
+        }
+        return;
+      }
       var waiting = attrs.status === "listening";
       var phase = waiting ? "listening" : "transcribing";
       if (view.phase !== phase || view.turnKey !== turnKey) {

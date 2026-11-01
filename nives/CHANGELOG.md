@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.23.14 — No empty « transcription »
+
+- With two Igor entries in Home Assistant (an old one left behind), the tablet followed the old entry's voice sensor: « heard » reached it, the turn itself only the working one, so the display stayed on « transcription ». The tablet and the wall cards now follow the voice sensor that moved last.
+- When the name is heard and nothing reaches Igor within 15 s (30 s while it waits for an answer), the display says « rien reçu · sans suite » and leaves, instead of holding an empty « transcription » for two minutes.
+
 ## 0.23.13 — The tablet's live display, tidy
 
 - The live display when the name is heard was broken by 0.23.8: the ear's line spread over the screen's width, everything sat at the bottom, and the bar and chips were not aligned with the words. It is now centred, the ear's line reads « oreille · nom entendu », a blinking cursor holds the place of your words while they are transcribed, and the time bar and chips line up under them.
