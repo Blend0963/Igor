@@ -220,10 +220,12 @@ const journal = config.localLlmUrl && config.conversationStorage === "sqlite"
   ? new VoiceJournal(path.join(path.dirname(config.conversationDbPath), "voice-journal.jsonl"))
   : undefined;
 if (journal && "setJournal" in llm) (llm as { setJournal(j: VoiceJournal): void }).setJournal(journal);
-app.get("/api/journal/:userId", (req, res) => {
+// GET /api/journal: the whole house's spoken exchanges (the wall's journal);
+// /api/journal/:userId: one user's.
+app.get(["/api/journal", "/api/journal/:userId"], (req, res) => {
   const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
   res.setHeader("Cache-Control", "no-store");
-  res.json({ entries: journal ? journal.read(req.params.userId, limit) : [] });
+  res.json({ entries: journal ? journal.read(String(req.params.userId ?? ""), limit) : [] });
 });
 let wholeHouse: { ha: HomeAssistantClient; topology: TopologyScanner; scanner: DeviceScanner } | undefined;
 app.get("/api/local-dataset", async (req, res) => {

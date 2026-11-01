@@ -181,19 +181,26 @@
     ".dhead { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--line); margin-bottom: 8px; color: var(--dim); }",
     ".dhead b { color: var(--fg); font-weight: 500; }",
     ".close { background: none; border: 1px solid var(--line); color: var(--dim); font: inherit; padding: 4px 12px; border-radius: 4px; cursor: pointer; }",
-    ".grp { display: grid; grid-template-columns: 22ch 1fr; gap: 14px; padding: 7px 0; border-bottom: 1px dashed var(--line); align-items: start; }",
-    ".grp .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
-    ".grp .nm small { color: var(--dim); font-size: 11px; margin-left: 6px; }",
-    ".grp.child .nm::before { content: '├ '; color: var(--faint); }",
-    ".grp.child.last .nm::before { content: '└ '; }",
-    ".grp.root .nm { color: var(--acc); }",
-    ".its { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 18px; }",
-    ".it { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: center; }",
-    ".it .l { color: var(--dim); }",
-    ".it .v { text-align: right; font-variant-numeric: tabular-nums; }",
-    ".it .bar { grid-column: 1 / -1; }",
-    ".it .bar i { background: var(--acc); }",
-    ".it .bar.warn i { background: var(--wait); } .it .bar.bad i { background: var(--bad); }"
+    ".dwrap { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(220px, 1fr); gap: 28px; align-items: start; }",
+    "table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: inherit; }",
+    "th { text-align: left; font-weight: 400; color: var(--faint); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; padding: 0 12px 6px 0; }",
+    "td { padding: 6px 12px 6px 0; border-top: 1px dashed var(--line); white-space: nowrap; vertical-align: middle; }",
+    "td.n small { color: var(--dim); font-size: 11px; margin-left: 6px; }",
+    "tr.child td.n::before { content: '├ '; color: var(--faint); }",
+    "tr.child.last td.n::before { content: '└ '; }",
+    "tr.root td.n { color: var(--acc); }",
+    "td.t { color: var(--dim); white-space: normal; }",
+    ".st { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); margin-right: 7px; vertical-align: 1px; }",
+    ".st.ok { background: var(--okc); } .st.bad { background: var(--bad); }",
+    ".cellb { display: inline-grid; grid-template-columns: 70px 5ch; gap: 8px; align-items: center; }",
+    ".cellb .v { text-align: right; }",
+    ".cellb .bar i { background: var(--acc); } .cellb .bar.warn i { background: var(--wait); } .cellb .bar.bad i { background: var(--bad); }",
+    ".dside h5 { margin: 0 0 6px; font-size: 10px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }",
+    ".dside h5:not(:first-child) { margin-top: 18px; }",
+    ".kv { display: grid; grid-template-columns: 1fr auto; gap: 5px 14px; font-variant-numeric: tabular-nums; }",
+    ".kv .l { color: var(--dim); }",
+    ".kv .v { text-align: right; }",
+    "@media (max-width: 900px) { .dwrap { grid-template-columns: 1fr; } }"
   ].join("\n");
 
   class IgorBar {
@@ -296,26 +303,62 @@
       el("b", "", head, "machines");
       var close = el("button", "close", head, "fermer");
       close.type = "button";
-      var groups = this.groups;
-      groups.forEach((g, i) => {
-        var child = g.child != null ? g.child : /^(vm|ct|lxc)/i.test(g.kind || "");
-        var nextChild = groups[i + 1] && (groups[i + 1].child != null ? groups[i + 1].child : /^(vm|ct|lxc)/i.test(groups[i + 1].kind || ""));
-        var row = el("div", "grp" + (child ? " child" + (nextChild ? "" : " last") : (groups[i + 1] && nextChild ? " root" : "")), d);
-        var nm = el("span", "nm", row, g.name || "");
+      // A table of the machines (one line each, the same columns), and on the
+      // right the groups marked `side: true` (a router, the disks) as lists.
+      var main = this.groups.filter(function (g) { return !g.side; });
+      var side = this.groups.filter(function (g) { return g.side; });
+      var wrap = el("div", "dwrap", d);
+      var left = el("div", "", wrap);
+      var table = el("table", "", left);
+      var hr = el("tr", "", table);
+      ["machine", "processeur", "mémoire", "stockage · temp.", "en plus"].forEach(function (t) { el("th", "", hr, t); });
+      var isChild = function (g) { return g ? (g.child != null ? g.child : /^(vm|ct|lxc)/i.test(g.kind || "")) : false; };
+      var STORE = /pool|disk|disque|ssd|lvm|stock|temp|°/i;
+      var cell = function (td, it) {
+        if (!it) return;
+        var v = itemValue(hass, it);
+        if (v.pct == null) { el("span", "v " + v.level, td, v.text); return; }
+        var box = el("span", "cellb", td);
+        var b = el("span", "bar " + v.level, box);
+        el("i", "", b).style.width = Math.max(0, Math.min(100, v.pct)) + "%";
+        el("span", "v " + (v.level === "ok" ? "" : v.level), box, v.text);
+      };
+      main.forEach((g, i) => {
+        var child = isChild(g), nextChild = isChild(main[i + 1]);
+        var tr = el("tr", child ? "child" + (nextChild ? "" : " last") : (nextChild ? "root" : ""), table);
+        var down = g.status && hass.states[g.status] && ["off", "stopped", "unavailable"].indexOf(hass.states[g.status].state) >= 0;
+        var nm = el("td", "n", tr);
+        el("span", "st" + (g.status ? (down ? " bad" : " ok") : ""), nm);
+        nm.appendChild(document.createTextNode(g.name || ""));
         if (g.kind) el("small", "", nm, g.kind);
-        if (g.status && hass.states[g.status] && ["off", "stopped", "unavailable"].indexOf(hass.states[g.status].state) >= 0) nm.classList.add("bad");
-        var its = el("div", "its", row);
-        (g.detail || g.items || []).forEach((it) => {
+        var items = (g.detail || g.items || []).slice();
+        var take = function (label) { var k = items.findIndex(function (it) { return (it.label || "").toLowerCase() === label; }); return k >= 0 ? items.splice(k, 1)[0] : null; };
+        cell(el("td", "", tr), take("cpu"));
+        cell(el("td", "", tr), take("ram"));
+        var store = [], extra = [];
+        items.forEach(function (it) {
           var v = itemValue(hass, it);
-          var box = el("div", "it", its);
-          el("span", "l", box, it.label || "");
-          el("span", "v " + (v.level === "ok" && it.of == null && it.good == null ? "" : v.level), box, v.text);
-          if (v.pct != null) {
-            var b = el("div", "bar " + v.level, box);
-            el("i", "", b).style.width = Math.max(0, Math.min(100, v.pct)) + "%";
-          }
+          var text = (it.label ? it.label + " " : "") + v.text;
+          var unit = (hass.states[it.entity] || { attributes: {} }).attributes.unit_of_measurement;
+          (STORE.test(it.label || "") || unit === "°C" ? store : extra).push([text, v.level]);
+        });
+        [store, extra].forEach(function (list) {
+          var td = el("td", "t", tr);
+          list.forEach(function (x, k) { if (k) td.appendChild(document.createTextNode(" · ")); el("span", x[1] === "ok" ? "" : x[1], td, x[0]); });
         });
       });
+      if (side.length) {
+        var right = el("div", "dside", wrap);
+        side.forEach(function (g) {
+          el("h5", "", right, (g.name || "") + (g.kind ? " · " + g.kind : ""));
+          var kv = el("div", "kv", right);
+          (g.detail || g.items || []).forEach(function (it) {
+            var v = itemValue(hass, it);
+            el("span", "l", kv, it.label || "");
+            el("span", "v " + (v.level === "ok" && it.of == null && it.good == null ? "" : v.level), kv, v.text);
+          });
+        });
+      }
     }
     destroy() { clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); }
   }
@@ -355,6 +398,10 @@
     }
     getCardSize() { return 12; }
     connectedCallback() {
+      try {
+        window.localStorage.setItem("igor-wall-home", window.location.pathname);
+        if (this.config && this.config.return_after != null) window.localStorage.setItem("igor-wall-return", String(this.config.return_after));
+      } catch (e) { /* no storage: no way back by itself */ }
       if (!this._resize) {
         this._resize = () => this.fit();
         window.addEventListener("resize", this._resize);
@@ -550,9 +597,9 @@
     setConfig(config) { this.config = config || {}; }
     build() {
       this.style([
-        ".list { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; }",
-        ".list.tight { justify-content: flex-start; }",
-        ".ct { display: grid; grid-template-columns: 8px minmax(0, 1fr) 5.5ch 44px 6ch; gap: 6px; align-items: center; padding: 2px 0; cursor: pointer; }",
+        ".list { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }",
+        ".ct { display: grid; grid-template-columns: 8px minmax(0, 1fr) 7ch 40px 6ch; gap: 6px; align-items: center; padding: 2px 0; cursor: pointer; }",
+        ".hid { color: var(--faint); font-size: 10.5px; margin-top: auto; padding-top: 4px; flex: none; }",
         ".dot { width: 7px; height: 7px; border-radius: 50%; background: var(--okc); }",
         ".dot.off { background: var(--bad); }",
         ".nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
@@ -565,6 +612,7 @@
       el("span", "t", top, this.config.title || "docker");
       this.sum = el("span", "sub num", top);
       this.list = el("div", "list", card);
+      this.hidEl = el("div", "hid", card);
     }
     update(hass, prev) {
       if (!this.found || (prev && prev.entities !== hass.entities)) {
@@ -579,9 +627,18 @@
       if (!changed(prev, hass, this.ids)) return;
       this.drawn = now;
       this.list.innerHTML = "";
-      if (!this.found.length) { el("div", "empty", this.list, "Aucun conteneur Portainer trouvé."); this.sum.textContent = ""; return; }
+      // A container removed from Docker leaves its entities behind, unavailable:
+      // left out (show_unavailable: true keeps them).
+      var shown = this.config.show_unavailable ? this.found : this.found.filter(function (c) {
+        var st = hass.states[c.state];
+        return st && ["unavailable", "unknown"].indexOf(String(st.state).toLowerCase()) < 0;
+      });
+      var hidden = this.found.length - shown.length;
+      this.hidEl.textContent = hidden ? hidden + (hidden > 1 ? " anciens conteneurs masqués" : " ancien conteneur masqué") : "";
+      if (!shown.length) { el("div", "empty", this.list, "Aucun conteneur Portainer trouvé."); this.sum.textContent = ""; return; }
+      var STATES = { exited: "arrêté", paused: "en pause", restarting: "redémarre", created: "créé", dead: "mort" };
       var running = 0, cpu = 0;
-      this.found.forEach((c) => {
+      shown.forEach((c) => {
         var st = hass.states[c.state];
         var up = st && String(st.state).toLowerCase() === "running";
         if (up) running++;
@@ -591,7 +648,7 @@
         row.addEventListener("click", () => moreInfo(this, c.state));
         el("span", "dot" + (up ? "" : " off"), row);
         el("span", "nm", row, c.name);
-        el("span", "cp", row, up ? fr(cv, 1) + " %" : (st ? st.state : "—")).classList.toggle("bad", !up);
+        el("span", "cp", row, up ? fr(cv, 1) + " %" : (st ? STATES[String(st.state).toLowerCase()] || st.state : "—")).classList.toggle("bad", !up);
         var mp = num(hass.states[c.memp]);
         var b = el("div", "bar", row);
         el("i", "", b).style.width = Math.max(0, Math.min(100, mp || 0)) + "%";
@@ -607,9 +664,8 @@
         if (health && health.state && ["unknown", "unavailable", "none", ""].indexOf(String(health.state).toLowerCase()) < 0) info.push(health.state);
         if (info.length) el("span", "info", row, info.join(" · "));
       });
-      this.list.classList.toggle("tight", this.found.length < 5);
-      this.sum.textContent = running + "/" + this.found.length + " · cpu " + fr(cpu, 1) + " %";
-      this.sum.classList.toggle("warn", running < this.found.length);
+      this.sum.textContent = running + "/" + shown.length + " · cpu " + fr(cpu, 1) + " %";
+      this.sum.classList.toggle("warn", running < shown.length);
     }
   }
 
@@ -649,6 +705,27 @@
   //   hours: 1
   //   status: { entity: sensor.opnsense_..._gateway_wan_dhcp_status, good: [online] }
   //   extras: [ { entity: sensor.opnsense_..._dhcp_leases_all, label: dhcp } ]
+  //   gateways: auto                # the router's gateways as chips (OPNsense names)
+  //   interfaces: auto              # its interfaces, the busiest first, under the chart
+  //   exclude: [loopback, wan]      # interfaces left out of the list
+  // With OPNsense's integration, "auto" finds the sensors named like `down`:
+  // <prefix>_interface_<name>_inbytes_… and <prefix>_gateway_<name>_status.
+  var GW_WORDS = { online: "en ligne", offline: "hors ligne", down: "hors ligne", none: "en attente", pending: "en attente", unknown: "—", unavailable: "—" };
+  function routerParts(hass, down) {
+    var m = /^(sensor\.[a-z0-9_]*?_)interface_[a-z0-9_]+?_inbytes/.exec(down || "");
+    if (!m) return { prefix: "", interfaces: [], gateways: [] };
+    var prefix = m[1], ifs = [], gws = [];
+    Object.keys(hass.states).forEach(function (id) {
+      if (id.indexOf(prefix) !== 0) return;
+      var rest = id.slice(prefix.length), x;
+      if ((x = /^interface_(.+)_inbytes_kilobytes_per_second$/.exec(rest))) {
+        ifs.push({ name: x[1], down: id, up: prefix + "interface_" + x[1] + "_outbytes_kilobytes_per_second" });
+      } else if ((x = /^gateway_(.+)_status$/.exec(rest))) {
+        gws.push({ name: x[1].replace(/_(dhcp|dhcp6|pppoe|static|gw|gateway)$/, ""), entity: id });
+      }
+    });
+    return { prefix: prefix, interfaces: ifs, gateways: gws };
+  }
   class IgorNetCard extends IgorCard {
     setConfig(config) {
       if (!config || !config.down) throw new Error("igor-net-card: down est requis");
@@ -658,12 +735,25 @@
       this.style([
         ".row { display: flex; gap: 12px; align-items: baseline; white-space: nowrap; overflow: hidden; flex: none; }",
         ".down { color: var(--okc); } .up { color: var(--acc); }",
-        ".row .x { color: var(--dim); font-size: 11px; }"
+        ".row .x { color: var(--dim); font-size: 11px; }",
+        ".gw { display: flex; gap: 6px; flex-wrap: wrap; margin: 2px 0 5px; flex: none; }",
+        ".gw span { border: 1px solid var(--line); border-radius: 10px; padding: 0 8px; font-size: 11px; color: var(--dim); }",
+        ".gw span.on { border-color: rgba(var(--ok), 0.45); color: var(--okc); }",
+        ".gw span.bad { border-color: var(--bad); color: var(--bad); }",
+        ".ifs { flex: none; overflow: hidden; }",
+        ".ifs.fill { flex: 1 1 0; min-height: 0; }",
+        ".if { display: grid; grid-template-columns: minmax(0, 1fr) 6ch 6ch 50px; gap: 6px; align-items: center; padding: 1px 0; font-variant-numeric: tabular-nums; }",
+        ".if .v { text-align: right; color: var(--dim); font-size: 11px; }",
+        ".if.h { color: var(--faint); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; border-bottom: 1px solid var(--line); padding-bottom: 3px; margin: 6px 0 2px; }",
+        ".if.h .v { color: var(--faint); font-size: 10px; text-transform: none; letter-spacing: 0; }",
+        ".if .bar i { background: rgb(var(--ok)); }",
+        "svg.chart.fixed { flex: none; height: 70px; }"
       ].join("\n"));
       var card = el("ha-card", "", this.shadowRoot);
       var top = el("div", "top", card);
       el("span", "t", top, this.config.title || "réseau");
       this.statusEl = el("span", "sub", top);
+      this.gwEl = el("div", "gw", card);
       this.row = el("div", "row num", card);
       this.svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       this.svg.setAttribute("class", "chart");
@@ -675,6 +765,7 @@
       el("span", "", axis, h === 1 ? "-1 h" : "-" + h + " h");
       el("span", "", axis, h === 1 ? "-30 min" : "-" + fr(h / 2, h % 2 ? 1 : 0) + " h");
       el("span", "", axis, "maintenant");
+      this.ifsEl = el("div", "ifs", card);
       this.series = {};
     }
     connectedCallback() { if (this._built && !this.timer) this.update(this._hass, null); }
@@ -700,10 +791,55 @@
           this.statusEl.className = "sub " + (sv.level === "ok" ? "okc" : sv.level);
         }
       }
+      // The chart takes the height left, unless the list of interfaces does.
+      var grow = !!(this.parentElement && this.parentElement.classList.contains("grow"));
+      var withList = c.interfaces != null && c.interfaces !== false;
+      this.svg.classList.toggle("fixed", !grow || withList);
+      this.ifsEl.classList.toggle("fill", withList);
+      var now = Date.now();
+      if ((c.gateways || withList) && (!prev || now - (this.routerDrawn || 0) > 10000)) {
+        this.routerDrawn = now;
+        this.drawRouter(hass);
+      }
       if (!this.timer) {
         this.fetch();
         this.timer = setInterval(() => this.fetch(), 60000);
       }
+    }
+    drawRouter(hass) {
+      var c = this.config, scale = c.scale != null ? Number(c.scale) : 0.008;
+      var parts = routerParts(hass, c.down);
+      this.gwEl.innerHTML = "";
+      if (c.gateways) {
+        var primary = c.status ? (c.status.entity || c.status) : "";
+        parts.gateways.forEach((g) => {
+          var st = hass.states[g.entity], v = st ? String(st.state).toLowerCase() : "unavailable";
+          var on = v === "online", bad = !on && (g.entity === primary || v === "offline" || v === "down");
+          el("span", on ? "on" : bad ? "bad" : "", this.gwEl, (on ? "● " : "○ ") + g.name + " " + (GW_WORDS[v] || v));
+        });
+      }
+      this.ifsEl.innerHTML = "";
+      if (c.interfaces == null || c.interfaces === false) return;
+      var ex = (c.exclude || ["loopback", "wan"]).map(function (x) { return String(x).toLowerCase(); });
+      var rows = parts.interfaces.filter(function (f) { return ex.indexOf(f.name.toLowerCase()) < 0; }).map(function (f) {
+        var d = num(hass.states[f.down]) || 0, u = num(hass.states[f.up]) || 0;
+        return { name: f.name.replace(/_/g, " "), d: d * scale, u: u * scale };
+      });
+      rows.sort(function (a, b) { return (b.d + b.u) - (a.d + a.u); });
+      var max = Math.max.apply(null, rows.map(function (r) { return r.d + r.u; }).concat([0.001]));
+      var h = el("div", "if h", this.ifsEl);
+      el("span", "", h, "interfaces");
+      el("span", "v", h, "↓ Mb/s");
+      el("span", "v", h, "↑ Mb/s");
+      el("span", "", h);
+      rows.forEach((r) => {
+        var line = el("div", "if", this.ifsEl);
+        el("span", "", line, r.name);
+        el("span", "v", line, fr(r.d, 1));
+        el("span", "v", line, fr(r.u, 1));
+        var b = el("div", "bar", line);
+        el("i", "", b).style.width = Math.round(((r.d + r.u) / max) * 100) + "%";
+      });
     }
     fetch() {
       var hass = this._hass;
@@ -738,7 +874,7 @@
     build() {
       this.style([
         ".now { display: flex; justify-content: space-between; align-items: baseline; flex: none; }",
-        ".big { font-size: 24px; color: var(--fg); font-weight: 500; }",
+        ".big { font-size: 22px; color: var(--fg); font-weight: 500; }",
         "rect.now { fill: rgb(var(--ok)); } rect { fill: rgba(var(--ok), 0.35); }"
       ].join("\n"));
       var card = el("ha-card", "", this.shadowRoot);
@@ -758,6 +894,9 @@
     disconnectedCallback() { clearInterval(this.timer); this.timer = null; }
     update(hass, prev) {
       if (!hass) return;
+      var grow = !!(this.parentElement && this.parentElement.classList.contains("grow"));
+      this.svg.style.flex = grow ? "" : "none";
+      this.svg.style.height = grow ? "" : (Number(this.config.chart_height) || 64) + "px";
       if (changed(prev, hass, [this.config.entity])) {
         var st = hass.states[this.config.entity], v = num(st);
         this.big.textContent = v == null ? "—" : fr(v, 0) + " " + ((st && st.attributes.unit_of_measurement) || "W");
@@ -843,6 +982,371 @@
     }
   }
 
+  // ===== small cards in the theme's style =====
+  function icon(parent, name, cls) {
+    var i = document.createElement("ha-icon");
+    i.setAttribute("icon", name);
+    if (cls) i.className = cls;
+    parent.appendChild(i);
+    return i;
+  }
+  var CARD_CSS = [
+    ".tile { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 9px; align-items: center; }",
+    ".ic { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--k, var(--dim)) 16%, transparent); color: var(--k, var(--dim)); --mdc-icon-size: 17px; }",
+    ".k-ok { --k: rgb(var(--ok)); } .k-acc { --k: var(--acc); } .k-wait { --k: var(--wait); } .k-bad { --k: var(--bad); }",
+    ".pn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+    ".sn { color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+    ".pill { font-size: 10.5px; border: 1px solid var(--line); color: var(--dim); border-radius: 10px; padding: 1px 8px; cursor: pointer; background: none; font-family: inherit; }",
+    ".pill.on { border-color: rgba(var(--ok), 0.45); color: var(--okc); }",
+    ".pill:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }"
+  ].join("\n");
+  function longPress(node, onTap, onHold) {
+    var timer = null, held = false;
+    node.addEventListener("pointerdown", function () { held = false; timer = setTimeout(function () { held = true; if (onHold) onHold(); }, 600); });
+    ["pointerup", "pointerleave", "pointercancel"].forEach(function (e) { node.addEventListener(e, function () { clearTimeout(timer); }); });
+    node.addEventListener("click", function () { if (!held && onTap) onTap(); });
+  }
+  function navigate(path) {
+    window.history.pushState(null, "", path);
+    window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
+  }
+  function service(hass, name, data, target) {
+    var parts = String(name || "").split(".");
+    if (parts.length !== 2) return Promise.reject(new Error("service " + name));
+    return hass.callService(parts[0], parts[1], data || {}, target);
+  }
+
+  // ----- igor-assist-card: Igor himself -----
+  //   type: custom:igor-assist-card
+  //   satellite: assist_satellite.living_room   # tap: talk to Igor
+  //   assist: input_boolean.assist              # hold, or the pill: Igor on or off
+  //   start_message: Je vous écoute...
+  class IgorAssistCard extends IgorCard {
+    setConfig(config) { this.config = config || {}; }
+    getCardSize() { return 1; }
+    build() {
+      this.style(CARD_CSS + "\nha-card { border-color: #24394a; cursor: pointer; }\n.lens { width: 28px; height: 28px; border-radius: 50%; background: radial-gradient(circle, #e1f5fe 0, #4fc3f7 30%, #0277bd 65%, #0d1014 100%); box-shadow: 0 0 0 2px #2b3a46; }\n.lens.off { filter: grayscale(1) brightness(0.6); }\n.pn { font-size: 14px; }");
+      var card = el("ha-card", "", this.shadowRoot);
+      var t = el("div", "tile", card);
+      this.lens = el("span", "lens", t);
+      var mid = el("span", "", t);
+      el("div", "pn", mid, this.config.name || "Igor");
+      this.sub = el("div", "sn", mid);
+      this.pill = el("button", "pill", t, "assist");
+      this.pill.type = "button";
+      this.pill.addEventListener("click", (ev) => { ev.stopPropagation(); this.toggle(); });
+      longPress(card, () => this.talk(), () => this.toggle());
+    }
+    talk() {
+      var c = this.config;
+      if (!c.satellite || !this._hass) return;
+      this._hass.callService("assist_satellite", "start_conversation", { preannounce: false, start_message: c.start_message || "Je vous écoute..." }, { entity_id: c.satellite });
+    }
+    toggle() { if (this.config.assist && this._hass) this._hass.callService("homeassistant", "toggle", {}, { entity_id: this.config.assist }); }
+    update(hass) {
+      var c = this.config, igor = igorSensor(hass), sat = c.satellite && hass.states[c.satellite] ? hass.states[c.satellite].state : "";
+      var on = !c.assist || !hass.states[c.assist] || hass.states[c.assist].state !== "off";
+      var s = igor ? igor.state : "idle", text;
+      if (!on) text = "désactivé";
+      else if (s === "heard") text = igor.attributes.status === "listening" ? "je vous écoute…" : "entendu";
+      else if (s === "thinking" || sat === "processing") text = "réflexion…";
+      else if (s === "answering" || sat === "responding") text = "réponse…";
+      else if (sat === "listening") text = "je vous écoute…";
+      else if (s === "error") text = "erreur";
+      else text = c.idle_text || "prêt · oreille ouverte";
+      if (this.sub.textContent !== text) this.sub.textContent = text;
+      this.lens.classList.toggle("off", !on);
+      this.pill.classList.toggle("on", on);
+    }
+  }
+
+  // ----- igor-buttons-card: a row of small buttons -----
+  //   type: custom:igor-buttons-card
+  //   buttons:
+  //     - { icon: mdi:monitor, name: PC, service: nives.screen, data: { action: pc } }
+  //     - { icon: mdi:cog, name: Réglages, navigate: /config }    # a page of Home Assistant
+  //     - { icon: mdi:menu, name: Menu, menu: true }               # Home Assistant's sidebar
+  class IgorButtonsCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !Array.isArray(config.buttons) || !config.buttons.length) throw new Error("igor-buttons-card: buttons est requis");
+      this.config = config;
+    }
+    getCardSize() { return 1; }
+    build() {
+      this.style(".row { display: grid; gap: 5px; }\nbutton { background: var(--card); border: 1px solid var(--line); border-radius: var(--ha-card-border-radius, 6px); color: var(--dim); font-family: inherit; font-size: 10.5px; padding: 6px 2px 5px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; --mdc-icon-size: 18px; min-width: 0; }\nbutton ha-icon { color: var(--fg); }\nbutton span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }\nbutton.done { border-color: var(--acc); }\nbutton:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }\n:host { display: block; }");
+      var row = el("div", "row", this.shadowRoot);
+      row.style.gridTemplateColumns = "repeat(" + (Number(this.config.columns) || this.config.buttons.length) + ", minmax(0, 1fr))";
+      this.config.buttons.forEach((b) => {
+        var btn = el("button", "", row);
+        btn.type = "button";
+        icon(btn, b.icon || "mdi:gesture-tap");
+        el("span", "", btn, b.name || "");
+        btn.addEventListener("click", () => {
+          if (b.navigate) { navigate(String(b.navigate)); return; }
+          if (b.menu) { this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })); return; }
+          if (!this._hass) return;
+          service(this._hass, b.service, b.data, b.target).then(() => {
+            btn.classList.add("done");
+            setTimeout(() => btn.classList.remove("done"), 800);
+          }).catch((e) => { btn.title = String(e && e.message || e); });
+        });
+      });
+    }
+  }
+
+  // ----- igor-weather-card -----
+  //   type: custom:igor-weather-card
+  //   entity: weather.home
+  //   hours: 6          # hours shown
+  //   days: 5           # days shown, as temperature bars
+  var WEATHER = {
+    "clear-night": ["mdi:weather-night", "nuit claire"], cloudy: ["mdi:weather-cloudy", "nuageux"], exceptional: ["mdi:alert-circle-outline", "exceptionnel"],
+    fog: ["mdi:weather-fog", "brouillard"], hail: ["mdi:weather-hail", "grêle"], lightning: ["mdi:weather-lightning", "orage"],
+    "lightning-rainy": ["mdi:weather-lightning-rainy", "orage et pluie"], partlycloudy: ["mdi:weather-partly-cloudy", "éclaircies"],
+    pouring: ["mdi:weather-pouring", "averses"], rainy: ["mdi:weather-rainy", "pluie"], snowy: ["mdi:weather-snowy", "neige"],
+    "snowy-rainy": ["mdi:weather-snowy-rainy", "neige et pluie"], sunny: ["mdi:weather-sunny", "ensoleillé"], windy: ["mdi:weather-windy", "venteux"],
+    "windy-variant": ["mdi:weather-windy-variant", "venteux"]
+  };
+  class IgorWeatherCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !config.entity) throw new Error("igor-weather-card: entity est requis");
+      this.config = config;
+    }
+    build() {
+      this.style([
+        ".now { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding-bottom: 6px; border-bottom: 1px solid var(--line); --mdc-icon-size: 34px; }",
+        ".now ha-icon { color: var(--wait); }",
+        ".big { font-size: 24px; font-weight: 500; color: var(--fg); }",
+        ".clock { text-align: right; }",
+        ".hours { display: grid; text-align: center; color: var(--dim); font-size: 10.5px; padding: 6px 0; border-bottom: 1px solid var(--line); --mdc-icon-size: 17px; }",
+        ".hours ha-icon { color: var(--wait); display: block; margin: 2px auto; }",
+        ".hours b { display: block; color: var(--fg); font-weight: 500; font-size: 12px; }",
+        ".day { display: grid; grid-template-columns: 4.5ch 18px 3.5ch 1fr 3.5ch; gap: 6px; align-items: center; margin-top: 5px; font-variant-numeric: tabular-nums; --mdc-icon-size: 16px; }",
+        ".day ha-icon { color: var(--wait); }",
+        ".lo { text-align: right; color: var(--dim); }",
+        ".rng { height: 5px; border-radius: 3px; background: var(--track); position: relative; }",
+        ".rng i { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: linear-gradient(90deg, #6cc4f5, #5cc28f 55%, #d9a441); }",
+        ".rng b { position: absolute; top: -3px; width: 10px; height: 10px; border-radius: 50%; background: var(--fg); border: 2px solid var(--card); margin-left: -5px; box-sizing: border-box; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      card.addEventListener("click", () => moreInfo(this, this.config.entity));
+      var now = el("div", "now", card);
+      this.icon = icon(now, "mdi:weather-partly-cloudy");
+      var mid = el("div", "", now);
+      this.temp = el("div", "big num", mid);
+      this.cond = el("div", "sub", mid);
+      var clock = el("div", "clock", now);
+      this.time = el("div", "big num", clock);
+      this.date = el("div", "sub", clock);
+      this.hoursEl = el("div", "hours", card);
+      this.daysEl = el("div", "", card);
+      this.hourly = [];
+      this.daily = [];
+      this.tick = setInterval(() => this.clock(), 15000);
+      this.clock();
+    }
+    clock() {
+      var d = new Date();
+      this.time.textContent = hhmm(d);
+      this.date.textContent = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+    }
+    subscribe(hass) {
+      if (this.subs || !hass.connection) return;
+      this.subs = [];
+      ["hourly", "daily"].forEach((type) => {
+        hass.connection.subscribeMessage((msg) => { this[type] = (msg && msg.forecast) || []; this.draw(); },
+          { type: "weather/subscribe_forecast", forecast_type: type, entity_id: this.config.entity })
+          .then((unsub) => { this.subs.push(unsub); })
+          .catch(() => { /* this kind of forecast is not offered */ });
+      });
+    }
+    disconnectedCallback() { (this.subs || []).forEach(function (u) { try { u(); } catch (e) { /* gone */ } }); this.subs = null; }
+    connectedCallback() { if (this._built && this._hass) this.subscribe(this._hass); }
+    update(hass, prev) {
+      this.subscribe(hass);
+      if (changed(prev, hass, [this.config.entity])) this.draw();
+    }
+    draw() {
+      var hass = this._hass;
+      if (!hass) return;
+      var st = hass.states[this.config.entity] || { state: "unavailable", attributes: {} };
+      var ok = ["unavailable", "unknown"].indexOf(st.state) < 0;
+      var first = this.hourly[0] || {};
+      // The current state unavailable: the forecast's first hour stands in.
+      var cond = ok ? st.state : first.condition;
+      var temp = ok && st.attributes.temperature != null ? st.attributes.temperature : first.temperature;
+      var w = WEATHER[cond] || ["mdi:weather-partly-cloudy", cond || "—"];
+      this.icon.setAttribute("icon", w[0]);
+      this.temp.textContent = temp == null ? "—" : Math.round(temp) + "°";
+      var wind = ok ? st.attributes.wind_speed : first.wind_speed;
+      this.cond.textContent = w[1] + (wind != null ? " · " + Math.round(wind) + " " + (st.attributes.wind_speed_unit || "km/h") : "");
+      var nh = Number(this.config.hours) || 6;
+      var hours = this.hourly.filter(function (h) { return Date.parse(h.datetime) > Date.now() - 1800000; }).slice(0, nh);
+      this.hoursEl.innerHTML = "";
+      this.hoursEl.style.gridTemplateColumns = "repeat(" + Math.max(1, hours.length) + ", 1fr)";
+      this.hoursEl.hidden = !hours.length;
+      hours.forEach((h) => {
+        var cell = el("span", "", this.hoursEl, new Date(h.datetime).getHours() + "h");
+        icon(cell, (WEATHER[h.condition] || ["mdi:weather-partly-cloudy"])[0]);
+        el("b", "", cell, h.temperature == null ? "—" : Math.round(h.temperature) + "°");
+      });
+      var days = this.daily.slice(0, Number(this.config.days) || 5);
+      this.daysEl.innerHTML = "";
+      if (!days.length) return;
+      var lo = Math.min.apply(null, days.map(function (d) { return d.templow != null ? d.templow : d.temperature; }));
+      var hi = Math.max.apply(null, days.map(function (d) { return d.temperature; }));
+      var span = Math.max(1, hi - lo);
+      days.forEach((d, i) => {
+        var row = el("div", "day", this.daysEl);
+        el("span", "", row, i === 0 ? "auj." : new Date(d.datetime).toLocaleDateString("fr-FR", { weekday: "short" }));
+        icon(row, (WEATHER[d.condition] || ["mdi:weather-partly-cloudy"])[0]);
+        var dl = d.templow != null ? d.templow : d.temperature;
+        el("span", "lo", row, Math.round(dl) + "°");
+        var r = el("span", "rng", row), bar = el("i", "", r);
+        bar.style.left = ((dl - lo) / span) * 100 + "%";
+        bar.style.right = (100 - ((d.temperature - lo) / span) * 100) + "%";
+        if (i === 0 && temp != null) el("b", "", r).style.left = Math.max(0, Math.min(100, ((temp - lo) / span) * 100)) + "%";
+        el("span", "", row, Math.round(d.temperature) + "°");
+      });
+    }
+  }
+
+  // ----- igor-alarm-card: an alarm clock (Alarm Clocks integration) -----
+  //   type: custom:igor-alarm-card
+  //   device_id: 2b31…                 # the alarm clock, as in alarm-clocks-card
+  //   title: Réveil
+  // Tap: the integration's full card in a window; the pill: on or off.
+  var DAYS = [["monday", "lun"], ["tuesday", "mar"], ["wednesday", "mer"], ["thursday", "jeu"], ["friday", "ven"], ["saturday", "sam"], ["sunday", "dim"]];
+  function alarmEntities(hass, deviceId) {
+    var out = { days: {} }, reg = hass.entities || {};
+    Object.keys(reg).forEach(function (id) {
+      if (!reg[id] || reg[id].device_id !== deviceId) return;
+      if (/^switch\..*_enabled$/.test(id)) out.enabled = id;
+      else if (/^sensor\..*_next_alarm$/.test(id)) out.next = id;
+      else if (/^sensor\..*_state$/.test(id)) out.state = id;
+      else if (/^time\..*_alarm_time$/.test(id)) out.time = id;
+      else if (/^button\..*_snooze$/.test(id)) out.snooze = id;
+      else if (/^button\..*_dismiss$/.test(id)) out.dismiss = id;
+      else DAYS.forEach(function (d) { if (id === id.replace(/_[a-z]+$/, "") + "_" + d[0] && /^switch\./.test(id)) out.days[d[0]] = id; });
+    });
+    return out;
+  }
+  class IgorAlarmCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !config.device_id) throw new Error("igor-alarm-card: device_id est requis");
+      this.config = config;
+    }
+    getCardSize() { return 1; }
+    build() {
+      this.style(CARD_CSS + "\nha-card { cursor: pointer; }\n.acts { display: flex; gap: 6px; margin-top: 6px; }\n.acts button { flex: 1; background: none; border: 1px solid var(--line); border-radius: 4px; color: var(--fg); font-family: inherit; font-size: 11px; padding: 4px; cursor: pointer; }\n.acts[hidden] { display: none; }\n.pop { position: fixed; inset: 0; z-index: 2147482995; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; }\n.pop[hidden] { display: none; }\n.box { width: min(520px, 92vw); max-height: 90vh; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }\n.box .close { display: block; margin: 8px 0 0 auto; background: none; border: 1px solid var(--line); color: var(--dim); font-family: inherit; padding: 4px 12px; border-radius: 4px; cursor: pointer; }");
+      var card = el("ha-card", "", this.shadowRoot);
+      var t = el("div", "tile k-ok", card);
+      this.ic = el("span", "ic", t);
+      icon(this.ic, "mdi:alarm");
+      var mid = el("span", "", t);
+      this.main = el("div", "pn", mid);
+      this.sub = el("div", "sn", mid);
+      this.pill = el("button", "pill", t);
+      this.pill.type = "button";
+      this.pill.addEventListener("click", (ev) => { ev.stopPropagation(); if (this.ids.enabled) this._hass.callService("switch", "toggle", {}, { entity_id: this.ids.enabled }); });
+      this.acts = el("div", "acts", card);
+      this.acts.hidden = true;
+      [["snooze", "Répéter"], ["dismiss", "Arrêter"]].forEach((a) => {
+        var b = el("button", "", this.acts, a[1]);
+        b.type = "button";
+        b.addEventListener("click", (ev) => { ev.stopPropagation(); if (this.ids[a[0]]) this._hass.callService("button", "press", {}, { entity_id: this.ids[a[0]] }); });
+      });
+      card.addEventListener("click", () => this.open());
+      this.pop = el("div", "pop", this.shadowRoot);
+      this.pop.hidden = true;
+      this.pop.addEventListener("click", (ev) => { if (ev.target === this.pop) this.pop.hidden = true; });
+      this.tick = setInterval(() => { if (this._hass) this.update(this._hass, null); }, 30000);
+    }
+    async open() {
+      if (!this.full && window.loadCardHelpers) {
+        var helpers = await window.loadCardHelpers();
+        var box = el("div", "box", this.pop);
+        this.full = helpers.createCardElement(Object.assign({ type: "custom:alarm-clocks-card", devices: [{ device_id: this.config.device_id, expanded: true }],
+          show_settings: false, show_days: true, show_next_alarm: true, expandable: false }, this.config.full || {}));
+        box.appendChild(this.full);
+        var close = el("button", "close", box, "fermer");
+        close.type = "button";
+        close.addEventListener("click", () => { this.pop.hidden = true; });
+      }
+      if (this.full) this.full.hass = this._hass;
+      this.pop.hidden = false;
+    }
+    update(hass, prev) {
+      if (!this.ids || (prev && prev.entities !== hass.entities)) this.ids = alarmEntities(hass, this.config.device_id);
+      if (this.full && !this.pop.hidden) this.full.hass = hass;
+      var ids = this.ids, s = function (id) { return id && hass.states[id] ? hass.states[id].state : ""; };
+      var on = s(ids.enabled) === "on", state = s(ids.state);
+      var time = s(ids.time).slice(0, 5);
+      this.main.textContent = (this.config.title || "Réveil") + (time ? " · " + time : "");
+      var days = DAYS.filter(function (d) { return s(ids.days[d[0]]) === "on"; }).map(function (d) { return d[1]; });
+      var parts = [days.length ? days.join(" ") : "une seule fois"];
+      var next = Date.parse(s(ids.next));
+      if (on && !isNaN(next) && next > Date.now()) {
+        var m = Math.round((next - Date.now()) / 60000);
+        parts.push("dans " + (m >= 60 ? Math.floor(m / 60) + " h " + pad(m % 60) : m + " min"));
+      }
+      var ringing = state === "ringing" || state === "snoozed";
+      if (ringing) parts = [state === "ringing" ? "sonne" : "en répétition"];
+      this.sub.textContent = parts.join(" · ");
+      this.pill.textContent = on ? "activé" : "désactivé";
+      this.pill.classList.toggle("on", on);
+      this.ic.parentElement.className = "tile " + (ringing ? "k-wait" : on ? "k-ok" : "");
+      this.acts.hidden = !ringing;
+    }
+  }
+
+  // ----- igor-mini-card: a sensor, its 24 hours in one line -----
+  //   type: custom:igor-mini-card
+  //   entity: sensor.temperature
+  //   name: température
+  class IgorMiniCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !config.entity) throw new Error("igor-mini-card: entity est requis");
+      this.config = config;
+    }
+    getCardSize() { return 1; }
+    build() {
+      this.style(".mini { display: grid; grid-template-columns: minmax(0, 1fr) 54px; gap: 6px; align-items: center; cursor: pointer; }\n.v { font-size: 15px; color: var(--fg); }\nsvg { width: 54px; height: 20px; display: block; }");
+      var card = el("ha-card", "", this.shadowRoot);
+      var m = el("div", "mini", card);
+      m.addEventListener("click", () => moreInfo(this, this.config.entity));
+      var left = el("span", "", m);
+      el("div", "sub", left, this.config.name || "");
+      this.v = el("div", "v num", left);
+      this.range = el("div", "sub num", left);
+      this.svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      this.svg.setAttribute("viewBox", "0 0 54 20");
+      m.appendChild(this.svg);
+    }
+    connectedCallback() { if (this._built && !this.timer && this._hass) this.update(this._hass, null); }
+    disconnectedCallback() { clearInterval(this.timer); this.timer = null; }
+    update(hass, prev) {
+      var st = hass.states[this.config.entity];
+      if (changed(prev, hass, [this.config.entity])) {
+        var v = num(st), unit = st ? st.attributes.unit_of_measurement || "" : "";
+        this.v.textContent = v == null ? "—" : fr(v, 1) + (unit === "°C" ? "°" : " " + unit);
+      }
+      if (!this.timer) { this.fetch(); this.timer = setInterval(() => this.fetch(), 600000); }
+    }
+    fetch() {
+      var hass = this._hass, id = this.config.entity;
+      if (!hass) return;
+      loadHistory(hass, [id], 24).then((data) => {
+        var pts = resample(data[id] || [], 24, 30);
+        if (!pts.length) return;
+        var mn = Math.min.apply(null, pts), mx = Math.max.apply(null, pts), d = "";
+        pts.forEach(function (v, i) { d += (i ? " L" : "M") + ((i / (pts.length - 1)) * 54).toFixed(1) + " " + (18 - ((v - mn) / (mx - mn || 1)) * 16).toFixed(1); });
+        this.svg.innerHTML = '<path d="' + d + '" fill="none" stroke="' + (this.config.color || "rgb(var(--ok))") + '" stroke-width="1.3"/>';
+        this.range.textContent = fr(mn, 1) + "–" + fr(mx, 1) + " · 24 h";
+      }).catch(function () { /* the value still shows */ });
+    }
+  }
+
   function define(name, cls, label, description) {
     if (!customElements.get(name)) customElements.define(name, cls);
     window.customCards = window.customCards || [];
@@ -854,6 +1358,11 @@
   define("igor-net-card", IgorNetCard, "Igor · réseau", "Le débit d'un routeur sur la dernière heure.");
   define("igor-energy-card", IgorEnergyCard, "Igor · énergie", "La puissance, heure par heure aujourd'hui.");
   define("igor-camera-card", IgorCameraCard, "Igor · caméra", "L'image d'une caméra, rafraîchie toutes les quelques secondes.");
+  define("igor-assist-card", IgorAssistCard, "Igor · Igor", "Igor : son état, parler (appui), l'activer ou non (appui long).");
+  define("igor-buttons-card", IgorButtonsCard, "Igor · boutons", "Une rangée de petits boutons qui appellent un service.");
+  define("igor-weather-card", IgorWeatherCard, "Igor · météo", "Maintenant, heure par heure, et les jours en barres de températures.");
+  define("igor-alarm-card", IgorAlarmCard, "Igor · réveil", "Un réveil (intégration Alarm Clocks) en une ligne.");
+  define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
 
   // ===== no top bar with the "Igor Journal (tablette)" theme =====
   var NOHEAD_CSS = ":host { --header-height: 0px !important; } .header { display: none !important; } #view { padding-top: env(safe-area-inset-top, 0px) !important; min-height: 100vh !important; }";
@@ -896,6 +1405,21 @@
     }
   }, 1000);
   var sidebarDone = false;
+
+  // ===== back to the wall =====
+  // With the tablet theme, the page that shows an igor-wall is the screen's
+  // home: after `return_after` minutes untouched on another page (settings,
+  // history…), the screen goes back to it.
+  var lastTouch = Date.now();
+  ["pointerdown", "keydown", "wheel"].forEach(function (e) { window.addEventListener(e, function () { lastTouch = Date.now(); }, true); });
+  setInterval(function () {
+    var v = getComputedStyle(document.documentElement).getPropertyValue("--igor-hide-header").trim().replace(/["']/g, "");
+    if (v !== "1" && v !== "true") return;
+    var home = null, after = 5;
+    try { home = window.localStorage.getItem("igor-wall-home"); after = Number(window.localStorage.getItem("igor-wall-return")) || 5; } catch (e) { return; }
+    if (!home || window.location.pathname === home || /[?&]edit=/.test(window.location.search)) return;
+    if (Date.now() - lastTouch > after * 60000) { lastTouch = Date.now(); navigate(home); }
+  }, 15000);
 
   // ===== the theme asked for in the address =====
   // ?igor_theme=Igor%20Journal%20(tablette) picks that theme for this device

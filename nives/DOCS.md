@@ -110,6 +110,15 @@ The integration adds cards for a tablet screen filled to the bottom, in the them
 - `custom:igor-net-card`: a router's traffic down and up over the last hour (`down`, `up`, with `scale: 0.008` for kB/s shown in Mb/s), its gateway and extra figures.
 - `custom:igor-energy-card`: a power sensor now, and hour by hour today (from Home Assistant's statistics).
 - `custom:igor-camera-card`: a camera's picture, refreshed every `interval` seconds (10 by default; light for an old tablet).
+- `custom:igor-weather-card`: now, hour by hour (`hours`) and the next days as temperature bars (`days`); when the weather entity's current state is unavailable, its forecast's first hour stands in.
+- `custom:igor-assist-card`: Igor himself, its state in words; a tap talks to it (`satellite`), a long press or the « assist » pill switches it on or off (`assist`).
+- `custom:igor-buttons-card`: a row of small buttons, each calling a service (`buttons: [{icon, name, service, data}]`), opening a page of Home Assistant (`navigate: /config`) or its sidebar (`menu: true`). With the tablet theme, a page left untouched for 5 minutes (`return_after` on the wall) goes back to the wall.
+- `custom:igor-alarm-card`: an alarm clock of the Alarm Clocks integration (`device_id`) on one line: time, days, time left, on/off pill, snooze and dismiss while it rings; a tap opens its full card.
+- `custom:igor-mini-card`: a sensor's value with its range and line over 24 hours.
+
+The network card lists, with `gateways: auto` and `interfaces: auto`, the router's gateways and its interfaces busiest first (OPNsense's sensors, found from `down`). The Docker card leaves out containers whose entities are unavailable (removed from Docker); `show_unavailable: true` keeps them. In the status bar, a group with `side: true` goes to the right of the detail as a list (a router, the disks); the others form its table.
+
+The service `nives.screen` (`action`: `pc`, `dashboard`, `off`, `on`, `toggle`, `app` with `app`: `sound`, `equalizer`, `bluetooth`, or `close`) gives orders to the desk screen (`ear/screen/README.md`); any user can call it from a button.
 
 ```yaml
 type: custom:igor-wall

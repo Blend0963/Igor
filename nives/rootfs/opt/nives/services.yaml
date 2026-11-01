@@ -24,3 +24,14 @@ journal:
         number:
           min: 1
           max: 200
+screen:
+  fields:
+    action:
+      required: true
+      selector:
+        select:
+          options: [pc, dashboard, "off", "on", toggle, app, close]
+    app:
+      selector:
+        select:
+          options: [sound, equalizer, bluetooth]

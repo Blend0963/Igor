@@ -140,4 +140,9 @@ VOICE_SENSOR_MARKER = "igor_voice"
 # Service a listener calls the moment it hears the name (sensor.py, heard).
 SERVICE_HEARD = "heard"
 SERVICE_JOURNAL = "journal"
+# The desk screen (igor-ear's `run.sh screen`): the service fires this event.
+SERVICE_SCREEN = "screen"
+SCREEN_EVENT = "igor_screen"
+SCREEN_ACTIONS = ("pc", "dashboard", "off", "on", "toggle", "app", "close")
+SCREEN_APPS = ("sound", "equalizer", "bluetooth")
 API_JOURNAL_ENDPOINT = "/api/journal"

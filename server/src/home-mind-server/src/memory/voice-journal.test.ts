@@ -19,6 +19,14 @@ describe("VoiceJournal", () => {
     expect(j.read("nobody")).toEqual([]);
   });
 
+  it("reads the whole house without a user (voice turns carry the speaker's id)", () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), "journal-")), "j.jsonl");
+    const j = new VoiceJournal(file);
+    j.record(entry("a1b2", "allume le salon"));
+    j.record(entry("default", "ferme le volet"));
+    expect(j.read("").map((e) => e.words)).toEqual(["allume le salon", "ferme le volet"]);
+  });
+
   it("keeps only the newest once the file holds twice the maximum", () => {
     const file = path.join(mkdtempSync(path.join(tmpdir(), "journal-")), "j.jsonl");
     const j = new VoiceJournal(file, 3);
