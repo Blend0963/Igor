@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.7 — A key wakes the desk screen
+
+- Desk screen (igor-ear 0.3.4): asleep, a key or the mouse wakes it (swayidle in the kiosk session), and `sensor.igor_screen` follows the output's real state, however it was switched. Rerun `ear/screen/install-vm.sh` on Igor's machine (it installs swayidle).
+
 ## 0.23.6 — The keyboard switch, headlines, the wall's panels
 
 - Wall bar: « igor » (top left) opens Igor's panel (the satellite, listening on or off, the graphics card, today's exchanges, the last conversations, buttons to open them, talk or stop listening); the clock (top right) opens a time panel (sunrise and sunset, week, chosen entities, a timer's 5/10/20/60 min buttons, the screen's sleep). Both under `bar: panels:`. The machines' detail now closes with its « fermer » only, no longer on any tap.

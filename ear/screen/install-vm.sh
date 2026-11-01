@@ -16,7 +16,7 @@ step() { if eval "$2" >/tmp/igor-screen-step.log 2>&1; then ok "$1"; else ko "$1
 [ -x "$APP/run.sh" ] || { ko "igor-ear n'est pas installé ($APP/run.sh) : lance d'abord ear/install.sh"; exit 1; }
 rm -rf "$APP/igor_ear" && cp -r "$HERE/../igor_ear" "$APP/" && ok "programme d'igor-ear mis à jour" || ko "programme d'igor-ear"
 
-step "paquets (sway, greetd, chromium, ddcutil, réglages son et Bluetooth)" "sudo apt-get install -y sway greetd chromium ddcutil i2c-tools pavucontrol blueman easyeffects"
+step "paquets (sway, greetd, chromium, ddcutil, réglages son et Bluetooth)" "sudo apt-get install -y sway swayidle greetd chromium ddcutil i2c-tools pavucontrol blueman easyeffects"
 step "module i2c-dev (DDC/CI)" "echo i2c-dev | sudo tee /etc/modules-load.d/igor-screen.conf && sudo modprobe i2c-dev"
 step "groupes i2c, video, render, input pour $USER" "sudo usermod -aG i2c,video,render,input $USER"
 step "nom fixe de la carte graphique (/dev/dri/igor-screen)" \

@@ -264,8 +264,28 @@ class Screen:
                 self.keyboard_seen(self.read_keyboard(self.s.keyboard), time.monotonic())
                 if ticks % 6 == 0:
                     self.refullscreen()
+                    self.sync_power()
             except Exception as err:  # noqa: BLE001 - the watch must go on
                 log.warning("Screen: %s", err)
+
+    def sync_power(self) -> None:
+        """The output woken by a key or the mouse (swayidle, see sway.conf),
+        or switched off elsewhere: the state follows, and Home Assistant
+        is told."""
+        try:
+            out = subprocess.run(["swaymsg", "-t", "get_outputs", "-r"], capture_output=True, text=True, timeout=5)
+            outputs = json.loads(out.stdout or "[]")
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            return
+        for o in outputs if isinstance(outputs, list) else []:
+            if o.get("name") != self.s.output:
+                continue
+            power = o.get("power", o.get("dpms"))
+            if isinstance(power, bool) and power != self.on:
+                self.on = power
+                log.info("Screen: %s (from the session)", "on" if power else "off")
+                self.publish()
+            return
 
     def refullscreen(self) -> None:
         """Chromium back to fullscreen once no settings window is open (closed
