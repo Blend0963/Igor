@@ -250,12 +250,25 @@ def _get_platforms(
     return platforms
 
 
+def _frontend_digests(folder: Path, names: tuple[str, ...]) -> dict[str, str]:
+    """A short digest of each frontend file, for its URL: a changed file gets a
+    new URL, so browsers and the companion app cannot keep the old one."""
+    out: dict[str, str] = {}
+    for name in names:
+        try:
+            out[name] = hashlib.sha256((folder / name).read_bytes()).hexdigest()[:12]
+        except OSError:
+            out[name] = ""
+    return out
+
+
 async def _async_setup_frontend(hass: HomeAssistant) -> list[str] | None:
     """Serve the wall-tablet script and add it to every Home Assistant page.
 
     It is loaded everywhere but does nothing until switched on for a device
-    (frontend/igor-tablet.js). The version in the URL makes each update load
-    fresh instead of from the browser cache. Served once per Core run: a
+    (frontend/igor-tablet.js). A digest of the file in its URL makes each
+    change load fresh instead of from the browser cache (the integration's
+    version is not enough: it does not move with every add-on release). Served once per Core run: a
     static path cannot be registered twice, while the page script is added
     and removed with the entry. The dashboard cards (frontend/igor-wall.js)
     come along. Returns the scripts' URLs, or None when the
@@ -275,7 +288,11 @@ async def _async_setup_frontend(hass: HomeAssistant) -> list[str] | None:
             [StaticPathConfig(FRONTEND_URL_BASE, str(folder), False)]
         )
         store["static_registered"] = True
-    urls = [f"{FRONTEND_URL_BASE}/{name}?v={integration.version}" for name in (FRONTEND_SCRIPT, FRONTEND_CARDS)]
+    digests = await hass.async_add_executor_job(_frontend_digests, folder, (FRONTEND_SCRIPT, FRONTEND_CARDS))
+    urls = [
+        f"{FRONTEND_URL_BASE}/{name}?v={integration.version}-{digests.get(name, '')}"
+        for name in (FRONTEND_SCRIPT, FRONTEND_CARDS)
+    ]
     for url in urls:
         frontend.add_extra_js_url(hass, url)
     return urls
