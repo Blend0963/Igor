@@ -432,7 +432,9 @@
     // card whose action is { action: fire-dom-event, igor_journal: true }
     // (it reaches the page as an "ll-custom" event).
     window.addEventListener("ll-custom", function (ev) {
-      if (ev && ev.detail && ev.detail.igor_journal) openHistory();
+      // Any device, the tablet display switched on or not: the overlay is
+      // built the first time it is asked for.
+      if (ev && ev.detail && ev.detail.igor_journal) { if (!host) build(); openHistory(); }
     });
     if (!setting) return;
     if (!host) build();

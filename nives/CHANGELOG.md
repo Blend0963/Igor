@@ -1,7 +1,12 @@
 # Changelog
 
-## 0.23.6 — The keyboard switch, other dashboards' tabs, headlines
+## 0.23.6 — The keyboard switch, headlines, the wall's panels
 
+- Wall bar: « igor » (top left) opens Igor's panel (the satellite, listening on or off, the graphics card, today's exchanges, the last conversations, buttons to open them, talk or stop listening); the clock (top right) opens a time panel (sunrise and sunset, week, chosen entities, a timer's 5/10/20/60 min buttons, the screen's sleep). Both under `bar: panels:`. The machines' detail now closes with its « fermer » only, no longer on any tap.
+- `igor-assist-card`: a second press while Igor listens, thinks or answers cancels the conversation (the satellite's « satellite enabled » switch off for a moment, or `cancel_switch`).
+- `igor-buttons-card`: `journal: true` opens Igor's conversations over the page, on any device.
+- With the tablet theme, every other page (energy, history, lists, Igor's panel, another dashboard) shows a « ‹ mur » button in the bottom left corner that goes back to the wall.
+- New `igor-facts-card`: a few states, one line each, coloured by `ok`, `warn`, `bad`; a row whose entity is missing is left out.
 - Desk screen (igor-ear 0.3.3): a USB sound card counted as a keyboard (it declares its volume keys), so the keyboard never seemed to leave and the USB switch did not move the screen. Only a device with letter keys and a space bar counts now, on Igor's machine and on the PC (`igor-screen-pc`). The screen moves only after 3 seconds without the keyboard: a long USB link that drops it for a moment does not flip the screen. Pull the sources on both.
 - With the tablet theme, Home Assistant's top bar is hidden only on pages that show an `igor-wall`: another dashboard opened from a wall button (one with several tabs) keeps its tabs.
 - New `igor-news-card`: the newest headlines of an RSS or Atom feed (`url`), read by Home Assistant (`nives.news`, kept ten minutes) and refreshed every ten minutes; a tap opens the article on a PC. With `url: https://www.mediapart.fr/journal/fil-dactualites` it shows the AFP's dispatches as Mediapart publishes them (that page has no feed). Restart Home Assistant after updating.
