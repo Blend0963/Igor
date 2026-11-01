@@ -84,3 +84,17 @@ Sharing files to Igor works on Android (Chrome, Edge, Samsung Internet). iOS doe
 ## License
 
 Igor is free software under the **GNU AGPL-3.0**. See [LICENSE](../LICENSE).
+
+## The Igor Journal theme
+
+The add-on installs a Home Assistant theme in the style of the wall tablet's journal: dark grey, thin lines, small corners, a monospace face everywhere (the device's own), green for what is on, amber for warnings, Igor's blue as the accent, with a light version. It lands in `/config/themes/igor-journal.yaml` and is replaced when it changes (copy it under another name to adapt it).
+
+Home Assistant reads themes from that folder once `configuration.yaml` holds:
+
+```yaml
+frontend:
+  themes: !include_dir_merge_named themes
+```
+
+Restart Home Assistant once after adding it, then pick **Igor Journal** in your profile (Profile → Theme). Each device keeps its own choice.
+

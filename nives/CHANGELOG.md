@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.21.9 — The Igor Journal theme
+
+- A Home Assistant theme in the style of the wall tablet's journal: dark grey, thin lines, small corners, a monospace face everywhere (the device's own, nothing downloaded), green for what is on, amber for warnings, Igor's blue as the accent, and a light version (Auto follows the device). The add-on installs it in `/config/themes/igor-journal.yaml` and reloads Home Assistant's themes; `configuration.yaml` needs `frontend: themes: !include_dir_merge_named themes` once (the add-on's log says when it is missing). Then Profile → Theme → Igor Journal.
+
 ## 0.21.8 — The tablet's journal
 
 - Wall tablet: while Igor works it shows a plain terminal journal instead of the eye: your words, each step of the local model (the local model's time, each Home Assistant call with its entity, then "rien envoyé" or the online model and its time), each marked local or online, what was done, and Igor's answer as it is written. One solid background, no blur, no glow, nothing animated but a cursor: light enough for an old tablet. The tablet's microphone is no longer used.
