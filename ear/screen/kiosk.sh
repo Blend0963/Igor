@@ -18,11 +18,18 @@ case "$URL" in
     *) URL="$URL?igor_theme=Igor%20Journal%20(tablette)" ;;
 esac
 mkdir -p "$PROFILE"
+# One kiosk at a time, and none without its session: a kiosk left over
+# from an earlier session (logind keeps a closed session's processes) would
+# start a second Chromium on the same profile, which hands the address to
+# the one on screen, which reloads the page, every few seconds.
+exec 9>"$PROFILE/.kiosk.lock"
+flock -n 9 || { echo "kiosk.sh: another kiosk is running" >&2; exit 0; }
+alive() { [ -n "${SWAYSOCK:-}" ] && [ -S "$SWAYSOCK" ] && swaymsg -t get_version >/dev/null 2>&1; }
 LIMIT=""
 if systemd-run --user --scope --quiet true 2>/dev/null; then
     LIMIT="systemd-run --user --scope --quiet -p CPUQuota=110% -p MemoryHigh=900M -p MemoryMax=1200M"
 fi
-while true; do
+while alive; do
     # Home Assistant's frontend kept by the page's service worker can outlive
     # an update of Home Assistant: the page then reloads again and again on
     # the old one. Started without it (the frontend's files load anew).
@@ -39,6 +46,6 @@ while true; do
         --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy \
         --renderer-process-limit=2 --disable-background-networking --disable-sync \
         --disable-extensions --disable-component-update \
-        --user-data-dir="$PROFILE" "$URL"
+        --user-data-dir="$PROFILE" "$URL" 9>&-
     sleep 3
 done
