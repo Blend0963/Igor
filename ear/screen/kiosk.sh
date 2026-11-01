@@ -23,6 +23,10 @@ if systemd-run --user --scope --quiet true 2>/dev/null; then
     LIMIT="systemd-run --user --scope --quiet -p CPUQuota=110% -p MemoryHigh=900M -p MemoryMax=1200M"
 fi
 while true; do
+    # Home Assistant's frontend kept by the page's service worker can outlive
+    # an update of Home Assistant: the page then reloads again and again on
+    # the old one. Started without it (the frontend's files load anew).
+    rm -rf "$PROFILE/Default/Service Worker" 2>/dev/null
     # After a power cut Chromium would offer to restore the pages: told it closed cleanly.
     sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/; s/"exited_cleanly":false/"exited_cleanly":true/' \
         "$PROFILE/Default/Preferences" 2>/dev/null
