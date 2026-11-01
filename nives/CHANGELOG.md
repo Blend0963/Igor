@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.23.1 — The homelab page
+
+- New wall cards for a second page of the desk screen: `igor-proxmox-card` (the node, each VM and container, storages, ZFS pools and disks, found from the Proxmox VE integration's devices), `igor-docker-manage-card` (Portainer's totals, clean-up, and each container's buttons, found by device so a button never acts on another container; recreate, stop and clean-up need a second press) and `igor-history-card` (sensors over the last hours).
+- The status bar's detail can link to other pages (`links`); a wall with `home: false` is not the one the screen comes back to.
+
 ## 0.23.0 — The wall, reworked for the desk screen
 
 - The journal was empty on the wall: voice exchanges are kept under the speaker's Home Assistant user, and the integration read its own. The server's `GET /api/journal` now returns the whole house's, which `nives.journal` reads (integration 0.1.20).
