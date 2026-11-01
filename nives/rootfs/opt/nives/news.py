@@ -5,6 +5,8 @@ ten minutes, and returns the newest items: title, time, link, source.
 """
 from __future__ import annotations
 
+import html
+import re
 import time
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
@@ -82,6 +84,38 @@ def parse_feed(data: bytes, limit: int = 20) -> dict:
     for i in items:
         del i["ts"]
     return {"source": source[:120], "items": items[:limit]}
+
+
+# Mediapart's « fil d'actualités »: the AFP's dispatches, as a page without a
+# feed. Each teaser: a link to the dispatch, its title, its time.
+MEDIAPART_WIRE = "https://www.mediapart.fr/journal/fil-dactualites"
+_TEASER = re.compile(
+    r'<a\s[^>]*?href="(/journal/fil-dactualites/[^"]+)"[^>]*>(.*?)</a>(?:(?!fil-dactualites/).){0,4000}?<time[^>]*datetime="([^"]+)"',
+    re.S,
+)
+
+
+def is_mediapart_wire(url: str) -> bool:
+    return url.rstrip("/").split("?")[0] == MEDIAPART_WIRE
+
+
+def parse_mediapart(data: bytes, limit: int = 20) -> dict:
+    page = data.decode("utf-8", errors="replace")
+    items, seen = [], set()
+    for path, title, when in _TEASER.findall(page):
+        title = " ".join(html.unescape(re.sub(r"<[^>]+>", "", title)).split())
+        if not title or path in seen:
+            continue
+        seen.add(path)
+        d = _when(when)
+        items.append({"title": title[:300], "at": d.isoformat() if d else "",
+                      "ts": d.timestamp() if d else 0.0, "link": "https://www.mediapart.fr" + path})
+    if not items:
+        raise ValueError("no dispatch found on the page")
+    items.sort(key=lambda i: i["ts"], reverse=True)
+    for i in items:
+        del i["ts"]
+    return {"source": "AFP (Mediapart)", "items": items[:limit]}
 
 
 class FeedCache:

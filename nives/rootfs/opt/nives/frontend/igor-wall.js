@@ -1953,7 +1953,8 @@
 
   // ----- igor-news-card: the newest headlines of a feed -----
   //   type: custom:igor-news-card
-  //   url: https://example.org/rss.xml   # an RSS or Atom feed
+  //   url: https://example.org/rss.xml   # an RSS or Atom feed, or the AFP's
+  //        dispatches: https://www.mediapart.fr/journal/fil-dactualites
   //   title: dépêches
   //   limit: 15
   // Read by Home Assistant (nives.news, kept ten minutes), refreshed here

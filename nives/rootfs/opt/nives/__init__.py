@@ -556,10 +556,11 @@ NEWS_SCHEMA = vol.Schema(
 @callback
 def _async_register_news(hass: HomeAssistant) -> None:
     """The wall's news card: an RSS or Atom feed's newest headlines, fetched
-    here (a browser cannot read another site) and kept ten minutes."""
+    here (a browser cannot read another site) and kept ten minutes. Also
+    Mediapart's page of AFP dispatches, which has no feed."""
     if hass.services.has_service(DOMAIN, SERVICE_NEWS):
         return
-    from .news import MAX_BYTES, FeedCache, parse_feed
+    from .news import MAX_BYTES, FeedCache, is_mediapart_wire, parse_feed, parse_mediapart
 
     cache = FeedCache()
 
@@ -576,7 +577,8 @@ def _async_register_news(hass: HomeAssistant) -> None:
                     data = await response.content.read(MAX_BYTES + 1)
                 if len(data) > MAX_BYTES:
                     return {"source": "", "items": [], "error": "feed too large"}
-                feed = await hass.async_add_executor_job(parse_feed, data, 50)
+                parse = parse_mediapart if is_mediapart_wire(url) else parse_feed
+                feed = await hass.async_add_executor_job(parse, data, 50)
             except (aiohttp.ClientError, TimeoutError) as err:
                 _LOGGER.warning("News feed %s unavailable: %s", url, err)
                 return {"source": "", "items": [], "error": "unreachable"}
