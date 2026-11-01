@@ -2222,9 +2222,19 @@
       hass.callWS({ type: "call_service", domain: "nives", service: "news", service_data: { url: String(this.config.url), limit: limit }, return_response: true })
         .then((r) => { this.render((r && r.response) || {}); })
         .catch(() => { this.render({ error: "service" }); })
-        .then(() => { this.loading = false; });
+        .then(() => {
+          this.loading = false;
+          // Nothing yet (Home Assistant just started, the site busy): again
+          // in 30 s rather than at the next ten-minute round.
+          clearTimeout(this.retry);
+          if (!this.ok) this.retry = setTimeout(() => this.load(), 30000);
+        });
     }
     render(feed) {
+      this.ok = !!(feed.items && feed.items.length);
+      // An error after a good list: keep the list on screen.
+      if (!this.ok && this.list.childElementCount && this.shown) return;
+      this.shown = this.ok;
       this.list.innerHTML = "";
       this.src.textContent = feed.source || "";
       var items = feed.items || [];
@@ -2246,7 +2256,7 @@
         }
       }, this);
     }
-    disconnectedCallback() { if (this.timer) { clearInterval(this.timer); this.timer = null; this._built = false; this.shadowRoot.innerHTML = ""; } }
+    disconnectedCallback() { clearTimeout(this.retry); if (this.timer) { clearInterval(this.timer); this.timer = null; this._built = false; this.shadowRoot.innerHTML = ""; } }
   }
 
   // ----- igor-alerts-card: what is wrong, first -----
