@@ -1,9 +1,13 @@
 # Changelog
 
+## 0.23.6 — The keyboard switch, other dashboards' tabs
+
+- Desk screen (igor-ear 0.3.3): a USB sound card counted as a keyboard (it declares its volume keys), so the keyboard never seemed to leave and the USB switch did not move the screen. Only a device with letter keys and a space bar counts now, on Igor's machine and on the PC (`igor-screen-pc`). Pull the sources on both.
+- With the tablet theme, Home Assistant's top bar is hidden only on pages that show an `igor-wall`: another dashboard opened from a wall button (one with several tabs) keeps its tabs.
+
 ## 0.23.5 — New cards reach every screen
 
 - The cards' script kept the same address since 0.23.0, so browsers and the companion app could keep running an old copy: cards added since (`igor-tiles-card`, `igor-control-card`, `igor-clock-card`, `igor-alerts-card`…) showed « Custom element doesn't exist ». Each frontend script's address now carries a digest of its content, so any change is loaded fresh. Restart Home Assistant after updating.
-- Desk screen (igor-ear 0.3.3): a USB sound card counted as a keyboard (it declares its volume keys), so the keyboard never seemed to leave and the USB switch did not move the screen. Only a device with letter keys and a space bar counts now, on Igor's machine and on the PC (`igor-screen-pc`). Pull the sources on both.
 
 ## 0.23.4 — Fullscreen again, times as times
 

@@ -12,8 +12,9 @@
 //   custom:igor-camera-card   a camera's picture, refreshed every few seconds
 //
 // And the "Igor Journal (tablette)" theme: its --igor-hide-header variable
-// hides Home Assistant's top bar on the device that uses it. The bar comes
-// back while editing the dashboard (?edit=1) or with ?barre in the address.
+// hides Home Assistant's top bar on the device that uses it, on the pages
+// that show an igor-wall only (other dashboards keep their tabs). The bar
+// comes back while editing the dashboard (?edit=1) or with ?barre in the address.
 //
 // Written plainly for old tablets: no animation but the status bar's one
 // transform, no timer faster than a second, history read once a minute.
@@ -2065,12 +2066,27 @@
       return panel && panel.shadowRoot && panel.shadowRoot.querySelector("hui-root");
     } catch (e) { return null; }
   }
+  // Only a page that shows an igor-wall loses the bar: another dashboard
+  // (one with several tabs, say) keeps its tabs on the same device.
+  function viewHasWall(root) {
+    var cfg = root && root.lovelace && root.lovelace.config;
+    if (!cfg || !Array.isArray(cfg.views)) return true;
+    var seg = decodeURIComponent((window.location.pathname.split("/")[2] || ""));
+    var view = null;
+    for (var i = 0; i < cfg.views.length; i++) {
+      if (cfg.views[i] && String(cfg.views[i].path || "") === seg) { view = cfg.views[i]; break; }
+    }
+    if (!view) view = cfg.views[/^\d+$/.test(seg) ? Number(seg) : 0];
+    if (!view) return false;
+    try { return JSON.stringify(view).indexOf("custom:igor-wall") >= 0; } catch (e) { return false; }
+  }
   function wantsNoHeader(root) {
     var v = getComputedStyle(document.documentElement).getPropertyValue("--igor-hide-header").trim().replace(/["']/g, "");
     if (v !== "1" && v !== "true") return false;
     var q = window.location.search || "";
     if (/[?&](barre|edit)(=|&|$)/.test(q)) return false;
-    return !(root && root.lovelace && root.lovelace.editMode);
+    if (root && root.lovelace && root.lovelace.editMode) return false;
+    return viewHasWall(root);
   }
   setInterval(function () {
     var root = lovelaceRoot();
