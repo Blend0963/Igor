@@ -83,3 +83,30 @@ if [ "$NEEDS_UPDATE" = "true" ]; then
 else
     echo "[integration] Nives integration is up to date"
 fi
+
+# The Igor Journal theme (Home Assistant's look in the style of the wall
+# tablet's journal): kept in /config/themes, replaced when it changes. Home
+# Assistant loads themes from there only with, in configuration.yaml,
+#   frontend:
+#     themes: !include_dir_merge_named themes
+# which is the user's file, never edited here: the log says when it is missing.
+THEME_SOURCE="/opt/igor-themes/igor-journal.yaml"
+THEME_TARGET="/config/themes/igor-journal.yaml"
+if [ -f "$THEME_SOURCE" ]; then
+    if [ -L "$THEME_TARGET" ] || ! cmp -s "$THEME_SOURCE" "$THEME_TARGET" 2>/dev/null; then
+        mkdir -p /config/themes
+        rm -f "$THEME_TARGET"
+        cp -f "$THEME_SOURCE" "$THEME_TARGET"
+        echo "[theme] Igor Journal theme installed at $THEME_TARGET"
+        # Loaded at once if Home Assistant is already up; otherwise at its start.
+        if [ -n "${SUPERVISOR_TOKEN:-}" ]; then
+            curl -s -o /dev/null -m 10 -X POST -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+                http://supervisor/core/api/services/frontend/reload_themes || true
+        fi
+    fi
+    if ! grep -Eqs '^[[:space:]]*themes:[[:space:]]*!include_dir_merge_named[[:space:]]+themes' /config/configuration.yaml; then
+        echo "[theme] To use the Igor Journal theme, add to configuration.yaml:"
+        echo "[theme]   frontend:"
+        echo "[theme]     themes: !include_dir_merge_named themes"
+    fi
+fi

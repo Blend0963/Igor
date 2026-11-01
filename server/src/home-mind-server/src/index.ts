@@ -23,6 +23,7 @@ import { createChatEngine, createFactExtractor } from "./llm/factory.js";
 import { createRouter } from "./api/routes.js";
 import { buildDatasetZip } from "./train/export.js";
 import { TurnLog } from "./train/turn-log.js";
+import { VoiceJournal } from "./memory/voice-journal.js";
 import { createSttService, sttModelFor } from "./stt/stt-service.js";
 import { createTtsService } from "./tts/tts-service.js";
 import { configureMediaStore } from "./llm/media-store.js";
@@ -213,6 +214,17 @@ const turnLog = config.localLlmUrl && config.localTurnLog && config.conversation
   ? new TurnLog(path.join(path.dirname(config.conversationDbPath), "local-turns.jsonl"))
   : undefined;
 if (turnLog && "setTurnLog" in llm) (llm as { setTurnLog(log: TurnLog): void }).setTurnLog(turnLog);
+// Igor's spoken exchanges with their steps, for the wall tablet's history
+// (memory/voice-journal.ts), on the house's disk next to the conversations.
+const journal = config.localLlmUrl && config.conversationStorage === "sqlite"
+  ? new VoiceJournal(path.join(path.dirname(config.conversationDbPath), "voice-journal.jsonl"))
+  : undefined;
+if (journal && "setJournal" in llm) (llm as { setJournal(j: VoiceJournal): void }).setJournal(journal);
+app.get("/api/journal/:userId", (req, res) => {
+  const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ entries: journal ? journal.read(req.params.userId, limit) : [] });
+});
 let wholeHouse: { ha: HomeAssistantClient; topology: TopologyScanner; scanner: DeviceScanner } | undefined;
 app.get("/api/local-dataset", async (req, res) => {
   if (!isIngressRequest(req)) return res.status(403).json({ error: "Only from the Home Assistant panel." });

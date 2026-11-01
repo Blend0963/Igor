@@ -43,7 +43,7 @@ A tablet that shows Home Assistant all day (Fully Kiosk Browser, the companion a
 With igor-ear (the listener in `ear/` that needs no wake word), the tablet shows "Je vous ai entendu…" the moment it hears "Igor", a few seconds before the words reach Igor ("Je vous écoute…" when the name came alone, and while Igor waits for the answer to a question of its own). igor-ear calls the integration's `nives.heard` service for this.
 
 1. Restart Home Assistant once after updating, so it loads the new integration files.
-2. On the tablet, open Home Assistant once with `?igor_tablet=1` at the end of the address, for example `http://homeassistant.local:8123/lovelace/0?igor_tablet=1`. In Fully Kiosk Browser, put it in the Start URL. With several satellites, `?igor_tablet=assist_satellite.living_room` follows that one only. `?igor_tablet=0` switches it off. The choice is kept by that browser only; other devices are not affected. The tablet then shows Igor's journal while it works: your words, each step of the local model (marked local or online, with its time), what was done, and Igor's answer, in a plain terminal light enough for an old tablet.
+2. On the tablet, open Home Assistant once with `?igor_tablet=1` at the end of the address, for example `http://homeassistant.local:8123/lovelace/0?igor_tablet=1`. In Fully Kiosk Browser, put it in the Start URL. With several satellites, `?igor_tablet=assist_satellite.living_room` follows that one only. `?igor_tablet=0` switches it off. The choice is kept by that browser only; other devices are not affected. The tablet then shows Igor's journal while it works: your words, each step of the local model (marked local or online, with its time), what was done, and Igor's answer, in a plain terminal light enough for an old tablet. A small **journal** button in a corner of the page opens the history: Igor's last 100 spoken exchanges, by day, each with its steps; **fermer** closes it, and a new request takes the screen back. The history is kept on the add-on's disk (the newest 1,000 exchanges), never sent anywhere.
 
 It reads the satellite's state and the **Igor Assist** sensor, which follows each voice request. The texts are not kept in the history and are cleared three minutes after the answer, but any Home Assistant account can read the latest exchange while it is there. To turn the sensor and the display off: Settings → Devices & services → Igor → Configure → Wall-tablet display.
 
@@ -84,3 +84,17 @@ Sharing files to Igor works on Android (Chrome, Edge, Samsung Internet). iOS doe
 ## License
 
 Igor is free software under the **GNU AGPL-3.0**. See [LICENSE](../LICENSE).
+
+## The Igor Journal theme
+
+The add-on installs a Home Assistant theme in the style of the wall tablet's journal: dark grey, thin lines, small corners, a monospace face everywhere (the device's own), green for what is on, amber for warnings, Igor's blue as the accent, with a light version. It lands in `/config/themes/igor-journal.yaml` and is replaced when it changes (copy it under another name to adapt it).
+
+Home Assistant reads themes from that folder once `configuration.yaml` holds:
+
+```yaml
+frontend:
+  themes: !include_dir_merge_named themes
+```
+
+Restart Home Assistant once after adding it, then pick **Igor Journal** in your profile (Profile → Theme). Each device keeps its own choice.
+

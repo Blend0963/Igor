@@ -15,6 +15,7 @@ import { formatLiveState } from "./live-state.js";
 import { askIsOrder } from "./order-check.js";
 import { BRIEFING_HISTORY, BRIEFING_THREAD_ID, leanMode, SPOKEN_LENGTH_REMINDER, spokenSentenceCap } from "./lean.js";
 import type { TraceStep } from "./interface.js";
+import type { VoiceJournal } from "../memory/voice-journal.js";
 import { ADDRESSEE_INSTRUCTIONS, addresseeQuestion, checkAddressee, needsAddresseeCheck } from "./addressee-check.js";
 import { SpokenGuard } from "./runaway.js";
 import { RECENT_FILE_MESSAGES, shortenAttachedFiles } from "../files/extract.js";
@@ -170,10 +171,17 @@ export class OpenAIChatEngine implements IChatEngine {
   private client: OpenAI;
   /** The local model's real requests, for its training (train/turn-log.ts); unset = not kept. */
   private turnLog?: TurnLog;
+  private journal?: VoiceJournal;
 
   setTurnLog(log: TurnLog): void {
     this.turnLog = log;
   }
+
+  /** Where spoken exchanges are kept for the wall tablet's history. */
+  setJournal(journal: VoiceJournal): void {
+    this.journal = journal;
+  }
+
 
   /** The house's own model (llm/local-llm.ts), for Assist; unset = none. */
   private local?: { client: OpenAI; model: string; extractor: IFactExtractor };
@@ -983,6 +991,17 @@ export class OpenAIChatEngine implements IChatEngine {
     const response = truncated
       ? responseText + (isVoice ? VOICE_TRUNCATION_NOTICE : TRUNCATION_NOTICE)
       : responseText;
+
+    if (local && trace.length && !interrupted) {
+      this.journal?.record({
+        user: userId,
+        words: message,
+        answer: response,
+        ...(localSilent && response === "" ? { silent: true } : {}),
+        done: (toolCtx.actions ?? []).map((a) => a.label),
+        trace: this.fullTrace(trace, local.model, localModelMs, addresseeMs),
+      });
+    }
 
     return {
       response,

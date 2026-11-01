@@ -16,3 +16,11 @@ heard:
           min: 1
           max: 120
           unit_of_measurement: s
+journal:
+  fields:
+    limit:
+      default: 50
+      selector:
+        number:
+          min: 1
+          max: 200
