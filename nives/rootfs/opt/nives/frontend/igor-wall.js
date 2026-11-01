@@ -123,6 +123,7 @@
   // ===== the status bar: every machine on one scrolling line =====
   //   bar:
   //     speed: 60              # seconds for one turn; 0: pages, no animation
+  //     tap: /igor-wall/homelab  # a tap on the bar opens that page (else: the machines' detail)
   //     groups:
   //       - name: pve
   //         kind: hôte
@@ -245,7 +246,8 @@
       this.host = host;
       // The machines' detail closes with its « fermer » only; the clock and
       // « igor » open their own panels.
-      this.root.addEventListener("click", () => this.openDetail());
+      // `tap: /a-page` opens that page (the homelab) instead of the detail.
+      this.root.addEventListener("click", () => { if (this.config.tap) navigate(String(this.config.tap)); else this.openDetail(); });
       left.addEventListener("click", (ev) => { ev.stopPropagation(); this.togglePop("igor"); });
       this.clockEl.addEventListener("click", (ev) => { ev.stopPropagation(); this.togglePop("time"); });
       this.page = 0;
