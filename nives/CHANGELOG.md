@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.3 — The desk screen stops reloading
+
+- The kiosk page reloaded every few seconds: `kiosk.sh` outlived its session (logind keeps a closed session's processes), so each restart of greetd added one more; a second Chromium on the same profile hands its address to the one on screen, which reloads the page. `kiosk.sh` now runs once (a lock) and stops with its sway session. Rerun `ear/screen/install-vm.sh` on Igor's machine.
+
 ## 0.23.2 — A tablet and a phone
 
 - Cards for a simple tablet page and a phone admin dashboard: `igor-tiles-card` (large buttons: scenes, lights, media…), `igor-control-card` (a device and its buttons), `igor-clock-card`, `igor-alerts-card` (what is wrong, first, with a summary); `igor-weather-card` without its clock (`clock: false`), `igor-assist-card` with a microphone button (`size: big`). The Proxmox and Docker cards fold into one column on a phone.
