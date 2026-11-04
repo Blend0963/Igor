@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.15 — The tablet shows the whole exchange
+
+- A tablet tied to one satellite (`?igor_tablet=assist_satellite.…`) ignored every turn whose satellite is unknown (the voice sensor says `None`): it showed the name heard, then nothing. Such turns now show. And a quick local turn that goes from « heard » to « done » between two looks is shown whatever step the display last saw.
+
 ## 0.23.14 — No empty « transcription »
 
 - With two Igor entries in Home Assistant (an old one left behind), the tablet followed the old entry's voice sensor: « heard » reached it, the turn itself only the working one, so the display stayed on « transcription ». The tablet and the wall cards now follow the voice sensor that moved last.
