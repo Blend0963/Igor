@@ -52,6 +52,7 @@ from .const import (
     SERVICE_DNS_MAP,
     SERVICE_WIFI,
     SERVICE_NET_MAP,
+    SERVICE_WIFI_SCAN,
     OPNSENSE_KEY,
     NAMES_KEY,
     OPENWRT_KEY,
@@ -453,6 +454,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
         _async_register_dns_map(hass)
         _async_register_wifi(hass)
         _async_register_net_map(hass)
+        _async_register_wifi_scan(hass)
         _async_register_screen(hass)
     _async_register_disarm(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
@@ -933,7 +935,7 @@ def _async_register_net_map(hass: HomeAssistant) -> None:
     from homeassistant.helpers.service import async_register_admin_service
 
     from .openwrt import UbusError
-    from .opnsense import build_map, parse_states
+    from .opnsense import build_map, ip_kind, parse_states
 
     state: dict[str, Any] = {"cache": None}
 
@@ -982,11 +984,47 @@ def _async_register_net_map(hass: HomeAssistant) -> None:
         )
         out["error"] = ""
         out["notes"] = inv["notes"]
+        # Each network (VLAN) and the router's address on it.
+        out["vlans"] = sorted(
+            ({"name": hosts[ip].get("net", ""), "gateway": ip} for ip in own
+             if hosts.get(ip, {}).get("net") and not str(hosts[ip]["net"]).upper().startswith("WAN")
+             and ip_kind(ip) == "local"),
+            key=lambda v: v["name"],
+        )
         state["cache"] = (time.monotonic(), out)
         return out
 
     async_register_admin_service(
         hass, DOMAIN, SERVICE_NET_MAP, _net_map, schema=vol.Schema({}), supports_response=SupportsResponse.ONLY
+    )
+
+
+@callback
+def _async_register_wifi_scan(hass: HomeAssistant) -> None:
+    """`nives.wifi_scan`: the Wi-Fi networks around, heard by the OpenWrt
+    access points (openwrt.py). Administrators only; only when asked (a
+    radio may pause a second or two while it listens)."""
+    if hass.services.has_service(DOMAIN, SERVICE_WIFI_SCAN):
+        return
+    from homeassistant.helpers.service import async_register_admin_service
+
+    from .openwrt import UbusError
+
+    async def _scan(call: ServiceCall) -> ServiceResponse:
+        aps = _openwrt_aps(hass)
+        if not aps:
+            return {"aps": [], "error": "no OpenWrt access point in the nives: block"}
+        out = []
+        for ap in aps:
+            try:
+                nets = await ap.scan(async_get_clientsession(hass, ap.verify_ssl))
+                out.append({"name": ap.name, "networks": nets})
+            except (UbusError, aiohttp.ClientError, TimeoutError, ValueError) as err:
+                out.append({"name": ap.name, "networks": [], "error": str(err) or type(err).__name__})
+        return {"aps": out}
+
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_WIFI_SCAN, _scan, schema=vol.Schema({}), supports_response=SupportsResponse.ONLY
     )
 
 

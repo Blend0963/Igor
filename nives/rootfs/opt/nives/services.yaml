@@ -80,3 +80,4 @@ dns_map:
           max: 120
 wifi_clients: {}
 net_map: {}
+wifi_scan: {}

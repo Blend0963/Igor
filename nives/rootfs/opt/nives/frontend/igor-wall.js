@@ -14,7 +14,9 @@
 //   custom:igor-dns-card      AdGuard Home's DNS queries, live (administrators)
 //   custom:igor-map-card      where those queries' answers point to, on a world map
 //   custom:igor-wifi-card     who is on which Wi-Fi (OpenWrt access points)
-//   custom:igor-netmap-card   who talks to whom through the router, animated
+//   custom:igor-netmap-card   the network by VLAN around OPNsense, to look after it
+//   custom:igor-talkers-card  the busiest devices through the router
+//   custom:igor-wifi-scan-card  the Wi-Fi networks around (OpenWrt scan)
 //
 // And the "Igor Journal (tablette)" theme: its --igor-hide-header variable
 // hides Home Assistant's top bar on the device that uses it, on the pages
@@ -176,6 +178,14 @@
     ".fix.left { border-right: 1px solid var(--line); }",
     ".fix.right { border-left: 1px solid var(--line); }",
     ".lens { width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle, #e1f5fe 0, #4fc3f7 30%, #0277bd 65%, #0d1014 100%); box-shadow: 0 0 0 1.5px #3b4a56; flex: none; }",
+    ".eye { width: 18px; height: 18px; flex: none; display: block; }",
+    ".brand { font-family: 'Chakra Petch', " + MONO + "; letter-spacing: 0.22em; font-weight: 600; color: var(--fg); }",
+    ".state { color: var(--dim); font-size: 11px; }",
+    ".tabs { flex: none; display: flex; align-items: stretch; height: 100%; border-right: 1px solid var(--line); }",
+    ".tabs a { display: flex; align-items: center; padding: 0 11px; color: var(--dim); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; text-decoration: none; border-bottom: 2px solid transparent; cursor: pointer; }",
+    ".tabs a:hover { color: var(--fg); }",
+    ".tabs a.on { color: var(--fg); border-bottom-color: var(--igor-signal, #e5323b); }",
+    "@media (max-width: 1100px) { .tabs { display: none; } }",
     ".lane { flex: 1; overflow: hidden; height: 100%; display: flex; align-items: center; position: relative; }",
     ".run { display: flex; will-change: transform; }",
     ".run.roll { animation: roll var(--speed, 60s) linear infinite; }",
@@ -234,8 +244,13 @@
       this.groups = this.config.groups || [];
       this.root = el("div", "ticker", host);
       var left = el("span", "fix left", this.root);
-      el("span", "lens", left);
-      this.igorEl = el("span", "", left, "igor");
+      // The eye: a monolith pierced by a red eye, Igor's logo.
+      left.insertAdjacentHTML("beforeend", '<svg class="eye" viewBox="0 0 256 256" aria-hidden="true"><rect x="107" y="20" width="44" height="216" fill="#e9e4da"/><circle cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle cx="128" cy="96" r="16" fill="#e5323b"/></svg>');
+      el("span", "brand", left, "IGOR");
+      this.igorEl = el("span", "state", left, "");
+      // The dashboard's pages, the one shown in red (`tabs: false`: none).
+      this.tabsEl = this.config.tabs === false ? null : el("span", "tabs", this.root);
+      if (this.tabsEl) this.tabsEl.addEventListener("click", (ev) => ev.stopPropagation());
       var lane = el("div", "lane", this.root);
       this.lane = lane;
       this.run = el("div", "run", lane);
@@ -279,6 +294,22 @@
         if (copy === 0) this.segs.push(seg);
       });
     }
+    renderTabs() {
+      if (!this.tabsEl) return;
+      var root = lovelaceRoot();
+      var views = root && root.lovelace && root.lovelace.config && root.lovelace.config.views;
+      var parts = window.location.pathname.split("/");
+      var key = parts[1] + "|" + parts[2] + "|" + (views ? views.length : 0);
+      if (key === this.tabsKey) return;
+      this.tabsKey = key;
+      this.tabsEl.innerHTML = "";
+      (views || []).forEach((v, i) => {
+        if (v.subview || v.visible === false) return;
+        var seg = String(v.path || i);
+        var a = el("a", decodeURIComponent(parts[2] || "") === seg ? "on" : "", this.tabsEl, v.title || seg);
+        a.addEventListener("click", () => { navigate("/" + parts[1] + "/" + seg); });
+      });
+    }
     clock() {
       var d = new Date();
       this.clockEl.textContent = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }) + " · " + hhmm(d);
@@ -286,7 +317,8 @@
     set hass(hass) {
       this._hass = hass;
       var igor = igorSensor(hass);
-      this.igorEl.textContent = "igor · " + (igor ? (IGOR_WORDS[igor.state] || igor.state) : "—");
+      this.igorEl.textContent = igor ? (IGOR_WORDS[igor.state] || igor.state) : "";
+      this.renderTabs();
       // The figures: at most every 5 s, the old tablet has better to do.
       var now = Date.now();
       if (now - this.lastText < 5000 && this.lastText) return;
@@ -515,6 +547,7 @@
     ".cols { flex: 1; min-height: 0; display: grid; gap: 10px; padding: 10px; box-sizing: border-box; }",
     ".col { display: flex; flex-direction: column; gap: 6px; min-height: 0; min-width: 0; }",
     ".hd { font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); padding: 4px 2px 0; flex: none; }",
+    ".hd::before { content: ''; display: inline-block; width: 5px; height: 5px; background: var(--igor-signal, #e5323b); margin-right: 7px; vertical-align: 1px; }",
     ".hd:first-child { padding-top: 0; }",
     ".slot { flex: none; min-width: 0; }",
     ".slot.grow { flex: 1 1 0; min-height: 60px; display: flex; flex-direction: column; }",
@@ -561,7 +594,7 @@
       el("style", "", root, BASE + "\n" + BAR_CSS + "\n" + WALL_CSS);
       var wall = el("div", "wall", root);
       this.wall = wall;
-      if (this.config.bar && (this.config.bar.groups || []).length) this.bar = new IgorBar(wall, this.config.bar);
+      if (this.config.bar) this.bar = new IgorBar(wall, this.config.bar);
       var cols = el("div", "cols", wall);
       cols.style.gridTemplateColumns = this.config.columns.map(function (c) { return (Number(c.width) || 1) + "fr"; }).join(" ");
       var helpers = window.loadCardHelpers ? await window.loadCardHelpers() : null;
@@ -2440,6 +2473,7 @@
   //   rows: 60             # lines kept on screen
   //   names: { 192.168.1.20: nas }   # names for addresses AdGuard does not know
   //   hide: [local, in-addr.arpa]      # domains not shown (and their subdomains)
+  //   more: /igor-wall/dns             # a « tout le journal » button to that page
   // Read by Home Assistant (nives.dns_log, through the AdGuard integration),
   // for administrators only: it is the house's browsing history. Nothing is
   // kept; reading stops while the page is hidden or paused.
@@ -2479,6 +2513,8 @@
       this.bBlocked = btn("bloquées", () => { this.blockedOnly = !this.blockedOnly; this.bBlocked.classList.toggle("on", this.blockedOnly); this.lines = []; this.load(); });
       this.bPause = btn("pause", () => { this.paused = !this.paused; this.bPause.classList.toggle("on", this.paused); this.bPause.textContent = this.paused ? "reprendre" : "pause"; if (!this.paused) this.load(); });
       this.q = el("input", "q", ctl); this.q.placeholder = "domaine ou appareil…";
+      // `more: /a-page`: a button to the full log (a page of its own).
+      if (this.config.more) btn("tout le journal ›", () => navigate(String(this.config.more)));
       this.q.addEventListener("input", () => this.draw());
       this.who = el("div", "who", card);
       this.list = el("div", "list", card);
@@ -2511,7 +2547,7 @@
         e.key = e.time + "|" + e.client + "|" + e.domain + "|" + e.type;
         if (!seen[e.key]) { seen[e.key] = true; fresh.push(e); }
       });
-      var keep = Math.max(20, Math.min(300, Number(this.config.rows) || 60)) * 3;
+      var keep = Math.max(5, Math.min(300, Number(this.config.rows) || 60)) * 3;
       this.lines = fresh.concat(this.lines).sort((a, b) => (a.time < b.time ? 1 : a.time > b.time ? -1 : 0)).slice(0, keep);
     }
     label(e) { return this.names[e.client] || e.name || e.client; }
@@ -2539,7 +2575,7 @@
       });
       var rows = all.filter((e) => (!this.client || this.label(e) === this.client) &&
         (!q || e.domain.toLowerCase().indexOf(q) >= 0 || this.label(e).toLowerCase().indexOf(q) >= 0));
-      rows = rows.slice(0, Math.max(20, Math.min(300, Number(this.config.rows) || 60)));
+      rows = rows.slice(0, Math.max(5, Math.min(300, Number(this.config.rows) || 60)));
       this.list.innerHTML = "";
       if (!rows.length) {
         el("div", "empty", this.list, this.error ? "AdGuard : " + this.error : this.paused ? "En pause." : "Aucune requête.");
@@ -2602,6 +2638,11 @@
     build() {
       this.style([
         ".wrap { position: relative; flex: none; }",
+        ".wrap.bigw { flex: 1; min-height: 160px; }",
+        ".wrap.bigw svg.map { position: absolute; inset: 0; height: 100%; }",
+        ".grid.over { position: absolute; left: 6px; right: 6px; bottom: 6px; margin: 0; display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; pointer-events: none; }",
+        ".grid.over > div { pointer-events: auto; width: 270px; max-height: 60%; overflow-y: auto; background: rgba(7, 8, 10, 0.86); border: 1px solid var(--line); padding: 6px 9px; }",
+        ".grid.over > div:empty { display: none; }",
         "svg.map { width: 100%; display: block; }",
         ".land { fill: var(--track); stroke: var(--line); stroke-width: 0.15; }",
         ".arc { fill: none; stroke: var(--acc); stroke-linecap: round; opacity: 0.75; }",
@@ -2630,12 +2671,14 @@
       this.minutes = Math.max(1, Math.min(120, Number(this.config.minutes) || 15));
       el("span", "t sub", top, (this.config.title || ("le monde · " + this.minutes + " min")).toUpperCase()).style.letterSpacing = "0.12em";
       this.sum = el("span", "sub num", top);
-      var wrap = el("div", "wrap", card);
+      this.big = !!this.config.big;
+      var wrap = el("div", "wrap" + (this.big ? " bigw" : ""), card);
       this.svg = svgEl("svg", { class: "map", viewBox: "0 0 360 150", preserveAspectRatio: "xMidYMid meet" }, wrap);
       this.landG = svgEl("g", {}, this.svg);
       this.arcG = svgEl("g", {}, this.svg);
       this.dotG = svgEl("g", {}, this.svg);
-      var grid = el("div", "grid", card);
+      // Big (the middle of a page): the list and the detail float on the map.
+      var grid = el("div", "grid" + (this.big ? " over" : ""), this.big ? wrap : card);
       this.list = el("div", "list", grid);
       this.det = el("div", "det", grid);
       var foot = el("div", "foot", card);
@@ -2701,7 +2744,7 @@
         this.det.innerHTML = "";
         return;
       }
-      rows.forEach((c) => {
+      rows.slice(0, this.big ? 8 : rows.length).forEach((c) => {
         var r = el("div", "c" + (c.cc === this.sel ? " sel" : ""), this.list);
         el("span", "n", r, countryName(c.cc) + (c.orgs && c.orgs.length ? " · " + c.orgs[0] : ""));
         el("span", "k", r, String(c.count));
@@ -2711,6 +2754,7 @@
       // The detail of the chosen country (else the first).
       var cur = rows.find((c) => c.cc === this.sel) || rows[0];
       this.det.innerHTML = "";
+      if (this.big && !this.sel) return;
       el("div", "", this.det, countryName(cur.cc) + " · " + cur.count + " réponses");
       var part = (title, items) => {
         if (!items.length) return;
@@ -2732,6 +2776,7 @@
   //   interval: 15                       # seconds between two reads
   //   names: { "AA:BB:CC:DD:EE:FF": tablette }
   //   ssids: [Maison, Objets]            # only these networks (else all)
+  //   more: /igor-wall/wifi              # a « voisins › » link to that page
   // Read from the OpenWrt access points of the `nives:` block (nives.wifi_clients,
   // administrators only): per network its band, channel and devices, each
   // with its signal, its link rates and how long it has been connected.
@@ -2771,6 +2816,12 @@
       var top = el("div", "top", card);
       el("span", "t sub", top, (this.config.title || "wi-fi").toUpperCase()).style.letterSpacing = "0.12em";
       this.sum = el("span", "sub num", top);
+      // `more: /a-page`: a link to another page (the neighbours' networks).
+      if (this.config.more) {
+        var mo = el("button", "link", top, this.config.more_label || "voisins ›");
+        mo.type = "button";
+        mo.addEventListener("click", () => navigate(String(this.config.more)));
+      }
       this.list = el("div", "list", card);
       var every = Math.max(5, Math.min(300, Number(this.config.interval) || 15));
       this.timer = setInterval(() => this.load(), every * 1000);
@@ -2823,18 +2874,26 @@
     disconnectedCallback() { if (this.timer) { clearInterval(this.timer); this.timer = null; this._built = false; this.shadowRoot.innerHTML = ""; } }
   }
 
-  // ----- igor-netmap-card: who talks to whom, animated -----
+  // ----- igor-netmap-card: the network by VLAN, to look after it -----
   //   type: custom:igor-netmap-card
-  //   title: réseau · en direct
+  //   title: schéma · en direct
   //   interval: 10          # seconds between two reads
   //   names: { 192.168.1.20: nas }
-  //   animate: true         # dots running along the links (false: still)
-  // Read from OPNsense (nives.net_map, administrators only): the router in the
-  // middle, the house's devices around it coloured by network (VLAN), the
-  // internet's operators outside. A link's width follows its traffic, its
-  // dots run from who opened the connection. A tap on a device shows its
-  // address, network, Wi-Fi signal and connections. Only what crosses the
-  // router is seen: two devices of the same network talk out of its sight.
+  //   animate: true         # dots running along the flows (false: still)
+  //   key: mur              # where the layout is remembered (else the page)
+  // Read from OPNsense (nives.net_map, administrators only). OPNsense on top,
+  // each network (VLAN) a block linked to it with its gateway and devices,
+  // the internet's operators on the right. Flows go from one network to the
+  // other through OPNsense, their width by traffic.
+  // Toolbar: layout (Par VLAN, Arbre, Libre), zoom, the networks shown, the
+  // internet and the traffic on or off, a search, « réinitialiser ».
+  // A device or a whole block moves with the finger or the mouse (the layout
+  // becomes « Libre » and is remembered on this screen); the wheel zooms, a
+  // drag on the background pans. A tap on OPNsense gives the traffic network
+  // by network and what to check; on a block, its gateway, devices and
+  // flows; on a device, its address, Wi-Fi and connections.
+  // Only what crosses the router is seen: two devices of the same network
+  // talk out of its sight.
   var NET_COLORS = ["#59d0e0", "#5cc28f", "#e0a33a", "#b48ce0", "#e08aa8", "#8fb8f0", "#d0d070", "#f0906a"];
   function human(b) {
     if (!b) return "0 o";
@@ -2842,48 +2901,111 @@
     while (b >= 1000 && i < u.length - 1) { b /= 1000; i++; }
     return fr(b, b < 10 && i ? 1 : 0) + " " + u[i];
   }
+  function prefs(key, val) {
+    try {
+      if (val === undefined) return JSON.parse(window.localStorage.getItem(key) || "null");
+      window.localStorage.setItem(key, JSON.stringify(val));
+    } catch (e) { return null; }
+    return null;
+  }
   class IgorNetmapCard extends IgorCard {
     setConfig(config) {
       this.config = config || {};
       this.names = this.config.names && typeof this.config.names === "object" ? this.config.names : {};
     }
-    getCardSize() { return 9; }
+    getCardSize() { return 12; }
     build() {
+      this.key = "igor-netmap:" + (this.config.key || window.location.pathname);
+      var saved = prefs(this.key) || {};
+      this.mode = saved.mode || "vlan";
+      this.pos = saved.pos || {};
+      this.hidden = saved.hidden || {};
+      this.showNet = saved.net !== false;
+      this.showFlow = saved.flow !== false;
+      this.view = { k: 1, x: 0, y: 0 };
+      this.sel = "";
+      this.q = "";
+      this.W = 900; this.H = 560;
       this.style([
-        ".body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }",
-        "@media (min-width: 900px) { .body.wide { grid-template-columns: minmax(0, 1fr) 230px; } }",
-        "svg.net { width: 100%; height: 100%; min-height: 260px; display: block; }",
-        ".edge { fill: none; stroke: var(--line); stroke-linecap: round; }",
-        ".edge.sel { stroke: var(--wait); opacity: 1; }",
-        ".pkt { fill: var(--acc); }",
-        ".node { cursor: pointer; }",
-        ".node text { fill: var(--dim); font-size: 7px; font-family: inherit; pointer-events: none; }",
-        ".node.sel text { fill: var(--fg); }",
-        ".node.router circle { fill: var(--bg); stroke: var(--fg); stroke-width: 1.2; }",
-        ".node.remote circle { fill: var(--bg); stroke: var(--dim); stroke-width: 0.8; stroke-dasharray: 1.5 1.5; }",
-        ".node.sel circle { stroke: var(--wait); stroke-width: 1.6; }",
-        ".side { min-height: 0; overflow-y: auto; }",
-        ".leg { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 10.5px; color: var(--dim); margin-bottom: 6px; }",
-        ".leg i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }",
-        ".det .h { color: var(--dim); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 6px; }",
-        ".det .v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
-        ".det .p { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding: 2px 0; border-bottom: 1px dashed var(--line); }",
-        ".det .p span:last-child { color: var(--dim); font-variant-numeric: tabular-nums; }",
+        ".tool { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; margin: 2px 0 6px; flex: none; }",
+        ".tool .sp { width: 10px; }",
+        ".tool button { background: none; border: 1px solid var(--line); color: var(--fg); font: inherit; font-size: 11px; border-radius: 3px; padding: 2px 8px; cursor: pointer; }",
+        ".tool button.on { border-color: var(--acc); color: var(--acc); }",
+        ".tool button.chip { border-radius: 10px; }",
+        ".tool button.chip.off { opacity: 0.35; }",
+        ".tool input { width: 120px; background: var(--bg); border: 1px solid var(--line); color: var(--fg); font: inherit; font-size: 11px; padding: 2px 7px; border-radius: 3px; }",
+        ".body { flex: 1; min-height: 0; display: flex; gap: 10px; }",
+        ".stage { flex: 1; min-width: 0; min-height: 300px; position: relative; border: 1px solid var(--line); background: var(--bg); touch-action: none; }",
+        "svg.net { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; user-select: none; }",
+        ".side { width: 270px; flex: none; overflow-y: auto; min-height: 0; }",
+        "@media (max-width: 900px) { .body { flex-direction: column; } .side { width: auto; max-height: 40vh; } }",
+        "text { font-family: " + MONO + "; font-size: 10.5px; fill: var(--dim); pointer-events: none; }",
+        "text.hl { fill: var(--fg); }",
+        ".blk rect.b { stroke-width: 1; }",
+        ".blk .bh { cursor: move; }",
+        ".topo { stroke: var(--line); fill: none; stroke-width: 1.2; }",
+        ".topo.wan { stroke: var(--faint); stroke-dasharray: 3 3; }",
+        ".flow { fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: 0.45; }",
+        ".flow.dim, .pkt.dim, .nd.dim { opacity: 0.12; }",
+        ".flow.sel { opacity: 1; }",
+        ".nd { cursor: pointer; }",
+        ".nd circle.r { fill: var(--bg); stroke: var(--fg); stroke-width: 2; }",
+        ".nd circle.n { fill: var(--bg); stroke: var(--dim); stroke-width: 1.2; stroke-dasharray: 2 2; }",
+        ".nd.sel circle { stroke: var(--igor-signal, #e5323b); stroke-width: 2.5; }",
+        ".nd.hit circle { stroke: var(--wait); stroke-width: 2.5; }",
+        ".h { color: var(--dim); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; margin: 8px 0 3px; }",
+        ".h:first-child { margin-top: 0; }",
+        ".v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".big { color: var(--fg); font-size: 13px; margin-bottom: 2px; }",
+        ".p { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding: 2px 0; border-bottom: 1px dashed var(--line); cursor: default; }",
+        ".p.link { cursor: pointer; }",
+        ".p span:last-child { color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }",
+        ".dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }",
+        ".warn { color: var(--wait); }",
         ".empty { color: var(--dim); padding: 8px 0; }"
       ].join("\n"));
       var card = el("ha-card", "", this.shadowRoot);
       var top = el("div", "top", card);
-      el("span", "t sub", top, (this.config.title || "réseau · en direct").toUpperCase()).style.letterSpacing = "0.12em";
+      el("span", "t sub", top, (this.config.title || "schéma · en direct").toUpperCase()).style.letterSpacing = "0.12em";
       this.sum = el("span", "sub num", top);
-      this.body = el("div", "body wide", card);
-      this.svg = svgEl("svg", { class: "net", viewBox: "0 0 400 300", preserveAspectRatio: "xMidYMid meet" }, this.body);
-      this.edgeG = svgEl("g", {}, this.svg);
-      this.pktG = svgEl("g", {}, this.svg);
-      this.nodeG = svgEl("g", {}, this.svg);
-      var side = el("div", "side", this.body);
-      this.leg = el("div", "leg", side);
-      this.det = el("div", "det", side);
-      this.sel = "";
+      var tool = el("div", "tool", card);
+      var btn = (text, fn, cls) => { var b = el("button", cls || "", tool, text); b.type = "button"; b.addEventListener("click", fn); return b; };
+      this.modeBtns = {};
+      [["vlan", "Par VLAN"], ["tree", "Arbre"], ["free", "Libre"]].forEach((m) => {
+        this.modeBtns[m[0]] = btn(m[1], () => this.setMode(m[0]));
+      });
+      el("span", "sp", tool);
+      btn("−", () => this.zoom(1 / 1.25));
+      btn("+", () => this.zoom(1.25));
+      btn("ajuster", () => this.fit());
+      el("span", "sp", tool);
+      this.chips = el("span", "", tool);
+      this.chips.style.display = "contents";
+      el("span", "sp", tool);
+      this.netBtn = btn("internet", () => { this.showNet = !this.showNet; this.save(); this.relayout(); });
+      this.flowBtn = btn("trafic", () => { this.showFlow = !this.showFlow; this.save(); this.draw(); });
+      this.search = el("input", "", tool);
+      this.search.placeholder = "⌕ appareil…";
+      this.search.addEventListener("input", () => { this.q = this.search.value.trim().toLowerCase(); this.draw(); });
+      this.search.addEventListener("keydown", (ev) => { if (ev.key === "Enter") this.findFirst(); });
+      btn("réinitialiser", () => { this.pos = {}; this.hidden = {}; this.mode = "vlan"; this.save(); this.relayout(true); });
+      var body = el("div", "body", card);
+      this.stage = el("div", "stage", body);
+      this.svg = svgEl("svg", { class: "net" }, this.stage);
+      this.vp = svgEl("g", {}, this.svg);
+      this.side = el("div", "side", body);
+      this.bindPointer();
+      if (window.ResizeObserver) {
+        this.ro = new ResizeObserver(() => {
+          var r = this.stage.getBoundingClientRect();
+          if (r.width < 50 || r.height < 50) return;
+          if (Math.abs(r.width - this.W) < 2 && Math.abs(r.height - this.H) < 2) return;
+          this.W = r.width; this.H = r.height;
+          this.svg.setAttribute("viewBox", "0 0 " + this.W + " " + this.H);
+          this.relayout(true);
+        });
+        this.ro.observe(this.stage);
+      }
       this.pkts = [];
       var every = Math.max(5, Math.min(300, Number(this.config.interval) || 10));
       this.timer = setInterval(() => this.load(), every * 1000);
@@ -2893,156 +3015,642 @@
         this.frame = requestAnimationFrame(step);
       }
     }
+    save() { prefs(this.key, { mode: this.mode, pos: this.pos, hidden: this.hidden, net: this.showNet, flow: this.showFlow }); }
     load() {
       var hass = this._hass;
-      if (!hass || this.loading || document.hidden) return;
+      if (!hass || this.loading || document.hidden || this.dragging) return;
       this.loading = true;
       hass.callWS({ type: "call_service", domain: "nives", service: "net_map", service_data: {}, return_response: true })
         .then((r) => { this.data = (r && r.response) || {}; })
-        .catch((err) => { this.data = { error: err && err.code === "unauthorized" ? "réservé aux administrateurs" : "service indisponible (Igor 0.30 ou plus)" }; })
-        .then(() => { this.loading = false; this.layout(); this.draw(); });
+        .catch((err) => { this.data = { error: err && err.code === "unauthorized" ? "réservé aux administrateurs" : "service indisponible (Igor 0.31 ou plus)" }; })
+        .then(() => { this.loading = false; var first = !this.laid; this.relayout(first); });
     }
-    label(n) { return this.names[n.ip] || this.names[n.mac] || n.name || n.id; }
-    layout() {
+    label(n) {
+      if (!n) return "";
+      return this.names[n.ip] || this.names[n.mac] || n.name || n.id;
+    }
+    // ----- the model: networks, devices, operators -----
+    model() {
       var d = this.data || {};
-      var nodes = d.nodes || [], edges = d.edges || [];
-      this.pos = {};
-      var cx = 200, cy = 150;
-      this.pos.router = [cx, cy];
-      // The devices on a ring, by network; the networks get their colours.
-      var devs = nodes.filter((n) => n.kind === "device").sort((a, b) => (a.vlan || "").localeCompare(b.vlan || "") || this.label(a).localeCompare(this.label(b)));
-      var nets = [];
-      devs.forEach((n) => { if (nets.indexOf(n.vlan || "") < 0) nets.push(n.vlan || ""); });
-      this.netColor = {};
-      nets.forEach((v, i) => { this.netColor[v] = NET_COLORS[i % NET_COLORS.length]; });
-      var r1 = devs.length > 14 ? 95 : 80;
-      devs.forEach((n, i) => {
-        var a = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(1, devs.length);
-        n.angle = a;
-        this.pos[n.id] = [cx + r1 * 1.25 * Math.cos(a), cy + r1 * Math.sin(a)];
-      });
-      // The operators outside, near the devices that talk to them.
-      var angleOf = {};
-      devs.forEach((n) => { angleOf[n.id] = n.angle; });
-      var rem = nodes.filter((n) => n.kind === "remote");
-      rem.forEach((n) => {
-        var sx = 0, sy = 0;
-        edges.forEach((e) => {
-          var other = e.a === n.id ? e.b : e.b === n.id ? e.a : null;
-          if (other != null && angleOf[other] != null) { var w = Math.log(2 + e.bytes); sx += w * Math.cos(angleOf[other]); sy += w * Math.sin(angleOf[other]); }
-        });
-        n.angle = sx || sy ? Math.atan2(sy, sx) : 0;
-      });
-      rem.sort((a, b) => a.angle - b.angle);
-      // Spread them evenly, keeping their order around the circle.
-      var start = rem.length ? rem[0].angle : 0;
-      rem.forEach((n, i) => {
-        var a = rem.length > 1 ? start + (2 * Math.PI * i) / rem.length : n.angle;
-        a = (a + n.angle) / 2;
-        this.pos[n.id] = [cx + 185 * Math.cos(a), cy + 132 * Math.sin(a)];
-      });
-    }
-    path(e) {
-      var a = this.pos[e.a], b = this.pos[e.b];
-      if (!a || !b) return "";
-      // Device to device: a curve that bends towards the router.
-      var ra = e.a === "router" || e.b === "router";
-      if (ra) return "M" + a[0].toFixed(1) + " " + a[1].toFixed(1) + " L" + b[0].toFixed(1) + " " + b[1].toFixed(1);
-      var mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
-      var k = String(e.a).indexOf("net:") === 0 || String(e.b).indexOf("net:") === 0 ? 0.15 : 0.55;
-      var qx = mx + (200 - mx) * k, qy = my + (150 - my) * k;
-      return "M" + a[0].toFixed(1) + " " + a[1].toFixed(1) + " Q" + qx.toFixed(1) + " " + qy.toFixed(1) + " " + b[0].toFixed(1) + " " + b[1].toFixed(1);
-    }
-    draw() {
-      var d = this.data || {};
-      var nodes = d.nodes || [], edges = d.edges || [];
-      this.edgeG.innerHTML = ""; this.nodeG.innerHTML = ""; this.pktG.innerHTML = ""; this.pkts = [];
-      this.leg.innerHTML = ""; this.det.innerHTML = "";
-      var devs = nodes.filter((n) => n.kind === "device").length;
-      this.sum.textContent = d.error ? "" : devs + " appareils · " + edges.length + " liens · " + (d.states || 0) + " connexions";
-      if (d.error || !nodes.length) {
-        el("div", "empty", this.det, d.error ? "Indisponible : " + d.error : "Lecture…");
-        return;
-      }
+      var nodes = d.nodes || [];
       var byId = {};
       nodes.forEach((n) => { byId[n.id] = n; });
-      var maxB = edges.reduce((m, e) => Math.max(m, e.bytes), 1);
-      var flow = this.config.animate !== false;
-      edges.forEach((e) => {
-        var dpath = this.path(e);
-        if (!dpath) return;
-        var on = this.sel && (e.a === this.sel || e.b === this.sel);
-        var w = 0.4 + 2.6 * Math.sqrt(Math.log(1 + e.bytes) / Math.log(1 + maxB));
-        var p = svgEl("path", { class: "edge" + (on ? " sel" : ""), d: dpath, "stroke-width": w.toFixed(2) }, this.edgeG);
-        if (this.sel && !on) p.setAttribute("opacity", "0.25");
-        if (flow && this.pkts.length < 90) {
-          var src = byId[e.a];
-          var color = src && src.kind === "device" ? this.netColor[src.vlan || ""] : "var(--acc)";
-          var n = e.bytes > maxB / 4 ? 3 : e.bytes > maxB / 40 ? 2 : 1;
-          var len = p.getTotalLength ? p.getTotalLength() : 0;
-          for (var i = 0; i < n && len; i++) {
-            var dot = svgEl("circle", { class: "pkt", r: 1.1 + w / 3, fill: color }, this.pktG);
-            if (this.sel && !on) dot.setAttribute("opacity", "0.2");
-            this.pkts.push({ el: dot, path: p, len: len, off: i / n, speed: 0.12 + 0.25 * Math.random() });
-          }
-        }
-      });
-      nodes.forEach((n) => {
-        var at = this.pos[n.id];
-        if (!at) return;
-        var g = svgEl("g", { class: "node " + n.kind + (n.id === this.sel ? " sel" : ""), transform: "translate(" + at[0].toFixed(1) + " " + at[1].toFixed(1) + ")" }, this.nodeG);
-        var r = n.kind === "router" ? 9 : n.kind === "remote" ? 5 : 4.2;
-        var c = svgEl("circle", { r: r }, g);
-        if (n.kind === "device") c.setAttribute("fill", this.netColor[n.vlan || ""] || "var(--acc)");
-        var t = svgEl("text", { "text-anchor": at[0] < 200 ? "end" : "start", x: at[0] < 200 ? -(r + 2) : r + 2, y: 2.5 }, g);
-        t.textContent = n.kind === "router" ? "" : this.label(n).slice(0, 18);
-        if (n.kind === "router") { var t2 = svgEl("text", { "text-anchor": "middle", y: 18 }, g); t2.textContent = n.name; }
-        g.addEventListener("click", () => { this.sel = this.sel === n.id ? "" : n.id; this.draw(); });
-      });
-      // The legend: one colour per network.
-      Object.keys(this.netColor).forEach((v) => {
-        var it = el("span", "", this.leg); var dot = el("i", "", it); dot.style.background = this.netColor[v];
-        it.appendChild(document.createTextNode(v || "réseau"));
-      });
-      this.detail(byId, edges);
+      var gw = {};
+      (d.vlans || []).forEach((v) => { gw[v.name] = v.gateway; });
+      var vlans = [];
+      var add = (v) => { if (vlans.indexOf(v) < 0) vlans.push(v); };
+      (d.vlans || []).forEach((v) => add(v.name));
+      nodes.forEach((n) => { if (n.kind === "device") add(n.vlan || "autre"); });
+      vlans.sort();
+      var color = {};
+      vlans.forEach((v, i) => { color[v] = NET_COLORS[i % NET_COLORS.length]; });
+      var devs = {};
+      vlans.forEach((v) => { devs[v] = []; });
+      nodes.forEach((n) => { if (n.kind === "device") devs[n.vlan || "autre"].push(n); });
+      vlans.forEach((v) => devs[v].sort((a, b) => this.label(a).localeCompare(this.label(b))));
+      var remotes = nodes.filter((n) => n.kind === "remote");
+      return { d: d, byId: byId, gw: gw, vlans: vlans, color: color, devs: devs, remotes: remotes, edges: d.edges || [] };
     }
-    detail(byId, edges) {
-      var n = byId[this.sel];
-      var mine = n ? edges.filter((e) => e.a === n.id || e.b === n.id) : edges.slice(0, 12);
-      if (n) {
-        el("div", "", this.det, this.label(n));
-        var info = [];
-        if (n.ip) info.push(n.ip);
-        if (n.mac) info.push(n.mac);
-        if (n.vlan) info.push("réseau " + n.vlan);
-        if (n.net && n.net !== n.vlan) info.push("wi-fi " + n.net + (n.signal != null ? " · " + n.signal + " dBm" : ""));
-        if (n.vendor) info.push(n.vendor);
-        if (n.cc) info.push(countryName(n.cc));
-        info.forEach((t) => el("div", "v sub", this.det, t));
+    vlanOf(id) {
+      var n = this.M.byId[id];
+      if (!n) return "";
+      if (n.kind === "device") return n.vlan || "autre";
+      if (n.kind === "remote") return "internet";
+      return "router";
+    }
+    shown(id) {
+      var n = this.M.byId[id];
+      if (!n) return false;
+      if (n.kind === "device") return !this.hidden[n.vlan || "autre"];
+      if (n.kind === "remote") return this.showNet;
+      return true;
+    }
+    // ----- layouts -----
+    relayout(fit) {
+      if (!this.data) return;
+      this.M = this.model();
+      this.renderChips();
+      if (this.data.error) { this.draw(); return; }
+      this.layout();
+      this.laid = true;
+      if (fit) this.fit(true);
+      this.draw();
+    }
+    layout() {
+      var M = this.M, W = this.W, H = this.H, m = 16;
+      var P = {}, B = {}, hubs = {};
+      var net = this.showNet && M.remotes.length;
+      var rw = net ? 190 : 0;
+      var AW = W - 2 * m - (net ? rw + 14 : 0);
+      var vis = M.vlans.filter((v) => !this.hidden[v]);
+      if (net) {
+        // The internet on the right: a trunk going down, operators beside it.
+        var tx = W - m - rw + 12;
+        P["net:hub"] = { x: tx, y: 44 };
+        M.remotes.forEach((r, i) => { P[r.id] = { x: tx + 24, y: 92 + i * 26 }; });
       }
-      el("div", "h", this.det, n ? "connexions" : "les plus gros échanges");
+      if (this.mode === "tree") {
+        // A tree read left to right: OPNsense, its networks, their devices.
+        P.router = { x: m + 26, y: 44 };
+        var colw = 175, x0 = m + 270, per = Math.max(1, Math.floor((m + AW - x0) / colw)), y = 100;
+        vis.forEach((v) => {
+          var list = M.devs[v];
+          hubs[v] = { x: m + 140, y: y };
+          list.forEach((dv, j) => { P[dv.id] = { x: x0 + (j % per) * colw, y: y + Math.floor(j / per) * 24 }; });
+          y += Math.max(1, Math.ceil(list.length / per)) * 24 + 22;
+        });
+      } else {
+        P.router = { x: m + AW / 2, y: 44 };
+        var gap = 14, minw = 230;
+        var cols = Math.max(1, Math.min(vis.length || 1, Math.floor((AW + gap) / (minw + gap))));
+        var bw = (AW - (cols - 1) * gap) / cols;
+        var yy = 96, rowH = 0;
+        vis.forEach((v, i) => {
+          var c = i % cols;
+          if (c === 0 && i) { yy += rowH + gap; rowH = 0; }
+          var list = M.devs[v];
+          var inner = list.length > 8 && bw >= 400 ? 2 : 1;
+          var rows = Math.max(1, Math.ceil(list.length / inner));
+          var bh = 34 + rows * 24 + 6;
+          var bx = m + c * (bw + gap);
+          B[v] = { x: bx, y: yy, w: bw, h: bh };
+          rowH = Math.max(rowH, bh);
+          list.forEach((dv, j) => {
+            P[dv.id] = { x: bx + 24 + (j % inner) * (bw / inner), y: yy + 34 + Math.floor(j / inner) * 24 + 10 };
+          });
+        });
+      }
+      if (this.mode === "free") {
+        // Saved positions win; blocks follow their devices.
+        Object.keys(P).forEach((id) => { if (this.pos[id]) P[id] = { x: this.pos[id][0], y: this.pos[id][1] }; });
+        vis.forEach((v) => {
+          var list = M.devs[v].filter((dv) => P[dv.id]);
+          if (!list.length) { if (B[v] && this.pos["vlan:" + v]) { B[v].x = this.pos["vlan:" + v][0]; B[v].y = this.pos["vlan:" + v][1]; } return; }
+          var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+          list.forEach((dv) => { var p = P[dv.id]; x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); });
+          B[v] = { x: x0 - 24, y: y0 - 44, w: Math.max(230, x1 - x0 + 190), h: y1 - y0 + 60 };
+        });
+      }
+      this.busY = 74;
+      this.P = P; this.B = B; this.hubs = hubs;
+    }
+    // Where a network meets OPNsense: its block's top left corner, or its hub.
+    vlanAnchor(v) {
+      if (this.mode === "tree") return this.hubs[v] || null;
+      var b = this.B[v];
+      return b ? { x: b.x - 6, y: b.y + 13 } : null;
+    }
+    setMode(m) {
+      if (m === "free" && this.mode !== "free") this.freeze();
+      this.mode = m;
+      this.save();
+      this.relayout(true);
+    }
+    // Into « Libre » keeping what is on screen.
+    freeze() {
+      var P = this.P || {};
+      Object.keys(P).forEach((id) => { this.pos[id] = [Math.round(P[id].x), Math.round(P[id].y)]; });
+      this.mode = "free";
+    }
+    // ----- view: zoom and pan -----
+    apply() { this.vp.setAttribute("transform", "translate(" + this.view.x.toFixed(1) + " " + this.view.y.toFixed(1) + ") scale(" + this.view.k.toFixed(3) + ")"); }
+    zoom(f, cx, cy) {
+      var v = this.view;
+      cx = cx == null ? this.W / 2 : cx; cy = cy == null ? this.H / 2 : cy;
+      var k = Math.max(0.25, Math.min(4, v.k * f));
+      f = k / v.k;
+      v.x = cx - (cx - v.x) * f; v.y = cy - (cy - v.y) * f; v.k = k;
+      this.apply();
+    }
+    fit(onlyIfNeeded) {
+      var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      var grow = (x, y) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); };
+      Object.keys(this.P || {}).forEach((id) => { var p = this.P[id]; grow(p.x - 20, p.y - 20); grow(p.x + 160, p.y + 20); });
+      Object.keys(this.B || {}).forEach((v) => { var b = this.B[v]; grow(b.x, b.y); grow(b.x + b.w, b.y + b.h); });
+      if (!isFinite(x0)) { this.view = { k: 1, x: 0, y: 0 }; this.apply(); return; }
+      var k = Math.min(1.6, (this.W - 16) / (x1 - x0), (this.H - 16) / (y1 - y0));
+      if (onlyIfNeeded && k >= 1 && x0 >= 0 && y0 >= 0 && x1 <= this.W && y1 <= this.H) { this.view = { k: 1, x: 0, y: 0 }; this.apply(); return; }
+      this.view = { k: k, x: (this.W - (x1 - x0) * k) / 2 - x0 * k, y: 8 - y0 * k };
+      this.apply();
+    }
+    // ----- the pointer: select, move, pan, zoom -----
+    bindPointer() {
+      var svg = this.svg;
+      svg.addEventListener("wheel", (ev) => {
+        ev.preventDefault();
+        var r = svg.getBoundingClientRect();
+        this.zoom(Math.exp(-ev.deltaY * 0.0015), ev.clientX - r.left, ev.clientY - r.top);
+      }, { passive: false });
+      svg.addEventListener("pointerdown", (ev) => {
+        var t = ev.target.closest ? ev.target.closest("[data-id],[data-vlan]") : null;
+        this.drag = { x: ev.clientX, y: ev.clientY, id: t && t.getAttribute("data-id"), vlan: t && t.getAttribute("data-vlan"), moved: false };
+        svg.setPointerCapture(ev.pointerId);
+      });
+      svg.addEventListener("pointermove", (ev) => {
+        var g = this.drag;
+        if (!g) return;
+        var dx = ev.clientX - g.x, dy = ev.clientY - g.y;
+        if (!g.moved && Math.abs(dx) + Math.abs(dy) < 5) return;
+        g.moved = true;
+        this.dragging = true;
+        g.x = ev.clientX; g.y = ev.clientY;
+        if (!g.id && !g.vlan) { this.view.x += dx; this.view.y += dy; this.apply(); return; }
+        if (this.mode !== "free") { this.freeze(); this.layout(); this.renderModes(); }
+        var wx = dx / this.view.k, wy = dy / this.view.k;
+        var movePos = (id) => {
+          var p = this.pos[id] || (this.P[id] ? [this.P[id].x, this.P[id].y] : null);
+          if (p) this.pos[id] = [p[0] + wx, p[1] + wy];
+        };
+        if (g.vlan) {
+          (this.M.devs[g.vlan] || []).forEach((dv) => movePos(dv.id));
+          var b = this.B[g.vlan];
+          if (b) this.pos["vlan:" + g.vlan] = [b.x + wx, b.y + wy];
+        } else movePos(g.id === "net:hub" ? "net:hub" : g.id);
+        if (!this.rafDraw) this.rafDraw = requestAnimationFrame(() => { this.rafDraw = 0; this.layout(); this.draw(); });
+      });
+      var end = (ev) => {
+        var g = this.drag;
+        this.drag = null;
+        this.dragging = false;
+        if (!g) return;
+        if (g.moved) { this.save(); return; }
+        var target = g.vlan ? "vlan:" + g.vlan : g.id || "";
+        this.sel = this.sel === target ? "" : target;
+        this.draw();
+      };
+      svg.addEventListener("pointerup", end);
+      svg.addEventListener("pointercancel", end);
+    }
+    findFirst() {
+      if (!this.q || !this.M) return;
+      var hit = Object.values(this.M.byId).find((n) => n.kind !== "router" && this.label(n).toLowerCase().indexOf(this.q) >= 0 || (n.ip || "").indexOf(this.q) >= 0);
+      if (!hit || !this.P[hit.id]) return;
+      this.sel = hit.id;
+      var p = this.P[hit.id];
+      this.view.x = this.W / 2 - p.x * this.view.k; this.view.y = this.H / 2 - p.y * this.view.k;
+      this.apply();
+      this.draw();
+    }
+    // ----- toolbar -----
+    renderModes() {
+      Object.keys(this.modeBtns).forEach((k) => this.modeBtns[k].classList.toggle("on", this.mode === k));
+      this.netBtn.classList.toggle("on", this.showNet);
+      this.flowBtn.classList.toggle("on", this.showFlow);
+    }
+    renderChips() {
+      this.chips.innerHTML = "";
+      (this.M.vlans || []).forEach((v) => {
+        var b = el("button", "chip" + (this.hidden[v] ? " off" : ""), this.chips, v || "?");
+        b.type = "button";
+        b.style.color = this.M.color[v]; b.style.borderColor = this.M.color[v];
+        b.addEventListener("click", () => { if (this.hidden[v]) delete this.hidden[v]; else this.hidden[v] = 1; this.save(); this.relayout(); });
+      });
+      this.renderModes();
+    }
+    // ----- drawing -----
+    flowPath(e) {
+      var P = this.P, a = P[e.a], b = P[e.b];
+      if (!a || !b) return "";
+      var va = this.vlanOf(e.a), vb = this.vlanOf(e.b);
+      var f = (p) => p.x.toFixed(1) + " " + p.y.toFixed(1);
+      if (va === vb && va !== "internet" && va !== "router") {
+        var mx = (a.x + b.x) / 2 + 30, my = (a.y + b.y) / 2;
+        return "M" + f(a) + " Q" + mx.toFixed(1) + " " + my.toFixed(1) + " " + f(b);
+      }
+      var R = P.router, hub = P["net:hub"];
+      var leg = (p, v) => {
+        // From a device to its network's edge, along it to OPNsense.
+        if (v === "router") return [p];
+        if (v === "internet") return hub ? [p, { x: hub.x, y: p.y }, hub] : [p];
+        var an = this.vlanAnchor(v);
+        if (!an) return [p];
+        // In a tree, between the rows (not through the names), then down the trunk.
+        if (this.mode === "tree") return [p, { x: p.x - 11, y: p.y }, { x: p.x - 11, y: p.y - 12 }, { x: an.x + 30, y: p.y - 12 }, { x: an.x + 30, y: an.y }, an];
+        // In the gap left of the block, then up to the bus under OPNsense.
+        return [p, { x: an.x, y: p.y }, { x: an.x, y: this.busY }];
+      };
+      var A = leg(a, va), Bp = leg(b, vb).reverse();
+      // OPNsense: reached straight down from it in a tree, by the top otherwise.
+      var mid = this.mode === "tree" ? [{ x: R.x, y: A[A.length - 1].y }, R, { x: R.x, y: Bp[0].y }]
+        : [{ x: R.x, y: A[A.length - 1].y }, R, { x: R.x, y: Bp[0].y }];
+      var pts = A.concat(mid).concat(Bp);
+      var d = "M" + f(pts[0]);
+      for (var i = 1; i < pts.length; i++) d += " L" + f(pts[i]);
+      return d;
+    }
+    draw() {
+      this.renderModes();
+      var M = this.M;
+      this.vp.innerHTML = "";
+      this.side.innerHTML = "";
+      this.pkts = [];
+      var d = (M && M.d) || this.data || {};
+      if (!M || d.error || !(d.nodes || []).length) {
+        this.sum.textContent = "";
+        el("div", "empty", this.side, d.error ? "Indisponible : " + d.error : "Lecture…");
+        return;
+      }
+      var gBlk = svgEl("g", {}, this.vp), gTopo = svgEl("g", {}, this.vp), gFlow = svgEl("g", {}, this.vp),
+        gPkt = svgEl("g", {}, this.vp), gNode = svgEl("g", {}, this.vp);
+      var P = this.P, sel = this.sel, selV = sel.indexOf("vlan:") === 0 ? sel.slice(5) : "";
+      var involved = (e) => !sel || e.a === sel || e.b === sel || (selV && (this.vlanOf(e.a) === selV || this.vlanOf(e.b) === selV)) ||
+        (sel === "router") || (sel === "net:hub" && (this.vlanOf(e.a) === "internet" || this.vlanOf(e.b) === "internet"));
+      var vis = M.vlans.filter((v) => !this.hidden[v]);
+      // Blocks (or hubs) and their links to OPNsense.
+      vis.forEach((v) => {
+        var c = M.color[v];
+        var an = this.vlanAnchor(v);
+        if (an) svgEl("path", { class: "topo", d: this.mode === "tree"
+          ? "M" + P.router.x + " " + P.router.y + " L" + P.router.x + " " + an.y.toFixed(1) + " L" + (an.x - 11).toFixed(1) + " " + an.y.toFixed(1)
+          : "M" + P.router.x + " " + P.router.y + " L" + P.router.x + " " + this.busY + " L" + an.x.toFixed(1) + " " + this.busY + " L" + an.x.toFixed(1) + " " + an.y.toFixed(1) + " L" + (an.x + 6).toFixed(1) + " " + an.y.toFixed(1) }, gTopo);
+        if (this.mode === "tree") {
+          var h = this.hubs[v];
+          if (!h) return;
+          var g = svgEl("g", { class: "nd blk" + (selV === v ? " sel" : ""), "data-vlan": v, transform: "translate(" + h.x.toFixed(1) + " " + h.y.toFixed(1) + ")" }, gNode);
+          svgEl("circle", { r: 11, fill: c + "33", stroke: c, "stroke-width": 2 }, g);
+          var t = svgEl("text", { x: 16, y: -2, class: "hl" }, g); t.textContent = v; t.style.fill = c;
+          var t2 = svgEl("text", { x: 16, y: 11 }, g); t2.textContent = (M.gw[v] || "") + " · " + M.devs[v].length;
+          M.devs[v].forEach((dv) => {
+            var p = P[dv.id];
+            if (p) svgEl("path", { class: "topo", d: "M" + (h.x + 30).toFixed(1) + " " + h.y.toFixed(1) + " L" + (h.x + 30).toFixed(1) + " " + p.y.toFixed(1) + " L" + (p.x - 7).toFixed(1) + " " + p.y.toFixed(1) }, gTopo);
+          });
+          return;
+        }
+        var b = this.B[v];
+        if (!b) return;
+        var bg = svgEl("g", { class: "blk" }, gBlk);
+        svgEl("rect", { class: "b", x: b.x, y: b.y, width: b.w, height: b.h, fill: c + "14", stroke: selV === v ? "var(--igor-signal, #e5323b)" : c }, bg);
+        var hr = svgEl("rect", { class: "bh", "data-vlan": v, x: b.x, y: b.y, width: b.w, height: 26, fill: c + "22" }, bg);
+        hr.style.cursor = "move";
+        var ht = svgEl("text", { x: b.x + 18, y: b.y + 17 }, bg); ht.textContent = v.toUpperCase(); ht.style.fill = c; ht.style.letterSpacing = "0.08em";
+        var hr2 = svgEl("text", { x: b.x + b.w - 8, y: b.y + 17, "text-anchor": "end" }, bg); hr2.textContent = (M.gw[v] ? M.gw[v] + " · " : "") + M.devs[v].length;
+      });
+      if (this.showNet && P["net:hub"]) {
+        svgEl("path", { class: "topo wan", d: "M" + P.router.x + " " + P.router.y + " L" + P["net:hub"].x + " " + P["net:hub"].y }, gTopo);
+        M.remotes.forEach((r) => { var p = P[r.id]; if (p) svgEl("path", { class: "topo", d: "M" + P["net:hub"].x + " " + (P["net:hub"].y + 12) + " L" + P["net:hub"].x + " " + p.y + " L" + (p.x - 6) + " " + p.y }, gTopo); });
+      }
+      // Flows, through OPNsense.
+      var edges = M.edges.filter((e) => this.shown(e.a) && this.shown(e.b) && P[e.a] && P[e.b]);
+      var maxB = edges.reduce((mx, e) => Math.max(mx, e.bytes), 1);
+      var flow = this.config.animate !== false;
+      if (this.showFlow) {
+        edges.forEach((e) => {
+          var dp = this.flowPath(e);
+          if (!dp) return;
+          var on = involved(e);
+          var va = this.vlanOf(e.a);
+          var col = M.color[va] || "var(--acc)";
+          var w = 0.8 + 2.4 * Math.sqrt(Math.log(1 + e.bytes) / Math.log(1 + maxB));
+          var path = svgEl("path", { class: "flow" + (on ? (sel ? " sel" : "") : " dim"), d: dp, stroke: col, "stroke-width": w.toFixed(2) }, gFlow);
+          if (flow && this.pkts.length < 140 && on) {
+            var n = e.bytes > maxB / 4 ? 3 : e.bytes > maxB / 50 ? 2 : 1;
+            var len = path.getTotalLength ? path.getTotalLength() : 0;
+            for (var i = 0; i < n && len; i++) {
+              var dot = svgEl("circle", { class: "pkt", r: (1.4 + w / 3).toFixed(1), fill: col }, gPkt);
+              this.pkts.push({ el: dot, path: path, len: len, off: i / n, speed: 60 + 50 * Math.random() });
+            }
+          }
+        });
+      }
+      // Nodes.
+      var q = this.q;
+      var node = (id, cls, draw) => {
+        var p = P[id];
+        if (!p) return;
+        var n = M.byId[id] || {};
+        var hit = q && id !== "router" && (this.label(n).toLowerCase().indexOf(q) >= 0 || (n.ip || "").indexOf(q) >= 0);
+        var dim = sel && sel !== id && !(selV && this.vlanOf(id) === selV) && sel !== "router" &&
+          !M.edges.some((e) => (e.a === sel && e.b === id) || (e.b === sel && e.a === id));
+        var g = svgEl("g", { class: "nd " + cls + (sel === id ? " sel" : "") + (hit ? " hit" : "") + (dim ? " dim" : ""), "data-id": id, transform: "translate(" + p.x.toFixed(1) + " " + p.y.toFixed(1) + ")" }, gNode);
+        draw(g, n);
+      };
+      node("router", "router", (g) => {
+        svgEl("circle", { class: "r", r: 17 }, g);
+        g.insertAdjacentHTML("beforeend", '<g transform="translate(-6 -9) scale(0.047)"><rect x="107" y="20" width="44" height="216" fill="#e9e4da"/><circle cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle cx="128" cy="96" r="16" fill="#e5323b"/></g>');
+        var t = svgEl("text", { x: 22, y: -8, class: "hl" }, g); t.textContent = "OPNsense";
+      });
+      if (this.showNet && P["net:hub"]) {
+        node("net:hub", "hub", (g) => { svgEl("circle", { class: "n", r: 12 }, g); var t = svgEl("text", { x: 18, y: 4, class: "hl" }, g); t.textContent = "internet"; });
+        M.remotes.forEach((r) => node(r.id, "remote", (g, n) => {
+          svgEl("circle", { class: "n", r: 5 }, g);
+          var t = svgEl("text", { x: 10, y: 4 }, g); t.textContent = (n.name || "").slice(0, 20) + (n.cc ? " · " + n.cc : "");
+        }));
+      }
+      vis.forEach((v) => M.devs[v].forEach((dv) => node(dv.id, "device", (g, n) => {
+        svgEl("circle", { r: 6, fill: M.color[v], stroke: "var(--bg)", "stroke-width": 1.5 }, g);
+        var t = svgEl("text", { x: 11, y: 4 }, g);
+        var name = this.label(n);
+        t.textContent = name.length > 24 ? name.slice(0, 23) + "…" : name;
+        if (name === n.ip) t.style.fill = "var(--faint)";
+      })));
+      // The summary and the side.
+      var nd = vis.reduce((s, v) => s + M.devs[v].length, 0);
+      this.sum.textContent = nd + " appareils · " + vis.length + " réseaux · " + (d.states || 0) + " connexions";
+      this.detail(edges);
+    }
+    // Traffic per network: what leaves it and what comes in, to anywhere else.
+    perVlan(edges) {
+      var t = {};
+      var get = (v) => t[v] || (t[v] = { out: 0, inn: 0, n: 0 });
+      edges.forEach((e) => {
+        var va = this.vlanOf(e.a), vb = this.vlanOf(e.b);
+        if (va === vb) return;
+        get(va).out += e.bytes; get(vb).inn += e.bytes;
+      });
+      return t;
+    }
+    row(parent, left, right, onClick) {
+      var r = el("div", "p" + (onClick ? " link" : ""), parent);
+      var l = el("span", "v", r);
+      if (left instanceof Node) l.appendChild(left); else l.textContent = left;
+      el("span", "", r, right);
+      if (onClick) r.addEventListener("click", onClick);
+      return r;
+    }
+    detail(edges) {
+      var M = this.M, s = this.side, sel = this.sel;
+      var go = (id) => () => { this.sel = id; this.draw(); };
+      var dotted = (v, text) => { var f = document.createDocumentFragment(); var dt = el("span", "dot", f); dt.style.background = M.color[v] || "var(--faint)"; f.appendChild(document.createTextNode(text)); return f; };
+      if (!sel || sel === "router") {
+        el("div", "big", s, "OPNsense");
+        el("div", "h", s, "par réseau · trafic vers les autres");
+        var t = this.perVlan(edges);
+        M.vlans.forEach((v) => {
+          var x = t[v] || { out: 0, inn: 0 };
+          this.row(s, dotted(v, v + (M.gw[v] ? "  " + M.gw[v] : "") + " · " + M.devs[v].length), "↑" + human(x.out) + " ↓" + human(x.inn), go("vlan:" + v));
+        });
+        if (t.internet) this.row(s, "internet", "↑" + human(t.internet.out) + " ↓" + human(t.internet.inn), go("net:hub"));
+        // Network to network, with their services.
+        var pairs = {};
+        edges.forEach((e) => {
+          var va = this.vlanOf(e.a), vb = this.vlanOf(e.b);
+          if (va === vb) return;
+          var k = va + " → " + vb;
+          var p = pairs[k] || (pairs[k] = { bytes: 0, ports: {} });
+          p.bytes += e.bytes;
+          (e.ports || []).forEach((x) => { p.ports[x] = 1; });
+        });
+        var keys = Object.keys(pairs).sort((a, b) => pairs[b].bytes - pairs[a].bytes).slice(0, 14);
+        if (keys.length) el("div", "h", s, "entre réseaux");
+        keys.forEach((k) => this.row(s, k.replace("router", "OPNsense") + " · " + Object.keys(pairs[k].ports).slice(0, 3).join(", "), human(pairs[k].bytes)));
+        var unnamed = Object.values(M.byId).filter((n) => n.kind === "device" && this.label(n) === n.ip);
+        var notes = (M.d.notes || []).slice();
+        if (unnamed.length) notes.push(unnamed.length + " appareil" + (unnamed.length > 1 ? "s" : "") + " sans nom (names: dans le bloc nives:)");
+        if (notes.length) { el("div", "h", s, "à vérifier"); notes.forEach((n) => el("div", "warn", s, n)); }
+        return;
+      }
+      if (sel.indexOf("vlan:") === 0) {
+        var v = sel.slice(5);
+        el("div", "big", s, v);
+        el("div", "v sub", s, (M.gw[v] ? "passerelle " + M.gw[v] + " · " : "") + M.devs[v].length + " appareils");
+        var per = {};
+        edges.forEach((e) => { [e.a, e.b].forEach((id) => { if (this.vlanOf(id) === v) per[id] = (per[id] || 0) + e.bytes; }); });
+        el("div", "h", s, "appareils");
+        M.devs[v].slice().sort((a, b) => (per[b.id] || 0) - (per[a.id] || 0)).forEach((dv) => this.row(s, this.label(dv) + (dv.ip && this.label(dv) !== dv.ip ? "  " + dv.ip : ""), human(per[dv.id] || 0), go(dv.id)));
+        var out = edges.filter((e) => this.vlanOf(e.a) === v && this.vlanOf(e.b) !== v).sort((a, b) => b.bytes - a.bytes).slice(0, 12);
+        if (out.length) el("div", "h", s, "vers les autres réseaux");
+        out.forEach((e) => this.row(s, this.label(M.byId[e.a]) + " → " + this.label(M.byId[e.b]) + (e.ports.length ? " · " + e.ports.join(", ") : ""), human(e.bytes)));
+        return;
+      }
+      var n = M.byId[sel];
+      if (sel === "net:hub") {
+        el("div", "big", s, "internet");
+        var tot = {};
+        edges.forEach((e) => { [e.a, e.b].forEach((id) => { if (this.vlanOf(id) === "internet") tot[id] = (tot[id] || 0) + e.bytes; }); });
+        el("div", "h", s, "opérateurs");
+        Object.keys(tot).sort((a, b) => tot[b] - tot[a]).forEach((id) => this.row(s, this.label(M.byId[id]), human(tot[id]), go(id)));
+        return;
+      }
+      if (!n) { this.sel = ""; return this.detail(edges); }
+      el("div", "big", s, this.label(n));
+      var info = [];
+      if (n.ip) info.push(n.ip);
+      if (n.mac) info.push(n.mac);
+      if (n.kind === "device") info.push("réseau " + (n.vlan || "?"));
+      if (n.net && n.net !== n.vlan) info.push("wi-fi " + n.net + (n.signal != null ? " · " + n.signal + " dBm" : ""));
+      if (n.vendor) info.push(n.vendor);
+      if (n.cc) info.push(countryName(n.cc));
+      info.forEach((x) => el("div", "v sub", s, x));
+      var mine = edges.filter((e) => e.a === n.id || e.b === n.id).sort((a, b) => b.bytes - a.bytes);
+      el("div", "h", s, "connexions");
+      if (!mine.length) el("div", "sub", s, "aucune à travers le routeur");
       mine.forEach((e) => {
-        var row = el("div", "p", this.det);
-        var a = byId[e.a], b = byId[e.b];
-        var txt = n ? (e.a === n.id ? "→ " + this.label(b || { id: e.b }) : "← " + this.label(a || { id: e.a }))
-          : this.label(a || { id: e.a }) + " → " + this.label(b || { id: e.b });
-        el("span", "v", row, txt + (e.ports.length ? " · " + e.ports.join(", ") : ""));
-        el("span", "", row, human(e.bytes));
+        var other = e.a === n.id ? e.b : e.a;
+        this.row(s, (e.a === n.id ? "→ " : "← ") + this.label(M.byId[other]) + (e.ports.length ? " · " + e.ports.join(", ") : ""), human(e.bytes), go(other));
       });
     }
     move(t) {
       if (!this.pkts.length) return;
       var s = t / 1000;
       this.pkts.forEach((p) => {
-        var f = (p.off + s * p.speed) % 1;
-        var pt = p.path.getPointAtLength(f * p.len);
+        var f = ((p.off * p.len + s * p.speed) % p.len);
+        var pt = p.path.getPointAtLength(f);
         p.el.setAttribute("cx", pt.x.toFixed(1)); p.el.setAttribute("cy", pt.y.toFixed(1));
       });
     }
     disconnectedCallback() {
       if (this.frame) cancelAnimationFrame(this.frame);
       this.frame = null;
+      if (this.ro) { this.ro.disconnect(); this.ro = null; }
       if (this.timer) { clearInterval(this.timer); this.timer = null; this._built = false; this.shadowRoot.innerHTML = ""; }
+    }
+  }
+
+  // ----- igor-talkers-card: the busiest devices, from the network map -----
+  //   type: custom:igor-talkers-card
+  //   title: les plus actifs
+  //   limit: 8
+  //   more: /igor-wall/schema     # a « schéma › » link
+  // The same reading as the network map (nives.net_map, administrators
+  // only): each device's traffic through the router, its network's colour.
+  class IgorTalkersCard extends IgorCard {
+    setConfig(config) {
+      this.config = config || {};
+      this.names = this.config.names && typeof this.config.names === "object" ? this.config.names : {};
+    }
+    build() {
+      this.style([
+        ".list { flex: 1; min-height: 0; overflow-y: auto; }",
+        ".r { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--line); }",
+        ".r .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".r .b { color: var(--dim); font-variant-numeric: tabular-nums; }",
+        ".r .bar { grid-column: 1 / -1; height: 2px; }",
+        ".dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }",
+        ".empty { color: var(--dim); padding: 6px 0; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t sub", top, (this.config.title || "les plus actifs").toUpperCase()).style.letterSpacing = "0.12em";
+      if (this.config.more) {
+        var mo = el("button", "link", top, "schéma ›"); mo.type = "button";
+        mo.addEventListener("click", () => navigate(String(this.config.more)));
+      }
+      this.list = el("div", "list", card);
+      this.timer = setInterval(() => this.load(), 20000);
+      this.load();
+    }
+    load() {
+      var hass = this._hass;
+      if (!hass || this.loading || document.hidden) return;
+      this.loading = true;
+      hass.callWS({ type: "call_service", domain: "nives", service: "net_map", service_data: {}, return_response: true })
+        .then((r) => this.draw((r && r.response) || {}))
+        .catch((err) => this.draw({ error: err && err.code === "unauthorized" ? "réservé aux administrateurs" : "service indisponible" }))
+        .then(() => { this.loading = false; });
+    }
+    draw(d) {
+      this.list.innerHTML = "";
+      if (d.error || !(d.nodes || []).length) { el("div", "empty", this.list, d.error ? "Indisponible : " + d.error : "Lecture…"); return; }
+      var byId = {}, vl = [];
+      d.nodes.forEach((n) => { byId[n.id] = n; if (n.kind === "device" && vl.indexOf(n.vlan || "autre") < 0) vl.push(n.vlan || "autre"); });
+      (d.vlans || []).forEach((v) => { if (vl.indexOf(v.name) < 0) vl.push(v.name); });
+      vl.sort();
+      var tot = {};
+      (d.edges || []).forEach((e) => { [e.a, e.b].forEach((id) => { if (byId[id] && byId[id].kind === "device") tot[id] = (tot[id] || 0) + e.bytes; }); });
+      var ids = Object.keys(tot).sort((a, b) => tot[b] - tot[a]).slice(0, Math.max(3, Number(this.config.limit) || 8));
+      var max = ids.length ? tot[ids[0]] : 1;
+      ids.forEach((id) => {
+        var n = byId[id], r = el("div", "r", this.list);
+        var nm = el("span", "n", r);
+        var dot = el("span", "dot", nm); dot.style.background = NET_COLORS[vl.indexOf(n.vlan || "autre") % NET_COLORS.length];
+        nm.appendChild(document.createTextNode(this.names[n.ip] || n.name || n.ip));
+        el("span", "b", r, human(tot[id]));
+        var bar = el("div", "bar", r); el("i", "", bar).style.width = Math.round((100 * tot[id]) / max) + "%";
+      });
+    }
+    disconnectedCallback() { if (this.timer) { clearInterval(this.timer); this.timer = null; this._built = false; this.shadowRoot.innerHTML = ""; } }
+  }
+
+  // ----- igor-wifi-scan-card: the Wi-Fi networks around -----
+  //   type: custom:igor-wifi-scan-card
+  //   title: wi-fi voisins
+  // Heard by the OpenWrt access points when « scanner » is pressed
+  // (nives.wifi_scan, administrators only; a radio may pause a second or
+  // two). The channels in use per band, to choose a quiet one, then each
+  // network: name, band and channel, signal, security.
+  class IgorWifiScanCard extends IgorCard {
+    setConfig(config) { this.config = config || {}; }
+    getCardSize() { return 8; }
+    build() {
+      this.style([
+        ".ctl { display: flex; gap: 8px; align-items: center; margin: 2px 0 8px; flex: none; color: var(--dim); font-size: 11px; }",
+        "button.b { background: none; border: 1px solid var(--acc); color: var(--acc); font: inherit; border-radius: 3px; padding: 3px 10px; cursor: pointer; }",
+        "button.b[disabled] { opacity: 0.5; cursor: wait; }",
+        ".chan { display: flex; gap: 14px; flex-wrap: wrap; flex: none; margin-bottom: 8px; }",
+        ".band { flex: 1; min-width: 240px; }",
+        ".band .h, .h { color: var(--dim); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 3px; }",
+        ".cols { display: flex; align-items: flex-end; gap: 3px; height: 46px; border-bottom: 1px solid var(--line); }",
+        ".cols div { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; font-size: 9px; color: var(--faint); }",
+        ".cols i { display: block; width: 100%; background: var(--acc); opacity: 0.7; min-height: 1px; }",
+        ".cols div.mine i { background: var(--wait); opacity: 1; }",
+        ".list { flex: 1; min-height: 0; overflow-y: auto; }",
+        ".r { display: grid; grid-template-columns: minmax(0, 1fr) 13ch 30px 11ch; gap: 8px; align-items: center; padding: 3px 0; border-bottom: 1px dashed var(--line); }",
+        ".r .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".r .n small { color: var(--faint); margin-left: 6px; }",
+        ".r .c, .r .s { color: var(--dim); font-size: 11px; white-space: nowrap; }",
+        ".r .s.open { color: var(--bad); }",
+        ".sig { display: flex; gap: 2px; align-items: flex-end; height: 12px; }",
+        ".sig i { width: 4px; background: var(--track); }",
+        ".sig.ok i.on { background: var(--okc); } .sig.warn i.on { background: var(--wait); } .sig.bad i.on { background: var(--bad); }",
+        ".empty { color: var(--dim); padding: 6px 0; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t sub", top, (this.config.title || "wi-fi voisins").toUpperCase()).style.letterSpacing = "0.12em";
+      this.sum = el("span", "sub num", top);
+      var ctl = el("div", "ctl", card);
+      this.go = el("button", "b", ctl, "scanner"); this.go.type = "button";
+      this.go.addEventListener("click", () => this.scan());
+      this.when = el("span", "", ctl, "le Wi-Fi de la maison peut se couper une ou deux secondes");
+      this.chan = el("div", "chan", card);
+      this.list = el("div", "list", card);
+      el("div", "empty", this.list, "Appuyez sur « scanner ».");
+    }
+    scan() {
+      var hass = this._hass;
+      if (!hass || this.busy) return;
+      this.busy = true; this.go.disabled = true; this.go.textContent = "écoute…";
+      hass.callWS({ type: "call_service", domain: "nives", service: "wifi_scan", service_data: {}, return_response: true })
+        .then((r) => this.draw((r && r.response) || {}))
+        .catch((err) => this.draw({ error: err && err.code === "unauthorized" ? "réservé aux administrateurs" : "service indisponible (Igor 0.31 ou plus)" }))
+        .then(() => { this.busy = false; this.go.disabled = false; this.go.textContent = "scanner"; this.when.textContent = "dernier scan " + hhmm(new Date()); });
+    }
+    draw(d) {
+      this.list.innerHTML = ""; this.chan.innerHTML = "";
+      var nets = [], errs = [];
+      (d.aps || []).forEach((ap) => { (ap.networks || []).forEach((n) => nets.push(n)); if (ap.error) errs.push(ap.name + " : " + ap.error); });
+      if (d.error) errs.push(d.error);
+      this.sum.textContent = nets.length ? nets.length + " réseaux" : "";
+      errs.forEach((e) => el("div", "empty", this.list, "Indisponible : " + e));
+      if (!nets.length) { if (!errs.length) el("div", "empty", this.list, "Aucun réseau entendu."); return; }
+      // Channels in use, per band.
+      [["2,4 GHz", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]], ["5 GHz", null]].forEach((b) => {
+        var here = nets.filter((n) => n.band === b[0] && n.channel);
+        if (!here.length) return;
+        var chans = b[1] || Array.from(new Set(here.map((n) => n.channel))).sort((x, y) => x - y);
+        var count = {}; here.forEach((n) => { count[n.channel] = (count[n.channel] || 0) + 1; });
+        var max = Math.max.apply(null, chans.map((c) => count[c] || 0).concat([1]));
+        var box = el("div", "band", this.chan);
+        el("div", "h", box, b[0] + " · réseaux par canal");
+        var cols = el("div", "cols", box);
+        chans.forEach((c) => {
+          var col = el("div", "", cols);
+          var bar = el("i", "", col); bar.style.height = Math.round((100 * (count[c] || 0)) / max) + "%";
+          el("span", "", col, String(c));
+          col.title = "canal " + c + " · " + (count[c] || 0);
+        });
+      });
+      nets.forEach((n) => {
+        var r = el("div", "r", this.list);
+        var nm = el("span", "n", r, n.ssid || "‹ caché ›");
+        el("small", "", nm, n.bssid);
+        el("span", "c", r, [n.band, n.channel ? "canal " + n.channel : ""].filter(Boolean).join(" · "));
+        var lvl = n.signal == null ? 0 : n.signal >= -55 ? 4 : n.signal >= -65 ? 3 : n.signal >= -75 ? 2 : 1;
+        var sig = el("span", "sig " + (lvl >= 3 ? "ok" : lvl === 2 ? "warn" : "bad"), r);
+        sig.title = n.signal == null ? "" : n.signal + " dBm";
+        for (var i = 1; i <= 4; i++) { var b2 = el("i", i <= lvl ? "on" : "", sig); b2.style.height = 3 * i + "px"; }
+        el("span", "s" + (n.security === "ouvert" ? " open" : ""), r, n.security);
+      });
     }
   }
 
@@ -3155,7 +3763,9 @@
   define("igor-dns-card", IgorDnsCard, "Igor · DNS en direct", "Les requêtes DNS d'AdGuard Home en direct, par appareil (administrateurs).");
   define("igor-map-card", IgorMapCard, "Igor · le monde", "Où vont les connexions de la maison, par pays et opérateur (administrateurs).");
   define("igor-wifi-card", IgorWifiCard, "Igor · Wi-Fi", "Qui est connecté à quel Wi-Fi (OpenWrt), avec le signal et le débit (administrateurs).");
-  define("igor-netmap-card", IgorNetmapCard, "Igor · schéma réseau", "Qui parle à qui à travers le routeur (OPNsense), animé (administrateurs).");
+  define("igor-netmap-card", IgorNetmapCard, "Igor · schéma réseau", "Le réseau par VLAN autour d'OPNsense, pilotable : dispositions, déplacement, zoom, filtres (administrateurs).");
+  define("igor-talkers-card", IgorTalkersCard, "Igor · les plus actifs", "Les appareils qui échangent le plus à travers le routeur (administrateurs).");
+  define("igor-wifi-scan-card", IgorWifiScanCard, "Igor · Wi-Fi voisins", "Les réseaux Wi-Fi alentour et les canaux occupés, entendus par OpenWrt (administrateurs).");
   define("igor-news-card", IgorNewsCard, "Igor · dépêches", "Les derniers titres d'un flux RSS ou Atom (dépêches, actualités).");
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
 
