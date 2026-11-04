@@ -1266,10 +1266,12 @@
     setConfig(config) { this.config = config || {}; }
     getCardSize() { return 1; }
     build() {
-      this.style(CARD_CSS + "\nha-card { border-color: #24394a; cursor: pointer; }\n.lens { width: 28px; height: 28px; border-radius: 50%; background: radial-gradient(circle, #e1f5fe 0, #4fc3f7 30%, #0277bd 65%, #0d1014 100%); box-shadow: 0 0 0 2px #2b3a46; }\n.lens.off { filter: grayscale(1) brightness(0.6); }\n.pn { font-size: 14px; }\nha-card.bigc { padding: 14px 16px; }\n.bigc .tile { grid-template-columns: 46px minmax(0, 1fr) auto auto; gap: 14px; }\n.bigc .lens { width: 46px; height: 46px; }\n.bigc .pn { font-size: 18px; }\n.mic { width: 50px; height: 50px; border-radius: 50%; border: 1px solid #24394a; background: none; color: var(--acc); display: grid; place-items: center; cursor: pointer; --mdc-icon-size: 26px; }");
+      this.style(CARD_CSS + "\nha-card { border-color: #24394a; cursor: pointer; }\n.lens { width: 28px; height: 28px; display: block; }\n.lens svg { width: 100%; height: 100%; display: block; overflow: visible; }\n.lens .ring { transform-origin: 128px 96px; transition: stroke 0.3s; }\n.lens.off { filter: grayscale(1) brightness(0.55); }\n.lens.lis .ring { stroke: #59d0e0; animation: igor-eye 1.2s ease-in-out infinite; }\n.lens.lis .pupil { fill: #59d0e0; }\n.lens.think .ring { stroke: #e0a33a; animation: igor-eye 0.7s ease-in-out infinite; }\n.lens.think .pupil { fill: #e0a33a; }\n.lens.say .pupil { fill: #e9e4da; }\n@keyframes igor-eye { 50% { transform: scale(1.18); } }\n@media (prefers-reduced-motion: reduce) { .lens .ring { animation: none !important; } }\n.pn { font-size: 14px; }\nha-card.bigc { padding: 14px 16px; }\n.bigc .tile { grid-template-columns: 46px minmax(0, 1fr) auto auto; gap: 14px; }\n.bigc .lens { width: 46px; height: 46px; }\n.bigc .pn { font-size: 18px; }\n.mic { width: 50px; height: 50px; border-radius: 50%; border: 1px solid #24394a; background: none; color: var(--acc); display: grid; place-items: center; cursor: pointer; --mdc-icon-size: 26px; }");
       var card = el("ha-card", "", this.shadowRoot);
       var t = el("div", "tile", card);
+      // Igor's eye: red at rest, cyan while it listens, amber while it thinks.
       this.lens = el("span", "lens", t);
+      this.lens.innerHTML = '<svg viewBox="0 0 256 256" aria-hidden="true"><rect x="107" y="20" width="44" height="216" fill="#e9e4da"/><circle class="ring" cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle class="pupil" cx="128" cy="96" r="16" fill="#e5323b"/></svg>';
       var mid = el("span", "", t);
       el("div", "pn", mid, this.config.name || "Igor");
       this.sub = el("div", "sn", mid);
@@ -1310,6 +1312,9 @@
       else text = c.idle_text || "prêt · oreille ouverte";
       if (this.sub.textContent !== text) this.sub.textContent = text;
       this.lens.classList.toggle("off", !on);
+      this.lens.classList.toggle("lis", on && (sat === "listening" || (s === "heard" && igor.attributes.status === "listening")));
+      this.lens.classList.toggle("think", on && (s === "thinking" || sat === "processing"));
+      this.lens.classList.toggle("say", on && (s === "answering" || sat === "responding"));
       this.pill.classList.toggle("on", on);
     }
   }
@@ -2024,7 +2029,7 @@
   // size: small gives one line per tile (icon, name, state) instead of a square.
   // size: giant: a wall switch: a big icon, the name under it, no state text,
   // the tiles filling the card's height (a tablet made of buttons); labels:
-  // false leaves the name out too.
+  // false leaves the name out too; states: true shows the state under it.
   // A tile with `service: cover.open_cover` (and `data`) calls it on its
   // entity instead of switching it; `lit: open` lights it in that state.
   class IgorTilesCard extends IgorCard {
@@ -2056,10 +2061,11 @@
         "button.giant .n { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }",
         "button.giant.on .n { color: var(--fg); }",
         "button.giant .s { display: none; }",
+        ".grid.states button.giant .s { display: block; font-size: 11px; margin-top: -8px; }",
         "button.giant.act ha-icon { color: var(--fg); }",
         "button.giant:active { transform: scale(0.98); }"
       ].join("\n"));
-      var grid = el("div", "grid", this.shadowRoot);
+      var grid = el("div", "grid" + (giant && this.config.states ? " states" : ""), this.shadowRoot);
       var cols = Number(this.config.columns) || (small ? 1 : 2);
       grid.style.gridTemplateColumns = "repeat(" + cols + ", minmax(0, 1fr))";
       // A last row short of tiles: its last tile widens to the end, no hole.
@@ -2486,6 +2492,7 @@
   //   names: { 192.168.1.20: nas }   # names for addresses AdGuard does not know
   //   hide: [local, in-addr.arpa]      # domains not shown (and their subdomains)
   //   more: /igor-wall/dns             # a « tout le journal » button to that page
+  //   blocked: true                    # start on the blocked queries only
   // Read by Home Assistant (nives.dns_log, through the AdGuard integration),
   // for administrators only: it is the house's browsing history. Nothing is
   // kept; reading stops while the page is hidden or paused.
@@ -2521,8 +2528,9 @@
       this.sum = el("span", "sub num", top);
       var ctl = el("div", "ctl", card);
       var btn = (text, fn) => { var x = el("button", "b", ctl, text); x.type = "button"; x.addEventListener("click", fn); return x; };
-      this.blockedOnly = false; this.paused = false; this.client = "";
+      this.blockedOnly = !!this.config.blocked; this.paused = false; this.client = "";
       this.bBlocked = btn("bloquées", () => { this.blockedOnly = !this.blockedOnly; this.bBlocked.classList.toggle("on", this.blockedOnly); this.lines = []; this.load(); });
+      this.bBlocked.classList.toggle("on", this.blockedOnly);
       this.bPause = btn("pause", () => { this.paused = !this.paused; this.bPause.classList.toggle("on", this.paused); this.bPause.textContent = this.paused ? "reprendre" : "pause"; if (!this.paused) this.load(); });
       this.q = el("input", "q", ctl); this.q.placeholder = "domaine ou appareil…";
       // `more: /a-page`: a button to the full log (a page of its own).
@@ -2661,7 +2669,8 @@
         ".arc.flow { stroke-dasharray: 1.2 2.2; animation: igor-flow 1.6s linear infinite; }",
         "@keyframes igor-flow { to { stroke-dashoffset: -3.4; } }",
         ".dot { fill: var(--acc); cursor: pointer; }",
-        ".dot.sel, .arc.sel { fill: var(--wait); stroke: var(--wait); opacity: 1; }",
+        ".dot.sel { fill: var(--wait); }",
+        ".arc.sel { stroke: var(--wait); opacity: 1; }",
         ".dot.sel { stroke: none; }",
         ".home { fill: var(--fg); }",
         ".home-ring { fill: none; stroke: var(--fg); stroke-width: 0.3; opacity: 0.5; }",
@@ -2931,7 +2940,7 @@
       var saved = prefs(this.key) || {};
       this.mode = saved.mode || "vlan";
       this.pos = saved.pos || {};
-      this.hidden = saved.hidden || {};
+      this.off = saved.hidden || {};
       this.showNet = saved.net !== false;
       this.showFlow = saved.flow !== false;
       this.view = { k: 1, x: 0, y: 0 };
@@ -3000,7 +3009,7 @@
       this.search.placeholder = "⌕ appareil…";
       this.search.addEventListener("input", () => { this.q = this.search.value.trim().toLowerCase(); this.draw(); });
       this.search.addEventListener("keydown", (ev) => { if (ev.key === "Enter") this.findFirst(); });
-      btn("réinitialiser", () => { this.pos = {}; this.hidden = {}; this.mode = "vlan"; this.save(); this.relayout(true); });
+      btn("réinitialiser", () => { this.pos = {}; this.off = {}; this.mode = "vlan"; this.save(); this.relayout(true); });
       var body = el("div", "body", card);
       this.stage = el("div", "stage no-swipe", body);
       this.svg = svgEl("svg", { class: "net" }, this.stage);
@@ -3027,7 +3036,7 @@
         this.frame = requestAnimationFrame(step);
       }
     }
-    save() { prefs(this.key, { mode: this.mode, pos: this.pos, hidden: this.hidden, net: this.showNet, flow: this.showFlow }); }
+    save() { prefs(this.key, { mode: this.mode, pos: this.pos, hidden: this.off, net: this.showNet, flow: this.showFlow }); }
     load() {
       var hass = this._hass;
       if (!hass || this.loading || document.hidden || this.dragging) return;
@@ -3073,7 +3082,7 @@
     shown(id) {
       var n = this.M.byId[id];
       if (!n) return false;
-      if (n.kind === "device") return !this.hidden[n.vlan || "autre"];
+      if (n.kind === "device") return !this.off[n.vlan || "autre"];
       if (n.kind === "remote") return this.showNet;
       return true;
     }
@@ -3094,7 +3103,7 @@
       var net = this.showNet && M.remotes.length;
       var rw = net ? 190 : 0;
       var AW = W - 2 * m - (net ? rw + 14 : 0);
-      var vis = M.vlans.filter((v) => !this.hidden[v]);
+      var vis = M.vlans.filter((v) => !this.off[v]);
       if (net) {
         // The internet on the right: a trunk going down, operators beside it.
         var tx = W - m - rw + 12;
@@ -3252,10 +3261,10 @@
     renderChips() {
       this.chips.innerHTML = "";
       (this.M.vlans || []).forEach((v) => {
-        var b = el("button", "chip" + (this.hidden[v] ? " off" : ""), this.chips, v || "?");
+        var b = el("button", "chip" + (this.off[v] ? " off" : ""), this.chips, v || "?");
         b.type = "button";
         b.style.color = this.M.color[v]; b.style.borderColor = this.M.color[v];
-        b.addEventListener("click", () => { if (this.hidden[v]) delete this.hidden[v]; else this.hidden[v] = 1; this.save(); this.relayout(); });
+        b.addEventListener("click", () => { if (this.off[v]) delete this.off[v]; else this.off[v] = 1; this.save(); this.relayout(); });
       });
       this.renderModes();
     }
@@ -3307,7 +3316,7 @@
       var P = this.P, sel = this.sel, selV = sel.indexOf("vlan:") === 0 ? sel.slice(5) : "";
       var involved = (e) => !sel || e.a === sel || e.b === sel || (selV && (this.vlanOf(e.a) === selV || this.vlanOf(e.b) === selV)) ||
         (sel === "router") || (sel === "net:hub" && (this.vlanOf(e.a) === "internet" || this.vlanOf(e.b) === "internet"));
-      var vis = M.vlans.filter((v) => !this.hidden[v]);
+      var vis = M.vlans.filter((v) => !this.off[v]);
       // Blocks (or hubs) and their links to OPNsense.
       vis.forEach((v) => {
         var c = M.color[v];
@@ -3513,6 +3522,7 @@
   //   title: les plus actifs
   //   limit: 8
   //   more: /igor-wall/schema     # a « schéma › » link
+  //   by: vlan                    # per network instead: ↑ out, ↓ in, devices
   // The same reading as the network map (nives.net_map, administrators
   // only): each device's traffic through the router, its network's colour.
   class IgorTalkersCard extends IgorCard {
@@ -3557,6 +3567,30 @@
       d.nodes.forEach((n) => { byId[n.id] = n; if (n.kind === "device" && vl.indexOf(n.vlan || "autre") < 0) vl.push(n.vlan || "autre"); });
       (d.vlans || []).forEach((v) => { if (vl.indexOf(v.name) < 0) vl.push(v.name); });
       vl.sort();
+      if (this.config.by === "vlan") {
+        // Per network: what leaves it and what comes in, from anywhere else.
+        var vOf = (id) => { var n = byId[id]; return !n ? "" : n.kind === "device" ? n.vlan || "autre" : n.kind === "remote" ? "internet" : "OPNsense"; };
+        var t = {}, cnt = {};
+        d.nodes.forEach((n) => { if (n.kind === "device") cnt[n.vlan || "autre"] = (cnt[n.vlan || "autre"] || 0) + 1; });
+        (d.edges || []).forEach((e) => {
+          var va = vOf(e.a), vb = vOf(e.b);
+          if (va === vb) return;
+          (t[va] = t[va] || { o: 0, i: 0 }).o += e.bytes;
+          (t[vb] = t[vb] || { o: 0, i: 0 }).i += e.bytes;
+        });
+        var gw = {};
+        (d.vlans || []).forEach((v) => { gw[v.name] = v.gateway; });
+        var maxv = Math.max.apply(null, vl.map((v) => (t[v] ? t[v].o + t[v].i : 0)).concat([1]));
+        vl.forEach((v, i) => {
+          var x = t[v] || { o: 0, i: 0 }, r = el("div", "r", this.list);
+          var nm = el("span", "n", r);
+          var dot = el("span", "dot", nm); dot.style.background = NET_COLORS[i % NET_COLORS.length];
+          nm.appendChild(document.createTextNode(v + (gw[v] ? "  " + gw[v] : "") + " · " + (cnt[v] || 0)));
+          el("span", "b", r, "↑" + human(x.o) + " ↓" + human(x.i));
+          var bar = el("div", "bar", r); el("i", "", bar).style.width = Math.round((100 * (x.o + x.i)) / maxv) + "%";
+        });
+        return;
+      }
       var tot = {};
       (d.edges || []).forEach((e) => { [e.a, e.b].forEach((id) => { if (byId[id] && byId[id].kind === "device") tot[id] = (tot[id] || 0) + e.bytes; }); });
       var ids = Object.keys(tot).sort((a, b) => tot[b] - tot[a]).slice(0, Math.max(3, Number(this.config.limit) || 8));
