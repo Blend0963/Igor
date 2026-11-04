@@ -747,7 +747,7 @@ async def _async_inventory(hass: HomeAssistant) -> dict:
         try:
             leases = parse_leases(await router.leases(session))
             if router.lease_path is None:
-                notes.append("DHCP leases: none readable (privilege « Leases » of your DHCP server?)")
+                notes.append("DHCP leases: none readable (privilege « Services: DHCP: Kea(v4) », « Services: Dnsmasq DNS/DHCP: Settings » or « Status: DHCP leases »?)")
             for ip, lease in leases.items():
                 h = by_ip.setdefault(ip, {"ip": ip, "mac": lease["mac"], "name": "", "net": lease["net"], "vendor": ""})
                 h["name"] = lease["name"] or h.get("name", "")
@@ -1004,7 +1004,7 @@ def _async_register_net_map(hass: HomeAssistant) -> None:
                                              "mac": h.get("mac", ""), "net": x.get("ssid") or h.get("net", ""),
                                              "vlan": h.get("net", ""), "vendor": h.get("vendor", ""), "signal": x.get("signal")})
         except (PermissionError, FileNotFoundError) as err:
-            out["notes"].append(f"firewall log: {err} (privilege « Firewall Log »)")
+            out["notes"].append(f"firewall log: {err} (privilege « Diagnostics: Logs: Firewall: Live View »)")
         except (ValueError, aiohttp.ClientError, TimeoutError) as err:
             out["notes"].append(f"firewall log: {err}")
         try:

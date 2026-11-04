@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Igor</title>
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#03A9F4">
+<meta name="theme-color" content="#07080a">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -460,13 +460,97 @@
     .msg.assistant table { font-size: 14px; }
     .msg.assistant th, .msg.assistant td { padding: 7px 9px; }
   }
+
+  /* ===== Igor's own look (the wall, the tablet, the threads alike) =====
+     Dark only: near-black, bone white, cyan for Igor, amber for what works,
+     red only for what matters (the open thread, an error, « stop »). Your
+     messages in a bubble on the right; Igor's answer as structured text
+     across the whole reading width, like a document. */
+  :root {
+    color-scheme: dark;
+    --bg: #07080a; --surface: #0b0d10; --hover: #14171c; --active: #14171c; --border: #22262c; --border-hi: #3d454e; --line: #22262c;
+    --fg: #e9e4da; --fg2: #c9c4ba; --muted: #878c95; --accent: #59d0e0; --accent-hi: #8ae3ee; --accent-rgb: 89,208,224; --link: #59d0e0;
+    --code-bg: #0b0d10; --chart-bg: #0b0d10; --axis: #3d454e; --danger: #e5323b; --danger-strong: #e5323b; --ok: #5cc28f; --ok-border: #2c5a45;
+    --warn: #e0a33a; --warn-soft: #e0a33a; --zebra: rgba(233,228,218,0.025);
+    --bubble: #14171c; --bubble-shadow: none; --user-bubble: #1a1e24;
+    --hdr: #07080a; --hdr-shadow: none; --gold-text: #e9e4da; --gold-grad: none; --gold-ink: #e9e4da; --brand: #e9e4da;
+    --btn: #14171c; --btn-fg: #59d0e0; --comp-shadow: none;
+    --chip-on: rgba(89,208,224,0.08); --chip-on-fg: #59d0e0; --chip-off: #14171c; --chip-off-fg: #878c95; --chip-set: rgba(89,208,224,0.08); --chip-set-fg: #59d0e0;
+    --chip-rem: rgba(224,163,58,0.1); --chip-rem-fg: #e0a33a; --chip-auto: rgba(92,194,143,0.1); --chip-auto-fg: #5cc28f;
+    --igor-mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, "Roboto Mono", "DejaVu Sans Mono", monospace;
+    --igor-title: "Chakra Petch", "Rajdhani", ui-monospace, "JetBrains Mono", Menlo, monospace;
+  }
+  body { font-family: var(--igor-mono); background: var(--bg); color: var(--fg); }
+  .wordmark, .brand.wordmark, .head-top .wordmark, #empty .big.wordmark { font-family: var(--igor-title); letter-spacing: 0.24em; text-transform: uppercase; font-weight: 600; text-shadow: none; color: var(--fg); }
+  .head-top .wordmark { font-size: 18px; }
+  .brand.wordmark { font-size: 15px; }
+  .wm-bow { width: 22px; height: 22px; }
+  .head-top .wm-bow, #empty .big .wm-bow { animation: none; }
+  .tagline { font-family: var(--igor-mono); letter-spacing: 0.18em; opacity: 0.55; }
+  /* The header: flat, a hairline under it. */
+  #chat-head { background: var(--bg) !important; color: var(--fg); border-radius: 0; box-shadow: none; border-bottom: 1px solid var(--line); }
+  .hdr-btn, .head-btn { color: var(--muted); border-radius: 3px; }
+  .hdr-btn:hover, .head-btn:hover { color: var(--fg); background: var(--hover); }
+  /* The threads: the open one marked in red. */
+  #sidebar { background: var(--surface); border-right: 1px solid var(--line); }
+  .thread { border-radius: 0; border-left: 2px solid transparent; }
+  .thread.active { background: var(--hover); border-left-color: #e5323b; }
+  #btn-new { background: none; color: var(--fg); border: 1px solid #e5323b; border-radius: 3px; }
+  #btn-new:hover { background: rgba(229,50,59,0.12); }
+  #search, #project { border-radius: 3px; background: var(--bg); }
+  /* The conversation: one reading column. */
+  #messages { padding: 24px 18px; gap: 22px; }
+  #messages > * { width: min(860px, 100%); margin-left: auto; margin-right: auto; }
+  .msg { font-size: 14px; line-height: 1.65; }
+  .msg.user { width: auto; max-width: min(640px, 82%); align-self: flex-end; margin-right: max(0px, calc((100% - 860px) / 2)); background: var(--user-bubble); color: var(--fg); border: 1px solid var(--border); border-radius: 14px 14px 4px 14px; padding: 10px 14px; }
+  .msg.assistant, .msg.assistant:has(.code), .msg.assistant:has(.chart), .msg.assistant:has(.table-wrap), .msg.assistant:has(.md-img) { align-self: center; width: min(860px, 100%); max-width: none; background: none; border: 0; border-radius: 0; padding: 0; box-shadow: none; white-space: normal; }
+  .msg.assistant p { margin: 0 0 0.8em; }
+  .msg.assistant h1, .msg.assistant h2, .msg.assistant h3, .msg.assistant h4 { font-family: var(--igor-title); letter-spacing: 0.06em; color: var(--fg); margin: 1.2em 0 0.5em; }
+  .msg.assistant h3::before, .msg.assistant h2::before { content: ""; display: inline-block; width: 6px; height: 6px; background: #e5323b; margin-right: 10px; vertical-align: 2px; }
+  .msg.assistant ul, .msg.assistant ol { padding-left: 1.4em; margin: 0 0 0.8em; }
+  .msg.assistant li::marker { color: var(--accent); }
+  .msg.assistant blockquote { border-left: 2px solid var(--accent); color: var(--fg2); padding-left: 12px; }
+  .msg.assistant a { color: var(--accent); }
+  .msg.assistant hr { border: 0; border-top: 1px solid var(--line); }
+  .msg table th { color: var(--muted); font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; font-size: 11px; }
+  .msg th, .msg td { border-color: var(--line) !important; }
+  .code { border-radius: 3px; border-color: var(--line); }
+  .code-head { background: var(--surface); }
+  .inline-code { border-radius: 2px; color: var(--accent); background: var(--hover); }
+  /* What Igor did, in chips; failures in red. */
+  .chip { border-radius: 3px; }
+  .chip.k-off, .chip.k-on, .chip.k-set { border: 1px solid rgba(89,208,224,0.5); }
+  .msg-act, .speak-btn { border-radius: 3px; color: var(--muted); }
+  /* Writing: one frame; « send » in bone white, « stop » in red. */
+  #composer { padding: 10px 18px 16px; }
+  .composer-box { width: min(860px, 100%); margin: 0 auto; border-radius: 4px; background: var(--surface); }
+  .composer-box:focus-within { border-color: var(--border-hi); box-shadow: none; }
+  #btn-send { background: var(--fg); color: var(--bg); border-radius: 3px; }
+  #btn-send:hover { background: #ffffff; }
+  #btn-send.stop { background: none; color: #e5323b; border: 1px solid #e5323b; }
+  .pill { border-radius: 3px; background: var(--bg); }
+  .pill-icon { color: var(--accent); }
+  .icon-btn { border-radius: 3px; }
+  .icon-btn:hover { background: var(--hover); }
+  .modal .box { border-radius: 4px; background: var(--surface); border: 1px solid var(--line); }
+  #statusline { color: var(--warn); }
+  #statusline.err { color: #e5323b; }
+  /* Igor working: his eye, amber, pulsing (instead of the bow tie). */
+  .st-bow { width: 14px; height: 14px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Crect x='107' y='20' width='44' height='216' fill='%23e9e4da'/%3E%3Ccircle cx='128' cy='96' r='48' fill='%2307080a' stroke='%23e0a33a' stroke-width='16'/%3E%3Ccircle cx='128' cy='96' r='16' fill='%23e0a33a'/%3E%3C/svg%3E") center / contain no-repeat; animation: igor-eye-pulse 1s ease-in-out infinite; }
+  @keyframes igor-eye-pulse { 50% { opacity: 0.45; } }
+  #chat-head::before, #chat-head::after { display: none; }
+  .msg.user { background: var(--user-bubble) !important; box-shadow: none !important; }
+  .msg.user .msg-act { color: var(--muted); }
+  .msg.user .msg-act:hover { background: var(--hover); color: var(--fg); }
+  .head-top .tagline { opacity: 0.4; }
+  #messages > .msg.user { width: fit-content; max-width: min(640px, 82%); margin-left: auto; margin-right: max(0px, calc((100% - 860px) / 2)); }
 </style>
 </head>
 <body>
 <div id="app">
   <aside id="sidebar">
     <div class="side-head">
-      <span class="brand wordmark"><svg class="wm-bow" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="wmg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4FC3F7"/><stop offset="1" stop-color="#0288D1"/></linearGradient></defs><path d="M27 27.5 L8 18 Q5 16.5 5 20 V44 Q5 47.5 8 46 L27 36.5 Z M37 27.5 L56 18 Q59 16.5 59 20 V44 Q59 47.5 56 46 L37 36.5 Z" fill="url(#wmg2)"/><rect x="26" y="25" width="12" height="14" rx="3.5" fill="#B3E5FC"/></svg>Igor</span>
+      <span class="brand wordmark"><svg class="wm-bow" viewBox="0 0 256 256" aria-hidden="true"><rect x="107" y="20" width="44" height="216" fill="#e9e4da"/><circle class="eye-ring" cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle class="eye-pupil" cx="128" cy="96" r="16" fill="#e5323b"/></svg>Igor</span>
       <button id="btn-new" type="button">+ Nouveau fil</button>
       <button id="btn-close-side" type="button" title="Fermer" aria-label="Fermer la liste"><svg class="svg-ic" style="width:18px;height:18px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
@@ -494,7 +578,7 @@
     <header id="chat-head">
       <div class="head-top">
         <button id="btn-menu" class="hdr-btn" type="button" title="Fils de discussion" aria-label="Afficher les fils de discussion"><svg class="svg-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg></button>
-        <span class="wordmark"><svg class="wm-bow" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="wmg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#D6F0FD"/></linearGradient></defs><path d="M27 27.5 L8 18 Q5 16.5 5 20 V44 Q5 47.5 8 46 L27 36.5 Z M37 27.5 L56 18 Q59 16.5 59 20 V44 Q59 47.5 56 46 L37 36.5 Z" fill="url(#wmg)"/><rect x="26" y="25" width="12" height="14" rx="3.5" fill="#B3E5FC"/></svg>Igor<span class="tagline">In Igor we trust</span></span>
+        <span class="wordmark"><svg class="wm-bow" viewBox="0 0 256 256" aria-hidden="true"><rect x="107" y="20" width="44" height="216" fill="#e9e4da"/><circle class="eye-ring" cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle class="eye-pupil" cx="128" cy="96" r="16" fill="#e5323b"/></svg>Igor<span class="tagline">In Igor we trust</span></span>
         <span class="head-actions">
           <button id="btn-move" type="button" class="hdr-btn" title="Ranger dans un projet" aria-label="Ranger dans un projet" hidden><svg class="svg-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z"/></svg></button>
           <button id="btn-export" type="button" class="hdr-btn" title="Exporter ce fil" aria-label="Exporter ce fil" hidden><svg class="svg-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button>
@@ -504,7 +588,7 @@
       <div class="head-sub"><span id="chat-title" class="untitled">Bienvenue</span></div>
     </header>
     <div id="empty">
-      <div class="big wordmark"><svg class="wm-bow" style="width:44px;height:44px" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="wmg3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4FC3F7"/><stop offset="1" stop-color="#0288D1"/></linearGradient></defs><path d="M27 27.5 L8 18 Q5 16.5 5 20 V44 Q5 47.5 8 46 L27 36.5 Z M37 27.5 L56 18 Q59 16.5 59 20 V44 Q59 47.5 56 46 L37 36.5 Z" fill="url(#wmg3)"/><rect x="26" y="25" width="12" height="14" rx="3.5" fill="#B3E5FC"/></svg>Igor</div>
+      <div class="big wordmark"><svg class="wm-bow" viewBox="0 0 256 256" aria-hidden="true" style="width:44px;height:44px"><rect x="107" y="20" width="44" height="216" fill="#e9e4da"/><circle class="eye-ring" cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle class="eye-pupil" cx="128" cy="96" r="16" fill="#e5323b"/></svg>Igor</div>
       <div class="tagline" style="opacity:.8">In Igor we trust</div>
       <div>Créez un fil ou choisissez-en un dans la liste.</div>
     </div>

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.32.2 — The network map on a phone, the Wi-Fi rows apart
+
+- Network map on a phone: one toolbar row that scrolls, the map on most of the screen with the detail under it (the card scrolls, a tap brings the detail into sight), two fingers zoom. The internet starts hidden there (the world map shows it); shown, the map is laid out wider and fitted, so blocks keep room for their names. A network's gateway only shows beside its name where it fits.
+- Wi-Fi neighbours: wider columns, so « canal 149 » no longer runs under the signal bars; on a phone the name on its own line, the rest under it. Wi-Fi clients: the rates column no longer spills onto the signal; hidden on a phone.
+- DOCS.md: the exact OPNsense privilege names for Igor's key, which of them also allow changes, and what the OPNsense integration (CPU, gateways, WireGuard…) needs with « Granular Sync Options » instead of admin.
+
+## 0.32.1 — Threads in Igor's look
+
+- The threads panel (Igor's own page) takes the wall's look: dark, the eye in place of the bow tie, red marks on titles and the open thread. What you say sits in a bubble on the right; Igor's answer is structured text across the whole reading column, without a bubble.
+
 ## 0.32.0 — What the firewall lets through, and what it refuses
 
 - The network map reads OPNsense's firewall log: what it refused shows as red dashes (the same way through OPNsense), a « refusé ×N » under each block concerned, and a « refusé par le pare-feu » list (who → whom, service, rule, how many times) in OPNsense's, a network's and a device's detail. A device only ever refused still gets its place. « refusé » in the toolbar shows or hides them. The key needs the « Firewall Log » privilege (DOCS.md); without it, the map says so under « à vérifier ».
