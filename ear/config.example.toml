@@ -92,6 +92,12 @@ here_input = "hdmi"            # the monitor's input this machine is plugged int
 pc_input = "dp"                # the PC's input
 keyboard = ""                  # part of the keyboard's name; empty: any USB keyboard
 pc_entity = ""                 # e.g. "binary_sensor.pc": while it is off the screen stays here
+# The guard (guard.py): a locked window of its own above the dashboard while
+# the key is away (anything but "on"), an alert while the alarm goes off; its
+# keypad sends the code to Home Assistant (nives.disarm), which checks it.
+key_entity = ""                # e.g. "binary_sensor.usb_key"
+alarm_entity = ""              # e.g. "binary_sensor.alarm_triggered"
+camera = ""                    # e.g. "camera.living_room", shown on the guard
 
 [log]
 # Notes kept in ~/.local/state/igor-ear/observations.jsonl, on this machine only.

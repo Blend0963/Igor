@@ -12,6 +12,7 @@ from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 
@@ -22,6 +23,11 @@ from .const import (
     CONF_SHARED_MEMORY,
     CONF_USER_ID,
     CONF_VOICE_DISPLAY,
+    CONF_KEY_ENTITY,
+    CONF_ALARM_ENTITY,
+    CONF_ALARM_ACTIVE,
+    CONF_NEW_CODE,
+    CONF_CODE_HASH,
     DEFAULT_API_URL,
     DEFAULT_SHARED_MEMORY,
     DEFAULT_USER_ID,
@@ -186,13 +192,26 @@ class OptionsFlow(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Manage the options."""
+        current = {**self.config_entry.data, **self.config_entry.options}
+        errors: dict[str, str] = {}
         if user_input is not None:
             user_input[CONF_USER_ID] = (
                 user_input.get(CONF_USER_ID, "").strip() or DEFAULT_USER_ID
             )
-            return self.async_create_entry(title="", data=user_input)
+            # The disarm code is never kept: only its salted hash. Left empty,
+            # the code already set stays.
+            code = str(user_input.pop(CONF_NEW_CODE, "") or "").strip()
+            if code and (len(code) < 4 or not code.isdigit()):
+                errors[CONF_NEW_CODE] = "bad_code"
+            else:
+                from .security import hash_code
 
-        current = {**self.config_entry.data, **self.config_entry.options}
+                if code:
+                    user_input[CONF_CODE_HASH] = await self.hass.async_add_executor_job(hash_code, code)
+                elif current.get(CONF_CODE_HASH):
+                    user_input[CONF_CODE_HASH] = current[CONF_CODE_HASH]
+                return self.async_create_entry(title="", data=user_input)
+
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -209,8 +228,26 @@ class OptionsFlow(config_entries.OptionsFlow):
                         CONF_VOICE_DISPLAY,
                         default=current.get(CONF_VOICE_DISPLAY, DEFAULT_VOICE_DISPLAY),
                     ): bool,
+                    vol.Optional(
+                        CONF_KEY_ENTITY,
+                        description={"suggested_value": current.get(CONF_KEY_ENTITY)},
+                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="binary_sensor")),
+                    vol.Optional(
+                        CONF_ALARM_ENTITY,
+                        description={"suggested_value": current.get(CONF_ALARM_ENTITY)},
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain=["input_boolean", "switch", "alarm_control_panel"])
+                    ),
+                    vol.Optional(
+                        CONF_ALARM_ACTIVE,
+                        description={"suggested_value": current.get(CONF_ALARM_ACTIVE)},
+                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="binary_sensor")),
+                    vol.Optional(CONF_NEW_CODE, default=""): selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+                    ),
                 }
             ),
+            errors=errors,
         )
 
 

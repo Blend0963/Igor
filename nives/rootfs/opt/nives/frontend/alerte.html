@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IGOR · ALERTE</title>
+<!-- Shown on the wall tablet while the alarm goes off. Nothing can be done
+     here: disarming is done on the wall, with the code. -->
+<style>
+html, body { margin: 0; height: 100%; background: #b3141c; color: #fff; font-family: ui-monospace, "JetBrains Mono", Menlo, "DejaVu Sans Mono", monospace; overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: none; }
+.c { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2vh; text-align: center; animation: p 1.2s steps(2) infinite; }
+.b { font-size: 18vh; letter-spacing: .08em; font-weight: 700; line-height: 1; }
+.s { color: #ffd9db; font-size: 3.4vh; letter-spacing: .12em; }
+@keyframes p { 50% { background: #7a0f14; } }
+@media (prefers-reduced-motion: reduce) { .c { animation: none; } }
+</style></head>
+<body><div class="c"><div class="b">ALARME</div><div class="s">INTRUSION EN COURS · <span id="t"></span></div></div>
+<script>
+function p(n){return (n<10?"0":"")+n}
+var d=new Date();document.getElementById("t").textContent=p(d.getHours())+":"+p(d.getMinutes());
+["contextmenu","touchstart","mousedown","keydown"].forEach(function(e){document.addEventListener(e,function(ev){ev.preventDefault();},{passive:false});});
+</script></body></html>

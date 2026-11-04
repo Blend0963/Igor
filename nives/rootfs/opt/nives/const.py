@@ -148,3 +148,12 @@ SCREEN_EVENT = "igor_screen"
 SCREEN_ACTIONS = ("pc", "dashboard", "off", "on", "toggle", "app", "close")
 SCREEN_APPS = ("sound", "equalizer", "bluetooth")
 API_JOURNAL_ENDPOINT = "/api/journal"
+
+# The house's locks (security.py): the key that unlocks the screens and Igor,
+# the alarm and its « in progress » sensor, and the disarm code's hash.
+CONF_KEY_ENTITY = "key_entity"
+CONF_ALARM_ENTITY = "alarm_entity"
+CONF_ALARM_ACTIVE = "alarm_active_entity"
+CONF_NEW_CODE = "new_disarm_code"
+CONF_CODE_HASH = "disarm_code_hash"
+SERVICE_DISARM = "disarm"

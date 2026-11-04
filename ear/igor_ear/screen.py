@@ -167,7 +167,7 @@ class ScreenSettings:
 
 class Screen:
     def __init__(self, s: ScreenSettings, ha_url: str = "", ha_token: str = "",
-                 runner=run, keyboard_reader=read_keyboard):
+                 runner=run, keyboard_reader=read_keyboard, guard=None):
         self.s = s
         self.url, self.token = ha_url, ha_token
         self.run = runner
@@ -179,6 +179,7 @@ class Screen:
         self.idle = False
         self.idle_file = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "igor-idle")
         self.lock = threading.Lock()
+        self.guard = guard
 
     # what can be done
     def power(self, on: bool) -> None:
@@ -264,6 +265,8 @@ class Screen:
             ticks += 1
             try:
                 self.keyboard_seen(self.read_keyboard(self.s.keyboard), time.monotonic())
+                if self.guard is not None and ticks % 2 == 0:
+                    self.guard.tick()
                 if ticks % 6 == 0:
                     self.refullscreen()
                     self.sync_power()
@@ -295,7 +298,10 @@ class Screen:
 
     def refullscreen(self) -> None:
         """Chromium back to fullscreen once no settings window is open (closed
-        by « Fermer » or by its own close button): its bar never stays."""
+        by « Fermer » or by its own close button): its bar never stays.
+        Not while the guard is up: its own window stays above."""
+        if self.guard is not None and self.guard.mode:
+            return
         try:
             out = subprocess.run(["swaymsg", "-t", "get_tree", "-r"], capture_output=True, text=True, timeout=5)
             tree = json.loads(out.stdout or "{}")
@@ -341,11 +347,13 @@ class Screen:
             self.act(str(data.get("action", "")), data)
             return
         for entity, data in ((event.get("a") or {}) | (event.get("c") or {})).items():
-            if entity != self.s.pc_entity:
-                continue
             state = data.get("s") if "s" in data else (data.get("+") or {}).get("s")
-            if state is not None:
+            if state is None:
+                continue
+            if entity == self.s.pc_entity:
                 self.pc_state = str(state)
+            if self.guard is not None and entity in self.guard.entities():
+                self.guard.state(entity, str(state))
 
     def listen(self) -> None:
         from . import ha
@@ -355,8 +363,9 @@ class Screen:
             try:
                 conn = ha.connect(self.url, self.token)
                 conn.send(json.dumps({"id": 1, "type": "subscribe_events", "event_type": self.s.event}))
-                if self.s.pc_entity:
-                    conn.send(json.dumps({"id": 2, "type": "subscribe_entities", "entity_ids": [self.s.pc_entity]}))
+                watched = ([self.s.pc_entity] if self.s.pc_entity else []) + (self.guard.entities() if self.guard else [])
+                if watched:
+                    conn.send(json.dumps({"id": 2, "type": "subscribe_entities", "entity_ids": watched}))
                 log.info("Screen: listening to Home Assistant's %s orders", self.s.event)
                 delay = 5
                 self.publish()
@@ -370,6 +379,8 @@ class Screen:
     def serve(self) -> None:
         log.info("Screen: output %s, DDC bus %s, here 0x%02x, PC 0x%02x, keyboard %s",
                  self.s.output, self.bus, self.s.here, self.s.pc, self.s.keyboard or "any USB keyboard")
+        if self.guard is not None:
+            self.guard.serve()
         if self.url and self.token:
             threading.Thread(target=self.listen, daemon=True, name="screen-ha").start()
         self.watch_keyboard()

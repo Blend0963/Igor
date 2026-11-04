@@ -46,6 +46,9 @@ from .const import (
     SCREEN_EVENT,
     SERVICE_JOURNAL,
     SERVICE_NEWS,
+    SERVICE_DISARM,
+    CONF_ALARM_ENTITY,
+    CONF_CODE_HASH,
     SERVICE_SCREEN,
     API_JOURNAL_ENDPOINT,
     TOKEN_ACK_RELPATH,
@@ -438,6 +441,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
         _async_register_journal(hass)
         _async_register_news(hass)
         _async_register_screen(hass)
+    _async_register_disarm(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await _async_setup_update_watch(hass, entry)
@@ -606,6 +610,51 @@ def _async_register_news(hass: HomeAssistant) -> None:
 
     hass.services.async_register(
         DOMAIN, SERVICE_NEWS, _news, schema=NEWS_SCHEMA, supports_response=SupportsResponse.ONLY
+    )
+
+
+DISARM_SCHEMA = vol.Schema({vol.Required("code"): vol.All(str, vol.Length(min=1, max=32))})
+
+
+@callback
+def _async_register_disarm(hass: HomeAssistant) -> None:
+    """`nives.disarm`: the alarm off with its code (security.py). Answers
+    {ok, message}; five wrong codes in ten minutes lock it for ten minutes."""
+    if hass.services.has_service(DOMAIN, SERVICE_DISARM):
+        return
+    from .security import DisarmGuard, async_disarm, check_code, security_event
+
+    guard = DisarmGuard()
+
+    async def _disarm(call: ServiceCall) -> ServiceResponse:
+        settings: dict = {}
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            settings = {**entry.data, **entry.options}
+            if settings.get(CONF_CODE_HASH) and settings.get(CONF_ALARM_ENTITY):
+                break
+        stored, alarm = settings.get(CONF_CODE_HASH), settings.get(CONF_ALARM_ENTITY)
+        if not stored or not alarm:
+            return {"ok": False, "message": "Aucun code ou aucune alarme configurés (options d'Igor)."}
+        wait = guard.blocked()
+        if wait:
+            return {"ok": False, "message": f"Trop d'essais : réessayez dans {int(wait // 60) + 1} min."}
+        good = await hass.async_add_executor_job(check_code, str(call.data["code"]), stored)
+        if not good:
+            guard.failed()
+            security_event(hass, "bad_code", user=call.context.user_id)
+            persistent_notification.async_create(
+                hass, "Un code de désarmement erroné a été saisi.", title="Igor · sécurité", notification_id="igor_bad_code"
+            )
+            _LOGGER.warning("Igor: wrong disarm code")
+            return {"ok": False, "message": "Code erroné."}
+        guard.succeeded()
+        await async_disarm(hass, alarm)
+        security_event(hass, "disarmed", user=call.context.user_id)
+        _LOGGER.info("Igor: alarm disarmed with the code")
+        return {"ok": True, "message": "Alarme désarmée."}
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_DISARM, _disarm, schema=DISARM_SCHEMA, supports_response=SupportsResponse.OPTIONAL
     )
 
 

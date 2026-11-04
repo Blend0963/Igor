@@ -33,18 +33,29 @@
     "step": {
       "init": {
         "title": "Igor",
-        "description": "Choose whether everyone in your home shares one memory with Igor, and whether voice requests can be shown on a wall tablet.",
+        "description": "Choose whether everyone in your home shares one memory with Igor, and whether voice requests can be shown on a wall tablet. Security: the key that unlocks the screens and Igor, the alarm, and its disarm code.",
         "data": {
           "shared_memory": "Shared memory",
           "user_id": "Memory name",
-          "voice_display": "Wall-tablet display"
+          "voice_display": "Wall-tablet display",
+          "key_entity": "Key",
+          "alarm_entity": "Alarm",
+          "alarm_active_entity": "Alarm in progress",
+          "new_disarm_code": "New disarm code"
         },
         "data_description": {
           "shared_memory": "On (recommended): everyone shares one memory, so something you tell a voice satellite is also known in the app and on the dashboard, and the other way round. Off: each Home Assistant user gets a memory of their own, and voice satellites and automations use the memory named below.",
           "user_id": "The memory Igor uses for the whole household, or, with shared memory off, for voice satellites and automations. Leave it as 'default' unless you have a reason to change it.",
-          "voice_display": "On: the 'Igor Assist' sensor follows each voice-satellite request (question, answer, actions), and devices you switch on show it full screen, by opening Home Assistant once with ?igor_tablet=1 at the end of the address. The texts are not kept in the history. Off: no sensor, nothing is shown."
+          "voice_display": "On: the 'Igor Assist' sensor follows each voice-satellite request (question, answer, actions), and devices you switch on show it full screen, by opening Home Assistant once with ?igor_tablet=1 at the end of the address. The texts are not kept in the history. Off: no sensor, nothing is shown.",
+          "key_entity": "A binary sensor that is on while the key is there (a USB key's presence). Off, unknown or unavailable: the screens lock and Igor refuses every request.",
+          "alarm_entity": "What arms the alarm: an input_boolean, a switch or an alarm panel. The disarm code turns it off.",
+          "alarm_active_entity": "A binary sensor that is on while the alarm is going off: the screens show the alert.",
+          "new_disarm_code": "Digits only, at least 4. Only a salted hash is kept, never the code. Leave empty to keep the current code."
         }
       }
+    },
+    "error": {
+      "bad_code": "The code must be at least 4 digits."
     }
   },
   "entity": {
@@ -120,6 +131,16 @@
         "app": {
           "name": "Settings window",
           "description": "With app: sound (pavucontrol), equalizer (EasyEffects) or bluetooth (Blueman)."
+        }
+      }
+    },
+    "disarm": {
+      "name": "Disarm",
+      "description": "Turns the alarm off with its code. Five wrong codes in ten minutes refuse every try for ten minutes.",
+      "fields": {
+        "code": {
+          "name": "Code",
+          "description": "The disarm code."
         }
       }
     }
