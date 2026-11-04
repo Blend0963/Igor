@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.31.2 — The network map shows, the wall tidied
+
+- The network map stayed blank inside a wall: the card used a property named `hidden` for the networks switched off, which is also every HTML element's own `hidden`, so the whole card was hidden. Renamed.
+- The world map: a chosen country's arc no longer fills into a yellow crescent; it is outlined in amber.
+- Igor's card (`igor-assist-card`) shows Igor's eye instead of the blue lens: red at rest, cyan and pulsing while it listens, amber while it thinks, grey when switched off.
+- Giant tiles take `states: true` to show the state under the name (a wall's « commandes » page of aligned switches).
+- `igor-talkers-card` `by: vlan`: the traffic per network (out, in, devices) instead of per device.
+- `igor-dns-card` `blocked: true` starts on the blocked queries (« what AdGuard blocks »).
+
 ## 0.31.1 — A tablet of switches
 
 - `igor-tiles-card` `size: giant`: wall switches for a tablet made of buttons. A big icon in the middle, the name small under it, no state text; the tiles fill the card's height (`columns:` sets how many across). `labels: false` leaves the names out.
