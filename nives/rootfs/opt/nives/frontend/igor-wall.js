@@ -135,7 +135,7 @@
   //   bar:
   //     speed: 60              # seconds for one turn; 0: pages, no animation;
   //                            # auto: still while it fits, else one turn then a pause
-  //     pause: 30              # with speed: auto, seconds at rest between two turns
+  //     pause: 10              # with speed: auto, seconds at rest between two turns
   //     tap: /igor-wall/homelab  # a tap on the bar opens that page (else: the machines' detail)
   //     groups:
   //       - name: pve
@@ -272,7 +272,7 @@
         this.copy2 = Array.prototype.slice.call(this.run.children, this.segs.length);
         this.run.addEventListener("animationend", () => {
           this.run.style.animation = "none";
-          this.autoTimer = setTimeout(() => this.autoTurn(), (Number(this.config.pause) || 30) * 1000);
+          this.autoTimer = setTimeout(() => this.autoTurn(), (Number(this.config.pause) || 10) * 1000);
         });
         this.autoTimer = setTimeout(() => this.autoTurn(), 3000);
       } else if (!this.paged) {
