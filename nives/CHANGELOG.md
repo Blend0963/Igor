@@ -2,6 +2,7 @@
 
 ## 0.25.0 — Igor's own look
 
+- `igor-facts-card`: a row may count instead of showing one state, `{ name, count: [ids] }` → « 2 / 5 » lit (for a wall's « état » card without switches).
 - Igor stands for **Intelligent Governance & Operations Relay**.
 - New themes « Igor » and « Igor (tablette) »: near-black, bone white, cyan for data, amber for what is lit, the signal red for the selected page and errors; square corners, thin lines, no shadow; titles in Chakra Petch where the device has it, a monospace face elsewhere. « Igor Journal » stays.
 - New logo, the eye: a monolith pierced by a red eye (integration brand, light and dark, and the add-on's icon and logo).

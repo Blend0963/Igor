@@ -2139,6 +2139,7 @@
   //     - { entity: binary_sensor.portes, name: portes et fenêtres, ok: ["off"], text: { "off": fermées, "on": ouvertes } }
   //     - { entity: sensor.ping_latence, name: latence, warn: 50, bad: 150 }
   //     - { entity: sensor.x, name: …, attribute: last_backup }
+  //     - { name: lumières allumées, count: [light.a, light.b] }   # « 1 / 2 »
   // A row whose entity does not exist is left out: the card shows only what
   // this house has (nothing at all: the card says so).
   class IgorFactsCard extends IgorCard {
@@ -2163,8 +2164,17 @@
       this.sig = "";
     }
     update(hass) {
-      var shown = this.config.rows.filter(function (r) { return r && r.entity && hass.states[r.entity]; });
+      // A row may count instead: { name, count: [ids] } → « 2 / 5 » lit.
+      var shown = this.config.rows.filter(function (r) {
+        if (r && Array.isArray(r.count)) return r.count.some(function (id) { return hass.states[id]; });
+        return r && r.entity && hass.states[r.entity];
+      });
       var vals = shown.map(function (r) {
+        if (Array.isArray(r.count)) {
+          var there = r.count.filter(function (id) { return hass.states[id]; });
+          var on = there.filter(function (id) { return isOn(hass, id); }).length;
+          return [Object.assign({ entity: there[0] }, r), on + " / " + there.length, on ? "warn" : ""];
+        }
         var st = hass.states[r.entity];
         var raw = r.attribute ? st.attributes[r.attribute] : st.state;
         var text = r.text && r.text[String(raw)] != null ? String(r.text[String(raw)]) : r.attribute ? (raw == null ? "—" : /^\d{4}-\d\d-\d\d[T ]\d/.test(String(raw)) ? hhmm(new Date(raw)) : String(raw)) : stateText(hass, r.entity);
@@ -2174,7 +2184,7 @@
         else if (!isNaN(n) && r.warn != null && n >= r.warn) level = "warn";
         return [r, text, level];
       });
-      var sig = JSON.stringify(vals.map(function (v) { return [v[0].entity, v[1], v[2]]; }));
+      var sig = JSON.stringify(vals.map(function (v) { return [v[0].name || v[0].entity, v[1], v[2]]; }));
       if (sig === this.sig) return;
       this.sig = sig;
       this.rows.innerHTML = "";
