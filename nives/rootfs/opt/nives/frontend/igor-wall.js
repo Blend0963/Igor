@@ -14,6 +14,7 @@
 //   custom:igor-dns-card      AdGuard Home's DNS queries, live (administrators)
 //   custom:igor-map-card      where those queries' answers point to, on a world map
 //   custom:igor-wifi-card     who is on which Wi-Fi (OpenWrt access points)
+//   custom:igor-netmap-card   who talks to whom through the router, animated
 //
 // And the "Igor Journal (tablette)" theme: its --igor-hide-header variable
 // hides Home Assistant's top bar on the device that uses it, on the pages
@@ -2822,6 +2823,229 @@
     disconnectedCallback() { if (this.timer) { clearInterval(this.timer); this.timer = null; this._built = false; this.shadowRoot.innerHTML = ""; } }
   }
 
+  // ----- igor-netmap-card: who talks to whom, animated -----
+  //   type: custom:igor-netmap-card
+  //   title: réseau · en direct
+  //   interval: 10          # seconds between two reads
+  //   names: { 192.168.1.20: nas }
+  //   animate: true         # dots running along the links (false: still)
+  // Read from OPNsense (nives.net_map, administrators only): the router in the
+  // middle, the house's devices around it coloured by network (VLAN), the
+  // internet's operators outside. A link's width follows its traffic, its
+  // dots run from who opened the connection. A tap on a device shows its
+  // address, network, Wi-Fi signal and connections. Only what crosses the
+  // router is seen: two devices of the same network talk out of its sight.
+  var NET_COLORS = ["#59d0e0", "#5cc28f", "#e0a33a", "#b48ce0", "#e08aa8", "#8fb8f0", "#d0d070", "#f0906a"];
+  function human(b) {
+    if (!b) return "0 o";
+    var u = ["o", "ko", "Mo", "Go", "To"], i = 0;
+    while (b >= 1000 && i < u.length - 1) { b /= 1000; i++; }
+    return fr(b, b < 10 && i ? 1 : 0) + " " + u[i];
+  }
+  class IgorNetmapCard extends IgorCard {
+    setConfig(config) {
+      this.config = config || {};
+      this.names = this.config.names && typeof this.config.names === "object" ? this.config.names : {};
+    }
+    getCardSize() { return 9; }
+    build() {
+      this.style([
+        ".body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }",
+        "@media (min-width: 900px) { .body.wide { grid-template-columns: minmax(0, 1fr) 230px; } }",
+        "svg.net { width: 100%; height: 100%; min-height: 260px; display: block; }",
+        ".edge { fill: none; stroke: var(--line); stroke-linecap: round; }",
+        ".edge.sel { stroke: var(--wait); opacity: 1; }",
+        ".pkt { fill: var(--acc); }",
+        ".node { cursor: pointer; }",
+        ".node text { fill: var(--dim); font-size: 7px; font-family: inherit; pointer-events: none; }",
+        ".node.sel text { fill: var(--fg); }",
+        ".node.router circle { fill: var(--bg); stroke: var(--fg); stroke-width: 1.2; }",
+        ".node.remote circle { fill: var(--bg); stroke: var(--dim); stroke-width: 0.8; stroke-dasharray: 1.5 1.5; }",
+        ".node.sel circle { stroke: var(--wait); stroke-width: 1.6; }",
+        ".side { min-height: 0; overflow-y: auto; }",
+        ".leg { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 10.5px; color: var(--dim); margin-bottom: 6px; }",
+        ".leg i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }",
+        ".det .h { color: var(--dim); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 6px; }",
+        ".det .v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".det .p { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding: 2px 0; border-bottom: 1px dashed var(--line); }",
+        ".det .p span:last-child { color: var(--dim); font-variant-numeric: tabular-nums; }",
+        ".empty { color: var(--dim); padding: 8px 0; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t sub", top, (this.config.title || "réseau · en direct").toUpperCase()).style.letterSpacing = "0.12em";
+      this.sum = el("span", "sub num", top);
+      this.body = el("div", "body wide", card);
+      this.svg = svgEl("svg", { class: "net", viewBox: "0 0 400 300", preserveAspectRatio: "xMidYMid meet" }, this.body);
+      this.edgeG = svgEl("g", {}, this.svg);
+      this.pktG = svgEl("g", {}, this.svg);
+      this.nodeG = svgEl("g", {}, this.svg);
+      var side = el("div", "side", this.body);
+      this.leg = el("div", "leg", side);
+      this.det = el("div", "det", side);
+      this.sel = "";
+      this.pkts = [];
+      var every = Math.max(5, Math.min(300, Number(this.config.interval) || 10));
+      this.timer = setInterval(() => this.load(), every * 1000);
+      this.load();
+      if (this.config.animate !== false) {
+        var step = (t) => { this.frame = requestAnimationFrame(step); this.move(t); };
+        this.frame = requestAnimationFrame(step);
+      }
+    }
+    load() {
+      var hass = this._hass;
+      if (!hass || this.loading || document.hidden) return;
+      this.loading = true;
+      hass.callWS({ type: "call_service", domain: "nives", service: "net_map", service_data: {}, return_response: true })
+        .then((r) => { this.data = (r && r.response) || {}; })
+        .catch((err) => { this.data = { error: err && err.code === "unauthorized" ? "réservé aux administrateurs" : "service indisponible (Igor 0.30 ou plus)" }; })
+        .then(() => { this.loading = false; this.layout(); this.draw(); });
+    }
+    label(n) { return this.names[n.ip] || this.names[n.mac] || n.name || n.id; }
+    layout() {
+      var d = this.data || {};
+      var nodes = d.nodes || [], edges = d.edges || [];
+      this.pos = {};
+      var cx = 200, cy = 150;
+      this.pos.router = [cx, cy];
+      // The devices on a ring, by network; the networks get their colours.
+      var devs = nodes.filter((n) => n.kind === "device").sort((a, b) => (a.vlan || "").localeCompare(b.vlan || "") || this.label(a).localeCompare(this.label(b)));
+      var nets = [];
+      devs.forEach((n) => { if (nets.indexOf(n.vlan || "") < 0) nets.push(n.vlan || ""); });
+      this.netColor = {};
+      nets.forEach((v, i) => { this.netColor[v] = NET_COLORS[i % NET_COLORS.length]; });
+      var r1 = devs.length > 14 ? 95 : 80;
+      devs.forEach((n, i) => {
+        var a = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(1, devs.length);
+        n.angle = a;
+        this.pos[n.id] = [cx + r1 * 1.25 * Math.cos(a), cy + r1 * Math.sin(a)];
+      });
+      // The operators outside, near the devices that talk to them.
+      var angleOf = {};
+      devs.forEach((n) => { angleOf[n.id] = n.angle; });
+      var rem = nodes.filter((n) => n.kind === "remote");
+      rem.forEach((n) => {
+        var sx = 0, sy = 0;
+        edges.forEach((e) => {
+          var other = e.a === n.id ? e.b : e.b === n.id ? e.a : null;
+          if (other != null && angleOf[other] != null) { var w = Math.log(2 + e.bytes); sx += w * Math.cos(angleOf[other]); sy += w * Math.sin(angleOf[other]); }
+        });
+        n.angle = sx || sy ? Math.atan2(sy, sx) : 0;
+      });
+      rem.sort((a, b) => a.angle - b.angle);
+      // Spread them evenly, keeping their order around the circle.
+      var start = rem.length ? rem[0].angle : 0;
+      rem.forEach((n, i) => {
+        var a = rem.length > 1 ? start + (2 * Math.PI * i) / rem.length : n.angle;
+        a = (a + n.angle) / 2;
+        this.pos[n.id] = [cx + 185 * Math.cos(a), cy + 132 * Math.sin(a)];
+      });
+    }
+    path(e) {
+      var a = this.pos[e.a], b = this.pos[e.b];
+      if (!a || !b) return "";
+      // Device to device: a curve that bends towards the router.
+      var ra = e.a === "router" || e.b === "router";
+      if (ra) return "M" + a[0].toFixed(1) + " " + a[1].toFixed(1) + " L" + b[0].toFixed(1) + " " + b[1].toFixed(1);
+      var mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+      var k = String(e.a).indexOf("net:") === 0 || String(e.b).indexOf("net:") === 0 ? 0.15 : 0.55;
+      var qx = mx + (200 - mx) * k, qy = my + (150 - my) * k;
+      return "M" + a[0].toFixed(1) + " " + a[1].toFixed(1) + " Q" + qx.toFixed(1) + " " + qy.toFixed(1) + " " + b[0].toFixed(1) + " " + b[1].toFixed(1);
+    }
+    draw() {
+      var d = this.data || {};
+      var nodes = d.nodes || [], edges = d.edges || [];
+      this.edgeG.innerHTML = ""; this.nodeG.innerHTML = ""; this.pktG.innerHTML = ""; this.pkts = [];
+      this.leg.innerHTML = ""; this.det.innerHTML = "";
+      var devs = nodes.filter((n) => n.kind === "device").length;
+      this.sum.textContent = d.error ? "" : devs + " appareils · " + edges.length + " liens · " + (d.states || 0) + " connexions";
+      if (d.error || !nodes.length) {
+        el("div", "empty", this.det, d.error ? "Indisponible : " + d.error : "Lecture…");
+        return;
+      }
+      var byId = {};
+      nodes.forEach((n) => { byId[n.id] = n; });
+      var maxB = edges.reduce((m, e) => Math.max(m, e.bytes), 1);
+      var flow = this.config.animate !== false;
+      edges.forEach((e) => {
+        var dpath = this.path(e);
+        if (!dpath) return;
+        var on = this.sel && (e.a === this.sel || e.b === this.sel);
+        var w = 0.4 + 2.6 * Math.sqrt(Math.log(1 + e.bytes) / Math.log(1 + maxB));
+        var p = svgEl("path", { class: "edge" + (on ? " sel" : ""), d: dpath, "stroke-width": w.toFixed(2) }, this.edgeG);
+        if (this.sel && !on) p.setAttribute("opacity", "0.25");
+        if (flow && this.pkts.length < 90) {
+          var src = byId[e.a];
+          var color = src && src.kind === "device" ? this.netColor[src.vlan || ""] : "var(--acc)";
+          var n = e.bytes > maxB / 4 ? 3 : e.bytes > maxB / 40 ? 2 : 1;
+          var len = p.getTotalLength ? p.getTotalLength() : 0;
+          for (var i = 0; i < n && len; i++) {
+            var dot = svgEl("circle", { class: "pkt", r: 1.1 + w / 3, fill: color }, this.pktG);
+            if (this.sel && !on) dot.setAttribute("opacity", "0.2");
+            this.pkts.push({ el: dot, path: p, len: len, off: i / n, speed: 0.12 + 0.25 * Math.random() });
+          }
+        }
+      });
+      nodes.forEach((n) => {
+        var at = this.pos[n.id];
+        if (!at) return;
+        var g = svgEl("g", { class: "node " + n.kind + (n.id === this.sel ? " sel" : ""), transform: "translate(" + at[0].toFixed(1) + " " + at[1].toFixed(1) + ")" }, this.nodeG);
+        var r = n.kind === "router" ? 9 : n.kind === "remote" ? 5 : 4.2;
+        var c = svgEl("circle", { r: r }, g);
+        if (n.kind === "device") c.setAttribute("fill", this.netColor[n.vlan || ""] || "var(--acc)");
+        var t = svgEl("text", { "text-anchor": at[0] < 200 ? "end" : "start", x: at[0] < 200 ? -(r + 2) : r + 2, y: 2.5 }, g);
+        t.textContent = n.kind === "router" ? "" : this.label(n).slice(0, 18);
+        if (n.kind === "router") { var t2 = svgEl("text", { "text-anchor": "middle", y: 18 }, g); t2.textContent = n.name; }
+        g.addEventListener("click", () => { this.sel = this.sel === n.id ? "" : n.id; this.draw(); });
+      });
+      // The legend: one colour per network.
+      Object.keys(this.netColor).forEach((v) => {
+        var it = el("span", "", this.leg); var dot = el("i", "", it); dot.style.background = this.netColor[v];
+        it.appendChild(document.createTextNode(v || "réseau"));
+      });
+      this.detail(byId, edges);
+    }
+    detail(byId, edges) {
+      var n = byId[this.sel];
+      var mine = n ? edges.filter((e) => e.a === n.id || e.b === n.id) : edges.slice(0, 12);
+      if (n) {
+        el("div", "", this.det, this.label(n));
+        var info = [];
+        if (n.ip) info.push(n.ip);
+        if (n.mac) info.push(n.mac);
+        if (n.vlan) info.push("réseau " + n.vlan);
+        if (n.net && n.net !== n.vlan) info.push("wi-fi " + n.net + (n.signal != null ? " · " + n.signal + " dBm" : ""));
+        if (n.vendor) info.push(n.vendor);
+        if (n.cc) info.push(countryName(n.cc));
+        info.forEach((t) => el("div", "v sub", this.det, t));
+      }
+      el("div", "h", this.det, n ? "connexions" : "les plus gros échanges");
+      mine.forEach((e) => {
+        var row = el("div", "p", this.det);
+        var a = byId[e.a], b = byId[e.b];
+        var txt = n ? (e.a === n.id ? "→ " + this.label(b || { id: e.b }) : "← " + this.label(a || { id: e.a }))
+          : this.label(a || { id: e.a }) + " → " + this.label(b || { id: e.b });
+        el("span", "v", row, txt + (e.ports.length ? " · " + e.ports.join(", ") : ""));
+        el("span", "", row, human(e.bytes));
+      });
+    }
+    move(t) {
+      if (!this.pkts.length) return;
+      var s = t / 1000;
+      this.pkts.forEach((p) => {
+        var f = (p.off + s * p.speed) % 1;
+        var pt = p.path.getPointAtLength(f * p.len);
+        p.el.setAttribute("cx", pt.x.toFixed(1)); p.el.setAttribute("cy", pt.y.toFixed(1));
+      });
+    }
+    disconnectedCallback() {
+      if (this.frame) cancelAnimationFrame(this.frame);
+      this.frame = null;
+      if (this.timer) { clearInterval(this.timer); this.timer = null; this._built = false; this.shadowRoot.innerHTML = ""; }
+    }
+  }
+
   // ----- igor-alerts-card: what is wrong, first -----
   //   type: custom:igor-alerts-card
   //   gateway: sensor.opnsense_…_gateway_wan_dhcp_status   # the internet
@@ -2931,6 +3155,7 @@
   define("igor-dns-card", IgorDnsCard, "Igor · DNS en direct", "Les requêtes DNS d'AdGuard Home en direct, par appareil (administrateurs).");
   define("igor-map-card", IgorMapCard, "Igor · le monde", "Où vont les connexions de la maison, par pays et opérateur (administrateurs).");
   define("igor-wifi-card", IgorWifiCard, "Igor · Wi-Fi", "Qui est connecté à quel Wi-Fi (OpenWrt), avec le signal et le débit (administrateurs).");
+  define("igor-netmap-card", IgorNetmapCard, "Igor · schéma réseau", "Qui parle à qui à travers le routeur (OPNsense), animé (administrateurs).");
   define("igor-news-card", IgorNewsCard, "Igor · dépêches", "Les derniers titres d'un flux RSS ou Atom (dépêches, actualités).");
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
 

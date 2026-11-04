@@ -175,6 +175,10 @@
     "wifi_clients": {
       "name": "Wi-Fi clients",
       "description": "Who is on which Wi-Fi, read from the OpenWrt access points listed under openwrt: in the nives: block. Administrators only."
+    },
+    "net_map": {
+      "name": "Network map",
+      "description": "Who talks to whom through the router, read from the OPNsense of the nives: block, with internet addresses grouped by operator. Administrators only."
     }
   }
 }
