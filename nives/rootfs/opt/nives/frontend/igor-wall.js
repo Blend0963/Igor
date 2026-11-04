@@ -2935,7 +2935,7 @@
         ".tool button.chip.off { opacity: 0.35; }",
         ".tool input { width: 120px; background: var(--bg); border: 1px solid var(--line); color: var(--fg); font: inherit; font-size: 11px; padding: 2px 7px; border-radius: 3px; }",
         ".body { flex: 1; min-height: 0; display: flex; gap: 10px; }",
-        ".stage { flex: 1; min-width: 0; min-height: 300px; position: relative; border: 1px solid var(--line); background: var(--bg); touch-action: none; }",
+        ".stage { flex: 1; min-width: 0; min-height: max(300px, 55vh); position: relative; border: 1px solid var(--line); background: var(--bg); touch-action: none; }",
         "svg.net { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; user-select: none; }",
         ".side { width: 270px; flex: none; overflow-y: auto; min-height: 0; }",
         "@media (max-width: 900px) { .body { flex-direction: column; } .side { width: auto; max-height: 40vh; } }",
@@ -2990,7 +2990,7 @@
       this.search.addEventListener("keydown", (ev) => { if (ev.key === "Enter") this.findFirst(); });
       btn("réinitialiser", () => { this.pos = {}; this.hidden = {}; this.mode = "vlan"; this.save(); this.relayout(true); });
       var body = el("div", "body", card);
-      this.stage = el("div", "stage", body);
+      this.stage = el("div", "stage no-swipe", body);
       this.svg = svgEl("svg", { class: "net" }, this.stage);
       this.vp = svgEl("g", {}, this.svg);
       this.side = el("div", "side", body);
@@ -3890,11 +3890,14 @@
       var root = lovelaceRoot(), cfg = root && root.lovelace && root.lovelace.config;
       if (!cfg || !Array.isArray(cfg.views) || cfg.views.length < 2 || root.lovelace.editMode) return;
       var parts = window.location.pathname.split("/"), seg = decodeURIComponent(parts[2] || "");
-      var i = cfg.views.findIndex(function (v, k) { return String(v.path || k) === seg; });
-      if (i < 0) i = /^\d+$/.test(seg) ? Number(seg) : 0;
+      // The tabs only: a subview (a page reached by a button) is left out.
+      var tabs = [];
+      cfg.views.forEach(function (v, k) { if (!v.subview && v.visible !== false) tabs.push(String(v.path || k)); });
+      var i = tabs.indexOf(seg);
+      if (i < 0) return;
       var j = i + (dx < 0 ? 1 : -1);
-      if (j < 0 || j >= cfg.views.length) return;
-      navigate("/" + parts[1] + "/" + (cfg.views[j].path || j) + window.location.search);
+      if (j < 0 || j >= tabs.length) return;
+      navigate("/" + parts[1] + "/" + tabs[j] + window.location.search);
     }, { passive: true, capture: true });
   })();
 

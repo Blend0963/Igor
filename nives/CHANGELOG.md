@@ -11,6 +11,7 @@
 - New `igor-wifi-scan-card` and admin-only service `nives.wifi_scan`: the Wi-Fi networks around, heard by each OpenWrt radio when « scanner » is pressed (a radio may pause a second or two): the channels in use per band, then each network's name, BSSID, band and channel, signal and security (open ones in red); the access points' own networks are left out. The rpcd ACL needs `scan` added to `iwinfo` (DOCS.md).
 - `igor-map-card`: `big: true` for the middle of a page: the map takes the height, the top countries and the chosen country's detail float over it.
 - `igor-dns-card` and `igor-wifi-card`: `more: /a-page` adds « tout le journal › » / « voisins › »; `rows` can go down to 5.
+- The theme's swipe goes through the tabs only (a subview, reached by a button, is left out) and never starts on the network map, where a finger moves devices.
 - The wall's status bar starts with Igor's eye and name, then the dashboard's pages as tabs, the one shown underlined in red (subviews and hidden views left out; `tabs: false` to remove them). A wall may have a bar without machines (`bar: {}`), for a tablet. Headings get a small red mark.
 
 ## 0.30.2 — Names everywhere, the map downloads
