@@ -165,3 +165,41 @@ columns:
 
 A figure in % turns amber from 80 and red from 95, a temperature from 65 °C and 80 °C (`warn` and `bad` change it). `detail:` on a group lists more figures for the detail than the bar shows. igor-ear 0.2.5 sends its machine's AMD graphics card (load, temperature, video memory) as `sensor.igor_ear_gpu_load`, `_gpu_temperature` and `_gpu_memory`, ready for the bar.
 
+## Network cards (administrators)
+
+Three cards show what goes through the house's network. Their services are for **administrators only**: the DNS log is the house's browsing history. Nothing is stored.
+
+- `custom:igor-dns-card`: AdGuard Home's DNS queries as they come (`nives.dns_log`), through Home Assistant's AdGuard integration.
+- `custom:igor-map-card`: where those queries' answers point to, per country and operator, on a world map (`nives.dns_map`). Addresses are located on the Home Assistant host with DB-IP's free lite databases, downloaded on first use and monthly.
+- `custom:igor-wifi-card`: who is on which Wi-Fi of OpenWrt access points (`nives.wifi_clients`), with signal, link rates and connection time.
+
+### A read-only OpenWrt login for the Wi-Fi card
+
+Igor reads OpenWrt through ubus (the `/ubus` address LuCI uses) with a login that may only list wireless interfaces and their stations. On the access point, over SSH:
+
+```sh
+cat > /usr/share/rpcd/acl.d/igor.json <<'JSON'
+{ "igor": { "description": "Igor, read-only Wi-Fi",
+  "read": { "ubus": { "iwinfo": ["devices", "info", "assoclist"], "luci-rpc": ["getHostHints"] } } } }
+JSON
+HASH=$(uhttpd -m 'a long password')
+uci add rpcd login
+uci set rpcd.@login[-1].username='igor'
+uci set rpcd.@login[-1].password="$HASH"
+uci add_list rpcd.@login[-1].read='igor'
+uci commit rpcd
+/etc/init.d/rpcd restart
+```
+
+Then in `configuration.yaml` (one entry per access point, the password in `secrets.yaml`) and restart Home Assistant:
+
+```yaml
+nives:
+  openwrt:
+    - url: http://192.168.1.2
+      name: salon
+      username: igor
+      password: !secret openwrt_igor
+```
+
+An access point used as a bridge often knows no names: Igor takes them from Home Assistant's device trackers (their `mac` attribute), and the card's `names: { "AA:BB:CC:DD:EE:FF": tablette }` names the rest.

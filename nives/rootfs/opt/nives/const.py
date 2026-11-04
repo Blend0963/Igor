@@ -146,6 +146,9 @@ SERVICE_NEWS = "news"
 SERVICE_DNS_LOG = "dns_log"
 # Where those queries' answers point to, per country, for the world map card.
 SERVICE_DNS_MAP = "dns_map"
+# Who is on which Wi-Fi, from the OpenWrt access points of the nives: block.
+SERVICE_WIFI = "wifi_clients"
+OPENWRT_KEY = "nives_openwrt"
 # The desk screen (igor-ear's `run.sh screen`): the service fires this event.
 SERVICE_SCREEN = "screen"
 SCREEN_EVENT = "igor_screen"

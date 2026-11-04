@@ -171,6 +171,10 @@
           "description": "How far back to look."
         }
       }
+    },
+    "wifi_clients": {
+      "name": "Wi-Fi clients",
+      "description": "Who is on which Wi-Fi, read from the OpenWrt access points listed under openwrt: in the nives: block. Administrators only."
     }
   }
 }
