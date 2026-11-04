@@ -209,7 +209,7 @@ An access point used as a bridge often knows no names: Igor takes them from Home
 
 ### A read-only OPNsense key for the network map
 
-In OPNsense, **System → Access → Users**: add a user `igor` (a long random password, no shell). In its **privileges**, allow only the ARP table, the firewall states and the DHCP leases (type « ARP », « States » and « Leases » in the filter; the leases of the DHCP server you use: Kea, ISC or Dnsmasq). Save, then under **API keys** press **+**: a file with the key and the secret downloads. In `secrets.yaml` and `configuration.yaml`, then restart Home Assistant:
+In OPNsense, **System → Access → Users**: add a user `igor` (a long random password, no shell). In its **privileges**, allow only the ARP table, the firewall states, the DHCP leases, the firewall log and the rules (type « ARP », « States », « Leases », « Firewall Log » and « Firewall: Rules » in the filter; the leases of the DHCP server you use: Kea, ISC or Dnsmasq). The log shows what the firewall refused on the network map; the rules list each network's rules (recent OPNsense versions). Save, then under **API keys** press **+**: a file with the key and the secret downloads. In `secrets.yaml` and `configuration.yaml`, then restart Home Assistant:
 
 ```yaml
 nives:

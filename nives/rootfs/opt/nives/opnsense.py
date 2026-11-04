@@ -37,6 +37,8 @@ LEASE_PATHS = ("/api/kea/leases4/search", "/api/dnsmasq/leases/search", "/api/dh
 ARP_PATHS = ("/api/diagnostics/interface/search_arp", "/api/diagnostics/interface/get_arp",
              "/api/diagnostics/interface/getArp")
 STATES_PATH = "/api/diagnostics/firewall/query_states"
+LOG_PATH = "/api/diagnostics/firewall/log"
+RULES_PATH = "/api/firewall/filter/search_rule"
 
 
 def ip_kind(ip: str) -> str:
@@ -237,6 +239,84 @@ def build_map(states: list[dict], hosts: dict[str, dict], own: set[str],
     return {"nodes": nodes, "edges": out_edges, "states": len(seen)}
 
 
+def parse_log(body: Any) -> list[dict]:
+    """The firewall log's refused packets: {src, dst, port, proto, iface, rule, at}."""
+    out = []
+    for r in _rows(body):
+        action = str(r.get("action") or "").lower()
+        if action not in ("block", "reject"):
+            continue
+        src, dst = str(r.get("src") or ""), str(r.get("dst") or "")
+        if not src or not dst:
+            continue
+        out.append({
+            "src": src, "dst": dst,
+            "port": str(r.get("dstport") or ""),
+            "proto": str(r.get("protoname") or r.get("proto") or "").lower(),
+            "iface": str(r.get("interface") or ""),
+            "rule": str(r.get("label") or r.get("rulenr") or r.get("rid") or "")[:80],
+            "at": str(r.get("__timestamp__") or r.get("timestamp") or ""),
+        })
+    return out
+
+
+def build_blocked(entries: list[dict], hosts: dict[str, dict], own: set[str], locate=None) -> list[dict]:
+    """Refused packets grouped by who → whom (the same nodes as the map)."""
+    groups: dict[tuple[str, str], dict] = {}
+    for e in entries:
+        ks, kd = ip_kind(e["src"]), ip_kind(e["dst"])
+        if not ks or not kd:
+            continue
+
+        def node(ip: str, kind: str) -> str:
+            if ip in own:
+                return "router"
+            if kind == "local":
+                return ip
+            cc, org = locate(ip) if locate else ("", "")
+            return "net:" + (short_org(org) if org else "internet")
+
+        a, b = node(e["src"], ks), node(e["dst"], kd)
+        g = groups.setdefault((a, b), {"a": a, "b": b, "count": 0, "ports": defaultdict(int), "rules": defaultdict(int), "last": ""})
+        g["count"] += 1
+        g["ports"][SERVICES.get(e["port"], (e["proto"] + "/" + e["port"]) if e["port"] else e["proto"])] += 1
+        if e["rule"]:
+            g["rules"][e["rule"]] += 1
+        g["last"] = max(g["last"], e["at"])
+    out = []
+    for g in sorted(groups.values(), key=lambda x: -x["count"])[:80]:
+        out.append({"a": g["a"], "b": g["b"], "count": g["count"],
+                    "ports": [p for p, _ in sorted(g["ports"].items(), key=lambda kv: -kv[1])[:4]],
+                    "rules": [r for r, _ in sorted(g["rules"].items(), key=lambda kv: -kv[1])[:3]],
+                    "last": g["last"]})
+    return out
+
+
+def parse_rules(body: Any) -> list[dict]:
+    """The firewall rules (OPNsense's automation / new rules API), as shown."""
+    out = []
+    for r in _rows(body):
+        def val(k: str) -> str:
+            v = r.get(k)
+            if isinstance(v, dict):  # a select: the chosen option
+                chosen = [str(o.get("value") or key) for key, o in v.items() if isinstance(o, dict) and o.get("selected")]
+                return ", ".join(chosen)
+            return str(v if v is not None else "")
+        out.append({
+            "enabled": val("enabled") not in ("0", "false", ""),
+            "action": val("action") or "pass",
+            "iface": val("interface"),
+            "dir": val("direction"),
+            "proto": val("protocol"),
+            "src": val("source_net") or "any",
+            "dst": val("destination_net") or "any",
+            "port": val("destination_port"),
+            "descr": val("description")[:80],
+            "seq": val("sequence"),
+        })
+    return out
+
+
 class OPNsense:
     """The API, with the key and secret as HTTP basic credentials."""
 
@@ -284,6 +364,12 @@ class OPNsense:
                 continue
         self.lease_path = None  # no DHCP server here (or not allowed): names from ARP
         return []
+
+    async def log(self, session) -> Any:
+        return await self._req(session, "GET", LOG_PATH + "?limit=800")
+
+    async def rules(self, session) -> Any:
+        return await self._req(session, "POST", RULES_PATH, {"current": 1, "rowCount": 500, "searchPhrase": ""})
 
     async def states(self, session) -> Any:
         return await self._req(session, "POST", STATES_PATH,

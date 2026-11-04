@@ -935,7 +935,7 @@ def _async_register_net_map(hass: HomeAssistant) -> None:
     from homeassistant.helpers.service import async_register_admin_service
 
     from .openwrt import UbusError
-    from .opnsense import build_map, ip_kind, parse_states
+    from .opnsense import build_blocked, build_map, ip_kind, parse_log, parse_rules, parse_states
 
     state: dict[str, Any] = {"cache": None}
 
@@ -983,7 +983,34 @@ def _async_register_net_map(hass: HomeAssistant) -> None:
             build_map, parse_states(states_body), hosts, own, db.locate if ready else None, extra
         )
         out["error"] = ""
-        out["notes"] = inv["notes"]
+        out["notes"] = list(inv["notes"])
+        # What the firewall refused (its log) and its rules, when the key may read them.
+        out["blocked"], out["rules"] = [], []
+        try:
+            entries = parse_log(await router.log(session))
+            out["blocked"] = await hass.async_add_executor_job(build_blocked, entries, hosts, own, db.locate if ready else None)
+            # A device only seen refused still gets its place on the map.
+            have = {n["id"] for n in out["nodes"]}
+            for b in out["blocked"]:
+                for nid in (b["a"], b["b"]):
+                    if nid in have:
+                        continue
+                    have.add(nid)
+                    if nid.startswith("net:"):
+                        out["nodes"].append({"id": nid, "kind": "remote", "name": nid[4:], "cc": ""})
+                    elif nid != "router":
+                        h, x = hosts.get(nid, {}), extra.get(nid, {})
+                        out["nodes"].append({"id": nid, "kind": "device", "ip": nid, "name": h.get("name") or nid,
+                                             "mac": h.get("mac", ""), "net": x.get("ssid") or h.get("net", ""),
+                                             "vlan": h.get("net", ""), "vendor": h.get("vendor", ""), "signal": x.get("signal")})
+        except (PermissionError, FileNotFoundError) as err:
+            out["notes"].append(f"firewall log: {err} (privilege « Firewall Log »)")
+        except (ValueError, aiohttp.ClientError, TimeoutError) as err:
+            out["notes"].append(f"firewall log: {err}")
+        try:
+            out["rules"] = parse_rules(await router.rules(session))
+        except (PermissionError, FileNotFoundError, ValueError, aiohttp.ClientError, TimeoutError):
+            out["rules"] = []
         # Each network (VLAN) and the router's address on it.
         out["vlans"] = sorted(
             ({"name": hosts[ip].get("net", ""), "gateway": ip} for ip in own

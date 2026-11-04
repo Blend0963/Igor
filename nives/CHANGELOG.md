@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.32.0 — What the firewall lets through, and what it refuses
+
+- The network map reads OPNsense's firewall log: what it refused shows as red dashes (the same way through OPNsense), a « refusé ×N » under each block concerned, and a « refusé par le pare-feu » list (who → whom, service, rule, how many times) in OPNsense's, a network's and a device's detail. A device only ever refused still gets its place. « refusé » in the toolbar shows or hides them. The key needs the « Firewall Log » privilege (DOCS.md); without it, the map says so under « à vérifier ».
+- « matrice »: the networks against each other (and OPNsense, the internet): what passes (volume, services) in green, what was refused in red; a tap gives the pair's flows, refusals and the rules concerned.
+- The firewall rules, when OPNsense's rules API answers (`firewall/filter/search_rule`, recent versions; « Firewall: Rules » privilege): a network's detail lists the rules that name it (pass in green, block in red, disabled ones faded).
+- The world map zooms: the wheel, a drag to move, « − » « + », « Europe » and « monde »; the arcs keep their width at any zoom.
+- The floating « ‹ mur » button is gone by default (it covered the screen); a theme that wants it sets `igor-back-button: "1"`.
+
 ## 0.31.4 — Igor speaks over the switches
 
 - The tablet's live voice display is now a sheet over the lower half of the screen, the switches dimmed behind; a touch outside closes it, a touch on it keeps it up. Igor's eye says where it is: cyan and pulsing while it listens, amber while it works, bone white while it answers, red when done, grey for « nothing heard ». It shows your words, Igor's steps (local or online, with their times), its answer and what was done; the switch Igor acted on flashes cyan behind.
