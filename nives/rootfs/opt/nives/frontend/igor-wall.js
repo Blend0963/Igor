@@ -1319,7 +1319,7 @@
     }
   }
 
-  // ----- igor-buttons-card: a row of small buttons -----
+  // ----- igor-buttons-card: a row of small buttons (size: big for a phone) -----
   //   type: custom:igor-buttons-card
   //   buttons:
   //     - { icon: mdi:monitor, name: PC, service: nives.screen, data: { action: pc } }
@@ -1333,11 +1333,15 @@
     }
     getCardSize() { return 1; }
     build() {
-      this.style(".row { display: grid; gap: 5px; }\nbutton { background: var(--card); border: 1px solid var(--line); border-radius: var(--ha-card-border-radius, 6px); color: var(--dim); font-family: inherit; font-size: 10.5px; padding: 6px 2px 5px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; --mdc-icon-size: 18px; min-width: 0; }\nbutton ha-icon { color: var(--fg); }\nbutton span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }\nbutton.done { border-color: var(--acc); }\nbutton:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }\n:host { display: block; }");
-      var row = el("div", "row", this.shadowRoot);
-      row.style.gridTemplateColumns = "repeat(" + (Number(this.config.columns) || this.config.buttons.length) + ", minmax(0, 1fr))";
+      // size: big: buttons to touch on a phone, like the giant tiles (a large
+      // icon, the name under it), three a row unless `columns` says.
+      var big = this.config.size === "big";
+      this.style(".row { display: grid; gap: 5px; }\nbutton { background: var(--card); border: 1px solid var(--line); border-radius: var(--ha-card-border-radius, 6px); color: var(--dim); font-family: inherit; font-size: 10.5px; padding: 6px 2px 5px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; --mdc-icon-size: 18px; min-width: 0; }\nbutton ha-icon { color: var(--fg); }\nbutton span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }\nbutton.done { border-color: var(--acc); }\nbutton:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }\n:host { display: block; }" + (big ? "\n" + "button.big { min-height: 92px; justify-content: center; gap: 10px; padding: 12px 4px; --mdc-icon-size: 34px; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 6px; }\nbutton.big span { white-space: normal; overflow-wrap: break-word; hyphens: auto; line-height: 1.2; text-align: center; }\nbutton.big:active { transform: scale(0.98); }\n.row.big { gap: 10px; }" : ""));
+      var row = el("div", "row" + (big ? " big" : ""), this.shadowRoot);
+      var cols = Number(this.config.columns) || (big ? Math.min(3, this.config.buttons.length) : this.config.buttons.length);
+      row.style.gridTemplateColumns = "repeat(" + cols + ", minmax(0, 1fr))";
       this.config.buttons.forEach((b) => {
-        var btn = el("button", "", row);
+        var btn = el("button", big ? "big" : "", row);
         btn.type = "button";
         icon(btn, b.icon || "mdi:gesture-tap");
         el("span", "", btn, b.name || "");
@@ -4059,7 +4063,7 @@
   define("igor-energy-card", IgorEnergyCard, "Igor · énergie", "La puissance, heure par heure aujourd'hui.");
   define("igor-camera-card", IgorCameraCard, "Igor · caméra", "L'image d'une caméra, rafraîchie toutes les quelques secondes.");
   define("igor-assist-card", IgorAssistCard, "Igor · Igor", "Igor : son état, parler (appui), l'activer ou non (appui long).");
-  define("igor-buttons-card", IgorButtonsCard, "Igor · boutons", "Une rangée de petits boutons qui appellent un service.");
+  define("igor-buttons-card", IgorButtonsCard, "Igor · boutons", "Une rangée de boutons qui appellent un service ou ouvrent une page (size: big pour un téléphone).");
   define("igor-weather-card", IgorWeatherCard, "Igor · météo", "Maintenant, heure par heure, et les jours en barres de températures.");
   define("igor-alarm-card", IgorAlarmCard, "Igor · réveil", "Un réveil (intégration Alarm Clocks) en une ligne.");
   define("igor-docker-manage-card", IgorDockerManageCard, "Igor · Docker (gestion)", "Les conteneurs de Portainer, leurs totaux et leurs boutons.");
