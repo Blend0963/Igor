@@ -55,3 +55,18 @@ disarm:
       selector:
         text:
           type: password
+dns_log:
+  fields:
+    limit:
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 500
+    blocked_only:
+      default: false
+      selector:
+        boolean:
+    search:
+      selector:
+        text:

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.27.0 — DNS queries, live
+
+- New `igor-dns-card`: AdGuard Home's DNS queries as they come, read every two seconds (`interval`) through Home Assistant's AdGuard integration (`nives.dns_log`, nothing more to configure). Each line: time, device, domain, response time or « cache »; blocked queries struck through in red with the reason and the rule, rewrites in cyan. A « bloquées » filter, a pause, a search, the chattiest devices as chips (a tap filters on one) and the last minute's rate and share blocked. Device names come from AdGuard, else from Home Assistant's device trackers (their `ip` attribute), else from the card's `names: { 192.168.1.20: nas }`; `hide: [in-addr.arpa]` leaves out noisy domains.
+- `nives.dns_log` is for administrators only (the log is the house's browsing history) and keeps nothing. Restart Home Assistant after updating.
+
 ## 0.26.0 — Music on the wall
 
 - New `igor-music-card`: what plays (cover, title, artist, progress), previous / play-pause / next, shuffle, volume, the choice of speaker (`players`), one-tap `favorites`, and with Music Assistant what comes next (`music_assistant.get_queue`) and a search whose results play on a tap (`music_assistant.search`, `music_assistant.play_media`). Works with any media player; the Music Assistant parts stay quiet without it.

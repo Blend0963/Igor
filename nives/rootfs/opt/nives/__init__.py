@@ -47,6 +47,7 @@ from .const import (
     SCREEN_EVENT,
     SERVICE_JOURNAL,
     SERVICE_NEWS,
+    SERVICE_DNS_LOG,
     SERVICE_DISARM,
     CONF_ALARM_ENTITY,
     CONF_CODE_HASH,
@@ -441,6 +442,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
         _async_register_heard(hass)
         _async_register_journal(hass)
         _async_register_news(hass)
+        _async_register_dns_log(hass)
         _async_register_screen(hass)
     _async_register_disarm(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
@@ -611,6 +613,41 @@ def _async_register_news(hass: HomeAssistant) -> None:
 
     hass.services.async_register(
         DOMAIN, SERVICE_NEWS, _news, schema=NEWS_SCHEMA, supports_response=SupportsResponse.ONLY
+    )
+
+
+DNS_LOG_SCHEMA = vol.Schema(
+    {
+        vol.Optional("limit", default=100): vol.All(vol.Coerce(int), vol.Range(min=1, max=500)),
+        vol.Optional("blocked_only", default=False): cv.boolean,
+        vol.Optional("search", default=""): vol.All(str, vol.Length(max=100)),
+    }
+)
+
+
+@callback
+def _async_register_dns_log(hass: HomeAssistant) -> None:
+    """`nives.dns_log`: AdGuard Home's newest DNS queries (dns.py), read
+    through Home Assistant's AdGuard integration. Administrators only: it is
+    the house's browsing history. Nothing is kept."""
+    if hass.services.has_service(DOMAIN, SERVICE_DNS_LOG):
+        return
+    from homeassistant.helpers.service import async_register_admin_service
+
+    from .dns import async_read_querylog, names_from_states, parse_querylog, query_params
+
+    async def _dns_log(call: ServiceCall) -> ServiceResponse:
+        limit = call.data["limit"]
+        params = query_params(limit, call.data["blocked_only"], call.data["search"].strip())
+        try:
+            body = await async_read_querylog(hass, params)
+        except LookupError as err:
+            return {"entries": [], "error": str(err)}
+        names = names_from_states(hass.states.async_all("device_tracker"))
+        return {"entries": parse_querylog(body, names, limit)}
+
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_DNS_LOG, _dns_log, schema=DNS_LOG_SCHEMA, supports_response=SupportsResponse.ONLY
     )
 
 
