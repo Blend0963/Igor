@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.1 — Threads in Igor's look
+
+- The threads panel (Igor's own page) takes the wall's look: dark, the eye in place of the bow tie, red marks on titles and the open thread. What you say sits in a bubble on the right; Igor's answer is structured text across the whole reading column, without a bubble.
+
 ## 0.32.0 — What the firewall lets through, and what it refuses
 
 - The network map reads OPNsense's firewall log: what it refused shows as red dashes (the same way through OPNsense), a « refusé ×N » under each block concerned, and a « refusé par le pare-feu » list (who → whom, service, rule, how many times) in OPNsense's, a network's and a device's detail. A device only ever refused still gets its place. « refusé » in the toolbar shows or hides them. The key needs the « Firewall Log » privilege (DOCS.md); without it, the map says so under « à vérifier ».
