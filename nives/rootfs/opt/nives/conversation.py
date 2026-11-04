@@ -120,10 +120,13 @@ class IgorConversationAgent(ConversationEntity):
         """Answer, streaming into the chat log where the Core supports it."""
         # The house is locked (the key is away): Igor does nothing at all.
         from .const import CONF_KEY_ENTITY
-        from .security import is_locked, security_event, settings
+        from .security import is_locked, security_event, settings, user_allowed
 
-        key = settings(self.hass).get(CONF_KEY_ENTITY)
-        if is_locked(self.hass, key):
+        sec = settings(self.hass)
+        user_id = user_input.context.user_id if user_input.context else None
+        if is_locked(self.hass, sec.get(CONF_KEY_ENTITY)) and not await user_allowed(
+            self.hass, user_id, sec.get("allowed_users") or []
+        ):
             security_event(self.hass, "refused", reason="locked")
             return self._error_result(
                 user_input, user_input.conversation_id, "Igor est verrouillé : la clé est absente."

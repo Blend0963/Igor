@@ -156,4 +156,7 @@ CONF_ALARM_ENTITY = "alarm_entity"
 CONF_ALARM_ACTIVE = "alarm_active_entity"
 CONF_NEW_CODE = "new_disarm_code"
 CONF_CODE_HASH = "disarm_code_hash"
+# Home Assistant users (names or ids) Igor still answers while the key is away:
+# the owner from a phone, never the wall, the tablet or a voice satellite.
+CONF_ALLOWED_USERS = "allowed_users"
 SERVICE_DISARM = "disarm"
