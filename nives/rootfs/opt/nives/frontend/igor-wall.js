@@ -2904,12 +2904,14 @@
         ".list { flex: 1; min-height: 0; overflow-y: auto; }",
         ".net { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; padding-bottom: 3px; border-bottom: 1px solid var(--line); }",
         ".net:first-child { margin-top: 0; }",
-        ".net .s { color: var(--fg); letter-spacing: 0.06em; }",
+        ".net .s { color: var(--fg); letter-spacing: 0.06em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
         ".net .i { color: var(--dim); font-size: 11px; white-space: nowrap; }",
-        ".d { display: grid; grid-template-columns: minmax(0, 1fr) 30px 13ch 6ch; gap: 8px; align-items: center; padding: 3px 0; border-bottom: 1px dashed var(--line); }",
+        // Room for « ↓1201 ↑1201 Mb/s » and « 23 h 59 » at 11px, apart.
+        ".d { display: grid; grid-template-columns: minmax(0, 1fr) 26px 11em 5.5em; column-gap: 12px; align-items: center; padding: 3px 0; border-bottom: 1px dashed var(--line); }",
         ".d .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
         ".d .n small { color: var(--faint); margin-left: 6px; }",
-        ".d .r, .d .t { color: var(--dim); font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }",
+        ".d .r, .d .t { color: var(--dim); font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        "@media (max-width: 600px) { .d { grid-template-columns: minmax(0, 1fr) 26px auto; } .d .r { display: none; } }",
         ".sig { display: flex; gap: 2px; align-items: flex-end; height: 12px; }",
         ".sig i { width: 4px; background: var(--track); }",
         ".sig.ok i.on { background: var(--okc); } .sig.warn i.on { background: var(--wait); } .sig.bad i.on { background: var(--bad); }",
@@ -3024,7 +3026,8 @@
       this.mode = saved.mode || "vlan";
       this.pos = saved.pos || {};
       this.off = saved.hidden || {};
-      this.showNet = saved.net !== false;
+      // On a phone the internet starts hidden (the world map shows it).
+      this.showNet = saved.net === undefined ? window.innerWidth >= 600 : saved.net !== false;
       this.showFlow = saved.flow !== false;
       this.showBlocked = saved.blocked !== false;
       this.matrix = false;
@@ -3045,6 +3048,10 @@
         "svg.net { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; user-select: none; }",
         ".side { width: 270px; flex: none; overflow-y: auto; min-height: 0; }",
         "@media (max-width: 900px) { .body { flex-direction: column; } .side { width: auto; max-height: 40vh; } }",
+        // A phone: one toolbar row that scrolls, the map at most of the
+        // screen, the detail under it, the card scrolling.
+        "@media (max-width: 600px) { ha-card { overflow-y: auto; } .tool { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; } .tool > * { flex: none; }"
+        + " .body { flex: none; } .stage { flex: none; height: 64vh; min-height: 320px; } .side { max-height: none; overflow: visible; } }",
         "text { font-family: " + MONO + "; font-size: 10.5px; fill: var(--dim); pointer-events: none; }",
         "text.hl { fill: var(--fg); }",
         ".blk rect.b { stroke-width: 1; }",
@@ -3088,7 +3095,7 @@
       var top = el("div", "top", card);
       el("span", "t sub", top, (this.config.title || "schéma · en direct").toUpperCase()).style.letterSpacing = "0.12em";
       this.sum = el("span", "sub num", top);
-      var tool = el("div", "tool", card);
+      var tool = el("div", "tool no-swipe", card);
       var btn = (text, fn, cls) => { var b = el("button", cls || "", tool, text); b.type = "button"; b.addEventListener("click", fn); return b; };
       this.modeBtns = {};
       [["vlan", "Par VLAN"], ["tree", "Arbre"], ["free", "Libre"]].forEach((m) => {
@@ -3199,9 +3206,12 @@
       this.draw();
     }
     layout() {
-      var M = this.M, W = this.W, H = this.H, m = 16;
+      var M = this.M, H = this.H, m = 16;
       var P = {}, B = {}, hubs = {};
       var net = this.showNet && M.remotes.length;
+      // A narrow screen with the internet: laid out wider, then fitted, so
+      // the blocks keep room for their names.
+      var W = net && this.W < 640 ? 640 : this.W;
       var rw = net ? 190 : 0;
       var AW = W - 2 * m - (net ? rw + 14 : 0);
       var vis = M.vlans.filter((v) => !this.off[v]);
@@ -3307,12 +3317,38 @@
         var r = svg.getBoundingClientRect();
         this.zoom(Math.exp(-ev.deltaY * 0.0015), ev.clientX - r.left, ev.clientY - r.top);
       }, { passive: false });
+      // Two fingers zoom around their middle; one finger moves or pans.
+      var fingers = {};
+      var pinch = () => {
+        var ids = Object.keys(fingers);
+        if (ids.length < 2) return null;
+        var a = fingers[ids[0]], b = fingers[ids[1]];
+        return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      };
       svg.addEventListener("pointerdown", (ev) => {
+        fingers[ev.pointerId] = { x: ev.clientX, y: ev.clientY };
+        if (Object.keys(fingers).length >= 2) {
+          this.drag = null;
+          this.pinch = pinch();
+          this.dragging = true;
+          svg.setPointerCapture(ev.pointerId);
+          return;
+        }
         var t = ev.target.closest ? ev.target.closest("[data-id],[data-vlan]") : null;
         this.drag = { x: ev.clientX, y: ev.clientY, id: t && t.getAttribute("data-id"), vlan: t && t.getAttribute("data-vlan"), moved: false };
         svg.setPointerCapture(ev.pointerId);
       });
       svg.addEventListener("pointermove", (ev) => {
+        if (fingers[ev.pointerId]) fingers[ev.pointerId] = { x: ev.clientX, y: ev.clientY };
+        if (this.pinch) {
+          var now = pinch();
+          if (!now) return;
+          var r = svg.getBoundingClientRect();
+          this.view.x += now.x - this.pinch.x; this.view.y += now.y - this.pinch.y;
+          this.zoom(now.d / this.pinch.d, now.x - r.left, now.y - r.top);
+          this.pinch = now;
+          return;
+        }
         var g = this.drag;
         if (!g) return;
         var dx = ev.clientX - g.x, dy = ev.clientY - g.y;
@@ -3335,6 +3371,11 @@
         if (!this.rafDraw) this.rafDraw = requestAnimationFrame(() => { this.rafDraw = 0; this.layout(); this.draw(); });
       });
       var end = (ev) => {
+        delete fingers[ev.pointerId];
+        if (this.pinch) {
+          if (Object.keys(fingers).length < 2) { this.pinch = null; this.dragging = false; this.drag = null; }
+          return;
+        }
         var g = this.drag;
         this.drag = null;
         this.dragging = false;
@@ -3343,6 +3384,8 @@
         var target = g.vlan ? "vlan:" + g.vlan : g.id || "";
         this.sel = this.sel === target ? "" : target;
         this.draw();
+        // On a phone the detail is under the map: bring it into sight.
+        if (this.sel && this.W < 600 && this.side.scrollIntoView) this.side.scrollIntoView({ behavior: "smooth", block: "nearest" });
       };
       svg.addEventListener("pointerup", end);
       svg.addEventListener("pointercancel", end);
@@ -3459,7 +3502,10 @@
         var hr = svgEl("rect", { class: "bh", "data-vlan": v, x: b.x, y: b.y, width: b.w, height: 26, fill: c + "22" }, bg);
         hr.style.cursor = "move";
         var ht = svgEl("text", { x: b.x + 18, y: b.y + 17 }, bg); ht.textContent = v.toUpperCase(); ht.style.fill = c; ht.style.letterSpacing = "0.08em";
-        var hr2 = svgEl("text", { x: b.x + b.w - 8, y: b.y + 17, "text-anchor": "end" }, bg); hr2.textContent = (M.gw[v] ? M.gw[v] + " · " : "") + M.devs[v].length;
+        // The gateway only where it fits beside the name (else in the detail).
+        var right = (M.gw[v] ? M.gw[v] + " · " : "") + M.devs[v].length;
+        if (18 + v.length * 7.2 + 14 + right.length * 6.4 + 8 > b.w) right = String(M.devs[v].length);
+        var hr2 = svgEl("text", { x: b.x + b.w - 8, y: b.y + 17, "text-anchor": "end" }, bg); hr2.textContent = right;
       });
       if (this.showNet && P["net:hub"]) {
         svgEl("path", { class: "topo wan", d: "M" + P.router.x + " " + P.router.y + " L" + P["net:hub"].x + " " + P["net:hub"].y }, gTopo);
@@ -3840,14 +3886,19 @@
         ".band { flex: 1; min-width: 240px; }",
         ".band .h, .h { color: var(--dim); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 3px; }",
         ".cols { display: flex; align-items: flex-end; gap: 3px; height: 46px; border-bottom: 1px solid var(--line); }",
-        ".cols div { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; font-size: 9px; color: var(--faint); }",
+        ".cols div { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; font-size: 9px; color: var(--faint); }",
+        ".cols span { line-height: 1.5; margin-top: 2px; }",
         ".cols i { display: block; width: 100%; background: var(--acc); opacity: 0.7; min-height: 1px; }",
         ".cols div.mine i { background: var(--wait); opacity: 1; }",
         ".list { flex: 1; min-height: 0; overflow-y: auto; }",
-        ".r { display: grid; grid-template-columns: minmax(0, 1fr) 13ch 30px 11ch; gap: 8px; align-items: center; padding: 3px 0; border-bottom: 1px dashed var(--line); }",
+        // Widths in em of the row's own size: « 5 GHz · canal 149 » and
+        // « WPA2 entreprise » fit, with room between the columns.
+        ".r { display: grid; grid-template-columns: minmax(0, 1fr) 11em 26px 9em; column-gap: 14px; align-items: center; padding: 4px 0; border-bottom: 1px dashed var(--line); }",
         ".r .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
         ".r .n small { color: var(--faint); margin-left: 6px; }",
-        ".r .c, .r .s { color: var(--dim); font-size: 11px; white-space: nowrap; }",
+        ".r .c, .r .s { color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        // A phone: the name on its own line, the rest under it.
+        "@media (max-width: 600px) { .r { grid-template-columns: 11em 26px minmax(0, 1fr); row-gap: 2px; } .r .n { grid-column: 1 / -1; } .r .n small { display: block; margin-left: 0; } .r .s { text-align: right; } }",
         ".r .s.open { color: var(--bad); }",
         ".sig { display: flex; gap: 2px; align-items: flex-end; height: 12px; }",
         ".sig i { width: 4px; background: var(--track); }",

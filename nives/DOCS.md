@@ -209,7 +209,21 @@ An access point used as a bridge often knows no names: Igor takes them from Home
 
 ### A read-only OPNsense key for the network map
 
-In OPNsense, **System → Access → Users**: add a user `igor` (a long random password, no shell). In its **privileges**, allow only the ARP table, the firewall states, the DHCP leases, the firewall log and the rules (type « ARP », « States », « Leases », « Firewall Log » and « Firewall: Rules » in the filter; the leases of the DHCP server you use: Kea, ISC or Dnsmasq). The log shows what the firewall refused on the network map; the rules list each network's rules (recent OPNsense versions). Save, then under **API keys** press **+**: a file with the key and the secret downloads. In `secrets.yaml` and `configuration.yaml`, then restart Home Assistant:
+In OPNsense, **System → Access → Users**: add a user `igor` (a long random password, no shell). In its **privileges**, tick only these (their exact names in the list):
+
+| Privilege | What Igor reads with it |
+| --- | --- |
+| `Diagnostics: ARP Table` | which address is which device |
+| `Diagnostics: Show States` | who talks to whom (the map's flows) |
+| `Diagnostics: Logs: Firewall: Live View` | what the firewall refused (red dashes) |
+| `Firewall: Rules [new]` | each network's rules (recent OPNsense versions) |
+| the leases of your DHCP server: `Services: DHCP: Kea(v4)`, `Services: Dnsmasq DNS/DHCP: Settings`, or for ISC `Status: DHCP leases` (`Services: ISC DHCPv4: Leases` on 26.1 and later) | the devices' names |
+
+OPNsense grants by page, not by read or write: « Show States », « Firewall: Rules [new] » and the DHCP ones would also allow changes through the API. Igor only calls the reading ones; keep the key in `secrets.yaml` and nowhere else.
+
+The **OPNsense integration** for Home Assistant (hass-opnsense: CPU, memory, gateways, interfaces, WireGuard…) needs its own key. Rather than admin, give that user only what you use and turn on « Granular Sync Options » in the integration: `Lobby: Dashboard`, `Status: Interfaces` and `System: Firmware` always; `System: Gateways` (gateways), `Reporting: Traffic` (live traffic), `VPN: WireGuard: Status` (WireGuard), `Status: Services` (services), `System: Status` (notices), `Diagnostics: ARP Table` (device trackers), the DHCP leases above (lease counts). Its full list: the integration's `docs/granular_permissions.md`.
+
+Save, then under **API keys** press **+**: a file with the key and the secret downloads. In `secrets.yaml` and `configuration.yaml`, then restart Home Assistant:
 
 ```yaml
 nives:
