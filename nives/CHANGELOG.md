@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.33.0 — Igor in the car
+
+- `igor-car-card`: a car while it drives: the speed in large, the engine speed as a segmented bar that turns amber then red, the coolant and the battery in colour, the trip's distance, consumption and eco score; greyed with « hors ligne » when the car is away.
+- `igor-carmedia-card`: the music of an Android head unit (the companion app's media session), title and artist, three large buttons that send `command_media`.
+- `igor-buttons-card`: `tap_action` (any Home Assistant action: open an app with `url: app://…`, the voice assistant, a confirmed `perform-action`), `eye: true` (Igor's eye as the icon), `color`, `secondary`, `fill`; a lone big button lies flat as a band.
+- `igor-wall`: `above:` and `below:` cards across the whole width; in the bar, `name:` after IGOR and `tabs: true` to keep the tabs on a narrow screen.
+- `igor-facts-card`: `remaining: km` (« dans 800 km », « dépassé de 200 km »), `below_warn` and `below_bad`, `zero:` for a value not set yet, `more:` for the entity a tap opens, `size: big`.
+
 ## 0.32.3 — Buttons for a finger, the eye on the phone
 
 - The « Igor » theme puts Igor's eye at the left of Home Assistant's top bar (`igor-header-logo`), as on the wall: on a phone or a PC, before the tabs. Not on the tablet theme (no top bar there) nor while editing.

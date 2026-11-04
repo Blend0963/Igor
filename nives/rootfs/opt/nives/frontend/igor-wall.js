@@ -185,7 +185,7 @@
     ".tabs a { display: flex; align-items: center; padding: 0 11px; color: var(--dim); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; text-decoration: none; border-bottom: 2px solid transparent; cursor: pointer; }",
     ".tabs a:hover { color: var(--fg); }",
     ".tabs a.on { color: var(--fg); border-bottom-color: var(--igor-signal, #e5323b); }",
-    "@media (max-width: 1100px) { .tabs { display: none; } }",
+    "@media (max-width: 1100px) { .tabs:not(.keep) { display: none; } }",
     ".lane { flex: 1; overflow: hidden; height: 100%; display: flex; align-items: center; position: relative; }",
     ".run { display: flex; will-change: transform; }",
     ".run.roll { animation: roll var(--speed, 60s) linear infinite; }",
@@ -247,9 +247,12 @@
       // The eye: a monolith pierced by a red eye, Igor's logo.
       left.insertAdjacentHTML("beforeend", '<svg class="eye" viewBox="0 0 256 256" aria-hidden="true"><rect x="107" y="20" width="44" height="216" fill="#e9e4da"/><circle cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle cx="128" cy="96" r="16" fill="#e5323b"/></svg>');
       el("span", "brand", left, "IGOR");
+      // `name: 407`: what this screen is, after IGOR.
+      if (this.config.name) el("span", "state", left, String(this.config.name));
       this.igorEl = el("span", "state", left, "");
       // The dashboard's pages, the one shown in red (`tabs: false`: none).
-      this.tabsEl = this.config.tabs === false ? null : el("span", "tabs", this.root);
+      // `tabs: true`: kept on a narrow screen too (a car's head unit).
+      this.tabsEl = this.config.tabs === false ? null : el("span", "tabs" + (this.config.tabs === true ? " keep" : ""), this.root);
       if (this.tabsEl) this.tabsEl.addEventListener("click", (ev) => ev.stopPropagation());
       var lane = el("div", "lane", this.root);
       this.lane = lane;
@@ -555,7 +558,10 @@
     ".stack .cols { grid-template-columns: 1fr !important; }",
     ".stack .wall, .wall.stack { height: auto !important; }",
     ".stack .slot.grow { flex: none; min-height: 260px; }",
-    ".err { color: var(--bad); font-size: 12px; padding: 8px; }"
+    ".err { color: var(--bad); font-size: 12px; padding: 8px; }",
+    ".band { flex: none; padding: 0 10px; }",
+    ".band.above { padding-top: 10px; } .band.above:empty, .band.below:empty { display: none; }",
+    ".band.below { padding-bottom: 10px; }"
   ].join("\n");
 
   class IgorWall extends HTMLElement {
@@ -595,9 +601,23 @@
       var wall = el("div", "wall", root);
       this.wall = wall;
       if (this.config.bar) this.bar = new IgorBar(wall, this.config.bar);
+      var helpers = window.loadCardHelpers ? await window.loadCardHelpers() : null;
+      // `above:` and `below:` cards across the whole width, around the columns.
+      var band = (list, cls) => {
+        if (!Array.isArray(list) || !list.length) return;
+        var b = el("div", "band " + cls, wall);
+        list.forEach((cfg) => {
+          var card;
+          try { card = helpers ? helpers.createCardElement(cfg) : document.createElement("hui-error-card"); }
+          catch (e) { el("div", "err", b, String(e && e.message || e)); return; }
+          b.appendChild(card);
+          if (this._hass) card.hass = this._hass;
+          this.children_.push(card);
+        });
+      };
+      band(this.config.above, "above");
       var cols = el("div", "cols", wall);
       cols.style.gridTemplateColumns = this.config.columns.map(function (c) { return (Number(c.width) || 1) + "fr"; }).join(" ");
-      var helpers = window.loadCardHelpers ? await window.loadCardHelpers() : null;
       this.config.columns.forEach((c) => {
         var col = el("div", "col", cols);
         (c.cards || []).forEach((item) => {
@@ -617,6 +637,7 @@
           this.children_.push(card);
         });
       });
+      band(this.config.below, "below");
       if (this._hass) this.hass = this._hass;
       this.fit();
     }
@@ -1336,16 +1357,25 @@
       // size: big: buttons to touch on a phone, like the giant tiles (a large
       // icon, the name under it), three a row unless `columns` says.
       var big = this.config.size === "big";
-      this.style(".row { display: grid; gap: 5px; }\nbutton { background: var(--card); border: 1px solid var(--line); border-radius: var(--ha-card-border-radius, 6px); color: var(--dim); font-family: inherit; font-size: 10.5px; padding: 6px 2px 5px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; --mdc-icon-size: 18px; min-width: 0; }\nbutton ha-icon { color: var(--fg); }\nbutton span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }\nbutton.done { border-color: var(--acc); }\nbutton:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }\n:host { display: block; }" + (big ? "\n" + "button.big { min-height: 92px; justify-content: center; gap: 10px; padding: 12px 4px; --mdc-icon-size: 34px; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 6px; }\nbutton.big span { white-space: normal; overflow-wrap: break-word; hyphens: auto; line-height: 1.2; text-align: center; }\nbutton.big:active { transform: scale(0.98); }\n.row.big { gap: 10px; }" : ""));
-      var row = el("div", "row" + (big ? " big" : ""), this.shadowRoot);
+      this.style(".row { display: grid; gap: 5px; }\nbutton { background: var(--card); border: 1px solid var(--line); border-radius: var(--ha-card-border-radius, 6px); color: var(--dim); font-family: inherit; font-size: 10.5px; padding: 6px 2px 5px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; --mdc-icon-size: 18px; min-width: 0; }\nbutton ha-icon { color: var(--fg); }\nbutton span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }\nbutton.done { border-color: var(--acc); }\nbutton:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }\n:host { display: block; }" + (big ? "\n" + "button.big { min-height: 92px; justify-content: center; gap: 10px; padding: 12px 4px; --mdc-icon-size: 34px; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 6px; }\nbutton.big span { white-space: normal; overflow-wrap: break-word; hyphens: auto; line-height: 1.2; text-align: center; }\nbutton.big:active { transform: scale(0.98); }\n.row.big { gap: 10px; }" : "") + "\n.eye { width: 22px; height: 22px; display: block; }\nbutton.big .eye { width: 34px; height: 34px; }\nbutton small { color: var(--faint); font-size: 10px; letter-spacing: 0.04em; text-transform: none; }\n.row.tall, .row.tall button { height: 100%; }\nbutton.big.hero .eye { width: 64px; height: 64px; }\nbutton.big.wide { flex-direction: row; justify-content: flex-start; min-height: 64px; padding: 10px 20px; gap: 16px; text-align: left; }\nbutton.big.wide span { text-align: left; font-size: 13px; color: var(--fg); white-space: nowrap; flex: none; }\nbutton.big.wide small { flex: 1; min-width: 0; text-align: right; font-size: 11px; }\nbutton.colored { border-color: var(--bc); } button.colored ha-icon, button.colored span { color: var(--bc); }\nbutton.big.hero span { font-size: 15px; letter-spacing: 0.14em; color: var(--fg); }");
+      var row = el("div", "row" + (big ? " big" : "") + (this.config.fill ? " tall" : ""), this.shadowRoot);
+      if (this.config.fill) row.style.gridAutoRows = "1fr";
       var cols = Number(this.config.columns) || (big ? Math.min(3, this.config.buttons.length) : this.config.buttons.length);
       row.style.gridTemplateColumns = "repeat(" + cols + ", minmax(0, 1fr))";
       this.config.buttons.forEach((b) => {
-        var btn = el("button", big ? "big" : "", row);
+        // A lone big button (not `fill`) lies flat: a band across the screen.
+        var wide = big && cols === 1 && !b.hero && !this.config.fill;
+        var btn = el("button", (big ? "big" : "") + (b.hero ? " hero" : "") + (wide ? " wide" : "") + (b.color ? " colored" : ""), row);
+        if (b.color) btn.style.setProperty("--bc", String(b.color));
         btn.type = "button";
-        icon(btn, b.icon || "mdi:gesture-tap");
+        // eye: true: Igor's eye instead of an icon.
+        if (b.eye) { var ey = el("span", "eye", btn); ey.innerHTML = EYE; }
+        else icon(btn, b.icon || "mdi:gesture-tap");
         el("span", "", btn, b.name || "");
+        if (b.secondary) el("small", "", btn, b.secondary);
         btn.addEventListener("click", () => {
+          // tap_action: any Home Assistant action (url: app://…, assist…).
+          if (b.tap_action) { haAction(this, b.tap_action); return; }
           if (b.journal) { window.dispatchEvent(new CustomEvent("ll-custom", { detail: { igor_journal: true } })); return; }
           if (b.navigate) { navigate(String(b.navigate)); return; }
           if (b.menu) { this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })); return; }
@@ -2376,6 +2406,9 @@
   //     - { entity: sensor.ping_latence, name: latence, warn: 50, bad: 150 }
   //     - { entity: sensor.x, name: …, attribute: last_backup }
   //     - { name: lumières allumées, count: [light.a, light.b] }   # « 1 / 2 »
+  //     - { entity: sensor.vidange_km, name: vidange, remaining: km, below_warn: 1000, below_bad: 0, zero: à renseigner, more: input_number.vidange }
+  //       # remaining: « dans 800 km » or « dépassé de 200 km »; below_*: amber or red under;
+  //       # zero: the text for 0 (not set yet); more: the entity a tap opens
   // A row whose entity does not exist is left out: the card shows only what
   // this house has (nothing at all: the card says so).
   class IgorFactsCard extends IgorCard {
@@ -2390,10 +2423,12 @@
         ".rows .l { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
         ".rows .v { text-align: right; white-space: nowrap; }",
         ".rows .v.warn { color: var(--wait); } .rows .v.bad { color: var(--bad); } .rows .v.ok { color: var(--okc); }",
-        ".rows .l.tap { cursor: pointer; }",
+        ".rows .l.tap, .rows .v.tap { cursor: pointer; }",
+        // size: big: read from further away (a car's screen).
+        ".big .rows { font-size: 15px; gap: 10px 14px; } .big .top { font-size: 13px; }",
         ".empty { color: var(--dim); }"
       ].join("\n"));
-      var card = el("ha-card", "", this.shadowRoot);
+      var card = el("ha-card", this.config.size === "big" ? "big" : "", this.shadowRoot);
       var top = el("div", "top", card);
       el("span", "t", top, this.config.title || "");
       this.rows = el("div", "rows", card);
@@ -2415,9 +2450,13 @@
         var raw = r.attribute ? st.attributes[r.attribute] : st.state;
         var text = r.text && r.text[String(raw)] != null ? String(r.text[String(raw)]) : r.attribute ? (raw == null ? "—" : /^\d{4}-\d\d-\d\d[T ]\d/.test(String(raw)) ? hhmm(new Date(raw)) : String(raw)) : stateText(hass, r.entity);
         var n = parseFloat(raw), level = "";
+        if (r.remaining && !isNaN(n)) text = n < 0 ? "dépassé de " + fr(-n, 0) + " " + r.remaining : "dans " + fr(n, 0) + " " + r.remaining;
+        if (r.zero != null && !isNaN(n) && n === 0) return [r, String(r.zero), ""];
         if (r.ok) level = r.ok.map(String).indexOf(String(raw)) >= 0 ? "ok" : "warn";
         if (!isNaN(n) && r.bad != null && n >= r.bad) level = "bad";
         else if (!isNaN(n) && r.warn != null && n >= r.warn) level = "warn";
+        if (!isNaN(n) && r.below_bad != null && n < r.below_bad) level = "bad";
+        else if (!isNaN(n) && r.below_warn != null && n < r.below_warn) level = "warn";
         return [r, text, level];
       });
       var sig = JSON.stringify(vals.map(function (v) { return [v[0].name || v[0].entity, v[1], v[2]]; }));
@@ -2427,8 +2466,9 @@
       if (!vals.length) { el("span", "empty", this.rows, "Aucune de ces entités ici."); return; }
       vals.forEach((v) => {
         var l = el("span", "l tap", this.rows, v[0].name || (hass.states[v[0].entity].attributes.friendly_name || v[0].entity));
-        l.addEventListener("click", () => moreInfo(this, v[0].entity));
-        el("span", "v" + (v[2] ? " " + v[2] : ""), this.rows, v[1]);
+        l.addEventListener("click", () => moreInfo(this, v[0].more || v[0].entity));
+        var vv = el("span", "v" + (v[2] ? " " + v[2] : "") + (v[0].more ? " tap" : ""), this.rows, v[1]);
+        if (v[0].more) vv.addEventListener("click", () => moreInfo(this, v[0].more));
       });
     }
   }
@@ -3969,6 +4009,178 @@
     }
   }
 
+  // Home Assistant's own actions from a card (an app to open with url:
+  // app://…, the voice assistant with assist, any perform-action).
+  function haAction(node, action) {
+    node.dispatchEvent(new CustomEvent("hass-action", { bubbles: true, composed: true, detail: { config: { tap_action: action }, action: "tap" } }));
+  }
+  var EYE = '<svg viewBox="0 0 256 256" aria-hidden="true" style="width:100%;height:100%;display:block"><rect x="107" y="20" width="44" height="216" fill="#e9e4da"/><circle cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle cx="128" cy="96" r="16" fill="#e5323b"/></svg>';
+
+  // ----- igor-car-card: the car while it drives -----
+  //   type: custom:igor-car-card
+  //   speed: sensor.car_speed            # km/h, in large
+  //   rpm: sensor.car_rpm                # a segmented bar: amber from rpm_warn, red from rpm_bad
+  //   rpm_max: 5000
+  //   rpm_warn: 3500
+  //   rpm_bad: 4300
+  //   coolant: sensor.car_coolant        # °C: blue under 60, amber from 100, red from 110
+  //   battery: sensor.car_battery        # V: red under 11.8, amber under 12.4, red over 15
+  //   online: binary_sensor.car_online   # off: « hors ligne », the figures greyed
+  //   trip: { entity: sensor.car_trip, attribute: trajet }   # its distance_km and eco_score
+  //   active: binary_sensor.trip_running # the trip line only while driving (else the last trip)
+  //   consumption: sensor.car_l_100km
+  class IgorCarCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !config.speed) throw new Error("igor-car-card: speed est requis");
+      this.config = config;
+    }
+    getCardSize() { return 6; }
+    build() {
+      this.style([
+        ".h { color: var(--dim); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; display: flex; align-items: center; gap: 7px; flex: none; }",
+        ".h::before { content: ''; width: 6px; height: 6px; background: var(--igor-signal, #e5323b); }",
+        ".h .off { margin-left: auto; color: var(--faint); letter-spacing: 0.1em; }",
+        ".sp { font-size: clamp(48px, 9vh, 92px); line-height: 1; font-weight: 300; letter-spacing: -0.02em; margin: 10px 0 0; font-variant-numeric: tabular-nums; flex: none; }",
+        ".sp small { font-size: 15px; color: var(--dim); margin-left: 6px; letter-spacing: 0.06em; font-weight: 400; }",
+        ".seg { display: flex; gap: 2px; margin: 14px 0 5px; height: 16px; flex: none; }",
+        ".seg i { flex: 1; background: var(--track); }",
+        ".seg i.on { background: var(--acc); } .seg i.y { background: var(--wait); } .seg i.r { background: var(--bad); }",
+        ".seg i.ys { background: rgba(217, 164, 65, 0.22); } .seg i.rs { background: rgba(224, 103, 95, 0.22); }",
+        ".row { display: flex; justify-content: space-between; color: var(--dim); font-size: 11.5px; flex: none; }",
+        ".row b { color: var(--fg); font-weight: 400; font-variant-numeric: tabular-nums; }",
+        ".mini { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; flex: none; }",
+        ".mini div { border-top: 1px solid var(--line); padding-top: 6px; color: var(--dim); font-size: 11px; }",
+        ".mini b { display: block; font-size: 22px; font-weight: 400; margin-top: 2px; font-variant-numeric: tabular-nums; color: var(--fg); }",
+        ".mini b.cold, .trip b.cold { color: var(--acc); } .mini b.okc, .trip b.okc { color: var(--okc); } .mini b.warn, .trip b.warn { color: var(--wait); } .mini b.bad, .trip b.bad { color: var(--bad); }",
+        ".trip { margin-top: auto; border-top: 1px dashed var(--line); padding-top: 8px; display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; flex: none; }",
+        ".trip b { display: block; font-size: 18px; font-weight: 400; font-variant-numeric: tabular-nums; }",
+        ".trip span { color: var(--dim); font-size: 10px; }",
+        ".trip .t { grid-column: 1 / -1; color: var(--faint); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 4px; }",
+        "ha-card.off .sp, ha-card.off .mini b, ha-card.off .row b { color: var(--faint); }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      this.card = card;
+      var h = el("div", "h", card, "vitesse");
+      this.offEl = el("span", "off", h, "");
+      this.sp = el("div", "sp", card);
+      this.seg = el("div", "seg", card);
+      this.segs = [];
+      for (var i = 0; i < 20; i++) this.segs.push(el("i", "", this.seg));
+      var r = el("div", "row", card);
+      el("span", "", r, "régime");
+      this.rpmEl = el("b", "", r);
+      var mini = el("div", "mini", card);
+      var m1 = el("div", "", mini, "moteur"); this.coolEl = el("b", "", m1);
+      var m2 = el("div", "", mini, "batterie"); this.battEl = el("b", "", m2);
+      this.tripEl = el("div", "trip", card);
+    }
+    update(hass) {
+      var c = this.config, S = (id) => (id ? hass.states[id] : null);
+      var on = !c.online || (S(c.online) && S(c.online).state === "on");
+      this.card.classList.toggle("off", !on);
+      this.offEl.textContent = on ? "" : "hors ligne";
+      var v = on ? num(S(c.speed)) : null;
+      this.sp.innerHTML = "";
+      this.sp.appendChild(document.createTextNode(v == null ? "—" : String(Math.round(v))));
+      el("small", "", this.sp, "km/h");
+      var rpm = on ? num(S(c.rpm)) : null;
+      var max = Number(c.rpm_max) || 5000, warn = Number(c.rpm_warn) || max * 0.7, bad = Number(c.rpm_bad) || max * 0.86;
+      var lit = rpm == null ? 0 : Math.round((Math.min(rpm, max) / max) * this.segs.length);
+      this.segs.forEach((sg, i) => {
+        var at = ((i + 1) / this.segs.length) * max;
+        var zone = at > bad ? "r" : at > warn ? "y" : "on";
+        sg.className = i < lit ? zone : zone === "on" ? "" : zone + "s";
+      });
+      this.rpmEl.textContent = rpm == null ? "—" : fr(Math.round(rpm), 0) + " tr/min";
+      var t = on ? num(S(c.coolant)) : null;
+      this.coolEl.textContent = t == null ? "—" : Math.round(t) + "°";
+      this.coolEl.className = t == null ? "" : t >= 110 ? "bad" : t >= 100 ? "warn" : t < 60 ? "cold" : "okc";
+      var b = on ? num(S(c.battery)) : null;
+      this.battEl.textContent = b == null ? "—" : fr(b, 1) + " V";
+      this.battEl.className = b == null ? "" : b < 11.8 || b > 15 ? "bad" : b < 12.4 ? "warn" : "okc";
+      // The trip: distance, consumption, eco score.
+      var tr = c.trip ? (typeof c.trip === "string" ? { entity: c.trip } : c.trip) : null;
+      var st = tr && S(tr.entity), data = st ? (tr.attribute ? st.attributes[tr.attribute] : st.attributes) : null;
+      this.tripEl.innerHTML = "";
+      if (!data || typeof data !== "object") { this.tripEl.hidden = true; return; }
+      this.tripEl.hidden = false;
+      var running = c.active && S(c.active) && S(c.active).state === "on";
+      el("span", "t", this.tripEl, running ? "trajet en cours" : "dernier trajet");
+      var cons = num(S(c.consumption));
+      var eco = Number(data.eco_score);
+      [[data.distance_km != null ? fr(Number(data.distance_km), 1) : "—", "km", ""],
+       [cons != null ? fr(cons, 1) : "—", "L/100", cons == null ? "" : cons < 6 ? "okc" : cons < 9 ? "warn" : "bad"],
+       [isFinite(eco) ? String(Math.round(eco)) : "—", "éco", !isFinite(eco) ? "" : eco >= 80 ? "okc" : eco >= 60 ? "warn" : "bad"]].forEach((x) => {
+        var d = el("div", "", this.tripEl);
+        el("b", x[2], d, x[0]);
+        el("span", "", d, x[1]);
+      });
+    }
+  }
+
+  // ----- igor-carmedia-card: the music of a car's head unit -----
+  //   type: custom:igor-carmedia-card
+  //   session: sensor.mycar_media_session      # the companion app's media session sensor
+  //   fallback: sensor.car_music               # a sensor whose state is the title (attribute artiste)
+  //   notify: notify.mobile_app_mycar          # sends command_media to the head unit
+  //   package: deezer.android.app              # the player app
+  //   title: musique · deezer
+  // Previous, play or pause, next as three large buttons; a tap on the title
+  // opens the app.
+  class IgorCarMediaCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !config.session) throw new Error("igor-carmedia-card: session est requis");
+      this.config = config;
+    }
+    getCardSize() { return 3; }
+    build() {
+      this.style([
+        ".h { color: var(--dim); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; display: flex; align-items: center; gap: 7px; flex: none; }",
+        ".h::before { content: ''; width: 6px; height: 6px; background: var(--igor-signal, #e5323b); }",
+        ".ti { font-size: 15px; margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; flex: none; }",
+        ".ar { color: var(--dim); font-size: 11.5px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }",
+        ".ctl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: auto; padding-top: 10px; flex: none; }",
+        ".ctl button { height: 54px; background: none; border: 1px solid var(--line); border-radius: 4px; color: var(--fg); cursor: pointer; --mdc-icon-size: 28px; display: grid; place-items: center; }",
+        ".ctl button.p { border-color: #b48ce0; color: #b48ce0; }",
+        ".ctl button:active { transform: scale(0.97); }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      el("div", "h", card, this.config.title || "musique");
+      this.ti = el("div", "ti", card, "");
+      this.ar = el("div", "ar", card, "");
+      var pkg = this.config.package || "deezer.android.app";
+      this.ti.addEventListener("click", () => haAction(this, { action: "url", url_path: "app://" + pkg }));
+      var ctl = el("div", "ctl", card);
+      this.playBtn = null;
+      [["previous", "mdi:skip-previous"], ["play_pause", "mdi:play"], ["next", "mdi:skip-next"]].forEach((x) => {
+        var b = el("button", x[0] === "play_pause" ? "p" : "", ctl);
+        b.type = "button";
+        var ic = icon(b, x[1]);
+        if (x[0] === "play_pause") this.playIcon = ic;
+        b.addEventListener("click", () => {
+          if (!this._hass || !this.config.notify) return;
+          service(this._hass, this.config.notify, { message: "command_media", data: { media_command: x[0], media_package_name: pkg } }).catch(() => {});
+        });
+      });
+    }
+    update(hass) {
+      var s = hass.states[this.config.session], title = "", artist = "";
+      // The session sensor holds media_title and media_artist, suffixed per player.
+      Object.keys((s && s.attributes) || {}).forEach((k) => {
+        var v = s.attributes[k];
+        if (!v) return;
+        if (!title && k.indexOf("media_title") === 0) title = String(v);
+        if (!artist && k.indexOf("media_artist") === 0) artist = String(v);
+      });
+      var f = this.config.fallback && hass.states[this.config.fallback];
+      if (!title && f && ["unknown", "unavailable", "Inconnu"].indexOf(f.state) < 0) { title = f.state; artist = (f.attributes && f.attributes.artiste) || ""; }
+      var playing = s && s.state === "Playing";
+      this.ti.textContent = title || "Rien en lecture";
+      this.ar.textContent = (artist ? artist + " · " : "") + (playing ? "en lecture" : "en pause");
+      if (this.playIcon) this.playIcon.setAttribute("icon", playing ? "mdi:pause" : "mdi:play");
+    }
+  }
+
   // ----- igor-alerts-card: what is wrong, first -----
   //   type: custom:igor-alerts-card
   //   gateway: sensor.opnsense_…_gateway_wan_dhcp_status   # the internet
@@ -4083,6 +4295,8 @@
   define("igor-wifi-scan-card", IgorWifiScanCard, "Igor · Wi-Fi voisins", "Les réseaux Wi-Fi alentour et les canaux occupés, entendus par OpenWrt (administrateurs).");
   define("igor-news-card", IgorNewsCard, "Igor · dépêches", "Les derniers titres d'un flux RSS ou Atom (dépêches, actualités).");
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
+  define("igor-car-card", IgorCarCard, "Igor · voiture", "La voiture qui roule : vitesse, régime, température, batterie, trajet.");
+  define("igor-carmedia-card", IgorCarMediaCard, "Igor · musique de la voiture", "Le titre en cours sur l'autoradio et trois gros boutons.");
 
   // ===== no top bar with the "Igor Journal (tablette)" theme =====
   var NOHEAD_CSS = ":host { --header-height: 0px !important; } .header { display: none !important; } #view { padding-top: env(safe-area-inset-top, 0px) !important; min-height: 100vh !important; }";
