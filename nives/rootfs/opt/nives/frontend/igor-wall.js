@@ -2063,7 +2063,10 @@
         "button.giant .s { display: none; }",
         ".grid.states button.giant .s { display: block; font-size: 11px; margin-top: -8px; }",
         "button.giant.act ha-icon { color: var(--fg); }",
-        "button.giant:active { transform: scale(0.98); }"
+        "button.giant:active { transform: scale(0.98); }",
+        // Igor just acted on it (the tablet's voice display says so): a cyan flash.
+        "button.flash { border-color: #59d0e0 !important; box-shadow: 0 0 0 2px rgba(89, 208, 224, 0.45); background: rgba(89, 208, 224, 0.14) !important; }",
+        "button.flash ha-icon { color: #59d0e0 !important; }"
       ].join("\n"));
       var grid = el("div", "grid" + (giant && this.config.states ? " states" : ""), this.shadowRoot);
       var cols = Number(this.config.columns) || (small ? 1 : 2);
@@ -2089,6 +2092,25 @@
         });
         return { t: t, b: b, ic: ic, sub: sub };
       });
+      // « Cuisine · éteinte » from Igor: the tile named so flashes.
+      this._acted = (ev) => {
+        var labels = (ev.detail && ev.detail.labels) || [];
+        var heads = labels.map((l) => String(l).split(" · ")[0].trim().toLowerCase());
+        this.tiles.forEach((x) => {
+          var st = this._hass && this._hass.states[x.t.entity];
+          var names = [String(x.t.name || "").toLowerCase(), st && st.attributes.friendly_name ? String(st.attributes.friendly_name).toLowerCase() : ""];
+          if (!heads.some((h) => h && names.indexOf(h) >= 0)) return;
+          x.b.classList.add("flash");
+          setTimeout(() => x.b.classList.remove("flash"), 2500);
+        });
+      };
+      window.addEventListener("igor-acted", this._acted);
+    }
+    disconnectedCallback() {
+      if (this._acted) window.removeEventListener("igor-acted", this._acted);
+      this._acted = null;
+      this._built = false;
+      this.shadowRoot.innerHTML = "";
     }
     update(hass, prev) {
       this.tiles.forEach((x) => {
@@ -3112,13 +3134,17 @@
       }
       if (this.mode === "tree") {
         // A tree read left to right: OPNsense, its networks, their devices.
+        // The network's name above its hub, its gateway under it; a bus at
+        // `treeBus` takes each device's flow between the rows, never across
+        // a name.
         P.router = { x: m + 26, y: 44 };
-        var colw = 175, x0 = m + 270, per = Math.max(1, Math.floor((m + AW - x0) / colw)), y = 100;
+        var colw = 175, x0 = m + 270, per = Math.max(1, Math.floor((m + AW - x0) / colw)), y = 112;
+        this.treeBus = m + 250;
         vis.forEach((v) => {
           var list = M.devs[v];
-          hubs[v] = { x: m + 140, y: y };
-          list.forEach((dv, j) => { P[dv.id] = { x: x0 + (j % per) * colw, y: y + Math.floor(j / per) * 24 }; });
-          y += Math.max(1, Math.ceil(list.length / per)) * 24 + 22;
+          hubs[v] = { x: m + 70, y: y };
+          list.forEach((dv, j) => { P[dv.id] = { x: x0 + (j % per) * colw, y: y + Math.floor(j / per) * 26 }; });
+          y += Math.max(1, Math.ceil(list.length / per)) * 26 + 34;
         });
       } else {
         P.router = { x: m + AW / 2, y: 44 };
@@ -3286,9 +3312,13 @@
         var an = this.vlanAnchor(v);
         if (!an) return [p];
         // In a tree, between the rows (not through the names), then down the trunk.
-        if (this.mode === "tree") return [p, { x: p.x - 11, y: p.y }, { x: p.x - 11, y: p.y - 12 }, { x: an.x + 30, y: p.y - 12 }, { x: an.x + 30, y: an.y }, an];
-        // In the gap left of the block, then up to the bus under OPNsense.
-        return [p, { x: an.x, y: p.y }, { x: an.x, y: this.busY }];
+        if (this.mode === "tree") {
+          var bus = this.treeBus;
+          return [p, { x: p.x - 13, y: p.y }, { x: p.x - 13, y: p.y - 13 }, { x: bus, y: p.y - 13 }, { x: bus, y: an.y }, { x: an.x + 12, y: an.y }];
+        }
+        // Up into the gap above the row, along it to the block's edge (never
+        // across a name), then up to the bus under OPNsense.
+        return [p, { x: p.x - 13, y: p.y }, { x: p.x - 13, y: p.y - 12 }, { x: an.x, y: p.y - 12 }, { x: an.x, y: this.busY }];
       };
       var A = leg(a, va), Bp = leg(b, vb).reverse();
       // OPNsense: reached straight down from it in a tree, by the top otherwise.
@@ -3329,11 +3359,13 @@
           if (!h) return;
           var g = svgEl("g", { class: "nd blk" + (selV === v ? " sel" : ""), "data-vlan": v, transform: "translate(" + h.x.toFixed(1) + " " + h.y.toFixed(1) + ")" }, gNode);
           svgEl("circle", { r: 11, fill: c + "33", stroke: c, "stroke-width": 2 }, g);
-          var t = svgEl("text", { x: 16, y: -2, class: "hl" }, g); t.textContent = v; t.style.fill = c;
-          var t2 = svgEl("text", { x: 16, y: 11 }, g); t2.textContent = (M.gw[v] || "") + " · " + M.devs[v].length;
+          var t = svgEl("text", { x: 16, y: -9, class: "hl" }, g); t.textContent = v; t.style.fill = c;
+          var t2 = svgEl("text", { x: 16, y: 19 }, g); t2.textContent = (M.gw[v] || "") + " · " + M.devs[v].length;
+          var bus = this.treeBus;
           M.devs[v].forEach((dv) => {
             var p = P[dv.id];
-            if (p) svgEl("path", { class: "topo", d: "M" + (h.x + 30).toFixed(1) + " " + h.y.toFixed(1) + " L" + (h.x + 30).toFixed(1) + " " + p.y.toFixed(1) + " L" + (p.x - 7).toFixed(1) + " " + p.y.toFixed(1) }, gTopo);
+            if (p) svgEl("path", { class: "topo", d: "M" + (h.x + 12).toFixed(1) + " " + h.y.toFixed(1) + " L" + bus + " " + h.y.toFixed(1) +
+              " L" + bus + " " + (p.y - 13).toFixed(1) + " L" + (p.x - 13).toFixed(1) + " " + (p.y - 13).toFixed(1) + " L" + (p.x - 13).toFixed(1) + " " + p.y.toFixed(1) + " L" + (p.x - 7).toFixed(1) + " " + p.y.toFixed(1) }, gTopo);
           });
           return;
         }

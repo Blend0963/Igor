@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.31.4 — Igor speaks over the switches
+
+- The tablet's live voice display is now a sheet over the lower half of the screen, the switches dimmed behind; a touch outside closes it, a touch on it keeps it up. Igor's eye says where it is: cyan and pulsing while it listens, amber while it works, bone white while it answers, red when done, grey for « nothing heard ». It shows your words, Igor's steps (local or online, with their times), its answer and what was done; the switch Igor acted on flashes cyan behind.
+- One reference: Igor's turn (its number); the satellite only opens the sheet at once and says when Igor has finished speaking. Every step has a limit, so nothing stays on screen: 12 s listening with nothing heard (« Je n'ai rien entendu », 3 s), 20 s for the words, 45 s of thinking (« Igor met du temps… ») then 90 s, and 6 s after the answer was spoken (a thin bar empties). A finished turn never comes back when new words start, and a turn without a satellite (« None ») is followed like any other. The full-screen history is unchanged.
+- The network map's « Arbre »: each network's name above its hub and its gateway under it, and every flow goes between the rows, along a bus, never across a name; in « Par VLAN » too, a flow leaves a device through the gap above its row.
+
 ## 0.31.3 — Dark fields
 
 - The « Igor » and « Igor (tablette) » themes are now declared dark (`modes: dark`): Home Assistant took its light defaults for what the theme did not set, so forms (an add-on's options, settings) showed white fields. Their text fields, selects, checkboxes and radios now take the theme's colours. Reload the themes (or restart Home Assistant) after updating.
