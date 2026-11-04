@@ -172,6 +172,7 @@ Three cards show what goes through the house's network. Their services are for *
 - `custom:igor-dns-card`: AdGuard Home's DNS queries as they come (`nives.dns_log`), through Home Assistant's AdGuard integration.
 - `custom:igor-map-card`: where those queries' answers point to, per country and operator, on a world map (`nives.dns_map`). Addresses are located on the Home Assistant host with DB-IP's free lite databases, downloaded on first use and monthly.
 - `custom:igor-wifi-card`: who is on which Wi-Fi of OpenWrt access points (`nives.wifi_clients`), with signal, link rates and connection time.
+- `custom:igor-netmap-card`: who talks to whom through the router, animated (`nives.net_map`): OPNsense in the middle, the devices around it coloured by network, the internet's operators outside (when the map's IP databases are there). Only what crosses the router is seen; two devices of the same network talk out of its sight.
 
 ### A read-only OpenWrt login for the Wi-Fi card
 
@@ -203,3 +204,18 @@ nives:
 ```
 
 An access point used as a bridge often knows no names: Igor takes them from Home Assistant's device trackers (their `mac` attribute), and the card's `names: { "AA:BB:CC:DD:EE:FF": tablette }` names the rest.
+
+### A read-only OPNsense key for the network map
+
+In OPNsense, **System → Access → Users**: add a user `igor` (a long random password, no shell). In its **privileges**, allow only the ARP table, the firewall states and the DHCP leases (type « ARP », « States » and « Leases » in the filter; the leases of the DHCP server you use: Kea, ISC or Dnsmasq). Save, then under **API keys** press **+**: a file with the key and the secret downloads. In `secrets.yaml` and `configuration.yaml`, then restart Home Assistant:
+
+```yaml
+nives:
+  opnsense:
+    url: https://192.168.1.1
+    key: !secret opnsense_igor_key
+    secret: !secret opnsense_igor_secret
+    verify_ssl: false        # OPNsense's own certificate
+```
+
+Igor only reads: the ARP table and the leases name the devices, the states say who talks to whom. With OpenWrt access points configured, a Wi-Fi device also shows its network and signal.

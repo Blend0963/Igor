@@ -149,6 +149,9 @@ SERVICE_DNS_MAP = "dns_map"
 # Who is on which Wi-Fi, from the OpenWrt access points of the nives: block.
 SERVICE_WIFI = "wifi_clients"
 OPENWRT_KEY = "nives_openwrt"
+# Who talks to whom through the router (OPNsense), for the network map card.
+SERVICE_NET_MAP = "net_map"
+OPNSENSE_KEY = "nives_opnsense"
 # The desk screen (igor-ear's `run.sh screen`): the service fires this event.
 SERVICE_SCREEN = "screen"
 SCREEN_EVENT = "igor_screen"

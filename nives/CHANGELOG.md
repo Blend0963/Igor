@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.30.0 — The network map
+
+- New `igor-netmap-card`: who talks to whom through the router, live. OPNsense in the middle, the house's devices around it coloured by network (VLAN), the internet's operators outside (Google, Cloudflare…, from the world map's IP databases; else one « internet »). A link's width follows its traffic and dots run along it from the side that opened the connection (`animate: false` keeps it still). A tap on a device shows its address, MAC, network, Wi-Fi network and signal, maker and connections with their services (https, dns, mqtt, smb…) and volume; without a choice, the biggest exchanges.
+- New admin-only service `nives.net_map`: reads OPNsense's firewall states, ARP table and DHCP leases (Kea, ISC or Dnsmasq, whichever answers) with a key of its own under `opnsense:` in the `nives:` block. A state seen on both sides of the router (NAT, also behind an ISP box) counts once; the smaller operators fold into « internet ». Names come from DHCP, ARP, Home Assistant's device trackers and the OpenWrt access points. DOCS.md shows how to create the read-only key.
+- Only what crosses the router is seen: between networks and to the internet.
+
 ## 0.29.0 — Who is on the Wi-Fi
 
 - New `igor-wifi-card`: per Wi-Fi network of your OpenWrt access points, its band, channel and devices, each with its signal (four bars, green to red), link rates down and up and how long it has been connected. `names:` names devices by MAC, `ssids:` keeps only some networks; several access points are shown one under the other.
