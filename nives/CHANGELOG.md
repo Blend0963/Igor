@@ -1,7 +1,8 @@
 # Changelog
 
-## 0.32.3 — Buttons for a finger
+## 0.32.3 — Buttons for a finger, the eye on the phone
 
+- The « Igor » theme puts Igor's eye at the left of Home Assistant's top bar (`igor-header-logo`), as on the wall: on a phone or a PC, before the tabs. Not on the tablet theme (no top bar there) nor while editing.
 - `igor-buttons-card` takes `size: big`: buttons the size of the giant tiles (a large icon, the name under it), three a row unless `columns` says, so a phone's settings and links are easy to touch.
 
 ## 0.32.2 — The network map on a phone, the Wi-Fi rows apart

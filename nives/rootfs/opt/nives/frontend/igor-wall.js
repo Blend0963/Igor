@@ -4122,6 +4122,38 @@
     if (/[?&](menu|edit)(=|&|$)/.test(window.location.search || "")) return false;
     return !(root && root.lovelace && root.lovelace.editMode);
   }
+  function wantsLogo(root) {
+    var v = getComputedStyle(document.documentElement).getPropertyValue("--igor-header-logo").trim().replace(/["']/g, "");
+    if (v !== "1" && v !== "true") return false;
+    return !(root && root.lovelace && root.lovelace.editMode);
+  }
+  var EYE_SVG = '<svg viewBox="0 0 256 256" aria-hidden="true" style="width:100%;height:100%;display:block"><rect x="107" y="20" width="44" height="216" fill="#e9e4da"/><circle cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle cx="128" cy="96" r="16" fill="#e5323b"/></svg>';
+  function headerLogo(root, on) {
+    var sr = root.shadowRoot;
+    var logo = sr.getElementById("igor-logo"), pad = sr.getElementById("igor-logo-pad");
+    var bar = on ? sr.querySelector(".toolbar") : null;
+    var r = bar ? bar.getBoundingClientRect() : null;
+    if (!r || r.height < 20) {
+      if (logo) logo.remove();
+      if (pad) pad.remove();
+      return;
+    }
+    // At the bar's left edge; the « ☰ » button, when there is one, and the
+    // tabs move right by the same room.
+    var left = r.left + 12;
+    if (!logo) {
+      logo = document.createElement("div");
+      logo.id = "igor-logo";
+      logo.innerHTML = EYE_SVG;
+      logo.style.cssText = "position:fixed;z-index:5;width:22px;height:22px;pointer-events:none;";
+      sr.appendChild(logo);
+    }
+    logo.style.left = Math.round(left) + "px";
+    logo.style.top = Math.round(r.top + (r.height - 22) / 2) + "px";
+    var css = ".toolbar { padding-left: 44px !important; }";
+    if (!pad) { pad = document.createElement("style"); pad.id = "igor-logo-pad"; sr.appendChild(pad); }
+    if (pad.textContent !== css) pad.textContent = css;
+  }
   setInterval(function () {
     var root = lovelaceRoot();
     if (!root || !root.shadowRoot) return;
@@ -4148,6 +4180,10 @@
     } else if (!noMenu && mstyle) {
       mstyle.remove();
     }
+    // Igor's eye at the left of Home Assistant's top bar (theme
+    // igor-header-logo), as on the wall: drawn over the bar, the bar's
+    // content moved aside to make room.
+    headerLogo(root, !want && wantsLogo(root));
     // A wide screen keeps Home Assistant's sidebar docked on the left: on
     // the kiosk, or without the menu button, it goes too (this device only;
     // a wall's « Menu » button still opens it).

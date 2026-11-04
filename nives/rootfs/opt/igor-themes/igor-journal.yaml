@@ -321,6 +321,8 @@ Igor Journal (tablette):
 Igor: &igor
   igor-hide-menu: "1"
   igor-swipe: "1"
+  # Igor's eye at the left of the top bar (on a phone too), as on the wall.
+  igor-header-logo: "1"
   # Dark only: Home Assistant then takes its dark defaults for what is not set here.
   modes:
     dark:
