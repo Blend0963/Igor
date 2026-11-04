@@ -113,7 +113,13 @@ class AccessPoint:
 
         self.n += 1
         body = {"jsonrpc": "2.0", "id": self.n, "method": "call", "params": [sid, obj, method, args]}
-        async with session.post(self.url, json=body, timeout=aiohttp.ClientTimeout(total=8)) as response:
+        # No redirect: LuCI often sends http to https, which an access point
+        # without a certificate cannot answer; say so instead.
+        async with session.post(self.url, json=body, allow_redirects=False,
+                                timeout=aiohttp.ClientTimeout(total=8)) as response:
+            if response.status in (301, 302, 303, 307, 308):
+                where = response.headers.get("Location", "")
+                raise UbusError(-1, f"redirected to {where or 'https'}: set uhttpd's redirect_https to 0 on the access point, or use that address")
             if response.status != 200:
                 raise UbusError(-1, f"HTTP {response.status}")
             data = await response.json(content_type=None)

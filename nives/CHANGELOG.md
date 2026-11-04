@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.30.1 — OpenWrt over plain http
+
+- The Wi-Fi card no longer follows an access point's redirect from http to https (LuCI's `redirect_https`), which failed on port 443 when the access point has no certificate; it now says so: set `uhttpd.main.redirect_https` to `0` on the access point, or give the https address.
+
 ## 0.30.0 — The network map
 
 - New `igor-netmap-card`: who talks to whom through the router, live. OPNsense in the middle, the house's devices around it coloured by network (VLAN), the internet's operators outside (Google, Cloudflare…, from the world map's IP databases; else one « internet »). A link's width follows its traffic and dots run along it from the side that opened the connection (`animate: false` keeps it still). A tap on a device shows its address, MAC, network, Wi-Fi network and signal, maker and connections with their services (https, dns, mqtt, smb…) and volume; without a choice, the biggest exchanges.
