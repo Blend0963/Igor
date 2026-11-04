@@ -2132,6 +2132,161 @@
     }
   }
 
+  // ----- igor-music-card: what plays, and how to change it -----
+  //   type: custom:igor-music-card
+  //   players: [media_player.salon, media_player.cuisine]   # the first is shown first
+  //   favorites:                                            # one tap plays it
+  //     - { name: Radio, media_id: "FIP", media_type: radio, icon: mdi:radio }
+  //   config_entry_id: …   # Music Assistant's, for the search (found by itself for an admin)
+  // Works with any media player; with Music Assistant it also searches, plays
+  // favourites and shows what comes next.
+  class IgorMusicCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !Array.isArray(config.players) || !config.players.length) throw new Error("igor-music-card: players est requis");
+      this.config = config;
+      this.player = config.players[0];
+    }
+    getCardSize() { return 5; }
+    build() {
+      this.style([
+        ".np { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 12px; align-items: center; }",
+        ".art { width: 76px; height: 76px; border-radius: 3px; background: var(--track) center / cover no-repeat; }",
+        ".ti { font-size: 15px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".ar { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".pg { height: 3px; background: var(--track); margin-top: 8px; } .pg i { display: block; height: 100%; width: 0; background: var(--acc); }",
+        ".ctl { display: flex; gap: 6px; margin-top: 8px; align-items: center; flex-wrap: wrap; }",
+        "button.b { background: none; border: 1px solid var(--line); color: var(--fg); font: inherit; border-radius: 3px; padding: 4px 8px; cursor: pointer; --mdc-icon-size: 18px; display: inline-flex; align-items: center; gap: 4px; }",
+        "button.b.on { border-color: var(--acc); color: var(--acc); }",
+        "input.vol { flex: 1; min-width: 80px; accent-color: var(--acc); }",
+        ".sec { color: var(--dim); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 10px; }",
+        ".row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }",
+        ".next { color: var(--dim); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        "input.q { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line); color: var(--fg); font: inherit; padding: 5px 8px; margin-top: 5px; border-radius: 3px; }",
+        ".res div { padding: 5px 0; border-bottom: 1px dashed var(--line); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".res div span { color: var(--dim); }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t", top, this.config.title || "musique");
+      this.who = el("span", "sub", top);
+      var np = el("div", "np", card);
+      this.art = el("div", "art", np);
+      var mid = el("div", "", np);
+      this.ti = el("div", "ti", mid); this.ar = el("div", "ar", mid);
+      this.pg = el("i", "", el("div", "pg", mid));
+      var ctl = el("div", "ctl", card);
+      var b = (ic, fn) => { var x = el("button", "b", ctl); x.type = "button"; icon(x, ic); x.addEventListener("click", fn); return x; };
+      b("mdi:skip-previous", () => this.svc("media_player", "media_previous_track"));
+      this.pp = b("mdi:play-pause", () => this.svc("media_player", "media_play_pause"));
+      b("mdi:skip-next", () => this.svc("media_player", "media_next_track"));
+      this.sh = b("mdi:shuffle", () => { var st = this._hass.states[this.player]; this.svc("media_player", "shuffle_set", { shuffle: !(st && st.attributes.shuffle) }); });
+      this.vol = el("input", "vol", ctl); this.vol.type = "range"; this.vol.min = 0; this.vol.max = 100;
+      this.vol.addEventListener("change", () => this.svc("media_player", "volume_set", { volume_level: Number(this.vol.value) / 100 }));
+      if (this.config.players.length > 1) {
+        el("div", "sec", card, "enceintes");
+        this.pl = el("div", "row", card);
+      }
+      this.nextEl = el("div", "next", card);
+      if ((this.config.favorites || []).length) {
+        el("div", "sec", card, "raccourcis");
+        var fav = el("div", "row", card);
+        this.config.favorites.forEach((f) => {
+          var x = el("button", "b", fav); x.type = "button";
+          if (f.icon) icon(x, f.icon);
+          el("span", "", x, f.name || f.media_id);
+          x.addEventListener("click", () => this.play(f.media_id, f.media_type));
+        });
+      }
+      if (this.config.search !== false) {
+        el("div", "sec", card, "chercher");
+        this.q = el("input", "q", card); this.q.placeholder = "artiste, album, titre, radio…";
+        this.q.addEventListener("keydown", (ev) => { if (ev.key === "Enter") this.search(this.q.value); });
+        this.res = el("div", "res", card);
+      }
+      this.tick = setInterval(() => this.progress(), 1000);
+    }
+    svc(domain, service, data) { return this._hass.callService(domain, service, data || {}, { entity_id: this.player }); }
+    play(id, type) {
+      var data = { media_id: id };
+      if (type) data.media_type = type;
+      return this._hass.callService("music_assistant", "play_media", data, { entity_id: this.player })
+        .catch(() => this._hass.callService("media_player", "play_media", { media_content_id: id, media_content_type: type || "music" }, { entity_id: this.player }));
+    }
+    async entryId() {
+      if (this.config.config_entry_id) return this.config.config_entry_id;
+      if (this._entry !== undefined) return this._entry;
+      try {
+        var r = await this._hass.callWS({ type: "config_entries/get", domain: "music_assistant" });
+        this._entry = (r && r[0] && r[0].entry_id) || null;
+      } catch (e) { this._entry = null; }
+      return this._entry;
+    }
+    async search(text) {
+      text = String(text || "").trim();
+      this.res.innerHTML = "";
+      if (!text) return;
+      var entry = await this.entryId();
+      if (!entry) { el("div", "", this.res, "Recherche indisponible (Music Assistant, config_entry_id)"); return; }
+      try {
+        var r = await this._hass.callWS({ type: "call_service", domain: "music_assistant", service: "search",
+          service_data: { config_entry_id: entry, name: text, limit: 4 }, return_response: true });
+        var resp = (r && r.response) || {}, n = 0;
+        [["artists", "artiste"], ["albums", "album"], ["tracks", "titre"], ["playlists", "liste"], ["radio", "radio"]].forEach((k) => {
+          (resp[k[0]] || []).forEach((it) => {
+            n++;
+            var d = el("div", "", this.res);
+            d.textContent = (it.name || "") + " ";
+            var who = it.artists && it.artists[0] ? " · " + it.artists[0].name : "";
+            el("span", "", d, k[1] + who);
+            d.addEventListener("click", () => this.play(it.uri || it.name, it.media_type));
+          });
+        });
+        if (!n) el("div", "", this.res, "Rien trouvé.");
+      } catch (e) { el("div", "", this.res, "Recherche impossible."); }
+    }
+    loadNext() {
+      var hass = this._hass;
+      hass.callWS({ type: "call_service", domain: "music_assistant", service: "get_queue", target: { entity_id: this.player }, return_response: true })
+        .then((r) => {
+          var q = r && r.response && r.response[this.player];
+          var nx = q && q.next_item;
+          var name = nx && (nx.name || (nx.media_item && nx.media_item.name));
+          this.nextEl.textContent = name ? "à suivre · " + name : "";
+        }).catch(() => { this.nextEl.textContent = ""; });
+    }
+    progress() {
+      var st = this._hass && this._hass.states[this.player];
+      if (!st) return;
+      var a = st.attributes, pos = a.media_position, dur = a.media_duration;
+      if (pos == null || !dur) { this.pg.style.width = "0"; return; }
+      if (st.state === "playing" && a.media_position_updated_at) pos += (Date.now() - Date.parse(a.media_position_updated_at)) / 1000;
+      this.pg.style.width = Math.min(100, (pos / dur) * 100) + "%";
+    }
+    update(hass, prev) {
+      var ids = this.config.players;
+      if (!changed(prev, hass, ids)) return;
+      var st = hass.states[this.player] || { state: "unavailable", attributes: {} }, a = st.attributes;
+      this.who.textContent = (a.friendly_name || this.player) + " · " + stateText(hass, this.player);
+      this.ti.textContent = a.media_title || (st.state === "playing" ? "lecture" : "rien en cours");
+      this.ar.textContent = [a.media_artist, a.media_album_name].filter(Boolean).join(" · ");
+      this.art.style.backgroundImage = a.entity_picture ? "url(\"" + a.entity_picture + "\")" : "";
+      this.sh.classList.toggle("on", !!a.shuffle);
+      if (a.volume_level != null && this.shadowRoot.activeElement !== this.vol) this.vol.value = Math.round(a.volume_level * 100);
+      if (this.pl) {
+        this.pl.innerHTML = "";
+        ids.forEach((id) => {
+          var x = el("button", "b" + (id === this.player ? " on" : ""), this.pl, (hass.states[id] && hass.states[id].attributes.friendly_name) || id);
+          x.type = "button";
+          x.addEventListener("click", () => { this.player = id; this.update(hass, null); });
+        });
+      }
+      var key = a.media_title + "|" + this.player;
+      if (key !== this.lastKey) { this.lastKey = key; this.loadNext(); }
+      this.progress();
+    }
+    disconnectedCallback() { clearInterval(this.tick); }
+  }
+
   // ----- igor-facts-card: a few states, one line each -----
   //   type: custom:igor-facts-card
   //   title: maison
@@ -2378,6 +2533,7 @@
   define("igor-control-card", IgorControlCard, "Igor · commande", "Un appareil et ses boutons (volet, aspirateur…).");
   define("igor-clock-card", IgorClockCard, "Igor · horloge", "L'heure en grand et la date.");
   define("igor-alerts-card", IgorAlertsCard, "Igor · alertes", "Ce qui ne va pas : machines, disques, conteneurs, mises à jour, internet.");
+  define("igor-music-card", IgorMusicCard, "Igor · musique", "Ce qui joue, les commandes, les enceintes, la recherche et les raccourcis (Music Assistant).");
   define("igor-facts-card", IgorFactsCard, "Igor · faits", "Quelques états, une ligne chacun ; une entité absente est ignorée.");
   define("igor-news-card", IgorNewsCard, "Igor · dépêches", "Les derniers titres d'un flux RSS ou Atom (dépêches, actualités).");
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
