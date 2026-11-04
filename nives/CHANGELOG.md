@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.24.1 — The locks in configuration.yaml
+
+- The key, the alarm, the alarm in progress and the disarm code can also be set in `configuration.yaml` (Igor's options win when both are set):
+  ```yaml
+  nives:
+    key_entity: binary_sensor.usb_key
+    alarm_entity: input_boolean.alarm
+    alarm_active_entity: binary_sensor.alarm_triggered
+    disarm_code: !secret igor_disarm_code
+  ```
+  The code (4 to 12 digits) is hashed at start-up and never kept in memory as such.
+
 ## 0.24.0 — The house's locks
 
 - Igor's options (Settings → Devices & services → Igor → Configure): the **key** (a binary sensor, e.g. a USB key's presence), the **alarm** (input_boolean, switch or alarm panel), the **alarm in progress** sensor and a **disarm code**. The code is never stored: only a salted PBKDF2 hash.

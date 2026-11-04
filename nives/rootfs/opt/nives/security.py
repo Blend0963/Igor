@@ -49,6 +49,25 @@ def check_code(code: str, stored: str) -> bool:
     return hmac.compare_digest(got, digest)
 
 
+YAML_KEY = "nives_security_yaml"
+
+
+def settings(hass: HomeAssistant) -> dict:
+    """key_entity, alarm_entity, alarm_active_entity and disarm_code_hash:
+    from Igor's options first, else from the `nives:` block of
+    configuration.yaml (whose plain code is hashed at start-up)."""
+    from .const import CONF_ALARM_ACTIVE, CONF_ALARM_ENTITY, CONF_CODE_HASH, CONF_KEY_ENTITY, DOMAIN
+
+    yaml = hass.data.get(YAML_KEY, {})
+    out = {k: yaml.get(k) for k in (CONF_KEY_ENTITY, CONF_ALARM_ENTITY, CONF_ALARM_ACTIVE, CONF_CODE_HASH)}
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        opts = {**entry.data, **entry.options}
+        for k in out:
+            if opts.get(k):
+                out[k] = opts[k]
+    return out
+
+
 def is_locked(hass: HomeAssistant, key_entity: str | None) -> bool:
     """Locked unless the key entity says « on ». No key configured: never."""
     if not key_entity:
