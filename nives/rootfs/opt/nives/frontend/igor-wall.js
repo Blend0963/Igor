@@ -12,6 +12,7 @@
 //   custom:igor-camera-card   a camera's picture, refreshed every few seconds
 //   custom:igor-news-card     the newest headlines of an RSS or Atom feed
 //   custom:igor-dns-card      AdGuard Home's DNS queries, live (administrators)
+//   custom:igor-map-card      where those queries' answers point to, on a world map
 //
 // And the "Igor Journal (tablette)" theme: its --igor-hide-header variable
 // hides Home Assistant's top bar on the device that uses it, on the pages
@@ -2558,6 +2559,171 @@
     disconnectedCallback() { if (this.timer) { clearInterval(this.timer); this.timer = null; this._built = false; this.shadowRoot.innerHTML = ""; } }
   }
 
+  // ----- igor-map-card: where the house's connections go -----
+  //   type: custom:igor-map-card
+  //   title: le monde · 15 min
+  //   minutes: 15          # how far back (1 to 120)
+  //   interval: 30         # seconds between two reads
+  //   names: { 192.168.1.20: nas }
+  //   animate: true        # the arcs' flowing dashes (false on an old tablet)
+  // Each DNS answer of the window placed by country (nives.dns_map, DB-IP's
+  // free databases, administrators only): an arc from home per country, its
+  // width by the number of answers; a tap on a country or its line shows its
+  // devices, domains and operators. Big networks answer from nearby servers:
+  // much stays in France even for a foreign service.
+  var FRONTEND_BASE = "/nives_static";
+  var WORLD = null;
+  function world() {
+    if (!WORLD) {
+      WORLD = fetch(FRONTEND_BASE + "/igor-world.json")
+        .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    }
+    return WORLD;
+  }
+  var SVGNS = "http://www.w3.org/2000/svg";
+  function svgEl(tag, attrs, parent) {
+    var n = document.createElementNS(SVGNS, tag);
+    Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  var REGION = null;
+  function countryName(cc) {
+    try { REGION = REGION || new Intl.DisplayNames(["fr"], { type: "region" }); return REGION.of(cc) || cc; } catch (e) { return cc; }
+  }
+  class IgorMapCard extends IgorCard {
+    setConfig(config) {
+      this.config = config || {};
+      this.names = this.config.names && typeof this.config.names === "object" ? this.config.names : {};
+    }
+    getCardSize() { return 8; }
+    build() {
+      this.style([
+        ".wrap { position: relative; flex: none; }",
+        "svg.map { width: 100%; display: block; }",
+        ".land { fill: var(--track); stroke: var(--line); stroke-width: 0.15; }",
+        ".arc { fill: none; stroke: var(--acc); stroke-linecap: round; opacity: 0.75; }",
+        ".arc.flow { stroke-dasharray: 1.2 2.2; animation: igor-flow 1.6s linear infinite; }",
+        "@keyframes igor-flow { to { stroke-dashoffset: -3.4; } }",
+        ".dot { fill: var(--acc); cursor: pointer; }",
+        ".dot.sel, .arc.sel { fill: var(--wait); stroke: var(--wait); opacity: 1; }",
+        ".dot.sel { stroke: none; }",
+        ".home { fill: var(--fg); }",
+        ".home-ring { fill: none; stroke: var(--fg); stroke-width: 0.3; opacity: 0.5; }",
+        ".grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; flex: 1; min-height: 0; margin-top: 6px; }",
+        ".list { overflow-y: auto; min-height: 0; }",
+        ".c { display: grid; grid-template-columns: minmax(0, 1fr) 5ch; gap: 6px; padding: 3px 0; border-bottom: 1px dashed var(--line); cursor: pointer; }",
+        ".c.sel { color: var(--wait); }",
+        ".c .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".c .k { text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }",
+        ".c .bar { grid-column: 1 / -1; height: 2px; }",
+        ".det { overflow-y: auto; min-height: 0; color: var(--fg); }",
+        ".det .h { color: var(--dim); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 6px; }",
+        ".det .v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".foot { color: var(--faint); font-size: 10px; margin-top: 4px; flex: none; display: flex; justify-content: space-between; gap: 8px; }",
+        ".empty { color: var(--dim); padding: 8px 0; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      this.minutes = Math.max(1, Math.min(120, Number(this.config.minutes) || 15));
+      el("span", "t sub", top, (this.config.title || ("le monde · " + this.minutes + " min")).toUpperCase()).style.letterSpacing = "0.12em";
+      this.sum = el("span", "sub num", top);
+      var wrap = el("div", "wrap", card);
+      this.svg = svgEl("svg", { class: "map", viewBox: "0 0 360 150", preserveAspectRatio: "xMidYMid meet" }, wrap);
+      this.landG = svgEl("g", {}, this.svg);
+      this.arcG = svgEl("g", {}, this.svg);
+      this.dotG = svgEl("g", {}, this.svg);
+      var grid = el("div", "grid", card);
+      this.list = el("div", "list", grid);
+      this.det = el("div", "det", grid);
+      var foot = el("div", "foot", card);
+      this.note = el("span", "", foot);
+      el("span", "", foot, "IP Geolocation by DB-IP · Natural Earth");
+      this.sel = "";
+      world().then((w) => { this.w = w; if (w) svgEl("path", { class: "land", d: w.land }, this.landG); this.draw(); });
+      var every = Math.max(10, Math.min(600, Number(this.config.interval) || 30));
+      this.timer = setInterval(() => this.load(), every * 1000);
+      this.load();
+    }
+    load() {
+      var hass = this._hass;
+      if (!hass || this.loading || document.hidden) return;
+      this.loading = true;
+      hass.callWS({ type: "call_service", domain: "nives", service: "dns_map", service_data: { minutes: this.minutes }, return_response: true })
+        .then((r) => { this.data = (r && r.response) || {}; })
+        .catch((err) => { this.data = { status: "error", error: err && err.code === "unauthorized" ? "réservé aux administrateurs" : "service indisponible (Igor 0.28 ou plus)" }; })
+        .then(() => { this.loading = false; this.draw(); });
+    }
+    home() {
+      // Home: Home Assistant's location, else its country, else Paris.
+      var cfg = (this._hass && this._hass.config) || {};
+      if (typeof cfg.latitude === "number" && typeof cfg.longitude === "number" && (cfg.latitude || cfg.longitude)) {
+        return [cfg.longitude + 180, 90 - Math.max(-60, cfg.latitude)];
+      }
+      var c = this.w && this.w.c && this.w.c[(this.data && this.data.home) || ""];
+      return c || [182.35, 41.15];
+    }
+    who(name) { return this.names[name] || name; }
+    draw() {
+      var d = this.data || {};
+      var rows = (d.countries || []).filter((c) => this.w && this.w.c && this.w.c[c.cc]);
+      this.arcG.innerHTML = ""; this.dotG.innerHTML = "";
+      var h = this.home();
+      var max = rows.reduce((m, c) => Math.max(m, c.count), 1);
+      var flow = this.config.animate !== false;
+      rows.slice().reverse().forEach((c) => {
+        var p = this.w.c[c.cc];
+        var dx = p[0] - h[0], dy = p[1] - h[1], dist = Math.sqrt(dx * dx + dy * dy);
+        var wgt = 0.25 + 1.3 * Math.sqrt(c.count / max);
+        var sel = c.cc === this.sel ? " sel" : "";
+        if (dist > 1.5) {
+          // A curve bowed upwards, more for the far ones.
+          var mx = (h[0] + p[0]) / 2, my = (h[1] + p[1]) / 2 - Math.min(30, dist * 0.35);
+          svgEl("path", { class: "arc" + (flow ? " flow" : "") + sel, d: "M" + h[0] + " " + h[1] + " Q" + mx + " " + my + " " + p[0] + " " + p[1], "stroke-width": wgt.toFixed(2) }, this.arcG);
+        }
+        var dot = svgEl("circle", { class: "dot" + sel, cx: p[0], cy: p[1], r: (0.8 + 2.2 * Math.sqrt(c.count / max)).toFixed(2) }, this.dotG);
+        svgEl("title", {}, dot).textContent = countryName(c.cc) + " · " + c.count;
+        dot.addEventListener("click", () => { this.sel = this.sel === c.cc ? "" : c.cc; this.draw(); });
+      });
+      svgEl("circle", { class: "home-ring", cx: h[0], cy: h[1], r: 2.4 }, this.dotG);
+      svgEl("circle", { class: "home", cx: h[0], cy: h[1], r: 0.9 }, this.dotG);
+      // The summary and the list.
+      var tot = d.located || 0;
+      this.sum.textContent = d.status === "ok" ? rows.length + " pays · " + tot + " réponses" + (d.blocked ? " · " + d.blocked + " bloquées" : "") : "";
+      this.note.textContent = d.status === "ok" ? (d.total ? Math.round((100 * tot) / d.total) + " % des requêtes situées" : "") : "";
+      this.list.innerHTML = "";
+      if (d.status !== "ok" || !rows.length) {
+        var msg = !d.status ? "Lecture…" : d.status === "downloading" ? "Téléchargement des bases d'adresses (une fois par mois)…"
+          : d.status === "ok" ? "Aucune réponse située sur la période." : "Indisponible : " + (d.error || d.status);
+        el("div", "empty", this.list, msg);
+        this.det.innerHTML = "";
+        return;
+      }
+      rows.forEach((c) => {
+        var r = el("div", "c" + (c.cc === this.sel ? " sel" : ""), this.list);
+        el("span", "n", r, countryName(c.cc) + (c.orgs && c.orgs.length ? " · " + c.orgs[0] : ""));
+        el("span", "k", r, String(c.count));
+        var b = el("div", "bar", r); el("i", "", b).style.width = Math.round((100 * c.count) / max) + "%";
+        r.addEventListener("click", () => { this.sel = this.sel === c.cc ? "" : c.cc; this.draw(); });
+      });
+      // The detail of the chosen country (else the first).
+      var cur = rows.find((c) => c.cc === this.sel) || rows[0];
+      this.det.innerHTML = "";
+      el("div", "", this.det, countryName(cur.cc) + " · " + cur.count + " réponses");
+      var part = (title, items) => {
+        if (!items.length) return;
+        el("div", "h", this.det, title);
+        items.forEach((t) => { el("div", "v", this.det, t); });
+      };
+      part("appareils", Object.keys(cur.devices || {}).map((k) => this.who(k) + " · " + cur.devices[k]));
+      part("opérateurs", cur.orgs || []);
+      part("domaines", cur.domains || []);
+      var bb = d.blocked_by || {};
+      if (!this.sel && Object.keys(bb).length) part("bloquées par appareil", Object.keys(bb).map((k) => this.who(k) + " · " + bb[k]));
+    }
+    disconnectedCallback() { if (this.timer) { clearInterval(this.timer); this.timer = null; this._built = false; this.shadowRoot.innerHTML = ""; } }
+  }
+
   // ----- igor-alerts-card: what is wrong, first -----
   //   type: custom:igor-alerts-card
   //   gateway: sensor.opnsense_…_gateway_wan_dhcp_status   # the internet
@@ -2665,6 +2831,7 @@
   define("igor-music-card", IgorMusicCard, "Igor · musique", "Ce qui joue, les commandes, les enceintes, la recherche et les raccourcis (Music Assistant).");
   define("igor-facts-card", IgorFactsCard, "Igor · faits", "Quelques états, une ligne chacun ; une entité absente est ignorée.");
   define("igor-dns-card", IgorDnsCard, "Igor · DNS en direct", "Les requêtes DNS d'AdGuard Home en direct, par appareil (administrateurs).");
+  define("igor-map-card", IgorMapCard, "Igor · le monde", "Où vont les connexions de la maison, par pays et opérateur (administrateurs).");
   define("igor-news-card", IgorNewsCard, "Igor · dépêches", "Les derniers titres d'un flux RSS ou Atom (dépêches, actualités).");
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
 

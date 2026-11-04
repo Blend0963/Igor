@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -48,6 +49,7 @@ from .const import (
     SERVICE_JOURNAL,
     SERVICE_NEWS,
     SERVICE_DNS_LOG,
+    SERVICE_DNS_MAP,
     SERVICE_DISARM,
     CONF_ALARM_ENTITY,
     CONF_CODE_HASH,
@@ -443,6 +445,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
         _async_register_journal(hass)
         _async_register_news(hass)
         _async_register_dns_log(hass)
+        _async_register_dns_map(hass)
         _async_register_screen(hass)
     _async_register_disarm(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
@@ -648,6 +651,106 @@ def _async_register_dns_log(hass: HomeAssistant) -> None:
 
     async_register_admin_service(
         hass, DOMAIN, SERVICE_DNS_LOG, _dns_log, schema=DNS_LOG_SCHEMA, supports_response=SupportsResponse.ONLY
+    )
+
+
+DNS_MAP_SCHEMA = vol.Schema(
+    {vol.Optional("minutes", default=15): vol.All(vol.Coerce(int), vol.Range(min=1, max=120))}
+)
+
+
+@callback
+def _async_register_dns_map(hass: HomeAssistant) -> None:
+    """`nives.dns_map`: where the DNS answers of the last minutes point to,
+    per country and operator (geo.py), for the world map card. Administrators
+    only. The IP databases are downloaded the first time, then monthly."""
+    if hass.services.has_service(DOMAIN, SERVICE_DNS_MAP):
+        return
+    from datetime import datetime as _dt, timezone as _tz
+
+    from homeassistant.helpers.service import async_register_admin_service
+
+    from .dns import async_read_querylog, names_from_states, parse_querylog
+    from .geo import ATTRIBUTION, DBIP_URL, KINDS, MAX_DOWNLOAD, REQUIREMENT, GeoDB, aggregate, months, parse_time
+
+    db = GeoDB(Path(hass.config.path(".storage", "nives_geo")))
+    state = {"task": None, "failed_at": 0.0, "error": "", "cache": {}}
+
+    async def _download() -> None:
+        session = async_get_clientsession(hass)
+        try:
+            for kind in KINDS:
+                got = None
+                for month in months(_dt.now(_tz.utc).date()):
+                    url = DBIP_URL.format(kind=kind, month=month)
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                        if response.status == 404:
+                            continue
+                        if response.status != 200:
+                            raise ValueError(f"HTTP {response.status}")
+                        got = await response.content.read(MAX_DOWNLOAD + 1)
+                        if len(got) > MAX_DOWNLOAD:
+                            raise ValueError("file too large")
+                        break
+                if got is None:
+                    raise ValueError("no database published")
+                await hass.async_add_executor_job(db.install, kind, got)
+            state["error"] = ""
+            _LOGGER.info("Igor: IP databases (DB-IP lite) up to date")
+        except (aiohttp.ClientError, TimeoutError, ValueError, OSError, EOFError) as err:
+            state["failed_at"], state["error"] = time.monotonic(), str(err) or type(err).__name__
+            _LOGGER.warning("Igor: IP databases not downloaded: %s", state["error"])
+
+    def _ensure() -> None:
+        busy = state["task"] is not None and not state["task"].done()
+        if busy or db.fresh() or time.monotonic() - state["failed_at"] < 6 * 3600 and state["failed_at"]:
+            return
+        state["task"] = hass.async_create_background_task(_download(), "igor_geo_download")
+
+    async def _dns_map(call: ServiceCall) -> ServiceResponse:
+        minutes = call.data["minutes"]
+        if not state.get("reader"):
+            # The database reader, installed on first use (not a manifest
+            # requirement: Igor must load even when it cannot be installed).
+            from homeassistant.requirements import RequirementsNotFound, async_process_requirements
+
+            try:
+                await async_process_requirements(hass, DOMAIN, [REQUIREMENT])
+                state["reader"] = True
+            except RequirementsNotFound as err:
+                return {"countries": [], "status": "error", "error": f"maxminddb: {err}", "attribution": ATTRIBUTION}
+        _ensure()
+        if not await hass.async_add_executor_job(db.open):
+            busy = state["task"] is not None and not state["task"].done()
+            return {"countries": [], "status": "downloading" if busy else "unavailable",
+                    "error": state["error"], "attribution": ATTRIBUTION}
+        cached = state["cache"].get(minutes)
+        if cached and time.monotonic() - cached[0] < 20:
+            return cached[1]
+        since = _dt.now(_tz.utc) - timedelta(minutes=minutes)
+        names = names_from_states(hass.states.async_all("device_tracker"))
+        entries: list[dict] = []
+        params = {"limit": "500"}
+        try:
+            for _ in range(6):  # 3000 lines at most
+                body = await async_read_querylog(hass, params)
+                page = parse_querylog(body, names, 500)
+                entries += page
+                oldest = body.get("oldest") if isinstance(body, dict) else ""
+                at = parse_time(oldest)
+                if len(page) < 500 or at is None or at < since:
+                    break
+                params = {"limit": "500", "older_than": oldest}
+        except LookupError as err:
+            return {"countries": [], "status": "error", "error": str(err), "attribution": ATTRIBUTION}
+        out = await hass.async_add_executor_job(aggregate, entries, db, since)
+        out.update({"status": "ok", "minutes": minutes, "home": hass.config.country or "",
+                    "attribution": ATTRIBUTION})
+        state["cache"][minutes] = (time.monotonic(), out)
+        return out
+
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_DNS_MAP, _dns_map, schema=DNS_MAP_SCHEMA, supports_response=SupportsResponse.ONLY
     )
 
 

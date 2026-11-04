@@ -175,6 +175,16 @@
           "description": "Only the queries whose domain or client contains this text."
         }
       }
+    },
+    "dns_map": {
+      "name": "DNS map",
+      "description": "Where the DNS answers of the last minutes point to, per country and operator, for the world map card. Administrators only.",
+      "fields": {
+        "minutes": {
+          "name": "Minutes",
+          "description": "How far back to look."
+        }
+      }
     }
   }
 }
