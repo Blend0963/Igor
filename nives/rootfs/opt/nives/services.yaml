@@ -70,3 +70,11 @@ dns_log:
     search:
       selector:
         text:
+dns_map:
+  fields:
+    minutes:
+      default: 15
+      selector:
+        number:
+          min: 1
+          max: 120

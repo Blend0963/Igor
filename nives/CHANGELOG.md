@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.28.0 — The world map
+
+- New `igor-map-card`: where the house's connections go over the last `minutes` (15 by default). Each DNS answer is placed by country and named by its operator (Google, Amazon, Cloudflare…); an arc from home to each country, its width by the number of answers, flowing dashes (`animate: false` to keep it still). The list ranks the countries; a tap on a country or its line shows its devices, operators and domains, and without a choice the blocked queries per device.
+- New admin-only service `nives.dns_map` (reads AdGuard Home's log like `nives.dns_log`, up to 3,000 lines). Addresses are located on the Home Assistant host with DB-IP's free « lite » databases (country and operator, about 18 MB, CC BY 4.0), downloaded into `.storage/nives_geo` on first use and refreshed monthly; nothing is sent anywhere to be located. The `maxminddb` reader is installed on first use too. The world outline comes from Natural Earth (public domain).
+- Big networks answer from servers near the house: much stays in France even for a foreign service; the operator says who it is.
+
 ## 0.27.0 — DNS queries, live
 
 - New `igor-dns-card`: AdGuard Home's DNS queries as they come, read every two seconds (`interval`) through Home Assistant's AdGuard integration (`nives.dns_log`, nothing more to configure). Each line: time, device, domain, response time or « cache »; blocked queries struck through in red with the reason and the rule, rewrites in cyan. A « bloquées » filter, a pause, a search, the chattiest devices as chips (a tap filters on one) and the last minute's rate and share blocked. Device names come from AdGuard, else from Home Assistant's device trackers (their `ip` attribute), else from the card's `names: { 192.168.1.20: nas }`; `hide: [in-addr.arpa]` leaves out noisy domains.
