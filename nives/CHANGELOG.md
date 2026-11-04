@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.0 — Music on the wall
+
+- New `igor-music-card`: what plays (cover, title, artist, progress), previous / play-pause / next, shuffle, volume, the choice of speaker (`players`), one-tap `favorites`, and with Music Assistant what comes next (`music_assistant.get_queue`) and a search whose results play on a tap (`music_assistant.search`, `music_assistant.play_media`). Works with any media player; the Music Assistant parts stay quiet without it.
+
 ## 0.25.0 — Igor's own look
 
 - `igor-facts-card`: a row may count instead of showing one state, `{ name, count: [ids] }` → « 2 / 5 » lit (for a wall's « état » card without switches).
