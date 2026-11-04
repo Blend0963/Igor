@@ -133,7 +133,9 @@
 
   // ===== the status bar: every machine on one scrolling line =====
   //   bar:
-  //     speed: 60              # seconds for one turn; 0: pages, no animation
+  //     speed: 60              # seconds for one turn; 0: pages, no animation;
+  //                            # auto: still while it fits, else one turn then a pause
+  //     pause: 10              # with speed: auto, seconds at rest between two turns
   //     tap: /igor-wall/homelab  # a tap on the bar opens that page (else: the machines' detail)
   //     groups:
   //       - name: pve
@@ -258,12 +260,22 @@
       this.lane = lane;
       this.run = el("div", "run", lane);
       var speed = this.config.speed == null ? 60 : Number(this.config.speed);
-      this.paged = !(speed > 0);
+      // speed: auto: the line stays still while it fits; longer, it goes round
+      // once, stops back at its start, waits `pause` seconds, and again.
+      this.auto = String(this.config.speed) === "auto";
+      this.paged = !this.auto && !(speed > 0);
       this.cells = [];
       var copies = this.paged ? 1 : 2;
       this.segs = [];
       for (var c = 0; c < copies; c++) this.buildCopy(c);
-      if (!this.paged) {
+      if (this.auto) {
+        this.copy2 = Array.prototype.slice.call(this.run.children, this.segs.length);
+        this.run.addEventListener("animationend", () => {
+          this.run.style.animation = "none";
+          this.autoTimer = setTimeout(() => this.autoTurn(), (Number(this.config.pause) || 10) * 1000);
+        });
+        this.autoTimer = setTimeout(() => this.autoTurn(), 3000);
+      } else if (!this.paged) {
         this.run.classList.add("roll");
         this.run.style.setProperty("--speed", speed + "s");
       }
@@ -343,6 +355,18 @@
       if (this.paged && !this.pagedOnce) { this.pagedOnce = true; this.nextPage(true); }
     }
     // Pages: as many machines as the line holds, the next ones 8 s later.
+    // One turn if the line is longer than its lane (at about 40 px a second).
+    autoTurn() {
+      if (!this.root.isConnected) return;
+      var wide = this.segs.reduce((w, sg) => w + sg.offsetWidth, 0);
+      var over = wide > this.lane.clientWidth + 2;
+      this.copy2.forEach((sg) => { sg.hidden = !over; });
+      var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!over || still) { this.autoTimer = setTimeout(() => this.autoTurn(), 5000); return; }
+      this.run.style.animation = "none";
+      void this.run.offsetWidth;
+      this.run.style.animation = "roll " + Math.max(6, wide / 40).toFixed(1) + "s linear 1";
+    }
     nextPage(first) {
       if (!this.segs.length) return;
       var width = this.lane.clientWidth;
@@ -531,7 +555,7 @@
         });
       }
     }
-    destroy() { clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); }
+    destroy() { clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); clearTimeout(this.autoTimer); }
   }
 
   // ===== igor-wall: the whole screen =====

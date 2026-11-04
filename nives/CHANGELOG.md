@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.33.1 — A bar that scrolls only when it must
+
+- The wall's bar takes `speed: auto`: still while everything fits on the line; longer, it goes round once (about 40 px a second), stops back at its start, waits `pause` seconds (10 by default), then again. Still for those who ask the system for less motion.
+
 ## 0.33.0 — Igor in the car
 
 - `igor-car-card`: a car while it drives: the speed in large, the engine speed as a segmented bar that turns amber then red, the coolant and the battery in colour, the trip's distance, consumption and eco score; greyed with « hors ligne » when the car is away.
