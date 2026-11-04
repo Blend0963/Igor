@@ -120,9 +120,9 @@ class IgorConversationAgent(ConversationEntity):
         """Answer, streaming into the chat log where the Core supports it."""
         # The house is locked (the key is away): Igor does nothing at all.
         from .const import CONF_KEY_ENTITY
-        from .security import is_locked, security_event
+        from .security import is_locked, security_event, settings
 
-        key = {**self.entry.data, **self.entry.options}.get(CONF_KEY_ENTITY)
+        key = settings(self.hass).get(CONF_KEY_ENTITY)
         if is_locked(self.hass, key):
             security_event(self.hass, "refused", reason="locked")
             return self._error_result(

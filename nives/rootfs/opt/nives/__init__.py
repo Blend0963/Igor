@@ -18,6 +18,7 @@ from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
@@ -613,6 +614,41 @@ def _async_register_news(hass: HomeAssistant) -> None:
     )
 
 
+# Optional, in configuration.yaml (the options flow sets the same):
+#   nives:
+#     key_entity: binary_sensor.usb_key
+#     alarm_entity: input_boolean.alarm
+#     alarm_active_entity: binary_sensor.alarm_triggered
+#     disarm_code: !secret igor_disarm_code
+CONFIG_SCHEMA = vol.Schema(
+    {
+        DOMAIN: vol.Schema(
+            {
+                vol.Optional("key_entity"): cv.entity_id,
+                vol.Optional("alarm_entity"): cv.entity_id,
+                vol.Optional("alarm_active_entity"): cv.entity_id,
+                vol.Optional("disarm_code"): vol.All(cv.string, vol.Match(r"^\d{4,12}$", msg="4 to 12 digits")),
+            }
+        )
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """The `nives:` block of configuration.yaml, if any: the house's locks."""
+    from .security import YAML_KEY, hash_code
+
+    block = dict(config.get(DOMAIN) or {})
+    code = block.pop("disarm_code", None)
+    if code:
+        block[CONF_CODE_HASH] = await hass.async_add_executor_job(hash_code, str(code))
+    hass.data[YAML_KEY] = block
+    if block:
+        _async_register_disarm(hass)
+    return True
+
+
 DISARM_SCHEMA = vol.Schema({vol.Required("code"): vol.All(str, vol.Length(min=1, max=32))})
 
 
@@ -623,16 +659,13 @@ def _async_register_disarm(hass: HomeAssistant) -> None:
     if hass.services.has_service(DOMAIN, SERVICE_DISARM):
         return
     from .security import DisarmGuard, async_disarm, check_code, security_event
+    from .security import settings as security_settings
 
     guard = DisarmGuard()
 
     async def _disarm(call: ServiceCall) -> ServiceResponse:
-        settings: dict = {}
-        for entry in hass.config_entries.async_entries(DOMAIN):
-            settings = {**entry.data, **entry.options}
-            if settings.get(CONF_CODE_HASH) and settings.get(CONF_ALARM_ENTITY):
-                break
-        stored, alarm = settings.get(CONF_CODE_HASH), settings.get(CONF_ALARM_ENTITY)
+        sec = security_settings(hass)
+        stored, alarm = sec.get(CONF_CODE_HASH), sec.get(CONF_ALARM_ENTITY)
         if not stored or not alarm:
             return {"ok": False, "message": "Aucun code ou aucune alarme configurés (options d'Igor)."}
         wait = guard.blocked()
