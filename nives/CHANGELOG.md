@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.30.2 — Names everywhere, the map downloads
+
+- The world map's IP databases failed to download (« Compressed file ended before the end-of-stream marker »): the file was cut at the first chunk received. Downloads (and the news feeds) now read the whole body. The map retries by itself within six hours, or at once after a restart.
+- One inventory of the network for every card: OPNsense's DHCP leases and ARP table (read a minute at a time), Home Assistant's device trackers, and a new `names:` in the `nives:` block, by MAC or IP (`names: { "AA:BB:CC:DD:EE:FF": Téléviseur, 10.45.10.100: vm-docker }`), which wins over everything. The DNS card and the world map show those names instead of addresses, the Wi-Fi card instead of MACs.
+- The network map says what it could not read (`notes`), e.g. DHCP leases refused by the key's privileges. More DHCP and ARP endpoints are tried (ISC `searchLease`, Dnsmasq, `getArp`).
+
 ## 0.30.1 — OpenWrt over plain http
 
 - The Wi-Fi card no longer follows an access point's redirect from http to https (LuCI's `redirect_https`), which failed on port 443 when the access point has no certificate; it now says so: set `uhttpd.main.redirect_https` to `0` on the access point, or give the https address.

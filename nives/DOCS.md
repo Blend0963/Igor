@@ -219,3 +219,14 @@ nives:
 ```
 
 Igor only reads: the ARP table and the leases name the devices, the states say who talks to whom. With OpenWrt access points configured, a Wi-Fi device also shows its network and signal.
+
+### Names
+
+The network cards name devices from OPNsense's DHCP leases and ARP table, Home Assistant's device trackers and the access points. Devices with a fixed address often have no name there; give them one in the `nives:` block, by MAC or IP (it wins over the rest):
+
+```yaml
+nives:
+  names:
+    "AA:BB:CC:DD:EE:FF": Téléviseur
+    192.168.1.20: nas
+```

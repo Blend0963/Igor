@@ -152,6 +152,8 @@ OPENWRT_KEY = "nives_openwrt"
 # Who talks to whom through the router (OPNsense), for the network map card.
 SERVICE_NET_MAP = "net_map"
 OPNSENSE_KEY = "nives_opnsense"
+# Names for the network cards, by MAC or IP (the nives: block's names:).
+NAMES_KEY = "nives_names"
 # The desk screen (igor-ear's `run.sh screen`): the service fires this event.
 SERVICE_SCREEN = "screen"
 SCREEN_EVENT = "igor_screen"
