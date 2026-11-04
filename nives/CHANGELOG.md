@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.31.0 — The network, to look after it
+
+- `igor-netmap-card` redone for maintenance. OPNsense on top; each network (VLAN) is a block with its gateway and device count, linked to OPNsense by a bus; the internet's operators on a trunk at the right. Flows go from a device along its block's edge, up the bus, through OPNsense and down to the other side, their width by traffic, with moving dots.
+  - Toolbar: layouts **Par VLAN**, **Arbre** (OPNsense, its networks, their devices, read left to right) and **Libre**; zoom − / + / ajuster (and the wheel); one chip per network to show or hide it; internet and traffic on or off; a search that highlights and centres a device (Enter); « réinitialiser ».
+  - A device, or a whole block by its header, moves with the finger or the mouse; the layout then becomes « Libre » and is remembered on that screen (`key:` to share it between pages). A drag on the background pans.
+  - Side panel: OPNsense (the default) gives each network's traffic to the others, the traffic between networks with their services, and what to check (DHCP leases not readable, devices without a name); a network gives its gateway, devices by traffic and flows out; a device its addresses, network, Wi-Fi and connections; the internet its operators.
+  - `nives.net_map` now lists the networks and the router's address on each (`vlans`), WAN left out.
+- New `igor-talkers-card`: the busiest devices through the router, coloured by network, with a « schéma › » link (`more`).
+- New `igor-wifi-scan-card` and admin-only service `nives.wifi_scan`: the Wi-Fi networks around, heard by each OpenWrt radio when « scanner » is pressed (a radio may pause a second or two): the channels in use per band, then each network's name, BSSID, band and channel, signal and security (open ones in red); the access points' own networks are left out. The rpcd ACL needs `scan` added to `iwinfo` (DOCS.md).
+- `igor-map-card`: `big: true` for the middle of a page: the map takes the height, the top countries and the chosen country's detail float over it.
+- `igor-dns-card` and `igor-wifi-card`: `more: /a-page` adds « tout le journal › » / « voisins › »; `rows` can go down to 5.
+- The theme's swipe goes through the tabs only (a subview, reached by a button, is left out) and never starts on the network map, where a finger moves devices.
+- The wall's status bar starts with Igor's eye and name, then the dashboard's pages as tabs, the one shown underlined in red (subviews and hidden views left out; `tabs: false` to remove them). A wall may have a bar without machines (`bar: {}`), for a tablet. Headings get a small red mark.
+
+## 0.30.2 — Names everywhere, the map downloads
+
+- The world map's IP databases failed to download (« Compressed file ended before the end-of-stream marker »): the file was cut at the first chunk received. Downloads (and the news feeds) now read the whole body. The map retries by itself within six hours, or at once after a restart.
+- One inventory of the network for every card: OPNsense's DHCP leases and ARP table (read a minute at a time), Home Assistant's device trackers, and a new `names:` in the `nives:` block, by MAC or IP (`names: { "AA:BB:CC:DD:EE:FF": Téléviseur, 10.45.10.100: vm-docker }`), which wins over everything. The DNS card and the world map show those names instead of addresses, the Wi-Fi card instead of MACs.
+- The network map says what it could not read (`notes`), e.g. DHCP leases refused by the key's privileges. More DHCP and ARP endpoints are tried (ISC `searchLease`, Dnsmasq, `getArp`).
+
+## 0.30.1 — OpenWrt over plain http
+
+- The Wi-Fi card no longer follows an access point's redirect from http to https (LuCI's `redirect_https`), which failed on port 443 when the access point has no certificate; it now says so: set `uhttpd.main.redirect_https` to `0` on the access point, or give the https address.
+
 ## 0.30.0 — The network map
 
 - New `igor-netmap-card`: who talks to whom through the router, live. OPNsense in the middle, the house's devices around it coloured by network (VLAN), the internet's operators outside (Google, Cloudflare…, from the world map's IP databases; else one « internet »). A link's width follows its traffic and dots run along it from the side that opened the connection (`animate: false` keeps it still). A tap on a device shows its address, MAC, network, Wi-Fi network and signal, maker and connections with their services (https, dns, mqtt, smb…) and volume; without a choice, the biggest exchanges.

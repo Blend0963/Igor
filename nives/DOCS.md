@@ -172,7 +172,9 @@ Three cards show what goes through the house's network. Their services are for *
 - `custom:igor-dns-card`: AdGuard Home's DNS queries as they come (`nives.dns_log`), through Home Assistant's AdGuard integration.
 - `custom:igor-map-card`: where those queries' answers point to, per country and operator, on a world map (`nives.dns_map`). Addresses are located on the Home Assistant host with DB-IP's free lite databases, downloaded on first use and monthly.
 - `custom:igor-wifi-card`: who is on which Wi-Fi of OpenWrt access points (`nives.wifi_clients`), with signal, link rates and connection time.
-- `custom:igor-netmap-card`: who talks to whom through the router, animated (`nives.net_map`): OPNsense in the middle, the devices around it coloured by network, the internet's operators outside (when the map's IP databases are there). Only what crosses the router is seen; two devices of the same network talk out of its sight.
+- `custom:igor-netmap-card`: the network by VLAN around OPNsense, to look after it (`nives.net_map`): one block per network with its gateway and devices, flows through OPNsense, the internet's operators on the right. Layouts « Par VLAN », « Arbre » and « Libre », zoom, filters per network, search; devices and blocks move with the finger and stay where they are put. A tap on OPNsense, a network or a device gives its detail. Only what crosses the router is seen; two devices of the same network talk out of its sight.
+- `custom:igor-talkers-card`: the busiest devices through the router.
+- `custom:igor-wifi-scan-card`: the Wi-Fi networks around and the channels in use, heard by the OpenWrt access points when « scanner » is pressed (`nives.wifi_scan`; the ACL below needs `scan`). A radio may pause a second or two while it listens.
 
 ### A read-only OpenWrt login for the Wi-Fi card
 
@@ -181,7 +183,7 @@ Igor reads OpenWrt through ubus (the `/ubus` address LuCI uses) with a login tha
 ```sh
 cat > /usr/share/rpcd/acl.d/igor.json <<'JSON'
 { "igor": { "description": "Igor, read-only Wi-Fi",
-  "read": { "ubus": { "iwinfo": ["devices", "info", "assoclist"], "luci-rpc": ["getHostHints"] } } } }
+  "read": { "ubus": { "iwinfo": ["devices", "info", "assoclist", "scan"], "luci-rpc": ["getHostHints"] } } } }
 JSON
 HASH=$(uhttpd -m 'a long password')
 uci add rpcd login
@@ -219,3 +221,14 @@ nives:
 ```
 
 Igor only reads: the ARP table and the leases name the devices, the states say who talks to whom. With OpenWrt access points configured, a Wi-Fi device also shows its network and signal.
+
+### Names
+
+The network cards name devices from OPNsense's DHCP leases and ARP table, Home Assistant's device trackers and the access points. Devices with a fixed address often have no name there; give them one in the `nives:` block, by MAC or IP (it wins over the rest):
+
+```yaml
+nives:
+  names:
+    "AA:BB:CC:DD:EE:FF": Téléviseur
+    192.168.1.20: nas
+```

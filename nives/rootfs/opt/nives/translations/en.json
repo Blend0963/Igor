@@ -193,6 +193,10 @@
     "net_map": {
       "name": "Network map",
       "description": "Who talks to whom through the router, read from the OPNsense of the nives: block, with internet addresses grouped by operator. Administrators only."
+    },
+    "wifi_scan": {
+      "name": "Wi-Fi scan",
+      "description": "The Wi-Fi networks around, heard by the OpenWrt access points (a radio may pause a second or two). Administrators only."
     }
   }
 }

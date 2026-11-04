@@ -52,7 +52,9 @@ from .const import (
     SERVICE_DNS_MAP,
     SERVICE_WIFI,
     SERVICE_NET_MAP,
+    SERVICE_WIFI_SCAN,
     OPNSENSE_KEY,
+    NAMES_KEY,
     OPENWRT_KEY,
     SERVICE_DISARM,
     CONF_ALARM_ENTITY,
@@ -452,6 +454,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
         _async_register_dns_map(hass)
         _async_register_wifi(hass)
         _async_register_net_map(hass)
+        _async_register_wifi_scan(hass)
         _async_register_screen(hass)
     _async_register_disarm(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
@@ -597,7 +600,7 @@ def _async_register_news(hass: HomeAssistant) -> None:
                     ) as response:
                         if response.status != 200:
                             raise ValueError(f"HTTP {response.status}")
-                        data = await response.content.read(MAX_BYTES + 1)
+                        data = await _read_capped(response, MAX_BYTES + 1)
                     if len(data) > MAX_BYTES:
                         raise ValueError("feed too large")
                     parse = parse_mediapart if is_mediapart_wire(url) else parse_feed
@@ -643,7 +646,7 @@ def _async_register_dns_log(hass: HomeAssistant) -> None:
         return
     from homeassistant.helpers.service import async_register_admin_service
 
-    from .dns import async_read_querylog, names_from_states, parse_querylog, query_params
+    from .dns import async_read_querylog, parse_querylog, query_params
 
     async def _dns_log(call: ServiceCall) -> ServiceResponse:
         limit = call.data["limit"]
@@ -652,8 +655,10 @@ def _async_register_dns_log(hass: HomeAssistant) -> None:
             body = await async_read_querylog(hass, params)
         except LookupError as err:
             return {"entries": [], "error": str(err)}
-        names = names_from_states(hass.states.async_all("device_tracker"))
-        return {"entries": parse_querylog(body, names, limit)}
+        names = await _async_ip_names(hass)
+        entries = parse_querylog(body, names, limit)
+        _apply_yaml_names(hass, entries)
+        return {"entries": entries}
 
     async_register_admin_service(
         hass, DOMAIN, SERVICE_DNS_LOG, _dns_log, schema=DNS_LOG_SCHEMA, supports_response=SupportsResponse.ONLY
@@ -673,6 +678,106 @@ def _geo_db(hass: HomeAssistant):
     if "geo" not in store:
         store["geo"] = GeoDB(Path(hass.config.path(".storage", "nives_geo")))
     return store["geo"]
+
+
+async def _read_capped(response: aiohttp.ClientResponse, cap: int) -> bytes:
+    """The whole body, up to `cap` bytes (one more says « too large »).
+    `content.read(n)` returns what has arrived so far, not n bytes."""
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in response.content.iter_chunked(1 << 16):
+        chunks.append(chunk)
+        total += len(chunk)
+        if total >= cap:
+            break
+    return b"".join(chunks)[:cap]
+
+
+def _apply_yaml_names(hass: HomeAssistant, entries: list[dict]) -> None:
+    """The names given in the nives: block win over AdGuard's own."""
+    names = _yaml_names(hass)
+    if names:
+        for e in entries:
+            if e.get("client") in names:
+                e["name"] = names[e["client"]]
+
+
+def _yaml_names(hass: HomeAssistant) -> dict[str, str]:
+    """`names:` of the nives: block, by MAC (upper case) or IP."""
+    out = {}
+    for k, v in (hass.data.get(NAMES_KEY) or {}).items():
+        key = str(k).strip()
+        out[key.upper() if ":" in key and "." not in key and key.count(":") == 5 else key] = str(v)
+    return out
+
+
+async def _async_ip_names(hass: HomeAssistant) -> dict[str, str]:
+    """IP → name for the DNS cards (the inventory's named addresses)."""
+    inv = await _async_inventory(hass)
+    return {ip: h["name"] for ip, h in inv["by_ip"].items() if h.get("name")}
+
+
+async def _async_inventory(hass: HomeAssistant) -> dict:
+    """Who is who on the network, for every network card: by IP and by MAC,
+    {name, mac, ip, vlan}. From, in order of trust: the `names:` of the nives:
+    block, OPNsense's DHCP leases and ARP table (kept a minute), Home
+    Assistant's device trackers. `notes` says what could not be read."""
+    import time as _time
+
+    from .opnsense import OPNsense, parse_arp, parse_leases
+
+    store = hass.data.setdefault(DOMAIN, {})
+    cached = store.get("inventory")
+    if cached and _time.monotonic() - cached[0] < 60:
+        return cached[1]
+    by_ip: dict[str, dict] = {}
+    own: set[str] = set()
+    notes: list[str] = []
+    conf = hass.data.get(OPNSENSE_KEY)
+    if conf:
+        router = store.get("opnsense")
+        if router is None or router.url != conf["url"].rstrip("/"):
+            router = store["opnsense"] = OPNsense(conf)
+        session = async_get_clientsession(hass, router.verify_ssl)
+        try:
+            hosts, own = parse_arp(await router.arp(session))
+            by_ip.update({ip: {**h, "ip": ip} for ip, h in hosts.items()})
+        except (PermissionError, FileNotFoundError, ValueError, aiohttp.ClientError, TimeoutError) as err:
+            notes.append(f"ARP: {err}")
+        try:
+            leases = parse_leases(await router.leases(session))
+            if router.lease_path is None:
+                notes.append("DHCP leases: none readable (privilege « Leases » of your DHCP server?)")
+            for ip, lease in leases.items():
+                h = by_ip.setdefault(ip, {"ip": ip, "mac": lease["mac"], "name": "", "net": lease["net"], "vendor": ""})
+                h["name"] = lease["name"] or h.get("name", "")
+                h["mac"] = h.get("mac") or lease["mac"]
+        except (ValueError, aiohttp.ClientError, TimeoutError) as err:
+            notes.append(f"DHCP leases: {err}")
+    for st in hass.states.async_all("device_tracker"):
+        a = st.attributes
+        ip = a.get("ip") or a.get("ip_address")
+        mac = str(a.get("mac") or a.get("mac_address") or "").upper()
+        if not isinstance(ip, str) or not ip:
+            continue
+        h = by_ip.setdefault(ip, {"ip": ip, "mac": mac, "name": "", "net": "", "vendor": ""})
+        if not h.get("name"):
+            h["name"] = str(a.get("host_name") or st.name or "")
+        h["mac"] = h.get("mac") or mac
+    names = _yaml_names(hass)
+    by_mac: dict[str, dict] = {}
+    for ip, h in by_ip.items():
+        mac = (h.get("mac") or "").upper()
+        h["mac"] = mac
+        h["name"] = names.get(ip) or names.get(mac) or h.get("name") or ""
+        if mac:
+            by_mac[mac] = h
+    for key, name in names.items():
+        if key.count(":") == 5 and key not in by_mac:
+            by_mac[key] = {"ip": "", "mac": key, "name": name, "net": "", "vendor": ""}
+    inv = {"by_ip": by_ip, "by_mac": by_mac, "own": own, "notes": notes}
+    store["inventory"] = (_time.monotonic(), inv)
+    return inv
 
 
 def _openwrt_aps(hass: HomeAssistant) -> list:
@@ -698,7 +803,7 @@ def _async_register_dns_map(hass: HomeAssistant) -> None:
 
     from homeassistant.helpers.service import async_register_admin_service
 
-    from .dns import async_read_querylog, names_from_states, parse_querylog
+    from .dns import async_read_querylog, parse_querylog
     from .geo import ATTRIBUTION, DBIP_URL, KINDS, MAX_DOWNLOAD, REQUIREMENT, GeoDB, aggregate, months, parse_time
 
     db = _geo_db(hass)
@@ -716,7 +821,7 @@ def _async_register_dns_map(hass: HomeAssistant) -> None:
                             continue
                         if response.status != 200:
                             raise ValueError(f"HTTP {response.status}")
-                        got = await response.content.read(MAX_DOWNLOAD + 1)
+                        got = await _read_capped(response, MAX_DOWNLOAD + 1)
                         if len(got) > MAX_DOWNLOAD:
                             raise ValueError("file too large")
                         break
@@ -756,7 +861,7 @@ def _async_register_dns_map(hass: HomeAssistant) -> None:
         if cached and time.monotonic() - cached[0] < 20:
             return cached[1]
         since = _dt.now(_tz.utc) - timedelta(minutes=minutes)
-        names = names_from_states(hass.states.async_all("device_tracker"))
+        names = await _async_ip_names(hass)
         entries: list[dict] = []
         params = {"limit": "500"}
         try:
@@ -771,6 +876,7 @@ def _async_register_dns_map(hass: HomeAssistant) -> None:
                 params = {"limit": "500", "older_than": oldest}
         except LookupError as err:
             return {"countries": [], "status": "error", "error": str(err), "attribution": ATTRIBUTION}
+        _apply_yaml_names(hass, entries)
         out = await hass.async_add_executor_job(aggregate, entries, db, since)
         out.update({"status": "ok", "minutes": minutes, "home": hass.config.country or "",
                     "attribution": ATTRIBUTION})
@@ -790,18 +896,25 @@ def _async_register_wifi(hass: HomeAssistant) -> None:
         return
     from homeassistant.helpers.service import async_register_admin_service
 
-    from .openwrt import UbusError, names_from_states
+    from .openwrt import UbusError
 
     async def _wifi(call: ServiceCall) -> ServiceResponse:
         aps = _openwrt_aps(hass)
         if not aps:
             return {"aps": [], "error": "no OpenWrt access point in the nives: block"}
-        known = names_from_states(hass.states.async_all("device_tracker"))
+        inv = await _async_inventory(hass)
+        known = {mac: {"name": h.get("name", ""), "ip": h.get("ip", "")} for mac, h in inv["by_mac"].items()}
+        yaml_names = _yaml_names(hass)
         out = []
         for ap in aps:
             session = async_get_clientsession(hass, ap.verify_ssl)
             try:
-                out.append(await ap.read(session, known))
+                got = await ap.read(session, known)
+                for radio in got["radios"]:
+                    for c in radio["clients"]:
+                        # The nives: block's names win over the access point's.
+                        c["name"] = yaml_names.get(c["mac"]) or yaml_names.get(c["ip"]) or c["name"]
+                out.append(got)
             except (UbusError, aiohttp.ClientError, TimeoutError, ValueError) as err:
                 _LOGGER.debug("OpenWrt %s: %s", ap.name, err)
                 out.append({"name": ap.name, "radios": [], "error": str(err) or type(err).__name__})
@@ -822,10 +935,9 @@ def _async_register_net_map(hass: HomeAssistant) -> None:
     from homeassistant.helpers.service import async_register_admin_service
 
     from .openwrt import UbusError
-    from .openwrt import names_from_states as macs_from_states
-    from .opnsense import OPNsense, build_map, parse_arp, parse_leases, parse_states
+    from .opnsense import build_map, ip_kind, parse_states
 
-    state: dict[str, Any] = {"router": None, "cache": None}
+    state: dict[str, Any] = {"cache": None}
 
     async def _net_map(call: ServiceCall) -> ServiceResponse:
         conf = hass.data.get(OPNSENSE_KEY)
@@ -834,28 +946,21 @@ def _async_register_net_map(hass: HomeAssistant) -> None:
         cached = state["cache"]
         if cached and time.monotonic() - cached[0] < 8:
             return cached[1]
-        if state["router"] is None or state["router"].url != conf["url"].rstrip("/"):
-            state["router"] = OPNsense(conf)
-        router = state["router"]
+        inv = await _async_inventory(hass)
+        router = hass.data[DOMAIN].get("opnsense")
+        if router is None:
+            return {"nodes": [], "edges": [], "error": "OPNsense not read yet"}
         session = async_get_clientsession(hass, router.verify_ssl)
         try:
             states_body = await router.states(session)
-            arp_body = await router.arp(session)
-            lease_body = await router.leases(session)
         except (PermissionError, FileNotFoundError, ValueError, aiohttp.ClientError, TimeoutError) as err:
-            return {"nodes": [], "edges": [], "error": str(err) or type(err).__name__}
-        hosts, own = parse_arp(arp_body)
-        for ip, lease in parse_leases(lease_body).items():
-            h = hosts.setdefault(ip, {"mac": lease["mac"], "name": "", "net": lease["net"], "vendor": ""})
-            h["name"] = lease["name"] or h["name"]
-        # Names Home Assistant knows (by IP), then the Wi-Fi: network and signal by MAC.
+            return {"nodes": [], "edges": [], "error": f"states: {err}" if str(err) else type(err).__name__}
+        hosts = {ip: dict(h) for ip, h in inv["by_ip"].items()}
+        own = set(inv["own"])
+        # The Wi-Fi: network and signal by MAC.
         extra: dict[str, dict] = {}
-        for st in hass.states.async_all("device_tracker"):
-            ip = st.attributes.get("ip") or st.attributes.get("ip_address")
-            if isinstance(ip, str) and ip:
-                extra.setdefault(ip, {})["name"] = st.attributes.get("host_name") or st.name
         by_mac: dict[str, dict] = {}
-        known = macs_from_states(hass.states.async_all("device_tracker"))
+        known = {mac: {"name": h.get("name", ""), "ip": h.get("ip", "")} for mac, h in inv["by_mac"].items()}
         for ap in _openwrt_aps(hass):
             try:
                 got = await ap.read(async_get_clientsession(hass, ap.verify_ssl), known)
@@ -863,14 +968,11 @@ def _async_register_net_map(hass: HomeAssistant) -> None:
                 continue
             for radio in got["radios"]:
                 for c in radio["clients"]:
-                    by_mac[c["mac"]] = {"ssid": radio["ssid"], "signal": c["signal"], "name": c["name"]}
+                    by_mac[c["mac"]] = {"ssid": radio["ssid"], "signal": c["signal"], "ap": got["name"]}
         for ip, h in hosts.items():
             w = by_mac.get(h.get("mac", ""))
             if w:
-                x = extra.setdefault(ip, {})
-                x["ssid"], x["signal"] = w["ssid"], w["signal"]
-                if w["name"] and not x.get("name"):
-                    x["name"] = w["name"]
+                extra[ip] = {"ssid": w["ssid"], "signal": w["signal"], "ap": w["ap"]}
         # Internet addresses by operator, when the IP databases are there.
         db = _geo_db(hass)
         try:
@@ -881,11 +983,48 @@ def _async_register_net_map(hass: HomeAssistant) -> None:
             build_map, parse_states(states_body), hosts, own, db.locate if ready else None, extra
         )
         out["error"] = ""
+        out["notes"] = inv["notes"]
+        # Each network (VLAN) and the router's address on it.
+        out["vlans"] = sorted(
+            ({"name": hosts[ip].get("net", ""), "gateway": ip} for ip in own
+             if hosts.get(ip, {}).get("net") and not str(hosts[ip]["net"]).upper().startswith("WAN")
+             and ip_kind(ip) == "local"),
+            key=lambda v: v["name"],
+        )
         state["cache"] = (time.monotonic(), out)
         return out
 
     async_register_admin_service(
         hass, DOMAIN, SERVICE_NET_MAP, _net_map, schema=vol.Schema({}), supports_response=SupportsResponse.ONLY
+    )
+
+
+@callback
+def _async_register_wifi_scan(hass: HomeAssistant) -> None:
+    """`nives.wifi_scan`: the Wi-Fi networks around, heard by the OpenWrt
+    access points (openwrt.py). Administrators only; only when asked (a
+    radio may pause a second or two while it listens)."""
+    if hass.services.has_service(DOMAIN, SERVICE_WIFI_SCAN):
+        return
+    from homeassistant.helpers.service import async_register_admin_service
+
+    from .openwrt import UbusError
+
+    async def _scan(call: ServiceCall) -> ServiceResponse:
+        aps = _openwrt_aps(hass)
+        if not aps:
+            return {"aps": [], "error": "no OpenWrt access point in the nives: block"}
+        out = []
+        for ap in aps:
+            try:
+                nets = await ap.scan(async_get_clientsession(hass, ap.verify_ssl))
+                out.append({"name": ap.name, "networks": nets})
+            except (UbusError, aiohttp.ClientError, TimeoutError, ValueError) as err:
+                out.append({"name": ap.name, "networks": [], "error": str(err) or type(err).__name__})
+        return {"aps": out}
+
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_WIFI_SCAN, _scan, schema=vol.Schema({}), supports_response=SupportsResponse.ONLY
     )
 
 
@@ -933,6 +1072,8 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Optional("allowed_users", default=[]): vol.All(cv.ensure_list, [cv.string]),
                 vol.Optional("openwrt", default=[]): vol.All(cv.ensure_list, [OPENWRT_SCHEMA]),
                 vol.Optional("opnsense"): OPNSENSE_SCHEMA,
+                # Names for the network cards, by MAC or IP: { "AA:BB:…": TV }
+                vol.Optional("names", default={}): {cv.string: cv.string},
             }
         )
     },
@@ -947,6 +1088,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     block = dict(config.get(DOMAIN) or {})
     hass.data[OPENWRT_KEY] = list(block.pop("openwrt", None) or [])
     hass.data[OPNSENSE_KEY] = block.pop("opnsense", None)
+    hass.data[NAMES_KEY] = dict(block.pop("names", None) or {})
     code = block.pop("disarm_code", None)
     if code:
         block[CONF_CODE_HASH] = await hass.async_add_executor_job(hash_code, str(code))

@@ -113,7 +113,13 @@ class AccessPoint:
 
         self.n += 1
         body = {"jsonrpc": "2.0", "id": self.n, "method": "call", "params": [sid, obj, method, args]}
-        async with session.post(self.url, json=body, timeout=aiohttp.ClientTimeout(total=8)) as response:
+        # No redirect: LuCI often sends http to https, which an access point
+        # without a certificate cannot answer; say so instead.
+        async with session.post(self.url, json=body, allow_redirects=False,
+                                timeout=aiohttp.ClientTimeout(total=8)) as response:
+            if response.status in (301, 302, 303, 307, 308):
+                where = response.headers.get("Location", "")
+                raise UbusError(-1, f"redirected to {where or 'https'}: set uhttpd's redirect_https to 0 on the access point, or use that address")
             if response.status != 200:
                 raise UbusError(-1, f"HTTP {response.status}")
             data = await response.json(content_type=None)
@@ -179,3 +185,68 @@ class AccessPoint:
                 "clients": clients,
             })
         return {"name": self.name, "radios": radios}
+
+    async def scan(self, session) -> list[dict]:
+        """The networks around, heard by each radio once (`iwinfo scan`,
+        allowed by the ACL's « scan »). A radio busy serving may pause its
+        own Wi-Fi a second or two while it listens."""
+        devices = (await self.call(session, "iwinfo", "devices")).get("devices") or []
+        own: set[str] = set()
+        radios: dict[str, str] = {}
+        for dev in devices:
+            try:
+                info = await self.call(session, "iwinfo", "info", {"device": dev})
+            except UbusError:
+                continue
+            if info.get("bssid"):
+                own.add(str(info["bssid"]).upper())
+            phy = str(info.get("phy") or dev.split("-", 1)[0])
+            if str(info.get("mode") or "").lower() in ("master", "ap"):
+                radios.setdefault(phy, dev)
+        seen: dict[str, dict] = {}
+        for phy, dev in radios.items():
+            try:
+                got = await self.call(session, "iwinfo", "scan", {"device": dev})
+            except UbusError as err:
+                if err.code == UBUS_ACCESS_DENIED:
+                    raise UbusError(err.code, "scan refused: add \"scan\" to iwinfo in /usr/share/rpcd/acl.d/igor.json") from err
+                continue
+            for r in got.get("results") or []:
+                line = scan_line(r)
+                if line and line["bssid"] not in own:
+                    old = seen.get(line["bssid"])
+                    if not old or (line["signal"] or -999) > (old["signal"] or -999):
+                        seen[line["bssid"]] = line
+        return sorted(seen.values(), key=lambda x: -(x["signal"] if x["signal"] is not None else -999))
+
+
+def scan_line(r: Any) -> dict | None:
+    """One network heard around, as the card shows it."""
+    if not isinstance(r, dict) or not r.get("bssid"):
+        return None
+    enc = r.get("encryption") if isinstance(r.get("encryption"), dict) else {}
+    if not enc.get("enabled"):
+        security = "ouvert"
+    else:
+        wpa = enc.get("wpa") or []
+        auth = enc.get("authentication") or []
+        if "sae" in auth:
+            security = "WPA3"
+        elif wpa:
+            security = "WPA" + str(max(wpa)) if all(isinstance(x, int) for x in wpa) else "WPA"
+        elif enc.get("wep"):
+            security = "WEP"
+        else:
+            security = "chiffré"
+        if "802.1x" in auth or "eap" in auth:
+            security += " entreprise"
+    channel = r.get("channel")
+    band = band_of(r.get("frequency")) if r.get("frequency") else ("5 GHz" if isinstance(channel, int) and channel > 14 else "2,4 GHz" if channel else "")
+    return {
+        "ssid": str(r.get("ssid") or ""),
+        "bssid": str(r["bssid"]).upper(),
+        "channel": channel if isinstance(channel, int) else None,
+        "band": band,
+        "signal": r.get("signal") if isinstance(r.get("signal"), (int, float)) else None,
+        "security": security,
+    }

@@ -32,8 +32,10 @@ MAX_EDGES = 160
 MAX_REMOTES = 14
 
 # DHCP leases: Kea, then the ISC server, then Dnsmasq (OPNsense's choices).
-LEASE_PATHS = ("/api/kea/leases4/search", "/api/dhcpv4/leases/search_lease", "/api/dnsmasq/leases/search")
-ARP_PATHS = ("/api/diagnostics/interface/search_arp", "/api/diagnostics/interface/get_arp")
+LEASE_PATHS = ("/api/kea/leases4/search", "/api/dnsmasq/leases/search", "/api/dhcpv4/leases/search_lease",
+               "/api/dhcpv4/leases/searchLease")
+ARP_PATHS = ("/api/diagnostics/interface/search_arp", "/api/diagnostics/interface/get_arp",
+             "/api/diagnostics/interface/getArp")
 STATES_PATH = "/api/diagnostics/firewall/query_states"
 
 
