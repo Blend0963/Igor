@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.31.1 — A tablet of switches
+
+- `igor-tiles-card` `size: giant`: wall switches for a tablet made of buttons. A big icon in the middle, the name small under it, no state text; the tiles fill the card's height (`columns:` sets how many across). `labels: false` leaves the names out.
+- A tile can call a service on its entity instead of switching it: `service: cover.open_cover` (with `data`), lit while the entity is in the state given by `lit:` (`lit: open`). One cover or vacuum becomes several buttons (open, stop, close; clean, dock).
+
 ## 0.31.0 — The network, to look after it
 
 - `igor-netmap-card` redone for maintenance. OPNsense on top; each network (VLAN) is a block with its gateway and device count, linked to OPNsense by a bus; the internet's operators on a trunk at the right. Flows go from a device along its block's edge, up the bus, through OPNsense and down to the other side, their width by traffic, with moving dots.

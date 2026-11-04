@@ -2022,6 +2022,11 @@
   //         invert: true, text: { "off": active, "on": privée } }   # lit while the switch is off
   //     - { entity: sensor.next_train, name: Ligne J, secondary: [sensor.train_1, sensor.train_2], tap: more-info }
   // size: small gives one line per tile (icon, name, state) instead of a square.
+  // size: giant: a wall switch: a big icon, the name under it, no state text,
+  // the tiles filling the card's height (a tablet made of buttons); labels:
+  // false leaves the name out too.
+  // A tile with `service: cover.open_cover` (and `data`) calls it on its
+  // entity instead of switching it; `lit: open` lights it in that state.
   class IgorTilesCard extends IgorCard {
     setConfig(config) {
       if (!config || !Array.isArray(config.tiles) || !config.tiles.length) throw new Error("igor-tiles-card: tiles est requis");
@@ -2030,6 +2035,7 @@
     getCardSize() { return 3; }
     build() {
       var small = this.config.size === "small";
+      var giant = this.config.size === "giant";
       this.style([
         ":host { display: block; height: 100%; }",
         ".grid { display: grid; gap: 10px; height: 100%; grid-auto-rows: " + (small ? "auto" : "1fr") + "; }",
@@ -2045,7 +2051,13 @@
         ".s { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }",
         "button.small .s { text-align: right; }",
         "button.done { border-color: var(--acc); }",
-        "button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }"
+        "button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }",
+        "button.giant { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; min-height: 110px; padding: 10px; --mdc-icon-size: 46px; border-radius: 6px; transition: background 0.2s, border-color 0.2s; }",
+        "button.giant .n { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }",
+        "button.giant.on .n { color: var(--fg); }",
+        "button.giant .s { display: none; }",
+        "button.giant.act ha-icon { color: var(--fg); }",
+        "button.giant:active { transform: scale(0.98); }"
       ].join("\n"));
       var grid = el("div", "grid", this.shadowRoot);
       var cols = Number(this.config.columns) || (small ? 1 : 2);
@@ -2053,12 +2065,12 @@
       // A last row short of tiles: its last tile widens to the end, no hole.
       var rest = this.config.tiles.length % cols;
       this.tiles = this.config.tiles.map((t, i) => {
-        var b = el("button", small ? "small" : "big", grid);
+        var b = el("button", small ? "small" : giant ? "giant" + (t.service ? " act" : "") : "big", grid);
         b.type = "button";
         if (rest && i === this.config.tiles.length - 1) b.style.gridColumn = "span " + (cols - rest + 1);
         var ic = icon(b, t.icon || "mdi:help-circle-outline");
         var mid = small ? el("span", "", b) : b;
-        el("span", "n", mid, t.name || t.entity);
+        if (!(giant && this.config.labels === false)) el("span", "n", mid, t.name || t.entity);
         var sub = el("span", "s", small ? b : b);
         if (small) b.appendChild(sub);
         var held = false, timer = null;
@@ -2066,7 +2078,7 @@
         ["pointerup", "pointerleave", "pointercancel"].forEach((e) => b.addEventListener(e, () => clearTimeout(timer)));
         b.addEventListener("click", () => {
           if (held || !this._hass) return;
-          var r = tap(this, this._hass, t.entity, t.tap);
+          var r = t.service ? service(this._hass, t.service, t.data, t.target || { entity_id: t.entity }) : tap(this, this._hass, t.entity, t.tap);
           if (r && r.then) r.then(() => { b.classList.add("done"); setTimeout(() => b.classList.remove("done"), 700); });
         });
         return { t: t, b: b, ic: ic, sub: sub };
@@ -2082,7 +2094,7 @@
         if (x.t.secondary && x.t.show_state) text = stateText(hass, x.t.entity) + " · " + text;
         var d = domainOf(x.t.entity);
         // invert: lit while the entity is off (a camera's privacy switch).
-        var on = d !== "scene" && isOn(hass, x.t.entity) !== Boolean(x.t.invert);
+        var on = x.t.service ? Boolean(x.t.lit && st && st.state === x.t.lit) : d !== "scene" && isOn(hass, x.t.entity) !== Boolean(x.t.invert);
         if (x.t.text && st && x.t.text[st.state] != null) text = String(x.t.text[st.state]);
         x.sub.textContent = text;
         if (x.t.icon_off) x.ic.setAttribute("icon", on ? (x.t.icon || "mdi:help-circle-outline") : x.t.icon_off);
