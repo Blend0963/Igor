@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.25.0 — Igor's own look
+
+- Igor stands for **Intelligent Governance & Operations Relay**.
+- New themes « Igor » and « Igor (tablette) »: near-black, bone white, cyan for data, amber for what is lit, the signal red for the selected page and errors; square corners, thin lines, no shadow; titles in Chakra Petch where the device has it, a monospace face elsewhere. « Igor Journal » stays.
+- New logo, the eye: a monolith pierced by a red eye (integration brand, light and dark, and the add-on's icon and logo).
+- While the key is away, `allowed_users` in the `nives:` block (names or ids) are still answered: the owner from a phone, never the wall, the tablet or a voice satellite (they carry no user).
+
 ## 0.24.1 — The locks in configuration.yaml
 
 - The key, the alarm, the alarm in progress and the disarm code can also be set in `configuration.yaml` (Igor's options win when both are set):

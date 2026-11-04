@@ -60,6 +60,7 @@ def settings(hass: HomeAssistant) -> dict:
 
     yaml = hass.data.get(YAML_KEY, {})
     out = {k: yaml.get(k) for k in (CONF_KEY_ENTITY, CONF_ALARM_ENTITY, CONF_ALARM_ACTIVE, CONF_CODE_HASH)}
+    out["allowed_users"] = list(yaml.get("allowed_users") or [])
     for entry in hass.config_entries.async_entries(DOMAIN):
         opts = {**entry.data, **entry.options}
         for k in out:
@@ -74,6 +75,19 @@ def is_locked(hass: HomeAssistant, key_entity: str | None) -> bool:
         return False
     state = hass.states.get(key_entity)
     return state is None or state.state != "on"
+
+
+async def user_allowed(hass: HomeAssistant, user_id: str | None, allowed: list[str]) -> bool:
+    """Is this Home Assistant user one Igor still answers while locked?
+    Matched by id or by name (case-insensitive). A request without a user (a
+    voice satellite, an automation) never is."""
+    if not user_id or not allowed:
+        return False
+    wanted = {str(a).strip().lower() for a in allowed if str(a).strip()}
+    if user_id.lower() in wanted:
+        return True
+    user = await hass.auth.async_get_user(user_id)
+    return bool(user and user.name and user.name.strip().lower() in wanted)
 
 
 class DisarmGuard:

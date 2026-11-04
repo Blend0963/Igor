@@ -620,6 +620,7 @@ def _async_register_news(hass: HomeAssistant) -> None:
 #     alarm_entity: input_boolean.alarm
 #     alarm_active_entity: binary_sensor.alarm_triggered
 #     disarm_code: !secret igor_disarm_code
+#     allowed_users: [Jean]     # still answered while the key is away
 CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
@@ -628,6 +629,7 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Optional("alarm_entity"): cv.entity_id,
                 vol.Optional("alarm_active_entity"): cv.entity_id,
                 vol.Optional("disarm_code"): vol.All(cv.string, vol.Match(r"^\d{4,12}$", msg="4 to 12 digits")),
+                vol.Optional("allowed_users", default=[]): vol.All(cv.ensure_list, [cv.string]),
             }
         )
     },
