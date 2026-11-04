@@ -530,8 +530,13 @@ def screen(settings: Settings, check: bool = False) -> int:
     s = ScreenSettings(output=settings.screen_output, here=settings.screen_here, pc=settings.screen_pc,
                        bus=settings.screen_bus, keyboard=settings.screen_keyboard,
                        pc_entity=settings.screen_pc_entity)
-    sc = Screen(s, settings.ha_url, settings.ha_token)
+    from .guard import Guard
+
+    guard = Guard(settings.screen_key_entity, settings.screen_alarm_entity, settings.screen_camera,
+                  settings.ha_url, settings.ha_token)
+    sc = Screen(s, settings.ha_url, settings.ha_token, guard=guard if guard.enabled else None)
     if check:
+        print(f"Guard:      key {guard.key_entity or '—'}, alarm {guard.alarm_entity or '—'}, camera {guard.camera or '—'}")
         print(f"Output:     {s.output}")
         print(f"DDC bus:    {sc.bus if sc.bus is not None else 'NOT FOUND (is the monitor plugged in, DDC/CI on?)'}")
         print(f"Inputs:     here 0x{s.here:02x}, PC 0x{s.pc:02x}")

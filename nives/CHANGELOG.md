@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.24.0 — The house's locks
+
+- Igor's options (Settings → Devices & services → Igor → Configure): the **key** (a binary sensor, e.g. a USB key's presence), the **alarm** (input_boolean, switch or alarm panel), the **alarm in progress** sensor and a **disarm code**. The code is never stored: only a salted PBKDF2 hash.
+- While the key is away (off, unknown or unavailable), Igor refuses every request, spoken or typed, and fires an `igor_security` event.
+- `nives.disarm` (code): turns the alarm off; five wrong codes in ten minutes refuse every try for ten minutes; each wrong code fires `igor_security` and a notification.
+- Desk screen (igor-ear 0.4.0, `[screen] key_entity`, `alarm_entity`, `camera`): a guard window of its own, above the dashboard and not part of it, while the key is away (« VERROUILLÉ ») or the alarm goes off (« INTRUSION », red): the camera and a keypad that sends the code to `nives.disarm`. The kiosk's exit shortcut is off while it is up; if the window cannot show, swaylock locks the session. Rerun `ear/screen/install-vm.sh` (it installs swaylock).
+- Wall tablet: two fixed pages, `/nives_static/verrou.html` and `/nives_static/alerte.html` (red, nothing to touch), for Home Assistant to load through the Fully Kiosk integration.
+
+## 0.23.15 — The tablet shows the whole exchange
+
+- A tablet tied to one satellite (`?igor_tablet=assist_satellite.…`) ignored every turn whose satellite is unknown (the voice sensor says `None`): it showed the name heard, then nothing. Such turns now show. And a quick local turn that goes from « heard » to « done » between two looks is shown whatever step the display last saw.
+
 ## 0.23.14 — No empty « transcription »
 
 - With two Igor entries in Home Assistant (an old one left behind), the tablet followed the old entry's voice sensor: « heard » reached it, the turn itself only the working one, so the display stayed on « transcription ». The tablet and the wall cards now follow the voice sensor that moved last.

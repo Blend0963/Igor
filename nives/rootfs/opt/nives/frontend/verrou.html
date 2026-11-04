@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IGOR · VERROU</title>
+<!-- Shown on the wall tablet while the key is away (Home Assistant loads it
+     through the Fully Kiosk integration). No link, no button: nothing to do
+     here but put the key back. -->
+<style>
+html, body { margin: 0; height: 100%; background: #050607; color: #e9e4da; font-family: ui-monospace, "JetBrains Mono", Menlo, "DejaVu Sans Mono", monospace; overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: none; }
+.c { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2vh; text-align: center; }
+svg { width: 10vh; height: 10vh; }
+.b { font-size: 7vh; letter-spacing: .2em; font-weight: 700; }
+.s { color: #878c95; font-size: 2.6vh; letter-spacing: .08em; }
+</style></head>
+<body><div class="c">
+<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="10" y="22" width="28" height="20" fill="none" stroke="#e5323b" stroke-width="3"/><path d="M16 22v-6a8 8 0 0 1 16 0v6" fill="none" stroke="#e5323b" stroke-width="3"/></svg>
+<div class="b">VERROUILLÉ</div><div class="s" id="t"></div></div>
+<script>
+function p(n){return (n<10?"0":"")+n}
+function tick(){var d=new Date();document.getElementById("t").textContent=p(d.getHours())+":"+p(d.getMinutes());}
+tick();setInterval(tick,10000);
+["contextmenu","touchstart","mousedown","keydown"].forEach(function(e){document.addEventListener(e,function(ev){ev.preventDefault();},{passive:false});});
+</script></body></html>

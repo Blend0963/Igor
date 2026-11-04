@@ -438,7 +438,10 @@
     var sat = satelliteState(states, onlySatellite);
     var attrs = sensor ? sensor.attributes : {};
     var sensorState = sensor ? sensor.state : "idle";
-    var fromWanted = !onlySatellite || attrs.satellite === onlySatellite;
+    // A tablet tied to one satellite still shows a turn whose satellite is
+    // unknown (a request that reached Igor without its device: the sensor
+    // then says « None »), or the name heard on its satellite stays alone.
+    var fromWanted = !onlySatellite || !attrs.satellite || attrs.satellite === onlySatellite;
     var turnKey = String(attrs.turn || "") + "|" + (attrs.started || "");
     var live = fromWanted && (sensorState === "thinking" || sensorState === "answering");
     if (veil && veil.dataset.mode === "history") {
@@ -525,8 +528,11 @@
     // The answer is complete. Also for a reply quick enough to go from
     // "thinking" to "done" between two looks, while still waiting on screen.
     var fresh = attrs.started && Date.now() - Date.parse(attrs.started) < 60000;
-    if (fromWanted && (sensorState === "done" || sensorState === "error") && view.doneKey !== turnKey &&
-        (view.turnKey === turnKey ? (view.phase === "thinking" || view.phase === "answering") : (fresh && (view.phase === "transcribing" || view.phase === "thinking")))) {
+    // Shown whenever the display is up for this exchange, whatever step it
+    // last saw: a quick local turn can go from « heard » to « done » between
+    // two looks, without « thinking » ever being seen.
+    if (fromWanted && (sensorState === "done" || sensorState === "error") && view.doneKey !== turnKey && dismissed !== turnKey &&
+        (view.turnKey === turnKey ? view.phase !== "done" : (fresh && view.phase && view.phase !== "done" && view.phase !== "gone"))) {
       view.doneKey = turnKey;
       view.turnKey = turnKey;
       view.phase = "done";

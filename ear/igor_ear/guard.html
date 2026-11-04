@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IGOR · GARDE</title>
+<!-- The desk screen's guard (guard.py): locked while the key is away, an
+     alert while the alarm goes off. Served on 127.0.0.1 only; the code goes
+     to Home Assistant's nives.disarm, which checks it. -->
+<style>
+:root { --void: #050607; --line: #252930; --bone: #e9e4da; --dim: #878c95; --red: #e5323b; }
+html, body { margin: 0; height: 100%; background: var(--void); color: var(--bone); font-family: ui-monospace, "JetBrains Mono", Menlo, "DejaVu Sans Mono", monospace; overflow: hidden; user-select: none; }
+body.alarm { background: #1a0405; }
+.band { display: none; background: var(--red); color: #fff; text-align: center; font-weight: 700; letter-spacing: .3em; padding: 1.2vh; font-size: 2.2vh; }
+body.alarm .band { display: block; animation: p 1.2s steps(2) infinite; }
+@keyframes p { 50% { filter: brightness(.7); } }
+.main { height: calc(100% - 5vh); display: grid; grid-template-columns: 1.1fr 1fr; gap: 4vw; align-items: center; padding: 0 5vw; box-sizing: border-box; }
+.left { display: grid; gap: 2vh; }
+.icon { width: 8vh; height: 8vh; }
+.word { font-size: 9vh; font-weight: 700; letter-spacing: .1em; line-height: 1; }
+body.alarm .word { color: #fff; }
+.meta { color: var(--dim); font-size: 2.2vh; line-height: 1.7; }
+body.alarm .meta { color: #f0c4c6; }
+.cam { width: 100%; aspect-ratio: 16/9; background: #0c0d10; border: 2px solid var(--line); object-fit: cover; display: block; }
+body.alarm .cam { border-color: var(--red); }
+.right { display: grid; gap: 2vh; }
+.pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2vh; }
+.pad button, .go { background: #0e1013; border: 1px solid var(--line); color: var(--bone); font: inherit; font-size: 3.4vh; padding: 1.6vh 0; cursor: pointer; }
+.pad button:active, .go:active { background: #1c2026; }
+.go { border-color: var(--red); color: #fff; background: rgba(229,50,59,.22); font-size: 2.6vh; letter-spacing: .15em; padding: 2vh 0; }
+.code { height: 5vh; display: flex; justify-content: center; align-items: center; gap: 1.4vh; }
+.code i { width: 1.6vh; height: 1.6vh; border-radius: 50%; background: var(--bone); }
+.msg { min-height: 3vh; text-align: center; font-size: 2.2vh; color: var(--dim); }
+.msg.bad { color: #ff8a8f; } .msg.ok { color: #7fe0a8; }
+</style></head>
+<body>
+<div class="band">ALARME · INTRUSION EN COURS</div>
+<div class="main">
+  <div class="left">
+    <svg class="icon" id="ic" viewBox="0 0 48 48" aria-hidden="true"><rect x="10" y="22" width="28" height="20" fill="none" stroke="#e5323b" stroke-width="3"/><path d="M16 22v-6a8 8 0 0 1 16 0v6" fill="none" stroke="#e5323b" stroke-width="3"/></svg>
+    <div class="word" id="word">VERROUILLÉ</div>
+    <div class="meta" id="meta"></div>
+    <img class="cam" id="cam" alt="" onerror="this.style.visibility='hidden'" onload="this.style.visibility='visible'">
+  </div>
+  <div class="right">
+    <div class="code" id="code"></div>
+    <div class="pad" id="pad"></div>
+    <button class="go" id="go" type="button">DÉSARMER</button>
+    <div class="msg" id="msg"></div>
+  </div>
+</div>
+<script>
+var code = "", busy = false;
+function p(n) { return (n < 10 ? "0" : "") + n; }
+function hm(t) { var d = new Date(t * 1000); return p(d.getHours()) + ":" + p(d.getMinutes()); }
+function draw() {
+  var c = document.getElementById("code"); c.innerHTML = "";
+  for (var i = 0; i < code.length; i++) c.appendChild(document.createElement("i"));
+}
+var pad = document.getElementById("pad");
+["1","2","3","4","5","6","7","8","9","effacer","0","←"].forEach(function (k) {
+  var b = document.createElement("button"); b.type = "button"; b.textContent = k;
+  if (k === "effacer") b.style.fontSize = "2vh";
+  b.addEventListener("click", function () {
+    if (k === "effacer") code = ""; else if (k === "←") code = code.slice(0, -1); else if (code.length < 12) code += k;
+    draw();
+  });
+  pad.appendChild(b);
+});
+document.getElementById("go").addEventListener("click", function () {
+  if (busy || !code) return;
+  busy = true; var m = document.getElementById("msg"); m.className = "msg"; m.textContent = "…";
+  fetch("/disarm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: code }) })
+    .then(function (r) { return r.json(); })
+    .then(function (r) { m.className = "msg " + (r.ok ? "ok" : "bad"); m.textContent = r.message || (r.ok ? "Désarmée" : "Refusé"); })
+    .catch(function () { m.className = "msg bad"; m.textContent = "Igor injoignable"; })
+    .then(function () { busy = false; code = ""; draw(); });
+});
+function poll() {
+  fetch("/state").then(function (r) { return r.json(); }).then(function (s) {
+    var alarm = s.mode === "alarm";
+    document.body.className = alarm ? "alarm" : "";
+    document.getElementById("word").textContent = alarm ? "INTRUSION" : "VERROUILLÉ";
+    document.getElementById("meta").innerHTML = alarm
+      ? "déclenchée à " + hm(s.since) + "<br>désarmez avec le code"
+      : "clé absente depuis " + hm(s.since) + "<br>insérez la clé pour déverrouiller";
+    document.getElementById("cam").style.display = s.camera ? "block" : "none";
+  }).catch(function () {});
+}
+function cam() { var c = document.getElementById("cam"); if (c.style.display !== "none") c.src = "/camera.jpg?t=" + Date.now(); }
+poll(); cam(); setInterval(poll, 1000); setInterval(cam, 2000);
+document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+document.addEventListener("keydown", function (e) {
+  if (/^[0-9]$/.test(e.key) && code.length < 12) { code += e.key; draw(); }
+  else if (e.key === "Backspace") { code = code.slice(0, -1); draw(); }
+  else if (e.key === "Enter") document.getElementById("go").click();
+  if (e.key === "F11" || e.key === "Escape" || (e.ctrlKey && /^[wWtTnNqQlL]$/.test(e.key)) || (e.altKey && e.key === "F4")) e.preventDefault();
+});
+</script>
+</body></html>

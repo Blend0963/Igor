@@ -118,6 +118,16 @@ class IgorConversationAgent(ConversationEntity):
 
     async def async_process(self, user_input: ConversationInput) -> ConversationResult:
         """Answer, streaming into the chat log where the Core supports it."""
+        # The house is locked (the key is away): Igor does nothing at all.
+        from .const import CONF_KEY_ENTITY
+        from .security import is_locked, security_event
+
+        key = {**self.entry.data, **self.entry.options}.get(CONF_KEY_ENTITY)
+        if is_locked(self.hass, key):
+            security_event(self.hass, "refused", reason="locked")
+            return self._error_result(
+                user_input, user_input.conversation_id, "Igor est verrouillé : la clé est absente."
+            )
         if not STREAMING_SUPPORTED:
             return await self._async_process_legacy(user_input)
         # The base class opens the chat session and log and calls

@@ -149,6 +149,10 @@ class Settings:
     screen_keyboard: str = ""
     screen_pc_entity: str = ""
     screen_url: str = ""
+    # The guard (guard.py): locked while the key is away, alert while the alarm goes off.
+    screen_key_entity: str = ""
+    screen_alarm_entity: str = ""
+    screen_camera: str = ""
 
     @property
     def log_file(self) -> Path:
@@ -253,4 +257,7 @@ def load(path: Path = CONFIG) -> Settings:
     s.screen_keyboard = str(screen.get("keyboard", "")).strip()
     s.screen_pc_entity = str(screen.get("pc_entity", "")).strip()
     s.screen_url = str(screen.get("url", "")).strip()
+    s.screen_key_entity = str(screen.get("key_entity", "")).strip()
+    s.screen_alarm_entity = str(screen.get("alarm_entity", "")).strip()
+    s.screen_camera = str(screen.get("camera", "")).strip()
     return s

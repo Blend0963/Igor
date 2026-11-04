@@ -48,3 +48,10 @@ screen:
       selector:
         select:
           options: [sound, equalizer, bluetooth]
+disarm:
+  fields:
+    code:
+      required: true
+      selector:
+        text:
+          type: password
