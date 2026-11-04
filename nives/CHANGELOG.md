@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.31.3 — Dark fields
+
+- The « Igor » and « Igor (tablette) » themes are now declared dark (`modes: dark`): Home Assistant took its light defaults for what the theme did not set, so forms (an add-on's options, settings) showed white fields. Their text fields, selects, checkboxes and radios now take the theme's colours. Reload the themes (or restart Home Assistant) after updating.
+
 ## 0.31.2 — The network map shows, the wall tidied
 
 - The network map stayed blank inside a wall: the card used a property named `hidden` for the networks switched off, which is also every HTML element's own `hidden`, so the whole card was hidden. Renamed.
