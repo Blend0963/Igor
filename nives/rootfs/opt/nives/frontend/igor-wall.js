@@ -2063,7 +2063,10 @@
         "button.giant .s { display: none; }",
         ".grid.states button.giant .s { display: block; font-size: 11px; margin-top: -8px; }",
         "button.giant.act ha-icon { color: var(--fg); }",
-        "button.giant:active { transform: scale(0.98); }"
+        "button.giant:active { transform: scale(0.98); }",
+        // Igor just acted on it (the tablet's voice display says so): a cyan flash.
+        "button.flash { border-color: #59d0e0 !important; box-shadow: 0 0 0 2px rgba(89, 208, 224, 0.45); background: rgba(89, 208, 224, 0.14) !important; }",
+        "button.flash ha-icon { color: #59d0e0 !important; }"
       ].join("\n"));
       var grid = el("div", "grid" + (giant && this.config.states ? " states" : ""), this.shadowRoot);
       var cols = Number(this.config.columns) || (small ? 1 : 2);
@@ -2089,6 +2092,25 @@
         });
         return { t: t, b: b, ic: ic, sub: sub };
       });
+      // « Cuisine · éteinte » from Igor: the tile named so flashes.
+      this._acted = (ev) => {
+        var labels = (ev.detail && ev.detail.labels) || [];
+        var heads = labels.map((l) => String(l).split(" · ")[0].trim().toLowerCase());
+        this.tiles.forEach((x) => {
+          var st = this._hass && this._hass.states[x.t.entity];
+          var names = [String(x.t.name || "").toLowerCase(), st && st.attributes.friendly_name ? String(st.attributes.friendly_name).toLowerCase() : ""];
+          if (!heads.some((h) => h && names.indexOf(h) >= 0)) return;
+          x.b.classList.add("flash");
+          setTimeout(() => x.b.classList.remove("flash"), 2500);
+        });
+      };
+      window.addEventListener("igor-acted", this._acted);
+    }
+    disconnectedCallback() {
+      if (this._acted) window.removeEventListener("igor-acted", this._acted);
+      this._acted = null;
+      this._built = false;
+      this.shadowRoot.innerHTML = "";
     }
     update(hass, prev) {
       this.tiles.forEach((x) => {
@@ -2664,10 +2686,14 @@
         ".grid.over > div { pointer-events: auto; width: 270px; max-height: 60%; overflow-y: auto; background: rgba(7, 8, 10, 0.86); border: 1px solid var(--line); padding: 6px 9px; }",
         ".grid.over > div:empty { display: none; }",
         "svg.map { width: 100%; display: block; }",
-        ".land { fill: var(--track); stroke: var(--line); stroke-width: 0.15; }",
-        ".arc { fill: none; stroke: var(--acc); stroke-linecap: round; opacity: 0.75; }",
-        ".arc.flow { stroke-dasharray: 1.2 2.2; animation: igor-flow 1.6s linear infinite; }",
-        "@keyframes igor-flow { to { stroke-dashoffset: -3.4; } }",
+        ".land { fill: var(--track); stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }",
+        "svg.map { touch-action: none; cursor: grab; }",
+        ".zoom { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; z-index: 1; }",
+        ".zoom button { background: rgba(7, 8, 10, 0.86); border: 1px solid var(--line); color: var(--fg); font: inherit; font-size: 11px; border-radius: 3px; padding: 2px 8px; cursor: pointer; }",
+        ".zoom button.on { border-color: var(--acc); color: var(--acc); }",
+        ".arc { fill: none; stroke: var(--acc); stroke-linecap: round; opacity: 0.75; vector-effect: non-scaling-stroke; }",
+        ".arc.flow { stroke-dasharray: 4 7; vector-effect: non-scaling-stroke; animation: igor-flow 1.6s linear infinite; }",
+        "@keyframes igor-flow { to { stroke-dashoffset: -11; } }",
         ".dot { fill: var(--acc); cursor: pointer; }",
         ".dot.sel { fill: var(--wait); }",
         ".arc.sel { stroke: var(--wait); opacity: 1; }",
@@ -2695,6 +2721,39 @@
       this.big = !!this.config.big;
       var wrap = el("div", "wrap" + (this.big ? " bigw" : ""), card);
       this.svg = svgEl("svg", { class: "map", viewBox: "0 0 360 150", preserveAspectRatio: "xMidYMid meet" }, wrap);
+      // Zoom: the wheel, a drag to move, « − + », Europe and the world.
+      this.vb = { x: 0, y: 0, w: 360, h: 150 };
+      var zc = el("div", "zoom", wrap);
+      var zb = (t, fn) => { var b = el("button", "", zc, t); b.type = "button"; b.addEventListener("click", (ev) => { ev.stopPropagation(); fn(); }); return b; };
+      zb("−", () => this.zoomBy(1.5));
+      zb("+", () => this.zoomBy(1 / 1.5));
+      zb("Europe", () => this.setVB({ x: 166, y: 16, w: 58, h: 42 }));
+      zb("monde", () => this.setVB({ x: 0, y: 0, w: 360, h: 150 }));
+      this.svg.addEventListener("wheel", (ev) => {
+        ev.preventDefault();
+        var p = this.toMap(ev.clientX, ev.clientY);
+        this.zoomBy(Math.exp(ev.deltaY * 0.0015), p);
+      }, { passive: false });
+      this.svg.addEventListener("pointerdown", (ev) => {
+        this.pan = { x: ev.clientX, y: ev.clientY, vb: Object.assign({}, this.vb), moved: false };
+      });
+      this.svg.addEventListener("pointermove", (ev) => {
+        var g = this.pan;
+        if (!g) return;
+        var dx = ev.clientX - g.x, dy = ev.clientY - g.y;
+        if (!g.moved && Math.abs(dx) + Math.abs(dy) < 5) return;
+        if (!g.moved) { g.moved = true; try { this.svg.setPointerCapture(ev.pointerId); } catch (e) { /* fine */ } }
+        var r = this.svg.getBoundingClientRect();
+        var scale = Math.max(g.vb.w / r.width, g.vb.h / r.height);
+        this.setVB({ x: g.vb.x - dx * scale, y: g.vb.y - dy * scale, w: g.vb.w, h: g.vb.h }, true);
+      });
+      var endPan = (ev) => {
+        var g = this.pan; this.pan = null;
+        // A drag must not count as a tap on a country.
+        if (g && g.moved) { this.justPanned = true; setTimeout(() => { this.justPanned = false; }, 50); }
+      };
+      this.svg.addEventListener("pointerup", endPan);
+      this.svg.addEventListener("pointercancel", endPan);
       this.landG = svgEl("g", {}, this.svg);
       this.arcG = svgEl("g", {}, this.svg);
       this.dotG = svgEl("g", {}, this.svg);
@@ -2710,6 +2769,25 @@
       var every = Math.max(10, Math.min(600, Number(this.config.interval) || 30));
       this.timer = setInterval(() => this.load(), every * 1000);
       this.load();
+    }
+    toMap(cx, cy) {
+      var r = this.svg.getBoundingClientRect(), v = this.vb;
+      var scale = Math.max(v.w / r.width, v.h / r.height);
+      var ox = (r.width * scale - v.w) / 2, oy = (r.height * scale - v.h) / 2;
+      return { x: v.x - ox + (cx - r.left) * scale, y: v.y - oy + (cy - r.top) * scale };
+    }
+    zoomBy(f, at) {
+      var v = this.vb, c = at || { x: v.x + v.w / 2, y: v.y + v.h / 2 };
+      var w = Math.max(12, Math.min(360, v.w * f)), k = w / v.w;
+      this.setVB({ x: c.x - (c.x - v.x) * k, y: c.y - (c.y - v.y) * k, w: w, h: v.h * k });
+    }
+    setVB(v, quick) {
+      v.w = Math.min(360, v.w); v.h = Math.min(150, v.h);
+      v.x = Math.max(-v.w * 0.3, Math.min(360 - v.w * 0.7, v.x));
+      v.y = Math.max(-v.h * 0.3, Math.min(150 - v.h * 0.7, v.y));
+      this.vb = v;
+      this.svg.setAttribute("viewBox", [v.x, v.y, v.w, v.h].map((n) => n.toFixed(2)).join(" "));
+      if (!quick || !this.rafZoom) this.rafZoom = requestAnimationFrame(() => { this.rafZoom = 0; this.draw(); });
     }
     load() {
       var hass = this._hass;
@@ -2740,19 +2818,24 @@
       rows.slice().reverse().forEach((c) => {
         var p = this.w.c[c.cc];
         var dx = p[0] - h[0], dy = p[1] - h[1], dist = Math.sqrt(dx * dx + dy * dy);
-        var wgt = 0.25 + 1.3 * Math.sqrt(c.count / max);
+        var zs = this.vb ? this.vb.w / 360 : 1;
+        // Arcs in screen pixels (non-scaling strokes): as wide at any zoom.
+        var wgt = 1 + 3.2 * Math.sqrt(c.count / max);
         var sel = c.cc === this.sel ? " sel" : "";
         if (dist > 1.5) {
           // A curve bowed upwards, more for the far ones.
           var mx = (h[0] + p[0]) / 2, my = (h[1] + p[1]) / 2 - Math.min(30, dist * 0.35);
+          if (dist < 1.5 * zs) { mx = (h[0] + p[0]) / 2; }
           svgEl("path", { class: "arc" + (flow ? " flow" : "") + sel, d: "M" + h[0] + " " + h[1] + " Q" + mx + " " + my + " " + p[0] + " " + p[1], "stroke-width": wgt.toFixed(2) }, this.arcG);
         }
-        var dot = svgEl("circle", { class: "dot" + sel, cx: p[0], cy: p[1], r: (0.8 + 2.2 * Math.sqrt(c.count / max)).toFixed(2) }, this.dotG);
+        var dot = svgEl("circle", { class: "dot" + sel, cx: p[0], cy: p[1], r: ((0.8 + 2.2 * Math.sqrt(c.count / max)) * Math.max(zs, 0.15)).toFixed(3) }, this.dotG);
         svgEl("title", {}, dot).textContent = countryName(c.cc) + " · " + c.count;
-        dot.addEventListener("click", () => { this.sel = this.sel === c.cc ? "" : c.cc; this.draw(); });
+        dot.addEventListener("click", () => { if (this.justPanned) return; this.sel = this.sel === c.cc ? "" : c.cc; this.draw(); });
       });
-      svgEl("circle", { class: "home-ring", cx: h[0], cy: h[1], r: 2.4 }, this.dotG);
-      svgEl("circle", { class: "home", cx: h[0], cy: h[1], r: 0.9 }, this.dotG);
+      var hz = this.vb ? Math.max(this.vb.w / 360, 0.15) : 1;
+      var ring = svgEl("circle", { class: "home-ring", cx: h[0], cy: h[1], r: (2.4 * hz).toFixed(3) }, this.dotG);
+      ring.style.strokeWidth = (0.3 * hz).toFixed(3);
+      svgEl("circle", { class: "home", cx: h[0], cy: h[1], r: (0.9 * hz).toFixed(3) }, this.dotG);
       // The summary and the list.
       var tot = d.located || 0;
       this.sum.textContent = d.status === "ok" ? rows.length + " pays · " + tot + " réponses" + (d.blocked ? " · " + d.blocked + " bloquées" : "") : "";
@@ -2943,6 +3026,8 @@
       this.off = saved.hidden || {};
       this.showNet = saved.net !== false;
       this.showFlow = saved.flow !== false;
+      this.showBlocked = saved.blocked !== false;
+      this.matrix = false;
       this.view = { k: 1, x: 0, y: 0 };
       this.sel = "";
       this.q = "";
@@ -2968,6 +3053,20 @@
         ".topo.wan { stroke: var(--faint); stroke-dasharray: 3 3; }",
         ".flow { fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: 0.45; }",
         ".flow.dim, .pkt.dim, .nd.dim { opacity: 0.12; }",
+        ".refused { fill: none; stroke: #e5323b; stroke-dasharray: 5 5; stroke-linecap: round; opacity: 0.85; }",
+        ".refused.dim { opacity: 0.12; }",
+        ".badge { fill: #e5323b; font-size: 10px; }",
+        ".mat { position: absolute; inset: 0; overflow: auto; background: var(--bg); padding: 10px; box-sizing: border-box; }",
+        ".mat table { border-collapse: collapse; font-size: 11px; }",
+        ".mat th { color: var(--dim); font-weight: 400; padding: 4px 6px; white-space: nowrap; text-align: left; }",
+        ".mat th.v { writing-mode: vertical-rl; transform: rotate(180deg); text-align: left; height: 90px; }",
+        ".mat td { border: 1px solid var(--line); padding: 4px 6px; min-width: 64px; vertical-align: top; cursor: pointer; }",
+        ".mat td.self { background: #0e1013; cursor: default; }",
+        ".mat td.sel { outline: 2px solid var(--igor-signal, #e5323b); }",
+        ".mat .ok { color: #5cc28f; display: block; } .mat .ko { color: #e5323b; display: block; } .mat .sv { color: var(--dim); display: block; font-size: 10px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+        ".mat .hint { color: var(--dim); margin-top: 8px; }",
+        ".rule { display: grid; grid-template-columns: 6ch minmax(0, 1fr); gap: 6px; padding: 2px 0; border-bottom: 1px dashed var(--line); }",
+        ".rule .act { color: #5cc28f; } .rule .act.block, .rule .act.reject { color: #e5323b; } .rule.off { opacity: 0.45; }",
         ".flow.sel { opacity: 1; }",
         ".nd { cursor: pointer; }",
         ".nd circle.r { fill: var(--bg); stroke: var(--fg); stroke-width: 2; }",
@@ -3005,6 +3104,8 @@
       el("span", "sp", tool);
       this.netBtn = btn("internet", () => { this.showNet = !this.showNet; this.save(); this.relayout(); });
       this.flowBtn = btn("trafic", () => { this.showFlow = !this.showFlow; this.save(); this.draw(); });
+      this.blockBtn = btn("refusé", () => { this.showBlocked = !this.showBlocked; this.save(); this.draw(); });
+      this.matBtn = btn("matrice", () => { this.matrix = !this.matrix; this.draw(); });
       this.search = el("input", "", tool);
       this.search.placeholder = "⌕ appareil…";
       this.search.addEventListener("input", () => { this.q = this.search.value.trim().toLowerCase(); this.draw(); });
@@ -3036,7 +3137,7 @@
         this.frame = requestAnimationFrame(step);
       }
     }
-    save() { prefs(this.key, { mode: this.mode, pos: this.pos, hidden: this.off, net: this.showNet, flow: this.showFlow }); }
+    save() { prefs(this.key, { mode: this.mode, pos: this.pos, hidden: this.off, net: this.showNet, flow: this.showFlow, blocked: this.showBlocked }); }
     load() {
       var hass = this._hass;
       if (!hass || this.loading || document.hidden || this.dragging) return;
@@ -3112,13 +3213,17 @@
       }
       if (this.mode === "tree") {
         // A tree read left to right: OPNsense, its networks, their devices.
+        // The network's name above its hub, its gateway under it; a bus at
+        // `treeBus` takes each device's flow between the rows, never across
+        // a name.
         P.router = { x: m + 26, y: 44 };
-        var colw = 175, x0 = m + 270, per = Math.max(1, Math.floor((m + AW - x0) / colw)), y = 100;
+        var colw = 175, x0 = m + 270, per = Math.max(1, Math.floor((m + AW - x0) / colw)), y = 112;
+        this.treeBus = m + 250;
         vis.forEach((v) => {
           var list = M.devs[v];
-          hubs[v] = { x: m + 140, y: y };
-          list.forEach((dv, j) => { P[dv.id] = { x: x0 + (j % per) * colw, y: y + Math.floor(j / per) * 24 }; });
-          y += Math.max(1, Math.ceil(list.length / per)) * 24 + 22;
+          hubs[v] = { x: m + 70, y: y };
+          list.forEach((dv, j) => { P[dv.id] = { x: x0 + (j % per) * colw, y: y + Math.floor(j / per) * 26 }; });
+          y += Math.max(1, Math.ceil(list.length / per)) * 26 + 34;
         });
       } else {
         P.router = { x: m + AW / 2, y: 44 };
@@ -3257,6 +3362,8 @@
       Object.keys(this.modeBtns).forEach((k) => this.modeBtns[k].classList.toggle("on", this.mode === k));
       this.netBtn.classList.toggle("on", this.showNet);
       this.flowBtn.classList.toggle("on", this.showFlow);
+      this.blockBtn.classList.toggle("on", this.showBlocked);
+      this.matBtn.classList.toggle("on", this.matrix);
     }
     renderChips() {
       this.chips.innerHTML = "";
@@ -3286,9 +3393,13 @@
         var an = this.vlanAnchor(v);
         if (!an) return [p];
         // In a tree, between the rows (not through the names), then down the trunk.
-        if (this.mode === "tree") return [p, { x: p.x - 11, y: p.y }, { x: p.x - 11, y: p.y - 12 }, { x: an.x + 30, y: p.y - 12 }, { x: an.x + 30, y: an.y }, an];
-        // In the gap left of the block, then up to the bus under OPNsense.
-        return [p, { x: an.x, y: p.y }, { x: an.x, y: this.busY }];
+        if (this.mode === "tree") {
+          var bus = this.treeBus;
+          return [p, { x: p.x - 13, y: p.y }, { x: p.x - 13, y: p.y - 13 }, { x: bus, y: p.y - 13 }, { x: bus, y: an.y }, { x: an.x + 12, y: an.y }];
+        }
+        // Up into the gap above the row, along it to the block's edge (never
+        // across a name), then up to the bus under OPNsense.
+        return [p, { x: p.x - 13, y: p.y }, { x: p.x - 13, y: p.y - 12 }, { x: an.x, y: p.y - 12 }, { x: an.x, y: this.busY }];
       };
       var A = leg(a, va), Bp = leg(b, vb).reverse();
       // OPNsense: reached straight down from it in a tree, by the top otherwise.
@@ -3314,7 +3425,9 @@
       var gBlk = svgEl("g", {}, this.vp), gTopo = svgEl("g", {}, this.vp), gFlow = svgEl("g", {}, this.vp),
         gPkt = svgEl("g", {}, this.vp), gNode = svgEl("g", {}, this.vp);
       var P = this.P, sel = this.sel, selV = sel.indexOf("vlan:") === 0 ? sel.slice(5) : "";
+      var pair = sel.indexOf("pair:") === 0 ? sel.slice(5).split("→") : null;
       var involved = (e) => !sel || e.a === sel || e.b === sel || (selV && (this.vlanOf(e.a) === selV || this.vlanOf(e.b) === selV)) ||
+        (pair && this.vlanOf(e.a) === pair[0] && this.vlanOf(e.b) === pair[1]) ||
         (sel === "router") || (sel === "net:hub" && (this.vlanOf(e.a) === "internet" || this.vlanOf(e.b) === "internet"));
       var vis = M.vlans.filter((v) => !this.off[v]);
       // Blocks (or hubs) and their links to OPNsense.
@@ -3329,11 +3442,13 @@
           if (!h) return;
           var g = svgEl("g", { class: "nd blk" + (selV === v ? " sel" : ""), "data-vlan": v, transform: "translate(" + h.x.toFixed(1) + " " + h.y.toFixed(1) + ")" }, gNode);
           svgEl("circle", { r: 11, fill: c + "33", stroke: c, "stroke-width": 2 }, g);
-          var t = svgEl("text", { x: 16, y: -2, class: "hl" }, g); t.textContent = v; t.style.fill = c;
-          var t2 = svgEl("text", { x: 16, y: 11 }, g); t2.textContent = (M.gw[v] || "") + " · " + M.devs[v].length;
+          var t = svgEl("text", { x: 16, y: -9, class: "hl" }, g); t.textContent = v; t.style.fill = c;
+          var t2 = svgEl("text", { x: 16, y: 19 }, g); t2.textContent = (M.gw[v] || "") + " · " + M.devs[v].length;
+          var bus = this.treeBus;
           M.devs[v].forEach((dv) => {
             var p = P[dv.id];
-            if (p) svgEl("path", { class: "topo", d: "M" + (h.x + 30).toFixed(1) + " " + h.y.toFixed(1) + " L" + (h.x + 30).toFixed(1) + " " + p.y.toFixed(1) + " L" + (p.x - 7).toFixed(1) + " " + p.y.toFixed(1) }, gTopo);
+            if (p) svgEl("path", { class: "topo", d: "M" + (h.x + 12).toFixed(1) + " " + h.y.toFixed(1) + " L" + bus + " " + h.y.toFixed(1) +
+              " L" + bus + " " + (p.y - 13).toFixed(1) + " L" + (p.x - 13).toFixed(1) + " " + (p.y - 13).toFixed(1) + " L" + (p.x - 13).toFixed(1) + " " + p.y.toFixed(1) + " L" + (p.x - 7).toFixed(1) + " " + p.y.toFixed(1) }, gTopo);
           });
           return;
         }
@@ -3373,6 +3488,26 @@
           }
         });
       }
+      // What the firewall refused: red dashes, the same way through OPNsense.
+      var refused = (d.blocked || []).filter((e) => this.shown(e.a) && this.shown(e.b) && P[e.a] && P[e.b]);
+      if (this.showBlocked) {
+        refused.forEach((e) => {
+          var dp = this.flowPath(e);
+          if (!dp) return;
+          var on = involved(e);
+          svgEl("path", { class: "refused" + (on ? "" : " dim"), d: dp, "stroke-width": (1 + Math.min(2.5, Math.log10(1 + e.count))).toFixed(2) }, gFlow);
+        });
+      }
+      // Each block's refused count, in its header.
+      if (this.mode !== "tree") {
+        var nb = {};
+        refused.forEach((e) => { [e.a, e.b].forEach((id) => { var v = this.vlanOf(id); if (this.B[v]) nb[v] = (nb[v] || 0) + e.count; }); });
+        Object.keys(nb).forEach((v) => {
+          var b = this.B[v];
+          var t = svgEl("text", { class: "badge", x: b.x + b.w - 8, y: b.y + b.h - 6, "text-anchor": "end" }, gBlk);
+          t.textContent = "refusé ×" + nb[v];
+        });
+      }
       // Nodes.
       var q = this.q;
       var node = (id, cls, draw) => {
@@ -3380,7 +3515,7 @@
         if (!p) return;
         var n = M.byId[id] || {};
         var hit = q && id !== "router" && (this.label(n).toLowerCase().indexOf(q) >= 0 || (n.ip || "").indexOf(q) >= 0);
-        var dim = sel && sel !== id && !(selV && this.vlanOf(id) === selV) && sel !== "router" &&
+        var dim = sel && sel !== id && !(selV && this.vlanOf(id) === selV) && sel !== "router" && !(pair && pair.indexOf(this.vlanOf(id)) >= 0) &&
           !M.edges.some((e) => (e.a === sel && e.b === id) || (e.b === sel && e.a === id));
         var g = svgEl("g", { class: "nd " + cls + (sel === id ? " sel" : "") + (hit ? " hit" : "") + (dim ? " dim" : ""), "data-id": id, transform: "translate(" + p.x.toFixed(1) + " " + p.y.toFixed(1) + ")" }, gNode);
         draw(g, n);
@@ -3404,10 +3539,62 @@
         t.textContent = name.length > 24 ? name.slice(0, 23) + "…" : name;
         if (name === n.ip) t.style.fill = "var(--faint)";
       })));
+      // The networks against each other: what passes, what is refused.
+      if (this.matEl) { this.matEl.remove(); this.matEl = null; }
+      if (this.matrix) this.drawMatrix(edges, d.blocked || []);
       // The summary and the side.
       var nd = vis.reduce((s, v) => s + M.devs[v].length, 0);
       this.sum.textContent = nd + " appareils · " + vis.length + " réseaux · " + (d.states || 0) + " connexions";
       this.detail(edges);
+    }
+    pairs(edges, refused) {
+      var P = {};
+      var get = (a, b) => { var k = a + "→" + b; return P[k] || (P[k] = { a: a, b: b, bytes: 0, ports: {}, refused: 0, rules: {}, flows: [], ko: [] }); };
+      edges.forEach((e) => {
+        var va = this.vlanOf(e.a), vb = this.vlanOf(e.b);
+        if (va === vb) return;
+        var x = get(va, vb); x.bytes += e.bytes; (e.ports || []).forEach((p) => { x.ports[p] = 1; }); x.flows.push(e);
+      });
+      refused.forEach((e) => {
+        var va = this.vlanOf(e.a), vb = this.vlanOf(e.b);
+        var x = get(va || "?", vb || "?"); x.refused += e.count; (e.rules || []).forEach((r) => { x.rules[r] = 1; }); x.ko.push(e);
+      });
+      return P;
+    }
+    drawMatrix(edges, refused) {
+      var M = this.M, P = this.pairs(edges, refused);
+      var names = M.vlans.filter((v) => !this.off[v]).concat(["router", "internet"]);
+      var label = (v) => (v === "router" ? "OPNsense" : v);
+      var box = el("div", "mat", this.stage);
+      this.matEl = box;
+      var t = el("table", "", box), hr = el("tr", "", t);
+      el("th", "", hr, "de ↓ · vers →");
+      names.forEach((v) => { var th = el("th", "v", hr, label(v)); th.style.color = M.color[v] || ""; });
+      names.forEach((a) => {
+        var tr = el("tr", "", t);
+        var th = el("th", "", tr, label(a)); th.style.color = M.color[a] || "";
+        names.forEach((b) => {
+          var td = el("td", a === b ? "self" : "", tr);
+          if (a === b) return;
+          var x = P[a + "→" + b];
+          if (this.sel === "pair:" + a + "→" + b) td.classList.add("sel");
+          if (x && x.bytes) { el("span", "ok", td, human(x.bytes)); el("span", "sv", td, Object.keys(x.ports).slice(0, 3).join(", ")); }
+          if (x && x.refused) el("span", "ko", td, "refusé ×" + x.refused);
+          td.addEventListener("click", () => { this.sel = "pair:" + a + "→" + b; this.draw(); });
+        });
+      });
+      el("div", "hint", box, "vert : ce qui passe (volume, services) · rouge : ce que le pare-feu a refusé · un appui : le détail");
+    }
+    rulesFor(v) {
+      var key = String(v || "").toLowerCase();
+      return (this.M.d.rules || []).filter((r) => [r.iface, r.src, r.dst, r.descr].some((x) => String(x || "").toLowerCase().indexOf(key) >= 0));
+    }
+    ruleRows(parent, list) {
+      list.slice(0, 20).forEach((r) => {
+        var row = el("div", "rule" + (r.enabled ? "" : " off"), parent);
+        el("span", "act " + r.action, row, r.action === "pass" ? "passe" : r.action === "block" ? "bloque" : r.action);
+        el("span", "v", row, (r.descr ? r.descr + " · " : "") + r.src + " → " + r.dst + (r.port ? ":" + r.port : "") + (r.proto && r.proto !== "any" ? " " + r.proto : ""));
+      });
     }
     // Traffic per network: what leaves it and what comes in, to anywhere else.
     perVlan(edges) {
@@ -3432,6 +3619,22 @@
       var M = this.M, s = this.side, sel = this.sel;
       var go = (id) => () => { this.sel = id; this.draw(); };
       var dotted = (v, text) => { var f = document.createDocumentFragment(); var dt = el("span", "dot", f); dt.style.background = M.color[v] || "var(--faint)"; f.appendChild(document.createTextNode(text)); return f; };
+      var refused = M.d.blocked || [];
+      var koRow = (e) => this.row(s, this.label(M.byId[e.a] || { id: e.a }) + " → " + this.label(M.byId[e.b] || { id: e.b }) + (e.ports.length ? " · " + e.ports.join(", ") : "") + (e.rules && e.rules.length ? " · " + e.rules[0] : ""), "×" + e.count);
+      if (sel.indexOf("pair:") === 0) {
+        var ab = sel.slice(5).split("→"), lab = (v) => (v === "router" ? "OPNsense" : v);
+        el("div", "big", s, lab(ab[0]) + " → " + lab(ab[1]));
+        var x = this.pairs(edges, refused)[ab[0] + "→" + ab[1]];
+        el("div", "h", s, "ce qui passe");
+        if (!x || !x.flows.length) el("div", "sub", s, "rien vu passer");
+        (x ? x.flows : []).sort((p, q) => q.bytes - p.bytes).slice(0, 15).forEach((e) => this.row(s, this.label(M.byId[e.a]) + " → " + this.label(M.byId[e.b]) + (e.ports.length ? " · " + e.ports.join(", ") : ""), human(e.bytes)));
+        el("div", "h", s, "refusé par le pare-feu");
+        if (!x || !x.ko.length) el("div", "sub", s, "rien de refusé");
+        (x ? x.ko : []).forEach(koRow);
+        var rl = this.rulesFor(ab[0]).concat(this.rulesFor(ab[1]).filter((r) => this.rulesFor(ab[0]).indexOf(r) < 0));
+        if (rl.length) { el("div", "h", s, "règles concernées"); this.ruleRows(s, rl); }
+        return;
+      }
       if (!sel || sel === "router") {
         el("div", "big", s, "OPNsense");
         el("div", "h", s, "par réseau · trafic vers les autres");
@@ -3454,6 +3657,11 @@
         var keys = Object.keys(pairs).sort((a, b) => pairs[b].bytes - pairs[a].bytes).slice(0, 14);
         if (keys.length) el("div", "h", s, "entre réseaux");
         keys.forEach((k) => this.row(s, k.replace("router", "OPNsense") + " · " + Object.keys(pairs[k].ports).slice(0, 3).join(", "), human(pairs[k].bytes)));
+        if (refused.length) {
+          el("div", "h", s, "refusé par le pare-feu (journal)");
+          refused.slice(0, 12).forEach(koRow);
+        }
+        if ((M.d.rules || []).length) el("div", "sub", s, (M.d.rules || []).length + " règles lues · « matrice » pour les croiser");
         var unnamed = Object.values(M.byId).filter((n) => n.kind === "device" && this.label(n) === n.ip);
         var notes = (M.d.notes || []).slice();
         if (unnamed.length) notes.push(unnamed.length + " appareil" + (unnamed.length > 1 ? "s" : "") + " sans nom (names: dans le bloc nives:)");
@@ -3471,6 +3679,10 @@
         var out = edges.filter((e) => this.vlanOf(e.a) === v && this.vlanOf(e.b) !== v).sort((a, b) => b.bytes - a.bytes).slice(0, 12);
         if (out.length) el("div", "h", s, "vers les autres réseaux");
         out.forEach((e) => this.row(s, this.label(M.byId[e.a]) + " → " + this.label(M.byId[e.b]) + (e.ports.length ? " · " + e.ports.join(", ") : ""), human(e.bytes)));
+        var ko = refused.filter((e) => this.vlanOf(e.a) === v || this.vlanOf(e.b) === v);
+        if (ko.length) { el("div", "h", s, "refusé par le pare-feu"); ko.slice(0, 12).forEach(koRow); }
+        var rl2 = this.rulesFor(v);
+        if (rl2.length) { el("div", "h", s, "règles"); this.ruleRows(s, rl2); }
         return;
       }
       var n = M.byId[sel];
@@ -3495,6 +3707,8 @@
       var mine = edges.filter((e) => e.a === n.id || e.b === n.id).sort((a, b) => b.bytes - a.bytes);
       el("div", "h", s, "connexions");
       if (!mine.length) el("div", "sub", s, "aucune à travers le routeur");
+      var myko = refused.filter((e) => e.a === n.id || e.b === n.id);
+      if (myko.length) { el("div", "h", s, "refusé par le pare-feu"); myko.forEach(koRow); el("div", "h", s, "connexions"); }
       mine.forEach((e) => {
         var other = e.a === n.id ? e.b : e.a;
         this.row(s, (e.a === n.id ? "→ " : "← ") + this.label(M.byId[other]) + (e.ports.length ? " · " + e.ports.join(", ") : ""), human(e.bytes), go(other));
@@ -3997,16 +4211,17 @@
     window.location.reload();
   }, 3500);
 
-  // ===== a « mur » button on every other page =====
-  // With the tablet theme the bar and the sidebar are hidden: on any other
-  // page (energy, history, lists, Igor's panel, another dashboard) a small
-  // button in the bottom left corner goes back to the wall.
+  // ===== a « mur » button on every other page (only when asked) =====
+  // Off by default: it floated over the screen. A theme (or a device) that
+  // wants it sets igor-back-button: "1"; the wall's tabs and Home
+  // Assistant's own back arrow do the job otherwise.
   var backBtn = null;
   setInterval(function () {
     var v = getComputedStyle(document.documentElement).getPropertyValue("--igor-hide-header").trim().replace(/["']/g, "");
     var home = null;
     try { home = window.localStorage.getItem("igor-wall-home"); } catch (e) { home = null; }
-    var want = (v === "1" || v === "true") && home && window.location.pathname !== home && !/[?&]edit=/.test(window.location.search);
+    var asked = getComputedStyle(document.documentElement).getPropertyValue("--igor-back-button").trim().replace(/["']/g, "");
+    var want = (asked === "1" || asked === "true") && (v === "1" || v === "true") && home && window.location.pathname !== home && !/[?&]edit=/.test(window.location.search);
     if (want && !backBtn) {
       backBtn = document.createElement("button");
       backBtn.type = "button";

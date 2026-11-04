@@ -123,8 +123,40 @@
     ".log .ear { color: #5cc28f; font-size: clamp(12px, 1.4vw, 15px); }",
     ".log .ear::before { content: '● '; }",
     ".log .say.a .t { border-left: 2px solid #6cc4f5; padding-left: 12px; }",
+    // ----- the live turn: a sheet over the lower half, the switches dimmed behind -----
+    ".dim { position: fixed; inset: 0; z-index: 2147482999; background: rgba(0, 0, 0, 0.62); opacity: 0; transition: opacity 0.25s ease; pointer-events: none; }",
+    ".dim.on { opacity: 1; pointer-events: auto; }",
+    ".sheet { position: fixed; left: 0; right: 0; bottom: 0; height: 56vh; z-index: 2147483000; box-sizing: border-box; background: #0b0d10; border-top: 1px solid #22262c;",
+    "  color: #e9e4da; font-family: " + MONO + "; display: flex; flex-direction: column; gap: 2vh; padding: 2.4vh 4vw 2vh; transform: translateY(102%); transition: transform 0.3s ease; }",
+    ".sheet.on { transform: none; }",
+    ".sh { display: flex; justify-content: space-between; align-items: center; color: #878c95; font-size: clamp(11px, 1.4vw, 14px); letter-spacing: 0.12em; text-transform: uppercase; flex: none; }",
+    ".sh .st { display: flex; align-items: center; gap: 12px; }",
+    ".sh svg { width: clamp(26px, 3.6vw, 38px); height: clamp(26px, 3.6vw, 38px); display: block; }",
+    ".sh .ring { transform-origin: 128px 96px; }",
+    ".sheet[data-p=listening] .ring { stroke: #59d0e0; animation: pulse 1.2s ease-in-out infinite; } .sheet[data-p=listening] .pupil { fill: #59d0e0; }",
+    ".sheet[data-p=words] .ring, .sheet[data-p=thinking] .ring { stroke: #e0a33a; } .sheet[data-p=words] .pupil, .sheet[data-p=thinking] .pupil { fill: #e0a33a; }",
+    ".sheet[data-p=thinking] .ring { animation: pulse 0.8s ease-in-out infinite; }",
+    ".sheet[data-p=answer] .ring { stroke: #e9e4da; } .sheet[data-p=answer] .pupil { fill: #e9e4da; }",
+    ".sheet[data-p=nothing] .ring, .sheet[data-p=nothing] .pupil { stroke: #878c95; fill: #878c95; } .sheet[data-p=nothing] .ring { fill: #07080a; }",
+    ".sq { font-size: clamp(20px, 3.2vw, 36px); line-height: 1.3; color: #e9e4da; overflow-wrap: anywhere; max-height: 22vh; overflow: hidden; }",
+    ".sq.small { font-size: clamp(14px, 1.8vw, 19px); color: #878c95; }",
+    ".sheet[data-p=nothing] .sq { color: #878c95; }",
+    ".sa { font-size: clamp(18px, 2.7vw, 30px); line-height: 1.35; color: #59d0e0; overflow-wrap: anywhere; max-height: 20vh; overflow: hidden; }",
+    ".sheet[data-p=error] .sa { color: #e5323b; }",
+    ".ssteps { display: flex; flex-wrap: wrap; gap: 8px; font-size: clamp(11px, 1.3vw, 14px); }",
+    ".ssteps span { border: 1px solid #22262c; border-radius: 99px; padding: 2px 10px; color: #878c95; }",
+    ".ssteps .local { color: #5cc28f; border-color: rgba(92, 194, 143, 0.4); } .ssteps .online { color: #e0a33a; border-color: rgba(224, 163, 58, 0.4); }",
+    ".schips { display: flex; flex-wrap: wrap; gap: 8px; }",
+    ".schips span { border: 1px solid #59d0e0; color: #59d0e0; border-radius: 3px; padding: 3px 12px; font-size: clamp(13px, 1.6vw, 17px); }",
+    ".schips span.fail { border-color: #e5323b; color: #e5323b; }",
+    ".sprog { height: 2px; background: #22262c; flex: none; visibility: hidden; } .sprog i { display: block; height: 100%; background: #878c95; width: 100%; }",
+    ".sprog.run { visibility: visible; } .sprog.run i { transition: width 6s linear; width: 0; }",
+    ".sf { margin-top: auto; display: flex; justify-content: space-between; color: #3d454e; font-size: clamp(11px, 1.3vw, 13px); flex: none; }",
+    ".sf button { background: none; border: 0; color: #878c95; font: inherit; cursor: pointer; padding: 0; }",
+    ".scur { display: inline-block; width: 0.5em; height: 1em; background: #59d0e0; vertical-align: -0.12em; animation: blink 1s steps(1) infinite; }",
+    "@keyframes pulse { 50% { transform: scale(1.18); } }",
     "@keyframes blink { 50% { opacity: 0; } }",
-    "@media (prefers-reduced-motion: reduce) { .cur { animation: none; } .veil { transition: none; } }"
+    "@media (prefers-reduced-motion: reduce) { .cur, .scur, .sh .ring { animation: none !important; } .veil, .sheet, .dim { transition: none; } }"
   ].join("\n");
 
   function elapsed(ms) {
@@ -136,6 +168,7 @@
   function seconds(ms) { return (ms / 1000).toFixed(1).replace(".", ",") + " s"; }
 
   var host, veil, stateEl, closeEl, logEl, histEl, earEl, qEl, traceEl, doneEl, aEl;
+  var dimEl, sheet, sStateEl, sQEl, sStepsEl, sAEl, sChipsEl, sProgEl, sFootEl;
   function el(tag, cls, parent) { var d = document.createElement(tag); if (cls) d.className = cls; if (parent) parent.appendChild(d); return d; }
   function build() {
     host = document.createElement("igor-tablet");
@@ -161,6 +194,28 @@
     el("div", "hint", veil).textContent = "toucher pour fermer";
     veil.addEventListener("click", function () { if (veil.dataset.mode === "history") return; dismissed = view.turnKey; hide(); });
     root.appendChild(veil);
+    // The live turn: the sheet over the lower half, its dimmer above the switches.
+    dimEl = el("div", "dim", root);
+    dimEl.addEventListener("click", function () { closeTurn(); });
+    sheet = el("div", "sheet", root);
+    sheet.setAttribute("role", "status");
+    sheet.setAttribute("aria-live", "polite");
+    var sh = el("div", "sh", sheet);
+    var sst = el("span", "st", sh);
+    sst.innerHTML = '<svg viewBox="0 0 256 256" aria-hidden="true"><rect x="107" y="20" width="44" height="216" fill="#e9e4da"/><circle class="ring" cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle class="pupil" cx="128" cy="96" r="16" fill="#e5323b"/></svg>';
+    sStateEl = el("span", "", sst);
+    el("span", "", sh).textContent = "toucher dehors : fermer";
+    sQEl = el("div", "sq", sheet);
+    sStepsEl = el("div", "ssteps", sheet);
+    sAEl = el("div", "sa", sheet);
+    sChipsEl = el("div", "schips", sheet);
+    sProgEl = el("div", "sprog", sheet); el("i", "", sProgEl);
+    var sf = el("div", "sf", sheet);
+    sFootEl = el("span", "", sf);
+    var hb = el("button", "", sf); hb.type = "button"; hb.textContent = "historique ›";
+    hb.addEventListener("click", function (ev) { ev.stopPropagation(); closeTurn(); openHistory(); });
+    // A touch on the sheet keeps it up (the countdown stops).
+    sheet.addEventListener("click", function () { T.pinned = true; stopCountdown(); sFootEl.textContent = "gardé ouvert · toucher dehors pour fermer"; });
     document.body.appendChild(host);
   }
 
@@ -430,6 +485,116 @@
     return best;
   }
 
+  // ----- the live turn: one sequence, each step with a limit -----
+  // Igor's turn (its number, from the Igor sensor) is the one reference; the
+  // satellite only opens the sheet at once (it listens) and says when Igor
+  // has finished speaking. Every step has a limit, so nothing stays on
+  // screen: 12 s listening with nothing heard, 20 s for the words to arrive,
+  // 45 s of thinking (« Igor met du temps… ») then 90 s, 6 s after the
+  // answer was spoken (a touch on the sheet keeps it), 3 s for « nothing
+  // heard » or an error.
+  var LIMIT = { listening: 12000, words: 20000, slow: 45000, thinking: 90000, done: 6000, brief: 3000 };
+  var T = { key: "", phase: "", since: 0, closedKey: "", pinned: false, countdown: null, flashed: "" };
+  function stopCountdown() {
+    if (T.countdown) { clearTimeout(T.countdown); T.countdown = null; }
+    if (sProgEl) sProgEl.classList.remove("run");
+  }
+  function openSheet() {
+    if (!host) build();
+    if (veil && veil.dataset.mode === "history") return;
+    dimEl.classList.add("on");
+    sheet.classList.add("on");
+  }
+  function closeSheet() {
+    stopCountdown();
+    if (dimEl) dimEl.classList.remove("on");
+    if (sheet) sheet.classList.remove("on");
+    T.phase = "";
+    T.pinned = false;
+  }
+  // Closed by hand (or by its limit): this turn stays closed.
+  function closeTurn() { T.closedKey = T.key || "closed"; closeSheet(); }
+  function enter(phase) {
+    if (T.phase === phase) return;
+    T.phase = phase;
+    T.since = Date.now();
+    stopCountdown();
+    openSheet();
+    sheet.dataset.p = phase;
+  }
+  function closeIn(ms) {
+    if (T.countdown || T.pinned) return;
+    sProgEl.classList.remove("run");
+    sProgEl.style.setProperty("--d", ms + "ms");
+    sProgEl.firstChild.style.transitionDuration = ms + "ms";
+    void sProgEl.offsetWidth;
+    sProgEl.classList.add("run");
+    sFootEl.textContent = "se range dans " + Math.round(ms / 1000) + " s · toucher pour garder";
+    T.countdown = setTimeout(function () { T.countdown = null; closeTurn(); }, ms);
+  }
+  function text(node, value) { if (node.textContent !== value) node.textContent = value; }
+  function steps(list) {
+    var key = JSON.stringify(list || []);
+    if (sStepsEl.dataset.k === key) return;
+    sStepsEl.dataset.k = key;
+    sStepsEl.innerHTML = "";
+    (list || []).forEach(function (st) {
+      if (typeof st.ms !== "number" && !st.detail) return;
+      var where = st.where === "local" ? "local" : st.where === "online" ? "online" : "";
+      var label = (STEP[st.step] || [st.step])[0] + (where ? " · " + (where === "local" ? "local" : "en ligne") : "") + (typeof st.ms === "number" ? " " + seconds(st.ms) : "…");
+      el("span", where, sStepsEl).textContent = label;
+    });
+  }
+  function chips(list, failed) {
+    var key = JSON.stringify([list, failed]);
+    if (sChipsEl.dataset.k === key) return;
+    sChipsEl.dataset.k = key;
+    sChipsEl.innerHTML = "";
+    (list || []).forEach(function (c) { el("span", "", sChipsEl).textContent = niceLabel(c.label || c); });
+    (failed || []).forEach(function (c) { el("span", "fail", sChipsEl).textContent = niceLabel(c); });
+  }
+  // What Igor switched lights up on the dashboard behind (igor-tiles-card).
+  function flash(actions, key) {
+    if (!actions || !actions.length || T.flashed === key) return;
+    T.flashed = key;
+    try { window.dispatchEvent(new CustomEvent("igor-acted", { detail: { labels: actions.map(function (c) { return niceLabel(c.label || c); }) } })); } catch (e) { /* nothing behind */ }
+  }
+  function render(attrs, sensorState) {
+    var p = T.phase, q = attrs.question || "";
+    if (p === "listening") {
+      text(sStateEl, "je vous écoute");
+      if (!sQEl.querySelector(".scur")) { sQEl.className = "sq"; sQEl.textContent = ""; el("span", "scur", sQEl); }
+      text(sAEl, ""); steps([]); chips([], []);
+      text(sFootEl, "");
+    } else if (p === "words" || p === "thinking") {
+      sQEl.className = "sq";
+      if (q) text(sQEl, "« " + q + " »");
+      else if (!sQEl.querySelector(".scur")) { sQEl.textContent = ""; el("span", "scur", sQEl); }
+      var age = Date.now() - T.since;
+      text(sStateEl, p === "words" ? "vos mots" : age > LIMIT.slow ? "Igor met du temps…" : (attrs.status ? String(attrs.status).replace(/…$/, "").toLowerCase() : "réflexion") + " · " + elapsed(age));
+      steps(attrs.trace || []);
+      text(sAEl, ""); chips([], []);
+    } else if (p === "answer" || p === "done") {
+      sQEl.className = "sq small";
+      text(sQEl, q ? "« " + q + " »" : "");
+      text(sStateEl, p === "done" ? "terminé" : "réponse");
+      steps(attrs.trace || []);
+      text(sAEl, attrs.answer || "");
+      chips(attrs.actions || [], failedSteps(attrs.trace));
+    } else if (p === "nothing") {
+      sQEl.className = "sq";
+      text(sStateEl, "sans suite");
+      text(sQEl, "Je n'ai rien entendu.");
+      text(sAEl, ""); steps([]); chips([], []);
+    } else if (p === "error") {
+      sQEl.className = "sq small";
+      text(sStateEl, "erreur");
+      text(sQEl, q ? "« " + q + " »" : "");
+      text(sAEl, attrs.answer || "Je n'ai pas pu répondre.");
+      steps(attrs.trace || []); chips([], failedSteps(attrs.trace));
+    }
+  }
+
   function update() {
     var hass = hassObj();
     if (!hass || !hass.states) return;
@@ -438,127 +603,83 @@
     var sat = satelliteState(states, onlySatellite);
     var attrs = sensor ? sensor.attributes : {};
     var sensorState = sensor ? sensor.state : "idle";
-    // A tablet tied to one satellite still shows a turn whose satellite is
-    // unknown (a request that reached Igor without its device: the sensor
-    // then says « None »), or the name heard on its satellite stays alone.
+    // A tablet tied to one satellite still follows a turn whose satellite is
+    // unknown (« None »): the turn number decides, not the device.
     var fromWanted = !onlySatellite || !attrs.satellite || attrs.satellite === onlySatellite;
-    var turnKey = String(attrs.turn || "") + "|" + (attrs.started || "");
-    var live = fromWanted && (sensorState === "thinking" || sensorState === "answering");
+    var key = String(attrs.turn || "") + "|" + (attrs.started || "");
+    var age = attrs.started ? Date.now() - Date.parse(attrs.started) : Infinity;
+    var active = fromWanted && age < 120000 && ["heard", "thinking", "answering", "done", "error"].indexOf(sensorState) >= 0;
+    var live = active && (sensorState === "thinking" || sensorState === "answering");
     if (veil && veil.dataset.mode === "history") {
       // A new request takes the screen back from the history.
-      var heardNow = fromWanted && sensorState === "heard" && attrs.started && Date.now() - Date.parse(attrs.started) < 15000;
-      if (sat !== "listening" && !live && !heardNow) return;
+      if (sat !== "listening" && !live && !(active && sensorState === "heard" && age < 15000)) return;
       veil.dataset.mode = "";
       closeEl.hidden = true;
+      hide();
     }
-
-    if (sat === "listening") {
-      if (view.phase !== "listening") {
-        dismissed = null;
-        // A follow-up (the mic reopening right after Igor's question) keeps the
-        // exchange in view; a new request starts clean.
-        if (view.phase !== "done") clearTalk();
-        view.phase = "listening";
-        show();
-        veil.dataset.phase = "listening";
-        setState("écoute", false);
+    // A new turn of Igor's: adopted, unless closed by hand.
+    // A finished turn is adopted only while the sheet waits for it, or when
+    // it is brand new (a quick answer between two looks), not on page load.
+    if (active && key !== T.key && key !== T.closedKey) {
+      var finished = sensorState === "done" || sensorState === "error";
+      if (!finished || T.phase || age < 15000) {
+        T.key = key; T.pinned = false; T.flashed = "";
+        if (T.phase !== "listening" && T.phase !== "words") T.phase = "";
+      }
+    }
+    var mine = active && key === T.key;
+    // The satellite listens: the sheet opens at once (a follow-up keeps the
+    // exchange: the answer stays until new words come).
+    if (sat === "listening" && !(mine && live)) {
+      if (T.phase !== "listening") {
+        // New words coming: the exchange on screen (or just closed) is over,
+        // it must not come back when the satellite stops listening.
+        if (T.key) T.closedKey = T.key;
+        T.key = ""; T.pinned = false;
+        enter("listening"); render(attrs, sensorState);
+      }
+      if (Date.now() - T.since > LIMIT.listening + 18000) { enter("nothing"); render(attrs, sensorState); closeIn(LIMIT.brief); }
+      return;
+    }
+    if (T.key && T.key === T.closedKey && !(sat === "listening")) return;
+    var want = "";
+    if (mine) {
+      if (sensorState === "heard") want = attrs.question ? "words" : "listening";
+      else if (sensorState === "thinking") want = attrs.question ? "thinking" : "words";
+      else if (sensorState === "answering") want = "answer";
+      else if (sensorState === "done") want = sat === "responding" ? "answer" : "done";
+      else if (sensorState === "error") want = "error";
+    } else if (sat === "processing" && T.phase) {
+      want = "words";
+    } else if (sat === "responding" && (T.phase === "answer" || T.phase === "done")) {
+      want = "answer";
+    }
+    if (!want) {
+      // Woken, then nothing reached Igor: say so briefly, never stay.
+      if (T.phase === "listening" || T.phase === "words") {
+        if (Date.now() - T.since > 2500) { enter("nothing"); render(attrs, sensorState); closeIn(LIMIT.brief); }
+      } else if (T.phase === "answer") {
+        enter("done"); render(attrs, sensorState); closeIn(LIMIT.done);
       }
       return;
     }
-    // Igor heard its name (igor-ear, no wake word): shown at once, before
-    // the words reach Igor a few seconds later.
-    var heardAge = attrs.started ? Date.now() - Date.parse(attrs.started) : Infinity;
-    var heardFresh = heardAge < 120000;
-    if (fromWanted && sensorState === "heard" && heardFresh) {
-      if (dismissed === turnKey) return;
-      // The name heard, then nothing reached Igor (a sentence not for it, a
-      // satellite busy, the words lost): say so and leave, rather than hold
-      // an empty « transcription » on screen for two minutes.
-      var waitingNow = attrs.status === "listening";
-      if (heardAge > (waitingNow ? 30000 : 15000)) {
-        if (view.turnKey === turnKey && view.phase !== "gone") {
-          view.phase = "gone";
-          setSay("q", "rien reçu", false);
-          setState("sans suite", false);
-          hideSoon(3000);
-          dismissed = turnKey;
-        }
-        return;
+    // Limits: nothing stays on screen.
+    var held = Date.now() - T.since;
+    if (T.phase === want) {
+      if (want === "listening" && held > LIMIT.listening) { enter("nothing"); render(attrs, sensorState); closeIn(LIMIT.brief); return; }
+      if (want === "words" && held > LIMIT.words) { enter("nothing"); render(attrs, sensorState); closeIn(LIMIT.brief); return; }
+      if (want === "thinking" && held > LIMIT.thinking) {
+        enter("error"); render({ question: attrs.question, answer: "Igor n'a pas répondu à temps.", trace: attrs.trace }, sensorState); closeIn(LIMIT.brief); return;
       }
-      var waiting = attrs.status === "listening";
-      var phase = waiting ? "listening" : "transcribing";
-      if (view.phase !== phase || view.turnKey !== turnKey) {
-        // Igor asked a question and listens for the answer: the exchange
-        // stays in view, as with a satellite's own follow-up.
-        if (view.turnKey !== turnKey) { dismissed = null; if (!(waiting && view.phase === "done")) clearTalk(); }
-        view.turnKey = turnKey;
-        view.phase = phase;
-        show();
-        setEar();
-        // Your words are on their way: a blinking cursor holds their place.
-        if (!qEl) setSay("q", "…", true);
-        veil.dataset.phase = phase;
-        setState(waiting ? "écoute" : "transcription", false);
-      }
+      render(attrs, sensorState);
       return;
     }
-    if (dismissed && dismissed === turnKey && !live) return;
-    if (live) {
-      if (dismissed === turnKey) return;
-      if (view.turnKey !== turnKey) {
-        view.turnKey = turnKey;
-        view.start = attrs.started ? Date.parse(attrs.started) || Date.now() : Date.now();
-        clearTalk();
-      }
-      show();
-      setSay("q", attrs.question || "");
-      if (sensorState === "answering" && attrs.answer) {
-        view.phase = "answering";
-        veil.dataset.phase = "answering";
-        setSay("a", attrs.answer, true);
-        setState("réponse", false);
-      } else {
-        view.phase = "thinking";
-        veil.dataset.phase = "thinking";
-        // A heads-up from the server ("Réflexion…", a long lookup), else the plain step.
-        setState(attrs.status ? String(attrs.status).replace(/…$/, "").toLowerCase() : "traitement", true);
-      }
-      return;
-    }
-    // The answer is complete. Also for a reply quick enough to go from
-    // "thinking" to "done" between two looks, while still waiting on screen.
-    var fresh = attrs.started && Date.now() - Date.parse(attrs.started) < 60000;
-    // Shown whenever the display is up for this exchange, whatever step it
-    // last saw: a quick local turn can go from « heard » to « done » between
-    // two looks, without « thinking » ever being seen.
-    if (fromWanted && (sensorState === "done" || sensorState === "error") && view.doneKey !== turnKey && dismissed !== turnKey &&
-        (view.turnKey === turnKey ? view.phase !== "done" : (fresh && view.phase && view.phase !== "done" && view.phase !== "gone"))) {
-      view.doneKey = turnKey;
-      view.turnKey = turnKey;
-      view.phase = "done";
-      veil.dataset.phase = sensorState === "error" ? "error" : "done";
-      setSay("q", attrs.question || "");
-      setTrace(attrs.trace || []);
-      setDone(attrs.actions || []);
-      setSay("a", attrs.answer || (sensorState === "error" ? "Je n'ai pas pu répondre." : ""), false);
-      setState(sensorState === "error" ? "erreur" : "terminé", false);
-    }
-    if (sat === "processing" && view.phase !== "thinking" && view.phase !== "answering" && view.phase !== "done") {
-      // Transcribing: Igor has not got the words yet.
-      view.phase = "transcribing";
-      show();
-      veil.dataset.phase = "transcribing";
-      setState("transcription", false);
-      return;
-    }
-    if (view.phase === "done") {
-      // Gone a few seconds after the satellite stops talking.
-      if (sat !== "responding") hideSoon(8000);
-      else if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
-    } else if (view.phase && !sat) {
-      // Woken but nothing asked (a false wake word), or the satellite gave up.
-      hideSoon(4000);
-    }
+    if (T.phase === "nothing" || (T.phase === "error" && want !== "error")) return;
+    enter(want);
+    render(attrs, sensorState);
+    if (want === "answer" || want === "done") flash(attrs.actions, key);
+    if (want === "done") closeIn(LIMIT.done);
+    if (want === "error") closeIn(LIMIT.brief);
   }
 
   function start() {
