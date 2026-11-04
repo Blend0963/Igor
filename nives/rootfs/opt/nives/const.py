@@ -142,6 +142,8 @@ SERVICE_HEARD = "heard"
 SERVICE_JOURNAL = "journal"
 # Headlines of an RSS or Atom feed for the wall's news card.
 SERVICE_NEWS = "news"
+# AdGuard Home's newest DNS queries for the live DNS card (administrators only).
+SERVICE_DNS_LOG = "dns_log"
 # The desk screen (igor-ear's `run.sh screen`): the service fires this event.
 SERVICE_SCREEN = "screen"
 SCREEN_EVENT = "igor_screen"

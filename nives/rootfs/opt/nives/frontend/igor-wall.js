@@ -11,6 +11,7 @@
 //   custom:igor-energy-card   power now and hour by hour today
 //   custom:igor-camera-card   a camera's picture, refreshed every few seconds
 //   custom:igor-news-card     the newest headlines of an RSS or Atom feed
+//   custom:igor-dns-card      AdGuard Home's DNS queries, live (administrators)
 //
 // And the "Igor Journal (tablette)" theme: its --igor-hide-header variable
 // hides Home Assistant's top bar on the device that uses it, on the pages
@@ -2429,6 +2430,134 @@
     disconnectedCallback() { clearTimeout(this.retry); if (this.timer) { clearInterval(this.timer); this.timer = null; this._built = false; this.shadowRoot.innerHTML = ""; } }
   }
 
+  // ----- igor-dns-card: AdGuard Home's DNS queries, live -----
+  //   type: custom:igor-dns-card
+  //   title: dns · en direct
+  //   interval: 2          # seconds between two reads (2 to 30)
+  //   rows: 60             # lines kept on screen
+  //   names: { 192.168.1.20: nas }   # names for addresses AdGuard does not know
+  //   hide: [local, in-addr.arpa]      # domains not shown (and their subdomains)
+  // Read by Home Assistant (nives.dns_log, through the AdGuard integration),
+  // for administrators only: it is the house's browsing history. Nothing is
+  // kept; reading stops while the page is hidden or paused.
+  class IgorDnsCard extends IgorCard {
+    setConfig(config) {
+      this.config = config || {};
+      this.names = this.config.names && typeof this.config.names === "object" ? this.config.names : {};
+      this.hide = (Array.isArray(this.config.hide) ? this.config.hide : []).map((d) => String(d).toLowerCase().replace(/^\.+/, ""));
+    }
+    getCardSize() { return 8; }
+    build() {
+      this.style([
+        ".ctl { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 2px 0 6px; flex: none; }",
+        "button.b { background: none; border: 1px solid var(--line); color: var(--fg); font: inherit; border-radius: 3px; padding: 3px 8px; cursor: pointer; }",
+        "button.b.on { border-color: var(--acc); color: var(--acc); }",
+        "input.q { flex: 1; min-width: 90px; background: var(--bg); border: 1px solid var(--line); color: var(--fg); font: inherit; padding: 3px 7px; border-radius: 3px; }",
+        ".who { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 6px; flex: none; }",
+        ".who button { background: none; border: 1px solid var(--line); color: var(--dim); font: inherit; font-size: 11px; border-radius: 10px; padding: 1px 8px; cursor: pointer; }",
+        ".who button.on { color: var(--acc); border-color: var(--acc); }",
+        ".list { flex: 1; min-height: 0; overflow-y: auto; }",
+        ".r { display: grid; grid-template-columns: 8ch minmax(6ch, 13ch) minmax(0, 1fr) auto; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--line); align-items: baseline; }",
+        ".r .h, .r .ms { color: var(--faint); font-variant-numeric: tabular-nums; }",
+        ".r .c { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".r .d { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".r.blocked .d { color: var(--bad); text-decoration: line-through; }",
+        ".r.rewritten .d { color: var(--acc); }",
+        ".r .w { grid-column: 2 / -1; color: var(--dim); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".empty { color: var(--dim); padding: 8px 0; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t sub", top, (this.config.title || "dns · en direct").toUpperCase()).style.letterSpacing = "0.12em";
+      this.sum = el("span", "sub num", top);
+      var ctl = el("div", "ctl", card);
+      var btn = (text, fn) => { var x = el("button", "b", ctl, text); x.type = "button"; x.addEventListener("click", fn); return x; };
+      this.blockedOnly = false; this.paused = false; this.client = "";
+      this.bBlocked = btn("bloquées", () => { this.blockedOnly = !this.blockedOnly; this.bBlocked.classList.toggle("on", this.blockedOnly); this.lines = []; this.load(); });
+      this.bPause = btn("pause", () => { this.paused = !this.paused; this.bPause.classList.toggle("on", this.paused); this.bPause.textContent = this.paused ? "reprendre" : "pause"; if (!this.paused) this.load(); });
+      this.q = el("input", "q", ctl); this.q.placeholder = "domaine ou appareil…";
+      this.q.addEventListener("input", () => this.draw());
+      this.who = el("div", "who", card);
+      this.list = el("div", "list", card);
+      this.lines = [];
+      var every = Math.max(2, Math.min(30, Number(this.config.interval) || 2));
+      this.timer = setInterval(() => this.load(), every * 1000);
+      this.load();
+    }
+    load() {
+      var hass = this._hass;
+      if (!hass || this.loading || this.paused || document.hidden) return;
+      this.loading = true;
+      hass.callWS({ type: "call_service", domain: "nives", service: "dns_log", service_data: { limit: 200, blocked_only: this.blockedOnly }, return_response: true })
+        .then((r) => {
+          var resp = (r && r.response) || {};
+          this.error = resp.error || "";
+          this.merge(resp.entries || []);
+        })
+        .catch((err) => {
+          var code = err && (err.code || "");
+          this.error = code === "unauthorized" ? "réservé aux administrateurs" : "service indisponible (Igor 0.27 ou plus)";
+        })
+        .then(() => { this.loading = false; this.draw(); });
+    }
+    merge(entries) {
+      var seen = {};
+      this.lines.forEach((l) => { seen[l.key] = true; });
+      var fresh = [];
+      entries.forEach((e) => {
+        e.key = e.time + "|" + e.client + "|" + e.domain + "|" + e.type;
+        if (!seen[e.key]) { seen[e.key] = true; fresh.push(e); }
+      });
+      var keep = Math.max(20, Math.min(300, Number(this.config.rows) || 60)) * 3;
+      this.lines = fresh.concat(this.lines).sort((a, b) => (a.time < b.time ? 1 : a.time > b.time ? -1 : 0)).slice(0, keep);
+    }
+    label(e) { return this.names[e.client] || e.name || e.client; }
+    isHidden(domain) {
+      var d = domain.toLowerCase();
+      return this.hide.some((h) => d === h || d.endsWith("." + h));
+    }
+    draw() {
+      var q = (this.q.value || "").trim().toLowerCase();
+      var all = this.lines.filter((e) => !this.isHidden(e.domain));
+      // The last minute: how many queries, how many blocked.
+      var now = Date.now(), minute = all.filter((e) => now - Date.parse(e.time) < 60000);
+      var blocked = minute.filter((e) => e.status === "blocked").length;
+      this.sum.textContent = minute.length ? minute.length + " req/min · " + Math.round((100 * blocked) / minute.length) + " % bloquées" : "";
+      // The chattiest devices, a tap filters on one.
+      var count = {};
+      all.forEach((e) => { var k = this.label(e); count[k] = (count[k] || 0) + 1; });
+      var top = Object.keys(count).sort((a, b) => count[b] - count[a]).slice(0, 8);
+      if (this.client && top.indexOf(this.client) < 0) top.push(this.client);
+      this.who.innerHTML = "";
+      top.forEach((k) => {
+        var x = el("button", k === this.client ? "on" : "", this.who, k + " " + count[k]);
+        x.type = "button";
+        x.addEventListener("click", () => { this.client = this.client === k ? "" : k; this.draw(); });
+      });
+      var rows = all.filter((e) => (!this.client || this.label(e) === this.client) &&
+        (!q || e.domain.toLowerCase().indexOf(q) >= 0 || this.label(e).toLowerCase().indexOf(q) >= 0));
+      rows = rows.slice(0, Math.max(20, Math.min(300, Number(this.config.rows) || 60)));
+      this.list.innerHTML = "";
+      if (!rows.length) {
+        el("div", "empty", this.list, this.error ? "AdGuard : " + this.error : this.paused ? "En pause." : "Aucune requête.");
+        return;
+      }
+      rows.forEach((e) => {
+        var r = el("div", "r " + e.status, this.list);
+        var d = new Date(e.time);
+        el("span", "h", r, isNaN(d) ? "" : hhmm(d) + ":" + pad(d.getSeconds()));
+        el("span", "c", r, this.label(e)).title = e.client;
+        var dom = el("span", "d", r, e.domain);
+        dom.title = e.type + (e.answer && e.answer.length ? " → " + e.answer.join(", ") : "") + (e.upstream ? " · " + e.upstream : "");
+        el("span", "ms", r, e.cached ? "cache" : e.ms != null ? fr(e.ms, e.ms < 10 ? 1 : 0) + " ms" : "");
+        if (e.status === "blocked" || e.status === "rewritten" || e.status === "allowed") {
+          el("span", "w", r, (e.why || e.status) + (e.rule ? " · " + e.rule : ""));
+        }
+      });
+    }
+    disconnectedCallback() { if (this.timer) { clearInterval(this.timer); this.timer = null; this._built = false; this.shadowRoot.innerHTML = ""; } }
+  }
+
   // ----- igor-alerts-card: what is wrong, first -----
   //   type: custom:igor-alerts-card
   //   gateway: sensor.opnsense_…_gateway_wan_dhcp_status   # the internet
@@ -2535,6 +2664,7 @@
   define("igor-alerts-card", IgorAlertsCard, "Igor · alertes", "Ce qui ne va pas : machines, disques, conteneurs, mises à jour, internet.");
   define("igor-music-card", IgorMusicCard, "Igor · musique", "Ce qui joue, les commandes, les enceintes, la recherche et les raccourcis (Music Assistant).");
   define("igor-facts-card", IgorFactsCard, "Igor · faits", "Quelques états, une ligne chacun ; une entité absente est ignorée.");
+  define("igor-dns-card", IgorDnsCard, "Igor · DNS en direct", "Les requêtes DNS d'AdGuard Home en direct, par appareil (administrateurs).");
   define("igor-news-card", IgorNewsCard, "Igor · dépêches", "Les derniers titres d'un flux RSS ou Atom (dépêches, actualités).");
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
 

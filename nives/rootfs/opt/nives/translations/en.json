@@ -157,6 +157,24 @@
           "description": "The disarm code."
         }
       }
+    },
+    "dns_log": {
+      "name": "DNS log",
+      "description": "AdGuard Home's newest DNS queries, for the live DNS card. Administrators only; nothing is kept.",
+      "fields": {
+        "limit": {
+          "name": "Count",
+          "description": "How many queries, the newest ones."
+        },
+        "blocked_only": {
+          "name": "Blocked only",
+          "description": "Only the queries AdGuard blocked."
+        },
+        "search": {
+          "name": "Search",
+          "description": "Only the queries whose domain or client contains this text."
+        }
+      }
     }
   }
 }
