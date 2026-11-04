@@ -78,3 +78,4 @@ dns_map:
         number:
           min: 1
           max: 120
+wifi_clients: {}

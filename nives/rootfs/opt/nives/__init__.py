@@ -50,6 +50,8 @@ from .const import (
     SERVICE_NEWS,
     SERVICE_DNS_LOG,
     SERVICE_DNS_MAP,
+    SERVICE_WIFI,
+    OPENWRT_KEY,
     SERVICE_DISARM,
     CONF_ALARM_ENTITY,
     CONF_CODE_HASH,
@@ -446,6 +448,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
         _async_register_news(hass)
         _async_register_dns_log(hass)
         _async_register_dns_map(hass)
+        _async_register_wifi(hass)
         _async_register_screen(hass)
     _async_register_disarm(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
@@ -754,6 +757,40 @@ def _async_register_dns_map(hass: HomeAssistant) -> None:
     )
 
 
+@callback
+def _async_register_wifi(hass: HomeAssistant) -> None:
+    """`nives.wifi_clients`: who is on which Wi-Fi, read from the OpenWrt
+    access points of the `nives:` block (openwrt.py). Administrators only."""
+    if hass.services.has_service(DOMAIN, SERVICE_WIFI):
+        return
+    from homeassistant.helpers.service import async_register_admin_service
+
+    from .openwrt import AccessPoint, UbusError, names_from_states
+
+    aps: dict[str, AccessPoint] = {}
+
+    async def _wifi(call: ServiceCall) -> ServiceResponse:
+        confs = hass.data.get(OPENWRT_KEY) or []
+        if not confs:
+            return {"aps": [], "error": "no OpenWrt access point in the nives: block"}
+        known = names_from_states(hass.states.async_all("device_tracker"))
+        out = []
+        for conf in confs:
+            key = conf["url"]
+            ap = aps.get(key) or aps.setdefault(key, AccessPoint(conf))
+            session = async_get_clientsession(hass, ap.verify_ssl)
+            try:
+                out.append(await ap.read(session, known))
+            except (UbusError, aiohttp.ClientError, TimeoutError, ValueError) as err:
+                _LOGGER.debug("OpenWrt %s: %s", ap.name, err)
+                out.append({"name": ap.name, "radios": [], "error": str(err) or type(err).__name__})
+        return {"aps": out}
+
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_WIFI, _wifi, schema=vol.Schema({}), supports_response=SupportsResponse.ONLY
+    )
+
+
 # Optional, in configuration.yaml (the options flow sets the same):
 #   nives:
 #     key_entity: binary_sensor.usb_key
@@ -761,6 +798,19 @@ def _async_register_dns_map(hass: HomeAssistant) -> None:
 #     alarm_active_entity: binary_sensor.alarm_triggered
 #     disarm_code: !secret igor_disarm_code
 #     allowed_users: [Jean]     # still answered while the key is away
+#     openwrt:                  # Wi-Fi access points read for the Wi-Fi card
+#       - url: http://192.168.1.2
+#         username: igor        # a read-only rpcd login (DOCS.md)
+#         password: !secret openwrt_igor
+OPENWRT_SCHEMA = vol.Schema(
+    {
+        vol.Required("url"): vol.All(cv.string, vol.Match(r"^https?://", msg="an http(s) address")),
+        vol.Required("username"): cv.string,
+        vol.Required("password"): cv.string,
+        vol.Optional("name"): cv.string,
+        vol.Optional("verify_ssl", default=True): cv.boolean,
+    }
+)
 CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
@@ -770,6 +820,7 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Optional("alarm_active_entity"): cv.entity_id,
                 vol.Optional("disarm_code"): vol.All(cv.string, vol.Match(r"^\d{4,12}$", msg="4 to 12 digits")),
                 vol.Optional("allowed_users", default=[]): vol.All(cv.ensure_list, [cv.string]),
+                vol.Optional("openwrt", default=[]): vol.All(cv.ensure_list, [OPENWRT_SCHEMA]),
             }
         )
     },
@@ -782,6 +833,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     from .security import YAML_KEY, hash_code
 
     block = dict(config.get(DOMAIN) or {})
+    hass.data[OPENWRT_KEY] = list(block.pop("openwrt", None) or [])
     code = block.pop("disarm_code", None)
     if code:
         block[CONF_CODE_HASH] = await hass.async_add_executor_job(hash_code, str(code))

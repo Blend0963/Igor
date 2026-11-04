@@ -13,6 +13,7 @@
 //   custom:igor-news-card     the newest headlines of an RSS or Atom feed
 //   custom:igor-dns-card      AdGuard Home's DNS queries, live (administrators)
 //   custom:igor-map-card      where those queries' answers point to, on a world map
+//   custom:igor-wifi-card     who is on which Wi-Fi (OpenWrt access points)
 //
 // And the "Igor Journal (tablette)" theme: its --igor-hide-header variable
 // hides Home Assistant's top bar on the device that uses it, on the pages
@@ -2724,6 +2725,103 @@
     disconnectedCallback() { if (this.timer) { clearInterval(this.timer); this.timer = null; this._built = false; this.shadowRoot.innerHTML = ""; } }
   }
 
+  // ----- igor-wifi-card: who is on which Wi-Fi -----
+  //   type: custom:igor-wifi-card
+  //   title: wi-fi
+  //   interval: 15                       # seconds between two reads
+  //   names: { "AA:BB:CC:DD:EE:FF": tablette }
+  //   ssids: [Maison, Objets]            # only these networks (else all)
+  // Read from the OpenWrt access points of the `nives:` block (nives.wifi_clients,
+  // administrators only): per network its band, channel and devices, each
+  // with its signal, its link rates and how long it has been connected.
+  function duration(s) {
+    if (s == null) return "";
+    if (s < 3600) return Math.max(1, Math.round(s / 60)) + " min";
+    if (s < 86400) return Math.round(s / 3600) + " h";
+    return Math.round(s / 86400) + " j";
+  }
+  class IgorWifiCard extends IgorCard {
+    setConfig(config) {
+      this.config = config || {};
+      this.names = {};
+      var n = this.config.names && typeof this.config.names === "object" ? this.config.names : {};
+      Object.keys(n).forEach((k) => { this.names[String(k).toUpperCase()] = n[k]; });
+      this.ssids = Array.isArray(this.config.ssids) ? this.config.ssids.map(String) : null;
+    }
+    getCardSize() { return 6; }
+    build() {
+      this.style([
+        ".list { flex: 1; min-height: 0; overflow-y: auto; }",
+        ".net { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; padding-bottom: 3px; border-bottom: 1px solid var(--line); }",
+        ".net:first-child { margin-top: 0; }",
+        ".net .s { color: var(--fg); letter-spacing: 0.06em; }",
+        ".net .i { color: var(--dim); font-size: 11px; white-space: nowrap; }",
+        ".d { display: grid; grid-template-columns: minmax(0, 1fr) 30px 13ch 6ch; gap: 8px; align-items: center; padding: 3px 0; border-bottom: 1px dashed var(--line); }",
+        ".d .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".d .n small { color: var(--faint); margin-left: 6px; }",
+        ".d .r, .d .t { color: var(--dim); font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }",
+        ".sig { display: flex; gap: 2px; align-items: flex-end; height: 12px; }",
+        ".sig i { width: 4px; background: var(--track); }",
+        ".sig.ok i.on { background: var(--okc); } .sig.warn i.on { background: var(--wait); } .sig.bad i.on { background: var(--bad); }",
+        ".ap { color: var(--dim); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; margin: 10px 0 2px; }",
+        ".empty { color: var(--dim); padding: 6px 0; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t sub", top, (this.config.title || "wi-fi").toUpperCase()).style.letterSpacing = "0.12em";
+      this.sum = el("span", "sub num", top);
+      this.list = el("div", "list", card);
+      var every = Math.max(5, Math.min(300, Number(this.config.interval) || 15));
+      this.timer = setInterval(() => this.load(), every * 1000);
+      this.load();
+    }
+    load() {
+      var hass = this._hass;
+      if (!hass || this.loading || document.hidden) return;
+      this.loading = true;
+      hass.callWS({ type: "call_service", domain: "nives", service: "wifi_clients", service_data: {}, return_response: true })
+        .then((r) => { this.data = (r && r.response) || {}; })
+        .catch((err) => { this.data = { error: err && err.code === "unauthorized" ? "réservé aux administrateurs" : "service indisponible (Igor 0.29 ou plus)" }; })
+        .then(() => { this.loading = false; this.draw(); });
+    }
+    draw() {
+      var d = this.data || {};
+      var aps = d.aps || [];
+      this.list.innerHTML = "";
+      var total = 0;
+      if (!aps.length) {
+        el("div", "empty", this.list, d.error ? "Indisponible : " + d.error : "Lecture…");
+        this.sum.textContent = "";
+        return;
+      }
+      aps.forEach((ap) => {
+        if (aps.length > 1) el("div", "ap", this.list, ap.name);
+        if (ap.error) { el("div", "empty", this.list, "Injoignable : " + ap.error); return; }
+        (ap.radios || []).filter((x) => !this.ssids || this.ssids.indexOf(x.ssid) >= 0).forEach((x) => {
+          var head = el("div", "net", this.list);
+          el("span", "s", head, x.ssid);
+          el("span", "i", head, [x.band, x.channel ? "canal " + x.channel : "", x.clients.length + " appareil" + (x.clients.length > 1 ? "s" : "")].filter(Boolean).join(" · "));
+          total += x.clients.length;
+          if (!x.clients.length) { el("div", "empty", this.list, "Personne."); return; }
+          x.clients.forEach((c) => {
+            var row = el("div", "d", this.list);
+            var n = el("span", "n", row, this.names[c.mac] || c.name || c.mac);
+            if (c.ip) el("small", "", n, c.ip);
+            n.title = c.mac + (c.ip ? " · " + c.ip : "");
+            var lvl = c.signal == null ? 0 : c.signal >= -55 ? 4 : c.signal >= -65 ? 3 : c.signal >= -72 ? 2 : 1;
+            var sig = el("span", "sig " + (lvl >= 3 ? "ok" : lvl === 2 ? "warn" : "bad"), row);
+            sig.title = c.signal == null ? "" : c.signal + " dBm";
+            for (var i = 1; i <= 4; i++) { var b = el("i", i <= lvl ? "on" : "", sig); b.style.height = 3 * i + "px"; }
+            el("span", "r", row, c.rx != null || c.tx != null ? "↓" + fr(c.rx, 0) + " ↑" + fr(c.tx, 0) + " Mb/s" : "");
+            el("span", "t", row, duration(c.connected));
+          });
+        });
+      });
+      this.sum.textContent = total + " appareil" + (total > 1 ? "s" : "");
+    }
+    disconnectedCallback() { if (this.timer) { clearInterval(this.timer); this.timer = null; this._built = false; this.shadowRoot.innerHTML = ""; } }
+  }
+
   // ----- igor-alerts-card: what is wrong, first -----
   //   type: custom:igor-alerts-card
   //   gateway: sensor.opnsense_…_gateway_wan_dhcp_status   # the internet
@@ -2832,6 +2930,7 @@
   define("igor-facts-card", IgorFactsCard, "Igor · faits", "Quelques états, une ligne chacun ; une entité absente est ignorée.");
   define("igor-dns-card", IgorDnsCard, "Igor · DNS en direct", "Les requêtes DNS d'AdGuard Home en direct, par appareil (administrateurs).");
   define("igor-map-card", IgorMapCard, "Igor · le monde", "Où vont les connexions de la maison, par pays et opérateur (administrateurs).");
+  define("igor-wifi-card", IgorWifiCard, "Igor · Wi-Fi", "Qui est connecté à quel Wi-Fi (OpenWrt), avec le signal et le débit (administrateurs).");
   define("igor-news-card", IgorNewsCard, "Igor · dépêches", "Les derniers titres d'un flux RSS ou Atom (dépêches, actualités).");
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.29.0 — Who is on the Wi-Fi
+
+- New `igor-wifi-card`: per Wi-Fi network of your OpenWrt access points, its band, channel and devices, each with its signal (four bars, green to red), link rates down and up and how long it has been connected. `names:` names devices by MAC, `ssids:` keeps only some networks; several access points are shown one under the other.
+- New admin-only service `nives.wifi_clients`: reads each access point through ubus (`iwinfo` devices, info and assoclist, `luci-rpc` getHostHints) with a read-only rpcd login, re-logging when the session expires; client interfaces (a repeater's uplink) are left out. Names come from the access point, else from Home Assistant's device trackers by MAC.
+- Access points go in the `nives:` block of `configuration.yaml` under `openwrt:` (`url`, `username`, `password`, optional `name` and `verify_ssl`). DOCS.md shows how to create the read-only login on OpenWrt.
+
 ## 0.28.0 — The world map
 
 - New `igor-map-card`: where the house's connections go over the last `minutes` (15 by default). Each DNS answer is placed by country and named by its operator (Google, Amazon, Cloudflare…); an arc from home to each country, its width by the number of answers, flowing dashes (`animate: false` to keep it still). The list ranks the countries; a tap on a country or its line shows its devices, operators and domains, and without a choice the blocked queries per device.
