@@ -5500,13 +5500,48 @@
     if (isNaN(d)) return "";
     return d.toDateString() === new Date().toDateString() ? hhmm(d) : pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + " " + hhmm(d);
   }
-  // Text with its web addresses as links (built as nodes, never as HTML).
-  function linked(parent, text) {
-    String(text || "").split(/(https?:\/\/[^\s<>"]+)/).forEach(function (part, i) {
-      if (i % 2) {
-        var a = el("a", "", parent, part.length > 48 ? part.slice(0, 45) + "…" : part);
-        a.href = part; a.target = "_blank"; a.rel = "noopener noreferrer";
-      } else if (part) parent.appendChild(document.createTextNode(part));
+  // Home Assistant's notifications are Markdown (titles, bold, links, pictures,
+  // often a picture written into the text): shown as such, built as nodes,
+  // never as HTML. A picture is kept only from a web address or as image data.
+  var MD_IMG = /^(data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+\/=]+|https?:\/\/\S+)$/;
+  function mdInline(parent, text) {
+    String(text || "").split(/(\*\*[^*]+\*\*|\[[^\]]*\]\([^)\s]+\)|https?:\/\/[^\s<>")]+)/).forEach(function (part) {
+      if (!part) return;
+      var b = part.match(/^\*\*([^*]+)\*\*$/), l = part.match(/^\[([^\]]*)\]\(([^)\s]+)\)$/);
+      if (b) el("strong", "", parent, b[1]);
+      else if (l || /^https?:\/\//.test(part)) {
+        var href = l ? l[2] : part, label = l ? (l[1] || l[2]) : part;
+        if (/^https?:\/\//.test(href)) {
+          var a = el("a", "", parent, label.length > 48 ? label.slice(0, 45) + "…" : label);
+          a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer";
+        } else if (/^\//.test(href)) {
+          var n = el("a", "", parent, label);
+          n.href = href;
+          n.addEventListener("click", function (ev) { ev.preventDefault(); navigate(href); });
+        } else parent.appendChild(document.createTextNode(label));
+      } else parent.appendChild(document.createTextNode(part));
+    });
+  }
+  function markdown(parent, text) {
+    // A picture's data wrapped over several lines is one address again.
+    var src = String(text || "").replace(/!\[([^\]]*)\]\(\s*([^)]*?)\s*\)/g, function (m, alt, url) {
+      return "\n![" + alt + "](" + url.replace(/\s+/g, "") + ")\n";
+    });
+    var para = null;
+    src.split(/\r?\n/).forEach(function (line) {
+      var t = line.trim();
+      if (!t) { para = null; return; }
+      var img = t.match(/^!\[([^\]]*)\]\(([^)]+)\)$/), h = t.match(/^#{1,6}\s+(.*)$/), li = t.match(/^[-*]\s+(.*)$/);
+      if (img) {
+        para = null;
+        if (MD_IMG.test(img[2])) { var im = el("img", "pic", parent); im.src = img[2]; im.alt = img[1] || ""; im.loading = "lazy"; }
+        return;
+      }
+      if (h) { para = null; mdInline(el("div", "mh", parent), h[1]); return; }
+      if (li) { para = null; var d = el("div", "li", parent); mdInline(d, li[1]); return; }
+      if (para) para.appendChild(document.createElement("br"));
+      else para = el("div", "p", parent);
+      mdInline(para, t);
     });
   }
   function channelName(e) {
@@ -5532,8 +5567,11 @@
         ".n .h { color: var(--faint); font-variant-numeric: tabular-nums; }",
         ".n .b { min-width: 0; display: grid; gap: 2px; }",
         ".n b { color: var(--fg); font-weight: 500; overflow-wrap: anywhere; }",
-        ".n .m { color: var(--dim); white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }",
-        ".n.open .m { -webkit-line-clamp: unset; display: block; }",
+        ".n .m { color: var(--dim); overflow-wrap: anywhere; max-height: 15em; overflow: hidden; display: grid; gap: 4px; }",
+        ".n .m .mh { color: var(--fg); font-weight: 500; } .n .m strong { color: var(--fg); font-weight: 500; } .n .m .li::before { content: '· '; color: var(--faint); }",
+        ".n .m .pic { max-width: min(100%, 320px); max-height: 7em; border-radius: 4px; border: 1px solid var(--line); background: var(--bg); object-fit: contain; }",
+        ".n.open .m .pic { max-height: 260px; }",
+        ".n.open .m { max-height: none; }",
         ".n .m a, .n .map { color: var(--acc); text-decoration: none; }",
         ".n .map { font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; --mdc-icon-size: 14px; }",
         ".n.wait { border-left: 2px solid var(--igor-signal, #e5323b); padding-left: 8px; }",
@@ -5587,7 +5625,7 @@
       el("span", "h", n, when);
       var b = el("div", "b", n);
       if (title) el("b", "", b, title);
-      if (message) linked(el("div", "m", b), message);
+      if (message) markdown(el("div", "m", b), message);
       n.addEventListener("click", (ev) => { if (ev.target.tagName !== "A" && ev.target.tagName !== "BUTTON") n.classList.toggle("open"); });
       if (right) n.appendChild(right);
       return b;

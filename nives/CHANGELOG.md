@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.36.1 — Notifications as Home Assistant writes them
+
+- `custom:igor-notifications-card` shows Markdown: titles, bold, links (a link to a Home Assistant page opens it), lists and pictures, including a picture written into the text as image data (a robot vacuum's maintenance notice). Built as page elements, never as HTML; a picture only from a web address or as image data. A touch on a notification opens it whole.
+
 ## 0.36.0 — Home Assistant's notifications on the dashboards
 
 - `custom:igor-notifications-card`: Home Assistant's notifications waiting (✕ clears one), and the ones it sent (the phone app, `notify.rappels`, Telegram) with their time, channel, links and position, so a notification lost on the way can still be read.
