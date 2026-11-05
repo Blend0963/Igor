@@ -188,6 +188,11 @@
     ".tabs a:hover { color: var(--fg); }",
     ".tabs a.on { color: var(--fg); border-bottom-color: var(--igor-signal, #e5323b); }",
     "@media (max-width: 1100px) { .tabs:not(.keep) { display: none; } }",
+    // A phone: the pages' tabs take the bar and scroll sideways; the
+    // machines' line gives them the room.
+    "@media (max-width: 760px) { .tabs.keep { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; border-right: 0; }",
+    "  .tabs.keep::-webkit-scrollbar { display: none; } .tabs.keep a { flex: none; padding: 0 12px; } .tabs.keep ~ .lane { display: none; }",
+    "  .tabs.keep ~ .fix.right { font-size: 11px; padding: 0 10px; } .fix.left .state { display: none; } .fix.left { padding: 0 10px; } }",
     ".lane { flex: 1; overflow: hidden; height: 100%; display: flex; align-items: center; position: relative; }",
     ".run { display: flex; will-change: transform; }",
     ".run.roll { animation: roll var(--speed, 60s) linear infinite; }",
@@ -324,10 +329,14 @@
         var a = el("a", decodeURIComponent(parts[2] || "") === seg ? "on" : "", this.tabsEl, v.title || seg);
         a.addEventListener("click", () => { navigate("/" + parts[1] + "/" + seg); });
       });
+      // The open page's tab in sight (a phone scrolls them).
+      var on = this.tabsEl.querySelector("a.on");
+      if (on && this.tabsEl.scrollWidth > this.tabsEl.clientWidth) this.tabsEl.scrollLeft = Math.max(0, on.offsetLeft - (this.tabsEl.clientWidth - on.offsetWidth) / 2);
     }
     clock() {
       var d = new Date();
-      this.clockEl.textContent = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }) + " · " + hhmm(d);
+      // A phone: the time alone, the tabs need the room.
+      this.clockEl.textContent = window.innerWidth < 760 ? hhmm(d) : d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }) + " · " + hhmm(d);
     }
     set hass(hass) {
       this._hass = hass;
@@ -582,6 +591,8 @@
     ".stack .cols { grid-template-columns: 1fr !important; }",
     ".stack .wall, .wall.stack { height: auto !important; }",
     ".stack .slot.grow { flex: none; min-height: 260px; }",
+    // Stacked (a phone), the bar stays on top while the page scrolls.
+    ".wall.stack { overflow: visible; } .wall.stack > .ticker { position: sticky; top: 0; z-index: 3; }",
     ".err { color: var(--bad); font-size: 12px; padding: 8px; }",
     ".band { flex: none; padding: 0 10px; }",
     ".band.above { padding-top: 10px; } .band.above:empty, .band.below:empty { display: none; }",
