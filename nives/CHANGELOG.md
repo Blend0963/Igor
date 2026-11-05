@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.36.3 — A tablet read from across the room
+
+- The wall's bar takes `size: big`: taller, larger letters, bigger eye, clock and buttons, for a small tablet seen from afar.
+- Light tiles: off is plainly off (a faint icon, no colour); on, the tile takes the bulb's colour, from its colour or, for a white bulb, its warmth (kelvin), with a soft glow.
+
 ## 0.36.2 — A navigator that keeps to its route
 
 - `custom:igor-gps-card`, guided: the arrow stays on the route as long as it is within what the GPS may be off (45 to 120 m), never on a parallel street, and glides along the route itself; a new route only after 5 seconds really off it. Not guided, a parallel road going the same way takes over only after being clearly nearer for 3 seconds (a turn still switches at once). The zoom follows the speed (farther out on fast roads) and comes closer before a turn (`auto_zoom: false` to keep it still). The bottom bar (distance, time, arrival) takes the whole width.

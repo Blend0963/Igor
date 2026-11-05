@@ -146,6 +146,7 @@
   //     pause: 10              # with speed: auto, seconds at rest between two turns
   //     tap: /igor-wall/homelab  # a tap on the bar opens that page (else: the machines' detail)
   //     notifications: notifs  # the bell (Home Assistant's notifications waiting) opens that page of this dashboard (or /a/page); false: no bell
+  //     size: big              # taller, larger letters: read from afar (a small wall tablet)
   //     edit: false            # no pencil (administrators: it puts the dashboard in edit mode)
   //     groups:                # an item: entity, label, unit, digits, warn/bad (from), below (red under)
   //       - name: pve
@@ -194,6 +195,10 @@
     ".fix.bell { padding: 0 10px; gap: 4px; color: var(--wait); cursor: pointer; --mdc-icon-size: 16px; font-size: 11px; } .fix.bell[hidden] { display: none; }",
     ".fix.bell .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--igor-signal, #e5323b); box-shadow: 0 0 6px var(--igor-signal, #e5323b); display: inline-block; } .fix.bell .dot[hidden] { display: none; }",
     ".fix.pen { padding: 0 10px; color: var(--dim); cursor: pointer; --mdc-icon-size: 17px; } .fix.pen:hover { color: var(--fg); } .fix.pen[hidden] { display: none; }",
+    ".ticker.big { height: 48px; font-size: 16px; } .ticker.big .brand { font-size: 18px; } .ticker.big .eye { width: 28px; height: 28px; }",
+    ".ticker.big .state { font-size: 14px; } .ticker.big .tabs a { font-size: 13px; padding: 0 16px; } .ticker.big .kind { font-size: 12px; }",
+    ".ticker.big ~ .pop { top: 54px; }",
+    ".ticker.big .fix { gap: 10px; padding: 0 16px; } .ticker.big .fix.right { font-size: 18px; } .ticker.big .fix.pen, .ticker.big .fix.bell { --mdc-icon-size: 22px; }",
     ".lens { width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle, #e1f5fe 0, #4fc3f7 30%, #0277bd 65%, #0d1014 100%); box-shadow: 0 0 0 1.5px #3b4a56; flex: none; }",
     ".eye { width: 18px; height: 18px; flex: none; display: block; }",
     ".brand { font-family: 'Chakra Petch', " + MONO + "; letter-spacing: 0.22em; font-weight: 600; color: var(--fg); }",
@@ -268,7 +273,8 @@
     constructor(host, config) {
       this.config = config || {};
       this.groups = this.config.groups || [];
-      this.root = el("div", "ticker", host);
+      // size: big: a bar read from across the room (a small tablet on a wall).
+      this.root = el("div", "ticker" + (this.config.size === "big" ? " big" : ""), host);
       var left = el("span", "fix left", this.root);
       // The eye: a monolith pierced by a red eye, Igor's logo.
       left.insertAdjacentHTML("beforeend", '<svg class="eye" viewBox="0 0 256 256" aria-hidden="true"><rect x="107" y="20" width="44" height="216" fill="#e9e4da"/><circle cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle cx="128" cy="96" r="16" fill="#e5323b"/></svg>');
@@ -2295,6 +2301,27 @@
     if (v != null && a.unit_of_measurement) return fr(v, v < 10 ? 1 : 0) + " " + a.unit_of_measurement;
     return STATE_WORDS[s] || s;
   }
+  // The colour a lit bulb gives: rgb_color, else hs_color, else its white's
+  // temperature (kelvin), else a warm white.
+  function kelvinRgb(k) {
+    var t = Math.max(1000, Math.min(40000, k)) / 100, r, g, b;
+    r = t <= 66 ? 255 : 329.7 * Math.pow(t - 60, -0.1332);
+    g = t <= 66 ? 99.47 * Math.log(t) - 161.12 : 288.12 * Math.pow(t - 60, -0.0755);
+    b = t >= 66 ? 255 : t <= 19 ? 0 : 138.52 * Math.log(t - 10) - 305.04;
+    return [r, g, b].map(function (v) { return Math.round(Math.max(0, Math.min(255, v))); });
+  }
+  function lightRgb(st) {
+    var a = (st && st.attributes) || {};
+    if (Array.isArray(a.rgb_color) && a.rgb_color.length === 3) return a.rgb_color;
+    if (Array.isArray(a.hs_color) && a.hs_color.length === 2) {
+      var h = a.hs_color[0] / 60, sat = a.hs_color[1] / 100, c = sat, x = c * (1 - Math.abs((h % 2) - 1));
+      var p = h < 1 ? [c, x, 0] : h < 2 ? [x, c, 0] : h < 3 ? [0, c, x] : h < 4 ? [0, x, c] : h < 5 ? [x, 0, c] : [c, 0, x];
+      return p.map(function (v) { return Math.round((v + 1 - c) * 255); });
+    }
+    if (a.color_temp_kelvin) return kelvinRgb(a.color_temp_kelvin);
+    if (a.color_temp) return kelvinRgb(1000000 / a.color_temp);
+    return [255, 197, 120];
+  }
   function isOn(hass, id) {
     var st = hass.states[id];
     return !!st && ["on", "open", "playing", "cleaning", "home", "opening"].indexOf(st.state) >= 0;
@@ -2369,6 +2396,9 @@
         "@keyframes igor-ring { 50% { background: rgba(217, 164, 65, 0.05); } }",
         ".grid.states button.giant .s { display: block; font-size: 11px; margin-top: -8px; }",
         "button.giant.act ha-icon { color: var(--fg); }",
+        // Off is off: a faint icon, no colour; on: the bulb's colour, lit.
+        "button.giant:not(.on):not(.act):not(.alarm):not(.scene) ha-icon { color: var(--faint); }",
+        "button.giant.on { box-shadow: 0 0 18px var(--tile-on-bg, rgba(217, 164, 65, 0.25)); }",
         "button.giant:active { transform: scale(0.98); }",
         // Igor just acted on it (the tablet's voice display says so): a cyan flash.
         "button.flash { border-color: #59d0e0 !important; box-shadow: 0 0 0 2px rgba(89, 208, 224, 0.45); background: rgba(89, 208, 224, 0.14) !important; }",
@@ -2474,8 +2504,9 @@
           if (!x.t.service) on = vs === "cleaning";
         }
         x.b.classList.toggle("on", on);
-        // A light lit in a colour: the tile takes that colour.
-        var rgb = on && d === "light" && st && Array.isArray(st.attributes.rgb_color) ? st.attributes.rgb_color : null;
+        // A light lit takes its bulb's colour (its colour, or its white's
+        // warmth); off, the tile is plainly off.
+        var rgb = on && d === "light" ? lightRgb(st) : null;
         x.b.style.setProperty("--tile-on", rgb ? "rgb(" + rgb.join(",") + ")" : "");
         x.b.style.setProperty("--tile-on-border", rgb ? "rgba(" + rgb.join(",") + ",0.7)" : "");
         x.b.style.setProperty("--tile-on-bg", rgb ? "rgba(" + rgb.join(",") + ",0.18)" : "");
