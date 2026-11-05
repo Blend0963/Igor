@@ -6,6 +6,7 @@
 //                             line that scrolls through the machines) and
 //                             columns of cards that reach the bottom
 //   custom:igor-journal-card  Igor's last exchanges, "historique" opens all
+//   custom:igor-notifications-card  Home Assistant's notifications, waiting and sent
 //   custom:igor-docker-card   the containers of a Portainer endpoint
 //   custom:igor-net-card      a router's traffic over the last hour
 //   custom:igor-energy-card   power now and hour by hour today
@@ -137,6 +138,7 @@
   //                            # auto: still while it fits, else one turn then a pause
   //     pause: 10              # with speed: auto, seconds at rest between two turns
   //     tap: /igor-wall/homelab  # a tap on the bar opens that page (else: the machines' detail)
+  //     notifications: notifs  # the bell (Home Assistant's notifications waiting) opens that page of this dashboard (or /a/page); false: no bell
   //     edit: false            # no pencil (administrators: it puts the dashboard in edit mode)
   //     groups:
   //       - name: pve
@@ -180,6 +182,7 @@
     ".fix { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 100%; color: var(--fg); background: var(--bg); position: relative; z-index: 1; }",
     ".fix.left { border-right: 1px solid var(--line); }",
     ".fix.right { border-left: 1px solid var(--line); }",
+    ".fix.bell { padding: 0 10px; gap: 4px; color: var(--wait); cursor: pointer; --mdc-icon-size: 16px; font-size: 11px; } .fix.bell[hidden] { display: none; }",
     ".fix.pen { padding: 0 10px; color: var(--dim); cursor: pointer; --mdc-icon-size: 17px; } .fix.pen:hover { color: var(--fg); } .fix.pen[hidden] { display: none; }",
     ".lens { width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle, #e1f5fe 0, #4fc3f7 30%, #0277bd 65%, #0d1014 100%); box-shadow: 0 0 0 1.5px #3b4a56; flex: none; }",
     ".eye { width: 18px; height: 18px; flex: none; display: block; }",
@@ -286,6 +289,23 @@
         this.run.classList.add("roll");
         this.run.style.setProperty("--speed", speed + "s");
       }
+      // A bell with Home Assistant's notifications waiting, when there are
+      // some: a touch opens `notifications: /a-page`, else Home Assistant's
+      // own list (`notifications: false`: no bell).
+      if (this.config.notifications !== false) {
+        this.bellEl = el("span", "fix right bell", this.root);
+        this.bellEl.setAttribute("role", "button");
+        this.bellEl.hidden = true;
+        icon(this.bellEl, "mdi:bell-ring");
+        this.bellN = el("b", "", this.bellEl, "");
+        this.bellEl.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          var to = this.config.notifications;
+          // `notifications: notifs`: a page of this dashboard.
+          if (typeof to === "string") navigate(to.charAt(0) === "/" ? to : "/" + window.location.pathname.split("/")[1] + "/" + to);
+          else this.root.dispatchEvent(new CustomEvent("hass-show-notifications", { bubbles: true, composed: true }));
+        });
+      }
       // A pencil, administrators only: the dashboard in edit mode (`edit: false`: none).
       if (this.config.edit !== false) {
         this.editEl = el("span", "fix right pen", this.root);
@@ -352,6 +372,13 @@
     set hass(hass) {
       this._hass = hass;
       if (this.editEl) this.editEl.hidden = !isAdmin(hass);
+      if (this.bellEl && !this.unbell && hass.connection) {
+        this.unbell = watchPersistent(hass, (list) => {
+          this.bellEl.hidden = !list.length;
+          this.bellN.textContent = list.length > 9 ? "9+" : String(list.length);
+          this.bellEl.title = list.length + " notification" + (list.length > 1 ? "s" : "") + " à traiter";
+        });
+      }
       var igor = igorSensor(hass);
       this.igorEl.textContent = igor ? (IGOR_WORDS[igor.state] || igor.state) : "";
       this.renderTabs();
@@ -576,7 +603,7 @@
         });
       }
     }
-    destroy() { clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); clearTimeout(this.autoTimer); }
+    destroy() { if (this.unbell) { this.unbell(); this.unbell = null; } clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); clearTimeout(this.autoTimer); }
   }
 
   // ===== igor-wall: the whole screen =====
@@ -5019,6 +5046,159 @@
     }
   }
 
+  // ----- Home Assistant's notifications: those waiting and those sent -----
+  // The ones waiting (persistent_notification, the bell of the sidebar),
+  // live; `cb(list)` with the newest first. Returns a function that stops.
+  function watchPersistent(hass, cb) {
+    var current = {}, stop = null, done = false;
+    var emit = function () {
+      cb(Object.keys(current).map(function (k) { return current[k]; })
+        .sort(function (a, b) { return Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0); }));
+    };
+    try {
+      hass.connection.subscribeMessage(function (m) {
+        if (!m) return;
+        if (m.type === "current") current = {};
+        var n = m.notifications || {};
+        Object.keys(n).forEach(function (k) {
+          if (m.type === "removed") delete current[k]; else current[k] = n[k];
+        });
+        emit();
+      }, { type: "persistent_notification/subscribe" }).then(function (u) { if (done) u(); else stop = u; }).catch(function () { cb([]); });
+    } catch (e) { cb([]); }
+    return function () { done = true; if (stop) { try { stop(); } catch (e) { /* gone */ } stop = null; } };
+  }
+  function whenText(iso) {
+    var d = new Date(iso);
+    if (isNaN(d)) return "";
+    return d.toDateString() === new Date().toDateString() ? hhmm(d) : pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + " " + hhmm(d);
+  }
+  // Text with its web addresses as links (built as nodes, never as HTML).
+  function linked(parent, text) {
+    String(text || "").split(/(https?:\/\/[^\s<>"]+)/).forEach(function (part, i) {
+      if (i % 2) {
+        var a = el("a", "", parent, part.length > 48 ? part.slice(0, 45) + "…" : part);
+        a.href = part; a.target = "_blank"; a.rel = "noopener noreferrer";
+      } else if (part) parent.appendChild(document.createTextNode(part));
+    });
+  }
+  function channelName(e) {
+    if (e.channel === "telegram" || e.service.indexOf("telegram_bot.") === 0) return "telegram";
+    if (/mobile_app_/.test(e.target || "")) return "téléphone";
+    if (e.service === "notify.persistent_notification") return "ha";
+    return String(e.target || e.service).replace(/^notify\./, "");
+  }
+
+  //   type: custom:igor-notifications-card
+  //   title: notifications
+  //   limit: 30             # sent notifications read (the newest)
+  //   waiting: true         # Home Assistant's notifications to deal with, on top
+  //   sent: true            # what Home Assistant sent (notify, Telegram), administrators only
+  class IgorNotificationsCard extends IgorCard {
+    setConfig(config) { this.config = config || {}; }
+    getCardSize() { return 6; }
+    build() {
+      this.style([
+        ".list { flex: 1; min-height: 0; overflow-y: auto; }",
+        ".sec { color: var(--faint); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; padding: 8px 0 3px; display: flex; justify-content: space-between; }",
+        ".n { display: grid; grid-template-columns: 6ch minmax(0, 1fr) auto; gap: 2px 10px; padding: 7px 0; border-bottom: 1px solid var(--line); align-items: start; }",
+        ".n .h { color: var(--faint); font-variant-numeric: tabular-nums; }",
+        ".n .b { min-width: 0; display: grid; gap: 2px; }",
+        ".n b { color: var(--fg); font-weight: 500; overflow-wrap: anywhere; }",
+        ".n .m { color: var(--dim); white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }",
+        ".n.open .m { -webkit-line-clamp: unset; display: block; }",
+        ".n .m a, .n .map { color: var(--acc); text-decoration: none; }",
+        ".n .map { font-size: 11px; cursor: pointer; }",
+        ".n.wait { border-left: 2px solid var(--igor-signal, #e5323b); padding-left: 8px; }",
+        ".chip { font-size: 10px; border-radius: 99px; padding: 1px 8px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }",
+        ".x { background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 4px; font: inherit; padding: 2px 9px; cursor: pointer; }",
+        ".x:hover { color: var(--fg); border-color: var(--acc); }",
+        ".empty { color: var(--dim); padding: 8px 0; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t sub", top, (this.config.title || "notifications").toUpperCase()).style.letterSpacing = "0.12em";
+      this.countEl = el("span", "sub", top, "");
+      this.list = el("div", "list", card);
+      this.waiting = [];
+      this.sent = null;
+      this.error = "";
+    }
+    connectedCallback() {
+      if (this._built && this._hass) this.start(this._hass);
+    }
+    disconnectedCallback() {
+      clearInterval(this.timer); this.timer = null;
+      if (this.unwatch) { this.unwatch(); this.unwatch = null; }
+    }
+    update(hass) {
+      if (!this.timer && this.isConnected) this.start(hass);
+    }
+    start(hass) {
+      if (this.config.waiting !== false && !this.unwatch) {
+        this.unwatch = watchPersistent(hass, (list) => { this.waiting = list; this.render(); });
+      }
+      if (this.config.sent !== false) {
+        this.load();
+        clearInterval(this.timer);
+        this.timer = setInterval(() => this.load(), 30000);
+      } else if (!this.timer) this.timer = -1;
+    }
+    load() {
+      var hass = this._hass;
+      if (!hass || this.loading) return;
+      if (!(hass.user && hass.user.is_admin)) { this.error = "envoyées : réservé aux administrateurs"; this.render(); return; }
+      this.loading = true;
+      var limit = Math.max(1, Math.min(200, Number(this.config.limit) || 30));
+      hass.callWS({ type: "call_service", domain: "nives", service: "notifications", service_data: { limit: limit }, return_response: true })
+        .then((r) => { this.sent = (r && r.response && r.response.entries) || []; this.error = ""; })
+        .catch(() => { this.error = "historique indisponible (intégration Igor à jour ?)"; })
+        .then(() => { this.loading = false; this.render(); });
+    }
+    row(cls, when, title, message, right) {
+      var n = el("div", "n " + cls, this.list);
+      el("span", "h", n, when);
+      var b = el("div", "b", n);
+      if (title) el("b", "", b, title);
+      if (message) linked(el("div", "m", b), message);
+      n.addEventListener("click", (ev) => { if (ev.target.tagName !== "A" && ev.target.tagName !== "BUTTON") n.classList.toggle("open"); });
+      if (right) n.appendChild(right);
+      return b;
+    }
+    render() {
+      this.list.innerHTML = "";
+      var w = this.waiting || [];
+      this.countEl.textContent = w.length ? w.length + " à traiter" : "";
+      if (this.config.waiting !== false && w.length) {
+        el("div", "sec", this.list, "à traiter");
+        w.forEach((p) => {
+          var x = el("button", "x", null, "✕");
+          x.type = "button"; x.title = "Effacer";
+          x.addEventListener("click", () => {
+            this._hass.callService("persistent_notification", "dismiss", { notification_id: p.notification_id });
+          });
+          this.row("wait", whenText(p.created_at), p.title || "", p.message || "", x);
+        });
+      }
+      if (this.config.sent === false) {
+        if (!w.length) el("div", "empty", this.list, "Rien à traiter.");
+        return;
+      }
+      el("div", "sec", this.list, "envoyées");
+      if (this.error) { el("div", "empty", this.list, this.error); return; }
+      if (this.sent == null) { el("div", "empty", this.list, "…"); return; }
+      if (!this.sent.length) { el("div", "empty", this.list, "Aucune notification envoyée pour l'instant."); return; }
+      this.sent.forEach((e) => {
+        var b = this.row("", whenText(e.at), e.title, e.message, el("span", "chip", null, channelName(e)));
+        if (e.latitude != null && e.longitude != null) {
+          var a = el("a", "map", b, "📍 voir sur la carte ›");
+          a.href = "https://www.google.com/maps/search/?api=1&query=" + e.latitude + "," + e.longitude;
+          a.target = "_blank"; a.rel = "noopener noreferrer";
+        }
+      });
+    }
+  }
+
   function define(name, cls, label, description) {
     if (!customElements.get(name)) customElements.define(name, cls);
     window.customCards = window.customCards || [];
@@ -5026,6 +5206,7 @@
   }
   define("igor-wall", IgorWall, "Igor · mur", "Tout l'écran : barre d'état des machines et colonnes de cartes jusqu'en bas.");
   define("igor-journal-card", IgorJournalCard, "Igor · journal", "Les derniers échanges avec Igor.");
+  define("igor-notifications-card", IgorNotificationsCard, "Igor · notifications", "Les notifications de Home Assistant : celles à traiter, et celles envoyées (téléphone, Telegram).");
   define("igor-docker-card", IgorDockerCard, "Igor · Docker", "Les conteneurs de Portainer.");
   define("igor-net-card", IgorNetCard, "Igor · réseau", "Le débit d'un routeur sur la dernière heure.");
   define("igor-energy-card", IgorEnergyCard, "Igor · énergie", "La puissance, heure par heure aujourd'hui.");

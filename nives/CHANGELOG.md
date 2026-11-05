@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.36.0 — Home Assistant's notifications on the dashboards
+
+- `custom:igor-notifications-card`: Home Assistant's notifications waiting (✕ clears one), and the ones it sent (the phone app, `notify.rappels`, Telegram) with their time, channel, links and position, so a notification lost on the way can still be read.
+- The integration notes every `notify.*` and Telegram message as it goes out, the newest 200 kept on Home Assistant's disk; `nives.notifications` reads them, administrators only.
+- The wall's bar shows a bell with the count of notifications waiting; `notifications: notifs` opens that page, `notifications: false` removes it.
+
 ## 0.35.2 — A pencil to edit the dashboard
 
 - The wall's bar has a pencil, for administrators only, that puts the dashboard in edit mode: Home Assistant's top bar comes back, with « Terminé » and the raw configuration editor, even on a `kiosk` wall that hides it. `edit: false` in the bar removes it.

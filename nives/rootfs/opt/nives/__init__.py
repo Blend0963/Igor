@@ -64,6 +64,8 @@ from .const import (
     API_JOURNAL_ENDPOINT,
     TOKEN_ACK_RELPATH,
     TOKEN_FILE_RELPATH,
+    SERVICE_NOTIFICATIONS,
+    NOTIFICATIONS_KEY,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -458,6 +460,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
         _async_register_wifi_scan(hass)
         _async_register_screen(hass)
     _async_register_disarm(hass)
+    await _async_register_notifications(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await _async_setup_update_watch(hass, entry)
@@ -598,6 +601,54 @@ def _async_register_journal(hass: HomeAssistant) -> None:
 
     hass.services.async_register(
         DOMAIN, SERVICE_JOURNAL, _journal, schema=JOURNAL_SCHEMA, supports_response=SupportsResponse.ONLY
+    )
+
+
+NOTIFICATIONS_SCHEMA = vol.Schema(
+    {vol.Optional("limit", default=50): vol.All(vol.Coerce(int), vol.Range(min=1, max=200))}
+)
+
+
+async def _async_register_notifications(hass: HomeAssistant) -> None:
+    """`nives.notifications`: the notifications Home Assistant sent (every
+    notify.* and telegram_bot.* call, notifications.py), the newest 200 kept
+    in .storage. Administrators only: the messages can be personal."""
+    if hass.services.has_service(DOMAIN, SERVICE_NOTIFICATIONS):
+        return
+    from homeassistant.const import EVENT_CALL_SERVICE
+    from homeassistant.helpers.service import async_register_admin_service
+    from homeassistant.helpers.storage import Store
+
+    from .notifications import DOMAINS, NotificationLog, record
+
+    store: Store = Store(hass, 1, NOTIFICATIONS_KEY)
+    try:
+        saved = await store.async_load()
+    except Exception:  # noqa: BLE001 - a damaged file: start again
+        saved = None
+    log = NotificationLog(saved.get("entries") if isinstance(saved, dict) else None)
+    hass.data[NOTIFICATIONS_KEY] = log
+
+    @callback
+    def _seen(event) -> None:
+        domain = event.data.get("domain")
+        if domain not in DOMAINS:
+            return
+        try:
+            entry = record(domain, str(event.data.get("service") or ""), event.data.get("service_data") or {})
+        except Exception:  # noqa: BLE001 - never in the way of the notification itself
+            return
+        if log.add(entry):
+            store.async_delay_save(lambda: {"entries": list(log.entries)}, 10)
+
+    hass.bus.async_listen(EVENT_CALL_SERVICE, _seen)
+
+    async def _notifications(call: ServiceCall) -> ServiceResponse:
+        return {"entries": log.newest(call.data["limit"])}
+
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_NOTIFICATIONS, _notifications,
+        schema=NOTIFICATIONS_SCHEMA, supports_response=SupportsResponse.ONLY,
     )
 
 

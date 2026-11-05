@@ -174,3 +174,6 @@ CONF_CODE_HASH = "disarm_code_hash"
 # the owner from a phone, never the wall, the tablet or a voice satellite.
 CONF_ALLOWED_USERS = "allowed_users"
 SERVICE_DISARM = "disarm"
+# The notifications Home Assistant sent (notifications.py), for a dashboard card.
+SERVICE_NOTIFICATIONS = "notifications"
+NOTIFICATIONS_KEY = "nives_notifications"

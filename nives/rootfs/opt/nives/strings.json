@@ -197,6 +197,16 @@
           "description": "The input_boolean that locks the screen."
         }
       }
+    },
+    "notifications": {
+      "name": "Notifications",
+      "description": "The notifications Home Assistant sent (notify and Telegram), the newest first, for a dashboard card. Administrators only. Returns them to the caller.",
+      "fields": {
+        "limit": {
+          "name": "Count",
+          "description": "How many notifications, the newest ones."
+        }
+      }
     }
   }
 }
