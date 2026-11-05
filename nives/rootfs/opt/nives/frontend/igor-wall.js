@@ -1954,8 +1954,53 @@
   var SENSOR_ON = { door: "ouverte", window: "ouverte", opening: "ouvert", garage_door: "ouverte", motion: "mouvement", occupancy: "occupé",
     presence: "présent", plug: "branché", power: "sous tension", running: "en marche", light: "lumière", sound: "son", connectivity: "connecté",
     lock: "déverrouillé", moving: "en mouvement", update: "mise à jour", battery_charging: "en charge" };
+  // A vacuum's many words (Dreame: sweeping, mopping…) in four.
+  function vacKind(s) {
+    s = String(s || "");
+    if (s === "error" || /error|stuck|fault/.test(s)) return "error";
+    if (/return/.test(s)) return "returning";
+    if (/pause/.test(s)) return "paused";
+    if (/clean|sweep|mop|vacuum|zone|segment|room|spot|working|auto/.test(s)) return "cleaning";
+    return "";
+  }
+  // A media player often says « off » while its device is on (a Cast
+  // speaker, a Shield's Cast entity when nothing is cast): its device's
+  // other entities tell (an Android TV remote, its other media player), or
+  // `power:` on the tile names one.
+  var MEDIA_ON = function (s) { return ["off", "standby", "unknown", "unavailable", ""].indexOf(String(s || "")) < 0; };
+  function mediaPower(hass, t) {
+    var ids = [].concat(t.power || []), reg = hass.entities || {}, me = reg[t.entity], obj = String(t.entity).split(".")[1] || "";
+    if (!t.power) {
+      var dev = me && me.device_id;
+      var words = obj.split("_").filter(function (w) { return w.length >= 4 && ["salon", "chambre", "cuisine", "media", "player", "enceinte", "android"].indexOf(w) < 0; });
+      Object.keys(hass.states).forEach(function (id) {
+        if (id === t.entity) return;
+        var d = domainOf(id);
+        if (d !== "remote" && d !== "media_player") return;
+        var r = reg[id];
+        if ((dev && r && r.device_id === dev) || (d === "remote" && words.some(function (w) { return id.indexOf(w) >= 0; }))) ids.push(id);
+      });
+    }
+    for (var i = 0; i < ids.length; i++) {
+      var o = hass.states[ids[i]];
+      if (o && MEDIA_ON(o.state)) return o;
+    }
+    return null;
+  }
+  var OFF_ICONS = { "mdi:fan": "mdi:fan-off", "mdi:projector": "mdi:projector-off", "mdi:speaker": "mdi:speaker-off", "mdi:television-play": "mdi:television-off",
+    "mdi:television": "mdi:television-off", "mdi:lightbulb": "mdi:lightbulb-off", "mdi:ceiling-light": "mdi:ceiling-light-outline", "mdi:robot-vacuum": "mdi:robot-vacuum-off" };
+  var ON_ICONS = { "mdi:speaker": "mdi:speaker-play", "mdi:robot-vacuum": "mdi:robot-vacuum" };
+  var VAC_WORDS = { sweeping: "aspire", mopping: "lave", sweeping_and_mopping: "aspire et lave", cleaning: "nettoie", charging: "en charge",
+    charging_completed: "chargé", washing: "lave la serpillière", drying: "sèche", idle: "à l'arrêt", building: "cartographie", zoned_cleaning: "nettoie une zone",
+    segment_cleaning: "nettoie une pièce", room_cleaning: "nettoie une pièce", spot_cleaning: "nettoie un point", paused: "en pause", returning: "rentre…", docked: "à la base" };
+  function prettyState(hass, id) {
+    var st = hass.states[id];
+    if (st && domainOf(id) === "vacuum" && VAC_WORDS[st.state]) return VAC_WORDS[st.state] + (st.attributes.battery_level != null ? " · " + st.attributes.battery_level + " %" : "");
+    if (st && !STATE_WORDS[st.state] && hass.formatEntityState) { try { return hass.formatEntityState(st); } catch (e) { /* the raw word */ } }
+    return stateText(hass, id);
+  }
   var PROBLEMS = ["problem", "safety", "smoke", "gas", "carbon_monoxide", "moisture", "tamper", "heat", "cold", "battery", "vibration"];
-  function tileLive(hass, t, st) {
+  function tileLive(hass, t, st, ctx) {
     var d = domainOf(t.entity), s = st ? st.state : "", a = (st && st.attributes) || {};
     var out = { on: false, kind: "switch", motion: "", text: "", gone: !st || s === "unavailable", alarm: false };
     if (out.gone) { out.text = st ? "indisponible" : "introuvable"; return out; }
@@ -1965,13 +2010,16 @@
       out.kind = d === "cover" ? "cover" : d === "vacuum" ? "vac" : "switch";
       var sv = t.service.split(".")[1] || "";
       var moving = s === "opening" || s === "closing";
+      var vk = d === "vacuum" ? vacKind(s) : "";
       var busy = (sv === "open_cover" && s === "opening") || (sv === "close_cover" && s === "closing") || (sv === "stop_cover" && moving)
-        || (sv === "return_to_base" && s === "returning") || (sv === "start_pause" && s === "cleaning");
-      out.on = busy || Boolean(t.lit && s === t.lit);
-      if (busy) out.motion = s === "opening" ? "up" : s === "closing" ? "down" : s === "returning" ? "rock" : s === "cleaning" ? "spin" : "pulse";
-      if (sv === "start_pause") out.vac = s;
-      out.text = busy ? (s === "opening" ? "s'ouvre…" : s === "closing" ? "se ferme…" : s === "returning" ? "rentre…" : s === "cleaning" ? "aspire" : "")
-        : out.on ? stateText(hass, t.entity) : "";
+        || (sv === "return_to_base" && vk === "returning") || (sv === "start_pause" && (vk === "cleaning" || vk === "paused"));
+      out.on = busy || Boolean(t.lit && (s === t.lit || (d === "vacuum" && t.lit === "cleaning" && vk === "cleaning")));
+      if (busy) out.motion = s === "opening" ? "up" : s === "closing" ? "down" : vk === "returning" ? "rock" : vk === "cleaning" ? "spin" : "pulse";
+      if (sv === "start_pause") { out.vac = vk; out.alarm = vk === "error"; }
+      out.text = busy ? (s === "opening" ? "s'ouvre…" : s === "closing" ? "se ferme…" : vk === "returning" ? "rentre…" : vk === "paused" ? "en pause" : vk === "cleaning" ? prettyState(hass, t.entity) : "")
+        : out.on ? prettyState(hass, t.entity) : "";
+      // A vacuum always says where it is (« à la base · 100 % », « aspire »…).
+      if (d === "vacuum" && sv !== "return_to_base") { out.always = true; if (!out.text) out.text = sv === "return_to_base" || !t.lit ? "" : prettyState(hass, t.entity); if (vk === "error") out.text = "bloqué · " + prettyState(hass, t.entity); }
       if (sv === "stop_cover" && moving) out.text = "toucher pour arrêter";
       return out;
     }
@@ -1980,27 +2028,31 @@
       out.rgb = out.on ? lightRgb(st) : null;
       out.text = out.on ? (a.brightness != null ? Math.round(a.brightness / 2.55) + " %" : "allumée") : "";
     } else if (d === "media_player") {
-      out.kind = "media"; out.on = ["off", "standby", "unknown", ""].indexOf(s) < 0;
+      out.kind = "media"; out.on = MEDIA_ON(s); out.always = true;
+      var pw = out.on ? null : mediaPower(hass, t);
+      if (pw) { out.on = true; s = pw.state === "on" || pw.state === "idle" || domainOf(pw.entity_id) === "remote" ? "on" : pw.state; a = Object.assign({}, pw.attributes, a.source ? { source: a.source } : {}); }
       out.motion = s === "playing" ? "beat" : s === "buffering" ? "pulse" : out.on ? "glow" : "";
       var what = a.media_title ? a.media_title + (a.media_artist ? " · " + a.media_artist : "") : "";
       out.text = !out.on ? "" : s === "playing" ? (what || a.app_name || a.source || "en lecture")
         : s === "paused" ? "en pause" + (what ? " · " + what : "")
-        : a.app_name || a.source || MEDIA_WORDS[s] || s;
+        : a.app_name || a.current_activity || a.source || MEDIA_WORDS[s] || s;
       if (out.on && a.volume_level != null && a.is_volume_muted) out.text += " · muet";
+      if (!out.on) out.text = s === "standby" ? "en veille" : "éteint";
     } else if (d === "fan") {
-      out.kind = "fan"; out.on = s === "on";
+      out.kind = "fan"; out.on = s === "on"; out.always = true;
       var pct = a.percentage != null ? Number(a.percentage) : 50;
       out.motion = out.on ? "spin" : "";
       out.spin = out.on ? Math.max(0.5, 2.6 - (pct || 50) / 50) : 0;
-      out.text = out.on ? (a.percentage != null ? pct + " %" : "en marche") + (a.oscillating ? " · oscille" : "") + (a.preset_mode ? " · " + a.preset_mode : "") : "";
+      out.text = out.on ? (a.percentage != null ? "vitesse " + pct + " %" : "en marche") + (a.oscillating ? " · oscille" : "") + (a.preset_mode ? " · " + a.preset_mode : "") : "arrêté";
     } else if (d === "cover") {
       out.kind = "cover"; out.on = s === "open" || s === "opening" || s === "closing";
       out.motion = s === "opening" ? "up" : s === "closing" ? "down" : "";
       out.text = s === "opening" ? "s'ouvre…" : s === "closing" ? "se ferme…" : s === "open" ? (a.current_position != null && a.current_position < 100 ? "ouvert à " + a.current_position + " %" : "ouvert") : "";
     } else if (d === "vacuum") {
-      out.kind = "vac"; out.vac = s; out.on = s === "cleaning" || s === "returning" || s === "paused";
-      out.alarm = s === "error";
-      out.text = { cleaning: "aspire", returning: "rentre…", paused: "en pause", error: "bloqué", docked: "" }[s] || "";
+      var vk2 = vacKind(s);
+      out.kind = "vac"; out.vac = vk2; out.on = vk2 === "cleaning" || vk2 === "returning" || vk2 === "paused"; out.always = true;
+      out.alarm = vk2 === "error"; out.motion = { cleaning: "spin", returning: "rock", paused: "breathe" }[vk2] || "";
+      out.text = prettyState(hass, t.entity);
     } else if (d === "climate" || d === "water_heater") {
       var mode = d === "climate" ? s : a.operation_mode || s;
       out.on = mode && mode !== "off";
@@ -2021,10 +2073,12 @@
       else if (dc && s === "on") { out.on = true; out.kind = "sensor"; out.motion = /motion|occupancy|presence|sound|moving/.test(dc) ? "pulse" : "glow"; out.text = SENSOR_ON[dc] || "actif"; }
       // Without a kind (a train line's sensor): its news is not a colour.
     } else if (d === "scene") {
-      // A scene's state is when it was last set: lit a few seconds after.
-      var at = Date.parse(s);
-      out.on = !isNaN(at) && Date.now() - at < 8000;
-      out.kind = "scene"; out.motion = out.on ? "pulse" : "";
+      // One ambiance at a time: the scene set last, unless « Tout éteindre »
+      // (a reset scene, never shown) or a mode (Cinéma) came after it, or
+      // every light of the card is off since.
+      out.kind = "scene";
+      out.on = Boolean(ctx && ctx.applied === t.entity && !isResetScene(t));
+      out.motion = "";
       out.text = out.on ? "appliquée" : "";
     } else if (d === "script") {
       out.kind = "scene"; out.on = s === "on"; out.motion = out.on ? "spin" : ""; out.text = out.on ? "en cours…" : "";
@@ -2044,6 +2098,32 @@
     }
     if (t.invert) { out.on = !out.on; out.motion = ""; }
     return out;
+  }
+  // « Tout éteindre »: a scene that turns things off is no ambiance.
+  function isResetScene(t) {
+    return t.reset === true || (t.reset !== false && (/(eteindre|eteint|_off$|^scene\.off|tout_eteindre|all_off)/.test(String(t.entity)) || t.icon === "mdi:power"));
+  }
+  function isMode(t) {
+    return t.ambiance === true || (t.ambiance !== false && domainOf(t.entity) === "input_boolean" && /^input_boolean\.mode_/.test(String(t.entity)));
+  }
+  // Which scene of the card is the ambiance now (or none).
+  function appliedScene(hass, tiles) {
+    var best = null, bestAt = 0, resetAt = 0, lightsOn = false, hasLights = false;
+    tiles.forEach(function (t) {
+      if (t.service || !t.entity) return;
+      var st = hass.states[t.entity], d = domainOf(t.entity);
+      if (!st) return;
+      if (d === "light") { hasLights = true; if (st.state === "on") lightsOn = true; }
+      var at = d === "scene" ? Date.parse(st.state) : NaN;
+      if (d === "scene" && !isNaN(at)) {
+        if (isResetScene(t)) resetAt = Math.max(resetAt, at);
+        else if (at > bestAt) { bestAt = at; best = t.entity; }
+      }
+      if (isMode(t) && st.state === "on") resetAt = Math.max(resetAt, Date.parse(st.last_changed) || 0);
+    });
+    if (!best || bestAt <= resetAt) return null;
+    if (hasLights && !lightsOn) return null;
+    return best;
   }
 
   // ----- igor-mini-card: a sensor, its 24 hours in one line -----
@@ -2588,6 +2668,7 @@
         "button { position: relative; }",
         "button.giant.on::after, button.giant.alarm-on::after, button.big.on::after, button.big.alarm-on::after { content: ''; position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--tile-on, var(--wait)); box-shadow: 0 0 8px var(--tile-on, var(--wait)); animation: igor-vac-breathe 2.4s ease-in-out infinite; }",
         "button.alarm-on::after { background: var(--bad); box-shadow: 0 0 8px var(--bad); }",
+        "button.giant.always .s { display: block; font-size: 11px; margin-top: -6px; max-width: 92%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: none; }",
         "button.giant.alarm-on .s, button.giant.gone .s { display: block; font-size: 11px; margin-top: -6px; }",
         "button.giant.alarm-on .s { color: var(--bad); }",
         // Gone (unavailable): faded, dashed, says so.
@@ -2672,6 +2753,7 @@
       return t._ids;
     }
     update(hass, prev) {
+      var ctx = { applied: appliedScene(hass, this.config.tiles) };
       this.tiles.forEach((x) => {
         if (x.t.alarm) {
           var a = this.alarmIds(x.t), s = (id) => (id && hass.states[id] ? hass.states[id].state : "");
@@ -2688,11 +2770,14 @@
         if (!x.t.icon && st && st.attributes.icon) x.ic.setAttribute("icon", st.attributes.icon);
         var text = x.t.secondary ? x.t.secondary.map(function (id) { return stateText(hass, id); }).join(" · ") : stateText(hass, x.t.entity);
         if (x.t.secondary && x.t.show_state) text = stateText(hass, x.t.entity) + " · " + text;
-        var live = tileLive(hass, x.t, st);
+        var live = tileLive(hass, x.t, st, ctx);
         if (x.t.text && st && x.t.text[st.state] != null) live.text = String(x.t.text[st.state]);
         else if (x.t.secondary || !live.text) live.text = live.on || live.gone ? live.text || text : text;
         x.sub.textContent = live.text;
-        if (x.t.icon_off) x.ic.setAttribute("icon", live.on ? (x.t.icon || "mdi:help-circle-outline") : x.t.icon_off);
+        // Its icon says it too: a fan, a projector, a speaker crossed out when off.
+        var offIcon = x.t.icon_off || (x.t.icon_off !== false && !x.t.service && OFF_ICONS[x.t.icon]);
+        if (offIcon) x.ic.setAttribute("icon", live.on ? (ON_ICONS[x.t.icon] && live.motion === "beat" ? ON_ICONS[x.t.icon] : x.t.icon || "mdi:help-circle-outline") : offIcon);
+        x.b.classList.toggle("always", Boolean(live.always));
         var d = domainOf(x.t.entity);
         x.b.classList.toggle("scene", !x.t.service && (d === "scene" || d === "script"));
         x.b.classList.toggle("on", live.on);

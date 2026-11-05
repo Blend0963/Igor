@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.36.6 — One ambiance at a time
+
+- Scenes: one is « appliquée » at a time, the one set last; it goes when another is set, when « Tout éteindre » is touched, when a mode (`input_boolean.mode_…`, Cinéma) is turned on, or when every light of the card is off. A scene that turns things off (« Tout éteindre »: its name, or the `mdi:power` icon, or `reset: true`) is never shown as applied. `ambiance: true` / `reset: true` on a tile when the guess is wrong.
+- Media players always say whether they are on: « éteint », « en veille », or what they play or run. A Cast entity that says « off » while its device is on (a Shield, a speaker) is lit by its device's other entities (an Android TV remote, its other player) or by `power:` on the tile.
+- A fan says « arrêté » or its speed, its icon crossed out when off and turning when on; a projector, a speaker, a TV the same (their « off » icons).
+- A robot vacuum's tile follows every state of the Dreame and other integrations (sweeping, mopping, washing, charging…): it turns while it cleans, says what it does and its battery, and turns red when stuck; « Base » moves while it goes home.
+
 ## 0.36.5 — Room to read
 
 - Lists scroll instead of cutting their last lines (journal, containers, news), with a thin bar in the wall's colours.
