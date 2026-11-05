@@ -131,6 +131,14 @@ class IgorConversationAgent(ConversationEntity):
             return self._error_result(
                 user_input, user_input.conversation_id, "Igor est verrouillé : la clé est absente."
             )
+        # What speech-to-text (any engine) writes on silence is no request:
+        # nothing is answered, said or done.
+        from .phantom import is_phantom
+
+        if is_phantom(user_input.text):
+            _LOGGER.info("Ignored a phantom sentence: %r", user_input.text)
+            silent = intent.IntentResponse(language=user_input.language)
+            return ConversationResult(response=silent, conversation_id=user_input.conversation_id)
         if not STREAMING_SUPPORTED:
             return await self._async_process_legacy(user_input)
         # The base class opens the chat session and log and calls
