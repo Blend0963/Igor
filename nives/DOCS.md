@@ -252,6 +252,10 @@ nives:
 
 Give the wall, the tablet and the desk screen a Home Assistant account of their own (not yours): an account in `allowed_users` keeps the thread panel open wherever it is logged in. The installed app, which uses Igor's API key rather than a Home Assistant login, is not checked: whoever holds the key is the owner.
 
+### A maintenance lock for a screen
+
+Before lending the car (a garage, an inspection), lock its head unit: create a toggle helper (Settings → Devices & services → Helpers → Create helper → Toggle, e.g. « Voiture maintenance »), add `maintenance: input_boolean.voiture_maintenance` to the screen's walls, and a big button that turns it on. While it is on, every page of Home Assistant on that device is covered by a « MAINTENANCE » screen with a keypad; the disarm code (Igor's options) opens it (`nives.unlock_screen`, the alarm's lockout), or turn the switch off from your phone. Other devices are not affected. Home Assistant itself cannot hide entities from a non-admin account: the lock covers the screen, it does not change what that account could reach otherwise.
+
 ### Names
 
 The network cards name devices from OPNsense's DHCP leases and ARP table, Home Assistant's device trackers and the access points. Devices with a fixed address often have no name there; give them one in the `nives:` block, by MAC or IP (it wins over the rest):

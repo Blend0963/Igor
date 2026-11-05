@@ -609,6 +609,9 @@
     getCardSize() { return 12; }
     connectedCallback() {
       try {
+        // `maintenance: input_boolean.x`: this screen locks while it is on.
+        if (this.config && typeof this.config.maintenance === "string") window.localStorage.setItem("igor-maintenance", this.config.maintenance);
+        else if (this.config && this.config.maintenance === false) window.localStorage.removeItem("igor-maintenance");
         if (!this.config || this.config.home !== false) window.localStorage.setItem("igor-wall-home", window.location.pathname);
         if (this.config && this.config.return_after != null) window.localStorage.setItem("igor-wall-return", String(this.config.return_after));
       } catch (e) { /* no storage: no way back by itself */ }
@@ -4988,6 +4991,100 @@
     }
   }, 1000);
   var sidebarDone = false;
+
+
+  // ===== maintenance: a screen lent to someone (the car at the garage) =====
+  // A wall with `maintenance: input_boolean.x` makes this device remember that
+  // switch. While it is on, every page of Home Assistant on this device lies
+  // under a full-screen lock: nothing to read, nothing to touch, only a keypad
+  // for the disarm code (nives.unlock_screen, the alarm's lockout) — or the
+  // switch turned off from another device (the owner's phone). The last state
+  // is kept here, so the lock is up at once, even before Home Assistant answers.
+  (function () {
+    var lockEl = null, codeEl, msgEl, code = "";
+    function ls(k, v) {
+      try {
+        if (v === undefined) return window.localStorage.getItem(k);
+        window.localStorage.setItem(k, v);
+      } catch (e) { /* no storage: the switch alone decides */ }
+      return null;
+    }
+    function hassNow() { var ha = document.querySelector("home-assistant"); return ha && ha.hass; }
+    function show() {
+      if (lockEl) return;
+      lockEl = document.createElement("div");
+      lockEl.style.cssText = "position:fixed;inset:0;z-index:2147483647;";
+      var root = lockEl.attachShadow({ mode: "open" });
+      root.innerHTML = "<style>" +
+        ".l{position:absolute;inset:0;background:#07080a;color:#e9e4da;font-family:" + MONO + ";display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.4vh;user-select:none;-webkit-user-select:none}" +
+        ".l svg{width:min(14vh,90px);height:min(14vh,90px)}" +
+        ".t{font-family:'Chakra Petch'," + MONO + ";letter-spacing:.3em;font-size:clamp(20px,4vh,34px);font-weight:600}" +
+        ".s{color:#878c95;font-size:clamp(12px,2vh,16px);letter-spacing:.1em}" +
+        ".c{height:2.4em;font-size:clamp(18px,3.4vh,28px);letter-spacing:.5em;color:#59d0e0;min-width:8em;text-align:center;border-bottom:1px solid #22262c}" +
+        ".m{min-height:1.4em;color:#e5323b;font-size:clamp(12px,2vh,15px)}.m.ok{color:#5cc28f}" +
+        ".k{display:grid;grid-template-columns:repeat(3,minmax(64px,11vh));gap:1.2vh}" +
+        ".k button{height:min(9vh,64px);background:#111417;border:1px solid #22262c;border-radius:4px;color:#e9e4da;font:inherit;font-size:clamp(18px,3vh,26px);cursor:pointer}" +
+        ".k button:active{background:#1b1f24}.k .ok{border-color:#59d0e0;color:#59d0e0}" +
+        "</style><div class=l>" + EYE.replace('style="width:100%;height:100%;display:block"', "") +
+        "<div class=t>MAINTENANCE</div><div class=s>écran verrouillé · code pour déverrouiller</div>" +
+        "<div class=c></div><div class=m></div><div class=k></div></div>";
+      codeEl = root.querySelector(".c");
+      msgEl = root.querySelector(".m");
+      var pad = root.querySelector(".k");
+      ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "OK"].forEach(function (k) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.textContent = k;
+        if (k === "OK") b.className = "ok";
+        b.addEventListener("click", function () { press(k); });
+        pad.appendChild(b);
+      });
+      document.body.appendChild(lockEl);
+      draw();
+    }
+    function draw() { if (codeEl) codeEl.textContent = code.replace(/./g, "•"); }
+    function hide() { if (lockEl) { lockEl.remove(); lockEl = null; code = ""; } }
+    function press(k) {
+      if (k === "⌫") code = code.slice(0, -1);
+      else if (k === "OK") { submit(); return; }
+      else if (code.length < 12) code += k;
+      msgEl.textContent = "";
+      draw();
+    }
+    function submit() {
+      var hass = hassNow(), ent = ls("igor-maintenance");
+      if (!hass || !ent || !code) return;
+      var c = code;
+      code = "";
+      draw();
+      msgEl.className = "m";
+      msgEl.textContent = "…";
+      hass.callWS({ type: "call_service", domain: "nives", service: "unlock_screen", service_data: { code: c, entity_id: ent }, return_response: true })
+        .then(function (r) {
+          var res = (r && r.response) || {};
+          msgEl.className = "m" + (res.ok ? " ok" : "");
+          msgEl.textContent = res.message || (res.ok ? "Déverrouillé." : "Refusé.");
+        })
+        .catch(function () { msgEl.className = "m"; msgEl.textContent = "Indisponible (mettez à jour Igor)."; });
+    }
+    // The keyboard reaches the keypad only; nothing goes to the page below.
+    window.addEventListener("keydown", function (ev) {
+      if (!lockEl) return;
+      ev.stopPropagation();
+      ev.preventDefault();
+      if (/^[0-9]$/.test(ev.key)) press(ev.key);
+      else if (ev.key === "Backspace") press("⌫");
+      else if (ev.key === "Enter") press("OK");
+    }, true);
+    setInterval(function () {
+      var ent = ls("igor-maintenance");
+      if (!ent) { hide(); return; }
+      var hass = hassNow(), st = hass && hass.states && hass.states[ent];
+      var on = st ? st.state === "on" : ls("igor-maintenance-on") === "1";
+      ls("igor-maintenance-on", on ? "1" : "0");
+      if (on) show(); else hide();
+    }, 700);
+  })();
 
   // ===== back to the wall =====
   // With the tablet theme, the page that shows an igor-wall is the screen's
