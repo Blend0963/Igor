@@ -26,6 +26,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import IgorConfigEntry
+from .phantom import SILENCE_DBFS, is_phantom, loudest_dbfs
 from .const import (
     API_STT_ENDPOINT,
     LANGUAGE_ALIASES,
@@ -147,6 +148,12 @@ class IgorSttEntity(stt.SpeechToTextEntity):
             _LOGGER.debug("Empty recording; nothing to transcribe")
             return stt.SpeechResult("", stt.SpeechResultState.SUCCESS)
 
+        # Silence is not a sentence: a recording without a voice is never sent
+        # (the model would make one up).
+        if int(metadata.bit_rate) == 16 and loudest_dbfs(bytes(pcm), int(metadata.sample_rate)) < SILENCE_DBFS:
+            _LOGGER.debug("Silent recording; nothing to transcribe")
+            return stt.SpeechResult("", stt.SpeechResultState.SUCCESS)
+
         audio = _wav_container(
             bytes(pcm),
             int(metadata.sample_rate),
@@ -162,6 +169,11 @@ class IgorSttEntity(stt.SpeechToTextEntity):
 
         if text is None:
             return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
+        # « Sous-titrage ST' 501 » and the like: what silence sounds like to
+        # the model. Nothing was said.
+        if is_phantom(text):
+            _LOGGER.info("Ignored what silence was heard as: %r", text)
+            return stt.SpeechResult("", stt.SpeechResultState.SUCCESS)
         return stt.SpeechResult(text, stt.SpeechResultState.SUCCESS)
 
     async def _transcribe(self, audio: bytes, language: str | None) -> str | None:

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.36.7 — Silence is silence
+
+- Igor no longer acts on what speech-to-text makes up from silence (« Sous-titrage ST' 501 », « Sous-titres réalisés par la communauté d'Amara.org », « Merci d'avoir regardé », « [Musique] », a lone « Merci »…): nothing is answered, said or done. Igor's speech-to-text drops them and never sends a recording without a voice; the conversation agent drops them whatever engine wrote them.
+
 ## 0.36.6 — One ambiance at a time
 
 - Scenes: one is « appliquée » at a time, the one set last; it goes when another is set, when « Tout éteindre » is touched, when a mode (`input_boolean.mode_…`, Cinéma) is turned on, or when every light of the card is off. A scene that turns things off (« Tout éteindre »: its name, or the `mdi:power` icon, or `reset: true`) is never shown as applied. `ambiance: true` / `reset: true` on a tile when the guess is wrong.
