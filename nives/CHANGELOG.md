@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.34.1 — On the road, like a navigator
+
+- `igor-gps-card`: the arrow is always on a road, moving or stopped (no more car park exception that left it in a building), within 50 m by default, or what the GPS says it may be off by (`gps_accuracy`, up to 150 m). Only roads a car drives on count: no railway, path, footway or cycleway. A road going the car's way, and the road already taken, win over a slightly nearer one, so a noisy fix no longer jumps to a side street.
+- A car does not turn back on its road: while it drives, a fix behind the arrow holds it where it is instead of pulling it back, a heading reversed by one doubtful fix is ignored (three in a row, a real U-turn, are believed), the arrow never takes a way that starts by turning back, and the trail does not come back on itself. Stopped, the heading stays as it was.
+- When a fix comes late and far, the arrow drives there along the roads instead of gliding across, and the trail follows the roads: between two points it takes the shortest way on the road network drawn on the map (joined across tile cuts and crossings); what cannot be followed on a road starts a new piece of trail rather than a line through the houses.
+
 ## 0.34.0 — The car's map on the road
 
 - `igor-gps-card`: obd2mqtt's `voiture-gps-card` brought into Igor (it now comes with the add-on, no file to copy) in Igor's look: cyan arrow and trail, dark speed box. The arrow sits on the nearest road drawn on the map, within `snap` metres (20; 8 when stopped, so a car park stays a car park), and turns with it; between two fixes it goes on along the road for 4 seconds at most instead of 8 straight ahead, so a late or imprecise GPS no longer drives through houses. The trail follows the arrow as shown.
