@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.33.3 — The alarm on the tablet, Igor's journal in Igor's look
+
+- `igor-tiles-card`: a tile `{alarm: <device_id>}` is an alarm clock (Alarm Clocks integration), as the wall's alarm card finds it: its time always shown under the name, lit while on, « coupé » when off; a tap turns it on or off, and while it rings stops it (the tile blinks amber); a long press opens its time.
+- Igor's journal (the full-screen history, from « Historique ») takes Igor's look: near-black, bone white, cyan answers, amber for what went online, red for failures, Igor's eye and name in its bar, days marked with the red square.
+
 ## 0.33.2 — The key locks the thread panel too
 
 - While the key is away, Igor's thread panel refuses as Assist does (« Igor est verrouillé : la clé est absente. »): the integration sends the key entity and `allowed_users` to the server (`POST /api/security`, at start and every five minutes), which reads the key before each panel request (a key that cannot be read locks too). People in `allowed_users` are still answered, by their Home Assistant user name or id, from their phone at home or outside. The installed app (API key, no Home Assistant login) is not checked. Give the wall, the tablet and the desk screen an account of their own (DOCS.md, « The house key »).
