@@ -274,7 +274,14 @@
       this.config = config || {};
       this.groups = this.config.groups || [];
       // size: big: a bar read from across the room (a small tablet on a wall).
-      this.root = el("div", "ticker" + (this.config.size === "big" ? " big" : ""), host);
+      // Without `size`, a tablet (?igor_tablet, or a « tablette » theme) gets it.
+      var big = this.config.size === "big";
+      if (this.config.size == null) {
+        try { big = !!window.localStorage.getItem("igor-tablet"); } catch (e) { big = false; }
+        var tv = getComputedStyle(document.documentElement).getPropertyValue("--igor-bar-size").trim().replace(/["']/g, "");
+        if (tv === "big") big = true;
+      }
+      this.root = el("div", "ticker" + (big ? " big" : ""), host);
       var left = el("span", "fix left", this.root);
       // The eye: a monolith pierced by a red eye, Igor's logo.
       left.insertAdjacentHTML("beforeend", '<svg class="eye" viewBox="0 0 256 256" aria-hidden="true"><rect x="107" y="20" width="44" height="216" fill="#e9e4da"/><circle cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle cx="128" cy="96" r="16" fill="#e5323b"/></svg>');
@@ -2469,8 +2476,18 @@
         });
       };
       window.addEventListener("igor-acted", this._acted);
+      // Some screens (a kiosk tablet) stop handing the cards Home Assistant's
+      // updates while the page stays open: the tiles read the live state
+      // themselves every 2 seconds, so a light switched off shows off.
+      clearInterval(this._live);
+      this._live = setInterval(() => {
+        var ha = document.querySelector("home-assistant"), live = ha && ha.hass;
+        if (live && live !== this._hass && live.states) this.hass = live;
+      }, 2000);
     }
     disconnectedCallback() {
+      clearInterval(this._live);
+      this._live = null;
       if (this._acted) window.removeEventListener("igor-acted", this._acted);
       this._acted = null;
       this._built = false;
@@ -2494,8 +2511,8 @@
           x.b.classList.toggle("ring", ringing);
           return;
         }
-        var ids = [x.t.entity].concat(x.t.secondary || []);
-        if (!changed(prev, hass, ids)) return;
+        // Every tile, every time (a few dozen: cheap): a tile is never left on
+        // an old state because the page passed an unchanged-looking update.
         var st = hass.states[x.t.entity];
         if (!x.t.icon && st && st.attributes.icon) x.ic.setAttribute("icon", st.attributes.icon);
         var text = x.t.secondary ? x.t.secondary.map(function (id) { return stateText(hass, id); }).join(" · ") : stateText(hass, x.t.entity);

@@ -312,6 +312,8 @@ Igor Journal: &igor_journal
 Igor Journal (tablette):
   <<: *igor_journal
   igor-hide-header: "1"
+  # The status bar taller, larger letters: a small tablet read from afar
+  igor-bar-size: "big"
 
 # Igor: the house's own look (Intelligent Governance & Operations Relay).
 # Dark only: near-black, bone white, one signal red for what matters (the
@@ -501,3 +503,5 @@ Igor: &igor
 Igor (tablette):
   <<: *igor
   igor-hide-header: "1"
+  # The status bar taller, larger letters: a small tablet read from afar
+  igor-bar-size: "big"
