@@ -2224,7 +2224,8 @@
 
     fetch("api/chat/stream", { method: "POST", headers: headers(), body: body })
       .then(function (res) {
-        if (!res.ok) throw new Error("HTTP " + res.status);
+        // A refusal says why (the key away: « Igor est verrouillé »).
+        if (!res.ok) return res.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.error || ("HTTP " + res.status)); });
         var reader = res.body.getReader();
         var decoder = new TextDecoder();
         var buf = "";

@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import { createAuthMiddleware, HA_CORE_ADDRESSES, isIngressRequest } from "./api/auth.js";
+import { HouseLock } from "./api/house-lock.js";
 
 // Read version from package.json
 const require = createRequire(import.meta.url);
@@ -202,6 +203,32 @@ app.get("/api/app-token", (req, res) => {
   if (!isIngressRequest(req)) return res.status(403).json({ error: "Only from the Home Assistant panel." });
   res.setHeader("Cache-Control", "no-store");
   res.json({ token: config.apiToken });
+});
+
+// The house's key (api/house-lock.ts): the integration sends the key entity
+// and the users still answered while it is away; a panel request (ingress)
+// from anyone else is refused while the key is away, as Assist is. The key is
+// read past the Assist exposure list: it is rarely exposed.
+let keyReader: HomeAssistantClient | undefined;
+const houseLock = new HouseLock(
+  config.conversationStorage === "sqlite" ? path.join(path.dirname(config.conversationDbPath), "house-lock.json") : undefined,
+  async (entityId) => {
+    keyReader ??= new HomeAssistantClient(config);
+    return (await keyReader.getState(entityId)).state;
+  }
+);
+// Only the integration (with the token) sets it, never the panel.
+app.post("/api/security", (req, res) => {
+  if (isIngressRequest(req)) return res.status(403).json({ error: "Only from the integration." });
+  const s = houseLock.set(req.body);
+  res.json({ keyEntity: s.keyEntity ?? null, allowedUsers: s.allowedUsers.length });
+});
+app.use("/api/chat", async (req, res, next) => {
+  if (req.method !== "POST") return next();
+  const refused = await houseLock.refusal(req);
+  if (!refused) return next();
+  console.warn("[lock] A panel request was refused: the key is away.");
+  res.status(423).json({ error: refused });
 });
 
 // The local model's training set, built from the house (train/export.ts)

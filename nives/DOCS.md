@@ -238,6 +238,19 @@ nives:
 
 Igor only reads: the ARP table and the leases name the devices, the states say who talks to whom. With OpenWrt access points configured, a Wi-Fi device also shows its network and signal.
 
+### The house key
+
+In Igor's options (Settings → Devices & services → Igor → Configure), the **key** is a binary sensor (a USB key's presence, say). While it is away (off, unknown or unavailable), Igor refuses every request: spoken, typed in Assist, and written in Igor's own thread panel (« Igor est verrouillé : la clé est absente. »). The desk screen's guard window and the tablet's lock page cover the screens themselves.
+
+Some people are still answered while the key is away, from their phone, at home or outside: list them in the `nives:` block of `configuration.yaml`, by Home Assistant user name or id:
+
+```yaml
+nives:
+  allowed_users: [Moi]
+```
+
+Give the wall, the tablet and the desk screen a Home Assistant account of their own (not yours): an account in `allowed_users` keeps the thread panel open wherever it is logged in. The installed app, which uses Igor's API key rather than a Home Assistant login, is not checked: whoever holds the key is the owner.
+
 ### Names
 
 The network cards name devices from OPNsense's DHCP leases and ARP table, Home Assistant's device trackers and the access points. Devices with a fixed address often have no name there; give them one in the `nives:` block, by MAC or IP (it wins over the rest):

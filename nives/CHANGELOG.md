@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.33.2 — The key locks the thread panel too
+
+- While the key is away, Igor's thread panel refuses as Assist does (« Igor est verrouillé : la clé est absente. »): the integration sends the key entity and `allowed_users` to the server (`POST /api/security`, at start and every five minutes), which reads the key before each panel request (a key that cannot be read locks too). People in `allowed_users` are still answered, by their Home Assistant user name or id, from their phone at home or outside. The installed app (API key, no Home Assistant login) is not checked. Give the wall, the tablet and the desk screen an account of their own (DOCS.md, « The house key »).
+- The panel shows the server's reason when a request is refused, instead of « HTTP 4xx ».
+
 ## 0.33.1 — A bar that scrolls only when it must
 
 - The wall's bar takes `speed: auto`: still while everything fits on the line; longer, it goes round once (about 40 px a second), stops back at its start, waits `pause` seconds (10 by default), then again. Still for those who ask the system for less motion.
