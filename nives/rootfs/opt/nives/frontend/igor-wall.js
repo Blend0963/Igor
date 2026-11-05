@@ -4260,6 +4260,305 @@
     }
   }
 
+  // ----- igor-gps-card: the car on its map, as a navigator shows it -----
+  //   type: custom:igor-gps-card
+  //   entity: device_tracker.car            # the position (companion app), or a sensor with location: [lat, lon]
+  //   speed_entity: sensor.car_speed        # km/h from the car (OBD), better than the GPS's
+  //   speed_limit_entity: sensor.speed_limit  # the limit sign, top right
+  //   show_speed: true                      # false: no speed box on the map
+  //   zoom: 16
+  //   pitch: 45                             # 0: seen from above
+  //   heading_up: true                      # the map turns with the road
+  //   follow_pause: 15                      # seconds before following again after a finger
+  //   snap: 20                              # metres within which the arrow sits on the nearest road; 0: off
+  //   theme: sombre                         # sombre, clair, or auto (light by day, dark at night)
+  //   hide_attribution: false
+  //   style: <a MapLibre style URL>         # another base map
+  // Taken from obd2mqtt's voiture-gps-card (MapLibre, heading up, smooth
+  // movement, trail, limit sign), in Igor's look, with two changes: the arrow
+  // sits on the nearest road drawn on the map (a GPS a few metres off no
+  // longer drives through houses; farther than `snap`, a car park, it keeps
+  // the real position), and between two fixes it goes on along that road for
+  // at most 4 seconds instead of 8 straight ahead.
+  var GPS_MAPLIBRE = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl";
+  var GPS_DARK = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+  var GPS_DAY = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
+  var GPS_R = 6378137, GPS_PREDICT_S = 4, GPS_MOVING = 0.8, GPS_TRAIL = 600;
+  function gpsMapLibre() {
+    if (window.maplibregl) return Promise.resolve(window.maplibregl);
+    if (!window.__igorMapLibre) {
+      window.__igorMapLibre = new Promise(function (resolve, reject) {
+        var sc = document.createElement("script");
+        sc.src = GPS_MAPLIBRE + ".js";
+        sc.onload = function () { resolve(window.maplibregl); };
+        sc.onerror = function () { window.__igorMapLibre = null; reject(new Error("Carte indisponible (pas d'internet ?)")); };
+        document.head.appendChild(sc);
+      });
+    }
+    return window.__igorMapLibre;
+  }
+  var gpsRad = function (d) { return (d * Math.PI) / 180; }, gpsDeg = function (r) { return (r * 180) / Math.PI; };
+  function gpsProject(p, brg, dist) {
+    var b = gpsRad(brg);
+    return [p[0] + gpsDeg((dist * Math.sin(b)) / (GPS_R * Math.cos(gpsRad(p[1])))), p[1] + gpsDeg((dist * Math.cos(b)) / GPS_R)];
+  }
+  function gpsDist(a, b) {
+    var x = gpsRad(b[0] - a[0]) * Math.cos(gpsRad((a[1] + b[1]) / 2)), y = gpsRad(b[1] - a[1]);
+    return Math.hypot(x, y) * GPS_R;
+  }
+  function gpsBearing(a, b) {
+    var y = Math.sin(gpsRad(b[0] - a[0])) * Math.cos(gpsRad(b[1]));
+    var x = Math.cos(gpsRad(a[1])) * Math.sin(gpsRad(b[1])) - Math.sin(gpsRad(a[1])) * Math.cos(gpsRad(b[1])) * Math.cos(gpsRad(b[0] - a[0]));
+    return (gpsDeg(Math.atan2(y, x)) + 360) % 360;
+  }
+  function gpsLerpAngle(a, b, t) { var d = ((b - a + 540) % 360) - 180; return (a + d * t + 360) % 360; }
+  // The nearest point to p on a set of lines ([[lon, lat], …] each), in
+  // metres on a local flat projection: { point, dist, bearing } of the
+  // segment, or null without lines.
+  function gpsNearest(p, lines) {
+    var kx = Math.cos(gpsRad(p[1])) * GPS_R * Math.PI / 180, ky = GPS_R * Math.PI / 180;
+    var best = null;
+    lines.forEach(function (line) {
+      for (var i = 1; i < line.length; i++) {
+        var ax = (line[i - 1][0] - p[0]) * kx, ay = (line[i - 1][1] - p[1]) * ky;
+        var bx = (line[i][0] - p[0]) * kx, by = (line[i][1] - p[1]) * ky;
+        var dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+        var t = len ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len)) : 0;
+        var qx = ax + t * dx, qy = ay + t * dy, d = Math.hypot(qx, qy);
+        if (!best || d < best.dist) {
+          best = { dist: d, point: [p[0] + qx / kx, p[1] + qy / ky], bearing: (gpsDeg(Math.atan2(dx, dy)) + 360) % 360 };
+        }
+      }
+    });
+    return best;
+  }
+  // The road's direction closest to where the car heads (a road goes both ways).
+  function gpsAlong(roadBearing, heading) {
+    var back = (roadBearing + 180) % 360;
+    var d1 = Math.abs(((roadBearing - heading + 540) % 360) - 180), d2 = Math.abs(((back - heading + 540) % 360) - 180);
+    return d1 <= d2 ? roadBearing : back;
+  }
+  window.__igorGpsMath = { nearest: gpsNearest, along: gpsAlong, project: gpsProject, dist: gpsDist };
+  var GPS_ARROW = '<svg viewBox="0 0 40 40" width="46" height="46"><circle cx="20" cy="20" r="18" fill="rgba(89,208,224,0.18)"/>' +
+    '<path d="M20 4 L32 33 L20 26 L8 33 Z" fill="#59d0e0" stroke="#07080a" stroke-width="2.5" stroke-linejoin="round"/></svg>';
+  // The French speed limit sign (B14): kept as the real thing, readable at a glance.
+  var GPS_SIGN = '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="49.5" fill="#fff" stroke="rgba(0,0,0,0.35)" stroke-width="1"/>' +
+    '<circle cx="50" cy="50" r="42.5" fill="none" stroke="#c8102e" stroke-width="11"/>' +
+    '<text x="50" y="53" text-anchor="middle" dominant-baseline="middle" fill="#1a1a1a" font-family="\'Barlow Condensed\', \'Roboto Condensed\', \'Arial Narrow\', sans-serif" font-weight="700" font-size="44" letter-spacing="-1"></text></svg>';
+  class IgorGpsCard extends HTMLElement {
+    setConfig(config) {
+      if (!config || !config.entity) throw new Error("igor-gps-card: entity est requis (le device_tracker de l'autoradio)");
+      this.config = Object.assign({ zoom: 16, pitch: 45, heading_up: true, follow_pause: 15, theme: "sombre", snap: 20 }, config);
+      this.headingUp = this.config.heading_up !== false;
+    }
+    getCardSize() { return 6; }
+    getGridOptions() { return { columns: 12, rows: 4, min_rows: 3 }; }
+    set hass(hass) {
+      this._hass = hass;
+      if (!this.root) this.build();
+      this.read();
+    }
+    connectedCallback() { if (this.map && !this.raf) this.raf = requestAnimationFrame(() => this.tick()); }
+    disconnectedCallback() { cancelAnimationFrame(this.raf); this.raf = null; }
+    build() {
+      this.root = this.attachShadow({ mode: "open" });
+      this.root.innerHTML =
+        '<link rel="stylesheet" href="' + GPS_MAPLIBRE + '.css"><style>' +
+        ":host { display: block; height: 100%; }" +
+        "ha-card { display: block; position: relative; height: 100%; min-height: 240px; overflow: hidden; background: #07080a; border-radius: var(--ha-card-border-radius, 6px); }" +
+        "#map { position: absolute; inset: 0; }" +
+        ".msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; text-align: center; color: #878c95; font-family: " + MONO + "; font-size: 13px; }" +
+        ".msg[hidden] { display: none; }" +
+        ".btns { position: absolute; top: 10px; left: 10px; display: flex; flex-direction: column; gap: 8px; z-index: 2; }" +
+        ".btns button { width: 44px; height: 44px; border-radius: 4px; border: 1px solid #22262c; cursor: pointer; background: rgba(7,8,10,0.85); color: #e9e4da; display: grid; place-items: center; --mdc-icon-size: 22px; }" +
+        ".btns button[hidden] { display: none; }" +
+        ".hud { position: absolute; z-index: 2; pointer-events: none; }" +
+        ".hud.sp { left: 12px; bottom: 12px; } .hud.lim { right: 12px; top: 12px; }" +
+        ".speed { min-width: 78px; height: 70px; padding: 0 12px; box-sizing: border-box; border-radius: 4px; background: rgba(7,8,10,0.86); border: 1px solid #22262c; color: #e9e4da;" +
+        " display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'Chakra Petch', " + MONO + "; line-height: 0.95; }" +
+        ".speed b { font-size: 38px; font-weight: 500; font-variant-numeric: tabular-nums; } .speed span { font-size: 11px; color: #878c95; letter-spacing: 0.12em; margin-top: 2px; }" +
+        ".speed.over { color: #e5323b; border-color: #e5323b; } .speed[hidden] { display: none; }" +
+        ".sign { width: 76px; height: 76px; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.5)); } .sign svg { width: 100%; height: 100%; display: block; } .sign[hidden] { display: none; }" +
+        ".sign.over { animation: igor-over 1s ease-in-out infinite; } @keyframes igor-over { 50% { transform: scale(1.07); } }" +
+        ".snap { position: absolute; right: 12px; bottom: 12px; z-index: 2; font-family: " + MONO + "; font-size: 10px; color: #3d454e; letter-spacing: 0.1em; text-transform: uppercase; }" +
+        ".noattr .maplibregl-ctrl-attrib, .noattr .maplibregl-ctrl-bottom-right { display: none !important; }" +
+        "@media (prefers-reduced-motion: reduce) { .sign.over { animation: none; } }" +
+        '</style><ha-card id="card"><div id="map"></div><div class="msg" id="msg">Chargement de la carte…</div>' +
+        '<div class="btns"><button id="recenter" title="Recentrer" hidden><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' +
+        '<button id="orient" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button></div>' +
+        '<div class="hud sp"><div class="speed" id="speed"><b>0</b><span>KM/H</span></div></div>' +
+        '<div class="hud lim"><div class="sign" id="limit" hidden>' + GPS_SIGN + "</div></div>" +
+        '<div class="snap" id="snapEl"></div></ha-card>';
+      var $ = (id) => this.root.getElementById(id);
+      this.$ = $;
+      $("card").classList.toggle("noattr", !!this.config.hide_attribution);
+      $("recenter").addEventListener("click", () => this.setFollow(true));
+      $("orient").addEventListener("click", () => {
+        this.headingUp = !this.headingUp;
+        $("orient").firstElementChild.setAttribute("icon", this.headingUp ? "mdi:navigation-variant" : "mdi:compass-outline");
+        if (!this.headingUp && this.map) this.map.easeTo({ bearing: 0 });
+        this.setFollow(true);
+      });
+      this.follow = true;
+      this.trail = [];
+      this.heading = 0;
+      this.shown = 0;
+    }
+    setFollow(on) {
+      this.follow = on;
+      clearTimeout(this.resume);
+      this.$("recenter").hidden = on;
+      if (!on && this.config.follow_pause > 0) this.resume = setTimeout(() => this.setFollow(true), this.config.follow_pause * 1000);
+    }
+    styleUrl() {
+      if (this.config.style) return this.config.style;
+      if (this.config.theme === "clair") return GPS_DAY;
+      if (this.config.theme === "auto") {
+        var sun = this._hass && this._hass.states["sun.sun"];
+        return sun && sun.state === "above_horizon" ? GPS_DAY : GPS_DARK;
+      }
+      return GPS_DARK;
+    }
+    message(text) { this.$("msg").textContent = text; this.$("msg").hidden = !text; }
+    read() {
+      var st = this._hass.states[this.config.entity];
+      if (!st) { this.message("Entité introuvable : " + this.config.entity); return; }
+      var a = st.attributes, n = (v) => (v === undefined || v === null || v === "" ? undefined : Number(v));
+      var course = n(a.course != null ? a.course : a.direction != null ? a.direction : a.bearing != null ? a.bearing : a.heading);
+      var speed = n(a.speed != null ? a.speed : a.velocity);
+      var lat = a.latitude, lon = a.longitude;
+      if (typeof lat !== "number" && Array.isArray(a.location)) { lat = Number(a.location[0]); lon = Number(a.location[1]); }
+      lat = typeof lat === "string" ? parseFloat(lat) : lat;
+      lon = typeof lon === "string" ? parseFloat(lon) : lon;
+      if (typeof lat !== "number" || typeof lon !== "number" || isNaN(lat) || isNaN(lon)) {
+        this.message("Pas de position dans " + this.config.entity + " (état : " + st.state + ")");
+        return;
+      }
+      var p = [lon, lat];
+      if (!this.fix || this.fix.updated !== st.last_updated) this.onFix(p, course, speed, st.last_updated);
+      this.overlays();
+      if (!this.loading) this.init(p);
+      else if (this.map && this.styleNow !== this.styleUrl()) {
+        this.styleNow = this.styleUrl();
+        this.map.setStyle(this.styleNow, { diff: false });
+      }
+    }
+    onFix(p, course, gpsSpeed, updated) {
+      var prev = this.fix && this.fix.point;
+      if (typeof course === "number" && course > 0 && (gpsSpeed || 0) > GPS_MOVING) this.heading = course;
+      else if (prev && gpsDist(prev, p) > 8) this.heading = gpsBearing(prev, p);
+      this.fix = { point: p, time: performance.now(), gpsSpeed: isFinite(gpsSpeed) ? gpsSpeed : 0, updated: updated };
+    }
+    // The trail follows the arrow as shown (on the road), not the raw fixes.
+    addTrail(p) {
+      var last = this.trail[this.trail.length - 1];
+      if (last && gpsDist(last, p) < 5) return;
+      this.trail.push(p);
+      if (this.trail.length > GPS_TRAIL) this.trail.shift();
+      var src = this.map && this.map.getSource("trail");
+      if (src) src.setData(this.trailData());
+    }
+    speedMps() {
+      var e = this.config.speed_entity && this._hass.states[this.config.speed_entity];
+      var kmh = e ? parseFloat(e.state) : NaN;
+      if (!isNaN(kmh)) return kmh / 3.6;
+      return this.fix ? this.fix.gpsSpeed : 0;
+    }
+    overlays() {
+      var kmh = Math.round(this.speedMps() * 3.6);
+      var le = this.config.speed_limit_entity && this._hass.states[this.config.speed_limit_entity];
+      var limit = le ? parseFloat(le.state) : NaN, over = !isNaN(limit) && kmh > limit + 3;
+      var sp = this.$("speed");
+      sp.hidden = this.config.show_speed === false;
+      sp.firstElementChild.textContent = kmh;
+      sp.classList.toggle("over", over);
+      var sign = this.$("limit");
+      sign.hidden = isNaN(limit);
+      if (!isNaN(limit)) {
+        var t = sign.querySelector("text"), dg = String(Math.round(limit));
+        if (t.textContent !== dg) { t.textContent = dg; t.setAttribute("font-size", dg.length > 2 ? "39" : "46"); }
+        sign.classList.toggle("over", over);
+      }
+    }
+    trailData() { return { type: "Feature", geometry: { type: "LineString", coordinates: this.trail } }; }
+    async init(p) {
+      this.loading = true;
+      var ml;
+      try { ml = await gpsMapLibre(); } catch (e) { this.message(e.message); this.loading = false; return; }
+      var map = new ml.Map({
+        container: this.$("map"), style: (this.styleNow = this.styleUrl()), center: p, zoom: this.config.zoom, pitch: this.config.pitch,
+        bearing: this.headingUp ? this.heading : 0, attributionControl: this.config.hide_attribution ? false : { compact: true }
+      });
+      this.map = map;
+      var arrow = document.createElement("div");
+      arrow.innerHTML = GPS_ARROW;
+      this.marker = new ml.Marker({ element: arrow, rotationAlignment: "map", pitchAlignment: "map" }).setLngLat(p).addTo(map);
+      ["dragstart", "zoomstart", "rotatestart", "pitchstart"].forEach((ev) => map.on(ev, (e) => { if (e.originalEvent) this.setFollow(false); }));
+      map.on("style.load", () => {
+        // The roads of whatever base map: line layers of OpenMapTiles' « transportation ».
+        this.roads = (map.getStyle().layers || []).filter((l) => l.type === "line" && /transportation|road/i.test(String(l["source-layer"] || ""))).map((l) => l.id);
+        if (!map.getSource("trail")) {
+          map.addSource("trail", { type: "geojson", data: this.trailData() });
+          map.addLayer({ id: "trail", type: "line", source: "trail", layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": "#59d0e0", "line-width": 5, "line-opacity": 0.55 } });
+        }
+        this.message("");
+      });
+      map.on("error", (e) => console.warn("igor-gps-card:", e && e.error));
+      new ResizeObserver(() => map.resize()).observe(this.$("map"));
+      this.pos = p;
+      this.shown = this.heading;
+      if (!this.raf) this.raf = requestAnimationFrame(() => this.tick());
+    }
+    // The nearest road drawn around a point, within `snap` metres (null otherwise).
+    road(p, within) {
+      var map = this.map;
+      if (!map || !this.roads || !this.roads.length || !(within > 0)) return null;
+      var c = map.project(p), r = 70;
+      var feats;
+      try { feats = map.queryRenderedFeatures([[c.x - r, c.y - r], [c.x + r, c.y + r]], { layers: this.roads }); } catch (e) { return null; }
+      var lines = [];
+      feats.forEach((f) => {
+        var g = f.geometry;
+        if (!g) return;
+        if (g.type === "LineString") lines.push(g.coordinates);
+        else if (g.type === "MultiLineString") g.coordinates.forEach((l) => lines.push(l));
+      });
+      var best = gpsNearest(p, lines);
+      return best && best.dist <= within ? best : null;
+    }
+    tick() {
+      this.raf = requestAnimationFrame(() => this.tick());
+      if (!this.map || !this.fix) return;
+      var now = performance.now(), speed = this.speedMps(), moving = speed > GPS_MOVING;
+      // Between two fixes: on along the heading, 4 s at most.
+      var elapsed = Math.min((now - this.fix.time) / 1000, GPS_PREDICT_S);
+      var target = moving ? gpsProject(this.fix.point, this.heading, speed * elapsed) : this.fix.point;
+      // Onto the road, a few times a second: stopped, only when very close
+      // (a car park stays a car park).
+      var snapM = Number(this.config.snap) || 0;
+      if (snapM > 0 && (!this.snapAt || now - this.snapAt > 200)) {
+        this.snapAt = now;
+        this.snapped = this.road(target, moving ? snapM : Math.min(snapM, 8));
+        this.$("snapEl").textContent = this.snapped ? "sur la route" : "";
+      }
+      var s = this.snapped;
+      if (s && gpsDist(s.point, target) <= snapM * 1.5) {
+        target = s.point;
+        if (moving) this.heading = gpsLerpAngle(this.heading, gpsAlong(s.bearing, this.heading), 0.2);
+      }
+      var jump = gpsDist(this.pos, target), k = jump > 200 ? 1 : 0.15;
+      this.pos = [this.pos[0] + (target[0] - this.pos[0]) * k, this.pos[1] + (target[1] - this.pos[1]) * k];
+      this.shown = gpsLerpAngle(this.shown, this.heading, 0.1);
+      this.marker.setLngLat(this.pos).setRotation(this.shown);
+      if (!this.trailAt || now - this.trailAt > 500) { this.trailAt = now; this.addTrail(this.pos); }
+      if (this.follow) {
+        var h = this.$("map").clientHeight;
+        this.map.jumpTo({ center: this.pos, bearing: this.headingUp ? this.shown : 0, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } });
+      }
+    }
+  }
+
   // ----- igor-alerts-card: what is wrong, first -----
   //   type: custom:igor-alerts-card
   //   gateway: sensor.opnsense_…_gateway_wan_dhcp_status   # the internet
@@ -4375,6 +4674,7 @@
   define("igor-news-card", IgorNewsCard, "Igor · dépêches", "Les derniers titres d'un flux RSS ou Atom (dépêches, actualités).");
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
   define("igor-car-card", IgorCarCard, "Igor · voiture", "La voiture qui roule : vitesse, régime, température, batterie, trajet.");
+  define("igor-gps-card", IgorGpsCard, "Igor · GPS", "La voiture sur sa carte, orientée comme la route, collée à la route la plus proche.");
   define("igor-carmedia-card", IgorCarMediaCard, "Igor · musique de la voiture", "Le titre en cours sur l'autoradio et trois gros boutons.");
 
   // ===== no top bar with the "Igor Journal (tablette)" theme =====
