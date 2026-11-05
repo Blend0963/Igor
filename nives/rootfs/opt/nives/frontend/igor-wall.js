@@ -137,6 +137,7 @@
   //                            # auto: still while it fits, else one turn then a pause
   //     pause: 10              # with speed: auto, seconds at rest between two turns
   //     tap: /igor-wall/homelab  # a tap on the bar opens that page (else: the machines' detail)
+  //     edit: false            # no pencil (administrators: it puts the dashboard in edit mode)
   //     groups:
   //       - name: pve
   //         kind: hôte
@@ -179,6 +180,7 @@
     ".fix { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 100%; color: var(--fg); background: var(--bg); position: relative; z-index: 1; }",
     ".fix.left { border-right: 1px solid var(--line); }",
     ".fix.right { border-left: 1px solid var(--line); }",
+    ".fix.pen { padding: 0 10px; color: var(--dim); cursor: pointer; --mdc-icon-size: 17px; } .fix.pen:hover { color: var(--fg); } .fix.pen[hidden] { display: none; }",
     ".lens { width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle, #e1f5fe 0, #4fc3f7 30%, #0277bd 65%, #0d1014 100%); box-shadow: 0 0 0 1.5px #3b4a56; flex: none; }",
     ".eye { width: 18px; height: 18px; flex: none; display: block; }",
     ".brand { font-family: 'Chakra Petch', " + MONO + "; letter-spacing: 0.22em; font-weight: 600; color: var(--fg); }",
@@ -284,6 +286,15 @@
         this.run.classList.add("roll");
         this.run.style.setProperty("--speed", speed + "s");
       }
+      // A pencil, administrators only: the dashboard in edit mode (`edit: false`: none).
+      if (this.config.edit !== false) {
+        this.editEl = el("span", "fix right pen", this.root);
+        this.editEl.title = "Modifier le tableau de bord";
+        this.editEl.setAttribute("role", "button");
+        this.editEl.hidden = true;
+        icon(this.editEl, "mdi:pencil");
+        this.editEl.addEventListener("click", (ev) => { ev.stopPropagation(); editDashboard(this.root, this._hass); });
+      }
       this.clockEl = el("span", "fix right", this.root);
       this.detail = el("div", "detail", host);
       this.pop = el("div", "pop", host);
@@ -340,6 +351,7 @@
     }
     set hass(hass) {
       this._hass = hass;
+      if (this.editEl) this.editEl.hidden = !isAdmin(hass);
       var igor = igorSensor(hass);
       this.igorEl.textContent = igor ? (IGOR_WORDS[igor.state] || igor.state) : "";
       this.renderTabs();
@@ -1310,6 +1322,19 @@
     window.history.pushState(null, "", path);
     window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
   }
+  // The dashboard in edit mode, its top bar back (the wall's kiosk gives it
+  // way while editing): Home Assistant's « Terminé » and its raw editor.
+  // Administrators only; a YAML dashboard is edited in its file.
+  function isAdmin(hass) { return !!(hass && hass.user && hass.user.is_admin); }
+  function editDashboard(node, hass) {
+    var say = function (msg) { node.dispatchEvent(new CustomEvent("hass-notification", { bubbles: true, composed: true, detail: { message: msg } })); };
+    if (!isAdmin(hass)) { say("Seul un administrateur peut modifier ce tableau de bord."); return; }
+    var root = lovelaceRoot();
+    var ll = root && root.lovelace;
+    if (ll && ll.mode === "yaml") { say("Ce tableau de bord est en YAML : modifie son fichier."); return; }
+    if (ll && typeof ll.setEditMode === "function") { ll.setEditMode(true); window.scrollTo(0, 0); return; }
+    window.location.assign(window.location.pathname + "?edit=1");
+  }
   function service(hass, name, data, target) {
     // vacuum.start_pause is gone from Home Assistant: start, or pause if cleaning.
     if (name === "vacuum.start_pause" && target && typeof target.entity_id === "string") return vacuumTap(hass, target.entity_id);
@@ -1387,12 +1412,17 @@
   //     - { icon: mdi:cog, name: Réglages, navigate: /config }    # a page of Home Assistant
   //     - { icon: mdi:menu, name: Menu, menu: true }               # Home Assistant's sidebar
   //     - { icon: mdi:bow-tie, name: Igor, journal: true }         # Igor's conversations, over the page
+  //     - { icon: mdi:pencil, name: Modifier, edit: true }          # this dashboard in edit mode (administrators)
   class IgorButtonsCard extends IgorCard {
     setConfig(config) {
       if (!config || !Array.isArray(config.buttons) || !config.buttons.length) throw new Error("igor-buttons-card: buttons est requis");
       this.config = config;
     }
     getCardSize() { return 1; }
+    update(hass) {
+      var admin = isAdmin(hass);
+      this.shadowRoot.querySelectorAll("button[data-edit]").forEach(function (b) { b.hidden = !admin; });
+    }
     build() {
       // size: big: buttons to touch on a phone, like the giant tiles (a large
       // icon, the name under it), three a row unless `columns` says.
@@ -1413,9 +1443,11 @@
         else icon(btn, b.icon || "mdi:gesture-tap");
         el("span", "", btn, b.name || "");
         if (b.secondary) el("small", "", btn, b.secondary);
+        if (b.edit) { btn.dataset.edit = "1"; btn.hidden = !isAdmin(this._hass); }
         btn.addEventListener("click", () => {
           // tap_action: any Home Assistant action (url: app://…, assist…).
           if (b.tap_action) { haAction(this, b.tap_action); return; }
+          if (b.edit) { editDashboard(this, this._hass); return; }
           if (b.journal) { window.dispatchEvent(new CustomEvent("ll-custom", { detail: { igor_journal: true } })); return; }
           if (b.navigate) { navigate(String(b.navigate)); return; }
           if (b.menu) { this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })); return; }
