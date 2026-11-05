@@ -7,6 +7,7 @@
 //                             columns of cards that reach the bottom
 //   custom:igor-journal-card  Igor's last exchanges, "historique" opens all
 //   custom:igor-notifications-card  Home Assistant's notifications, waiting and sent
+//   custom:igor-bank-card     a bank integration's accounts, month, categories, budgets, operations
 //   custom:igor-docker-card   the containers of a Portainer endpoint
 //   custom:igor-net-card      a router's traffic over the last hour
 //   custom:igor-energy-card   power now and hour by hour today
@@ -140,7 +141,7 @@
   //     tap: /igor-wall/homelab  # a tap on the bar opens that page (else: the machines' detail)
   //     notifications: notifs  # the bell (Home Assistant's notifications waiting) opens that page of this dashboard (or /a/page); false: no bell
   //     edit: false            # no pencil (administrators: it puts the dashboard in edit mode)
-  //     groups:
+  //     groups:                # an item: entity, label, unit, digits, warn/bad (from), below (red under)
   //       - name: pve
   //         kind: hôte
   //         status: binary_sensor.node_pve_status
@@ -174,6 +175,8 @@
     var warn = it.warn != null ? it.warn : unit === "%" ? 80 : unit === "°C" ? 65 : null;
     var bad = it.bad != null ? it.bad : unit === "%" ? 95 : unit === "°C" ? 80 : null;
     var level = bad != null && v >= bad ? "bad" : warn != null && v >= warn ? "warn" : "";
+    // `below: 0`: red under that value (an account overdrawn).
+    if (it.below != null && v < Number(it.below)) level = "bad";
     return { text: text, level: level, pct: pct };
   }
   var BAR_CSS = [
@@ -5252,6 +5255,262 @@
     }
   }
 
+  // ----- igor-bank-card: money, in Igor's style (a bank integration's sensors) -----
+  //   type: custom:igor-bank-card
+  //   show: overview        # total, accounts, the month (spent, income, saved, budget)
+  //         categories      # spending by category, against its budget or last month
+  //         operations      # a list of operations from an attribute, by day
+  //         selected        # one operation in detail
+  //         budgets         # what is left of the month's budgets
+  //         accounts        # each account's spending by category
+  //   (each mode's keys are in DOCS.md; every sensor is optional)
+  function money(v, d) {
+    if (v == null || isNaN(v)) return "—";
+    return fr(Number(v), d == null ? 2 : d) + " €";
+  }
+  function signed(v, d) { return (v > 0 ? "+" : "") + money(v, d); }
+  function numOf(hass, id, attr) {
+    var st = id && hass.states[id];
+    if (!st) return null;
+    var v = parseFloat(attr ? st.attributes[attr] : st.state);
+    return isNaN(v) ? null : v;
+  }
+  function dayText(iso) {
+    var s = String(iso || "");
+    return /^\d{4}-\d\d-\d\d/.test(s) ? s.slice(8, 10) + "/" + s.slice(5, 7) + "/" + s.slice(0, 4) : s;
+  }
+  class IgorBankCard extends IgorCard {
+    setConfig(config) {
+      var show = (config && config.show) || "overview";
+      if (["overview", "categories", "operations", "selected", "budgets", "accounts"].indexOf(show) < 0) throw new Error("igor-bank-card: show inconnu (" + show + ")");
+      this.config = Object.assign({}, config, { show: show });
+    }
+    getCardSize() { return 5; }
+    ids() {
+      var c = this.config, out = [c.total, c.spent, c.income, c.budgets, c.entity, c.filter];
+      (c.accounts || []).forEach(function (a) { out.push(a.balance, a.transactions); });
+      (c.categories || []).forEach(function (a) { out.push(a.entity); });
+      return out.filter(Boolean);
+    }
+    build() {
+      this.style([
+        ".body { flex: 1; min-height: 0; overflow-y: auto; display: grid; gap: 10px; align-content: start; padding-top: 4px; }",
+        ".hero { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }",
+        ".hero b { font-size: clamp(26px, 5vw, 38px); font-weight: 300; letter-spacing: -0.01em; color: var(--fg); font-variant-numeric: tabular-nums; }",
+        ".hero b.neg, .neg { color: var(--bad) !important; } .pos { color: var(--okc); }",
+        ".lbl { color: var(--faint); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }",
+        ".grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 8px; }",
+        ".tile { border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; display: grid; gap: 3px; min-width: 0; cursor: pointer; background: var(--bg); }",
+        ".tile .v { font-size: 18px; color: var(--fg); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".tile .s { color: var(--dim); font-size: 11px; }",
+        ".tile.nav { place-items: center; text-align: center; --mdc-icon-size: 26px; color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; font-size: 10.5px; gap: 6px; }",
+        ".tile.nav ha-icon { color: var(--fg); }",
+        ".row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 3px 10px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); --mdc-icon-size: 18px; }",
+        ".row.tap { cursor: pointer; } .row.tap:hover .n { color: var(--acc); }",
+        ".row ha-icon { color: var(--dim); }",
+        ".row .n { color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".row .a { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--fg); }",
+        ".row .d { grid-column: 2 / 4; color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".row .bar { grid-column: 2 / 4; }",
+        ".bar i.warn { background: var(--wait); } .bar i.bad { background: var(--bad); } .bar i.ok { background: var(--okc); }",
+        ".day { color: var(--faint); font-size: 10px; letter-spacing: 0.14em; padding: 8px 0 0; }",
+        ".sum { color: var(--dim); font-size: 11.5px; }",
+        ".big { text-align: center; display: grid; gap: 4px; padding: 6px 0; }",
+        ".big b { font-size: clamp(30px, 6vw, 44px); font-weight: 300; }",
+        ".kv { display: grid; grid-template-columns: 1fr auto; gap: 5px 14px; font-variant-numeric: tabular-nums; } .kv .l { color: var(--dim); } .kv .v { text-align: right; }",
+        "pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 8px; margin: 0; font: inherit; color: var(--dim); }",
+        ".more { color: var(--acc); cursor: pointer; background: none; border: 0; font: inherit; padding: 4px 0; justify-self: start; }",
+        ".empty { color: var(--dim); }",
+        "h5 { margin: 6px 0 2px; font-size: 12px; font-weight: 500; color: var(--fg); display: flex; justify-content: space-between; } h5 span { color: var(--dim); font-weight: 400; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      var defaults = { overview: "comptes", categories: "dépenses par catégorie", operations: "opérations", selected: "opération", budgets: "budgets du mois", accounts: "par compte" };
+      el("span", "t sub", top, String(this.config.title || defaults[this.config.show]).toUpperCase()).style.letterSpacing = "0.12em";
+      this.side = el("span", "sub", top, "");
+      this.body = el("div", "body", card);
+    }
+    update(hass, prev) {
+      if (!changed(prev, hass, this.ids())) return;
+      this.body.innerHTML = "";
+      this.side.textContent = "";
+      try { this["show_" + this.config.show](hass); }
+      catch (e) { el("div", "empty", this.body, "Données indisponibles."); }
+    }
+    go(path) {
+      if (!path) return;
+      navigate(path.charAt(0) === "/" ? path : "/" + window.location.pathname.split("/")[1] + "/" + path);
+    }
+    tile(parent, label, value, sub, cls, onTap) {
+      var t = el("div", "tile", parent);
+      el("span", "lbl", t, label);
+      el("span", "v " + (cls || ""), t, value);
+      if (sub) el("span", "s", t, sub);
+      if (onTap) t.addEventListener("click", onTap);
+      return t;
+    }
+    bar(parent, pct, level) {
+      var b = el("div", "bar", parent);
+      var i = el("i", level || "", b);
+      i.style.width = Math.max(0, Math.min(100, pct || 0)) + "%";
+      return b;
+    }
+    show_overview(hass) {
+      var c = this.config, b = this.body;
+      if (c.total) {
+        var t = numOf(hass, c.total), over = numOf(hass, c.total, "overdrawn_accounts") || 0;
+        var hero = el("div", "hero", b);
+        var big = el("b", t != null && t < 0 ? "neg" : "", hero, money(t));
+        big.style.cursor = "pointer";
+        big.addEventListener("click", () => moreInfo(this, c.total));
+        el("span", "sub", hero, "solde total · " + (t != null && t < 0 ? "à découvert" : "créditeur") + (over ? " · " + over + " compte" + (over > 1 ? "s" : "") + " à découvert" : ""));
+      }
+      if ((c.accounts || []).length) {
+        var g = el("div", "grid", b);
+        c.accounts.forEach((a) => {
+          var v = numOf(hass, a.balance), spent = numOf(hass, a.transactions, "month_spent");
+          this.tile(g, a.name || a.balance, money(v), spent != null ? fr(spent, 0) + " € dépensés ce mois" : "", v != null && v < 0 ? "neg" : "", () => moreInfo(this, a.balance));
+        });
+      }
+      var spent = numOf(hass, c.spent), income = numOf(hass, c.income), prevM = numOf(hass, c.spent, "previous_month");
+      if (spent != null || income != null) {
+        el("div", "lbl", b, "ce mois-ci");
+        var m = el("div", "grid", b);
+        var vs = spent != null && prevM ? Math.round(((spent - prevM) / prevM) * 100) : null;
+        if (spent != null) this.tile(m, "dépenses", money(spent, 0), vs != null ? (vs > 0 ? "+" : "") + vs + " % vs mois dernier" : "", "", () => moreInfo(this, c.spent));
+        if (income != null) this.tile(m, "revenus", money(income, 0), "", "pos", () => moreInfo(this, c.income));
+        if (spent != null && income != null) this.tile(m, "épargne", signed(income - spent, 0), "revenus − dépenses", income - spent >= 0 ? "pos" : "neg");
+      }
+      if (c.budgets && hass.states[c.budgets]) {
+        var tb = numOf(hass, c.budgets, "total_budget") || 0, ts = numOf(hass, c.budgets, "total_spent_budgeted") || 0, n = numOf(hass, c.budgets) || 0;
+        var r = el("div", "row" + (c.budgets_page ? " tap" : ""), b);
+        icon(r, "mdi:target");
+        el("span", "n", r, !tb ? "Aucun budget" : tb - ts >= 0 ? "Il reste " + money(tb - ts, 0) : "Budget dépassé de " + money(ts - tb, 0));
+        el("span", "a", r, tb ? fr(ts, 0) + " / " + fr(tb, 0) + " €" : "");
+        if (tb) this.bar(r, (ts / tb) * 100, ts > tb ? "bad" : n ? "warn" : "ok");
+        if (n) el("span", "d", r, n + " catégorie" + (n > 1 ? "s" : "") + " dépassée" + (n > 1 ? "s" : ""));
+        if (c.budgets_page) r.addEventListener("click", () => this.go(c.budgets_page));
+      }
+      if ((c.links || []).length) {
+        var l = el("div", "grid", b);
+        c.links.forEach((k) => {
+          var t2 = el("div", "tile nav", l);
+          icon(t2, k.icon || "mdi:arrow-right");
+          el("span", "", t2, k.name || "");
+          t2.addEventListener("click", () => this.go(k.navigate));
+        });
+      }
+    }
+    show_categories(hass) {
+      var c = this.config;
+      var rows = (c.categories || []).map(function (k) {
+        return { k: k, v: numOf(hass, k.entity) || 0, budget: numOf(hass, k.entity, "budget"), prev: numOf(hass, k.entity, "previous_month") };
+      }).filter(function (r) { return hass.states[r.k.entity]; });
+      if (c.hide_zero !== false) rows = rows.filter(function (r) { return r.v > 0 || r.budget; });
+      rows.sort(function (a, b) { return b.v - a.v; });
+      var total = rows.reduce(function (a, r) { return a + r.v; }, 0);
+      this.side.textContent = money(total, 0);
+      if (!rows.length) { el("div", "empty", this.body, "Aucune dépense ce mois-ci."); return; }
+      var top = rows[0].v || 1;
+      rows.forEach((r) => {
+        var row = el("div", "row tap", this.body);
+        icon(row, r.k.icon || "mdi:tag");
+        el("span", "n", row, r.k.name || r.k.entity);
+        el("span", "a" + (r.budget && r.v > r.budget ? " neg" : ""), row, money(r.v, 0) + (r.budget ? " / " + fr(r.budget, 0) + " €" : ""));
+        var pct = r.budget ? (r.v / r.budget) * 100 : (r.v / top) * 100;
+        this.bar(row, pct, r.budget ? (r.v > r.budget ? "bad" : pct >= 80 ? "warn" : "ok") : "");
+        el("span", "d", row, (total ? Math.round((r.v / total) * 100) + " % des dépenses" : "") + (r.prev ? " · " + fr(r.prev, 0) + " € le mois dernier" : ""));
+        row.addEventListener("click", () => {
+          // The operations of this category: the integration's filter, then its page.
+          if (c.filter && this._hass) {
+            this._hass.callService("select", "select_option", { entity_id: c.filter, option: r.k.option || r.k.name });
+            this.go(c.operations || "operations");
+          } else moreInfo(this, r.k.entity);
+        });
+      });
+    }
+    show_operations(hass) {
+      var c = this.config, st = hass.states[c.entity];
+      if (!st) { el("div", "empty", this.body, "Capteur introuvable."); return; }
+      var a = st.attributes;
+      var ops = a[c.attribute || (a.operations ? "operations" : "recent_transactions")] || [];
+      var limit = Number(c.limit) || 50;
+      if (a.total != null && (a.filter || a.period)) {
+        this.side.textContent = a.total + " opération" + (a.total > 1 ? "s" : "");
+        el("div", "sum", this.body, [a.filter, a.period].filter(Boolean).join(" · ") + (a.sum_out != null ? " · sorties " + money(Number(a.sum_out)) + " · entrées " + money(Number(a.sum_in)) : ""));
+      }
+      if (!ops.length) { el("div", "empty", this.body, "Aucune opération."); return; }
+      var day = null;
+      ops.slice(0, limit).forEach((t) => {
+        if (c.by_day !== false && t.date !== day) { day = t.date; el("div", "day", this.body, dayText(day)); }
+        var row = el("div", "row", this.body);
+        icon(row, t.icon || "mdi:receipt");
+        el("span", "n", row, String(t.merchant || t.label || "").trim());
+        var amt = Number(t.amount);
+        el("span", "a " + (amt > 0 ? "pos" : ""), row, signed(amt));
+        el("span", "d", row, [c.by_day === false && t.date ? dayText(t.date).slice(0, 5) : "", t.category_name, t.account, t.pending ? "en attente" : ""].filter(Boolean).join(" · "));
+      });
+      if (c.more) {
+        var m = el("button", "more", this.body, "toutes les opérations ›");
+        m.type = "button";
+        m.addEventListener("click", () => this.go(c.more));
+      }
+    }
+    show_selected(hass) {
+      var st = hass.states[this.config.entity];
+      var a = st && st.attributes;
+      if (!a || a.amount == null) { el("div", "empty", this.body, "Aucune opération pour ce filtre."); return; }
+      var d = a.detail || {};
+      var big = el("div", "big", this.body);
+      var amt = Number(a.amount);
+      el("b", amt > 0 ? "pos" : "", big, signed(amt));
+      el("span", "", big, st.state);
+      el("span", "sub", big, [a.category_name, a.account].filter(Boolean).join(" · "));
+      var kv = el("div", "kv", this.body);
+      [["date d'achat", dayText(a.date)], ["comptabilisée le", dayText(d.booking_date)], ["statut", a.pending ? "en attente" : "comptabilisée"], ["position", a.position != null ? a.position + " / " + a.total : ""]]
+        .forEach(function (p) { if (!p[1]) return; el("span", "l", kv, p[0]); el("span", "v", kv, p[1]); });
+      if (a.label) { el("div", "lbl", this.body, "libellé exact"); el("pre", "", this.body, String(a.label)); }
+    }
+    show_budgets(hass) {
+      var c = this.config, st = hass.states[c.entity];
+      var rows = (st && st.attributes.budgets) || [];
+      if (!rows.length) { el("div", "empty", this.body, "Aucun budget défini : renseigne un montant ci-dessous (0 = pas de budget)."); return; }
+      var tb = numOf(hass, c.entity, "total_budget") || 0, ts = numOf(hass, c.entity, "total_spent_budgeted") || 0, left = tb - ts;
+      var now = new Date(), days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1;
+      var big = el("div", "big", this.body);
+      el("span", "lbl", big, left >= 0 ? "il te reste" : "budget dépassé de");
+      el("b", left < 0 ? "neg" : "", big, money(Math.abs(left), 0));
+      el("span", "sub", big, fr(ts, 0) + " € dépensés sur " + fr(tb, 0) + " €" + (left > 0 ? " · " + fr(left / days, 0) + " €/jour jusqu'à la fin du mois" : ""));
+      this.bar(this.body, tb ? (ts / tb) * 100 : 0, ts > tb ? "bad" : ts / tb >= 0.8 ? "warn" : "ok");
+      rows.slice().sort(function (a, b) { return (b.used_pct || 0) - (a.used_pct || 0); }).forEach((r) => {
+        var row = el("div", "row", this.body);
+        icon(row, r.over ? "mdi:alert-circle" : "mdi:target");
+        el("span", "n", row, r.category);
+        var l = r.budget - r.spent;
+        el("span", "a" + (l < 0 ? " neg" : ""), row, l >= 0 ? "reste " + money(l, 0) : "dépassé de " + money(-l, 0));
+        this.bar(row, r.used_pct, r.over ? "bad" : r.used_pct >= 80 ? "warn" : "ok");
+        el("span", "d", row, fr(r.spent, 0) + " € sur " + fr(r.budget, 0) + " €");
+      });
+    }
+    show_accounts(hass) {
+      (this.config.accounts || []).forEach((acc) => {
+        var st = hass.states[acc.transactions];
+        if (!st) return;
+        var spent = Number(st.attributes.month_spent) || 0, got = Number(st.attributes.month_received) || 0;
+        var h = el("h5", "", this.body, acc.name || acc.transactions);
+        el("span", "", h, fr(spent, 0) + " € dépensés · " + fr(got, 0) + " € reçus");
+        var cats = st.attributes.by_category || {};
+        Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; }).forEach((k) => {
+          var row = el("div", "row", this.body);
+          icon(row, "mdi:tag-outline");
+          el("span", "n", row, k);
+          el("span", "a", row, money(cats[k], 0));
+          this.bar(row, spent ? (cats[k] / spent) * 100 : 0, "");
+        });
+      });
+    }
+  }
+
   function define(name, cls, label, description) {
     if (!customElements.get(name)) customElements.define(name, cls);
     window.customCards = window.customCards || [];
@@ -5259,6 +5518,7 @@
   }
   define("igor-wall", IgorWall, "Igor · mur", "Tout l'écran : barre d'état des machines et colonnes de cartes jusqu'en bas.");
   define("igor-journal-card", IgorJournalCard, "Igor · journal", "Les derniers échanges avec Igor.");
+  define("igor-bank-card", IgorBankCard, "Igor · banque", "Les comptes, le mois, les dépenses par catégorie, les budgets et les opérations d'une intégration bancaire.");
   define("igor-notifications-card", IgorNotificationsCard, "Igor · notifications", "Les notifications de Home Assistant : celles à traiter, et celles envoyées (téléphone, Telegram).");
   define("igor-docker-card", IgorDockerCard, "Igor · Docker", "Les conteneurs de Portainer.");
   define("igor-net-card", IgorNetCard, "Igor · réseau", "Le débit d'un routeur sur la dernière heure.");

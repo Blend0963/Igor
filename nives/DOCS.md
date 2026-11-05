@@ -106,6 +106,27 @@ The integration adds cards for a tablet screen filled to the bottom, in the them
 
 - `custom:igor-wall` takes the whole screen: a one-line **status bar** on top that scrolls slowly through your machines (a touch opens the detail of each), then **columns** of cards that reach the bottom of the screen. Each column lists cards, `heading: <title>` for a small title, and `grow: true` with `card: <a card>` for the card that takes the height left. On a phone the columns stack. `above:` and `below:` take cards across the whole width, over and under the columns (a band that comes and goes with a `conditional` card, a row of apps). On a phone, a bar with `tabs: true` scrolls its tabs sideways and stays on top of the page. `kiosk: true` on a wall hides Home Assistant's top bar on its pages whatever the device's theme (a car's head unit). In the bar, `speed: auto` keeps the line still while it fits and otherwise scrolls it once every `pause` seconds (10 by default); `name: 407` follows IGOR, and `tabs: true` keeps the pages' tabs at any width, scrolling sideways when they don't fit (a car's head unit, an unfolded phone). `stack_below: 1100` on a wall stacks its columns up to that width, for a foldable phone opened. For an administrator, a **pencil** at the right of the bar puts the dashboard in edit mode, Home Assistant's top bar back with its « Terminé » and its raw configuration editor, even on a `kiosk` wall; other accounts don't see it, and `edit: false` removes it. In `custom:igor-buttons-card`, a button with `edit: true` does the same (hidden for other accounts). When Home Assistant has notifications waiting (an update, a refused login…), a **bell** with their count appears in the bar, and for an administrator a **red dot** when something was sent since this screen last showed the notifications card (the integration's `nives_notification` event, which carries the time only); a touch opens `notifications: notifs` (a page of the same dashboard, or `/a/page`), else Home Assistant's own list; `notifications: false` removes it (a car's head unit).
 
+**Money.** `custom:igor-bank-card` shows a bank integration's sensors in Igor's style, with no other card to install (no mushroom, apexcharts, card-mod or browser_mod). `show:` picks what:
+- `overview`: `total` (its `overdrawn_accounts`), `accounts` (a list of `name`, `balance`, `transactions` with `month_spent`), `spent` (with `previous_month`) and `income` for the month and what was saved, `budgets` (`total_budget`, `total_spent_budgeted`) with `budgets_page`, and `links` (`name`, `icon`, `navigate`) as big buttons.
+- `categories`: `categories` (`name`, `entity`, `icon`), each against its `budget` attribute or the largest; a touch sets the `filter` select to that category and opens `operations` (a page of the same dashboard).
+- `operations`: the list in `entity`'s `attribute` (`operations` or `recent_transactions`: `date`, `merchant`, `amount`, `category_name`, `account`, `pending`, `icon`), by day, `limit`, `more` for a page with all of them.
+- `selected`: one operation in detail (`amount`, `date`, `detail.booking_date`, `label`, `position`/`total`).
+- `budgets`: `entity` with a `budgets` list (`category`, `budget`, `spent`, `over`, `used_pct`): what is left, per day until the month ends, and each category.
+- `accounts`: each account's `by_category`, month spent and received.
+
+In the bar, an item with `below: 0` turns red under zero (an account overdrawn), so balances can scroll with the rest:
+
+```yaml
+bar:
+  tabs: true
+  speed: auto
+  groups:
+    - name: comptes
+      items:
+        - {entity: sensor.bank_total, label: total, unit: €, digits: 2, below: 0}
+        - {entity: sensor.bank_spent_this_month, label: dépenses, unit: €, digits: 0}
+```
+
 **Notifications.** `custom:igor-notifications-card` shows Home Assistant's notifications waiting (each with ✕ to clear it), then the ones Home Assistant **sent**: every `notify.*` call (the phone app, `notify.rappels`…) and every Telegram message, with the time, the channel, the text with its links, and « voir sur la carte » when a position went with it. So a notification lost on the way (a phone without Google, Telegram muted) can still be read. The integration notes them as they go out and keeps the newest 200 on Home Assistant's disk (`.storage/nives_notifications`); the list (`nives.notifications`) is for administrators only, since messages can be personal. Options: `title`, `limit` (30), `waiting: false`, `sent: false`.
 - `custom:igor-journal-card`: Igor's last exchanges (newest on top), what was done and how long each step took, today's count; « historique » opens the full history.
 - `custom:igor-docker-card`: the containers of the Portainer integration, each with its load, memory, image and uptime; a stopped one turns red.

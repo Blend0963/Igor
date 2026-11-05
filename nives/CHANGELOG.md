@@ -4,6 +4,7 @@
 
 - `custom:igor-notifications-card`: Home Assistant's notifications waiting (✕ clears one), and the ones it sent (the phone app, `notify.rappels`, Telegram) with their time, channel, links and position, so a notification lost on the way can still be read.
 - The integration notes every `notify.*` and Telegram message as it goes out, the newest 200 kept on Home Assistant's disk; `nives.notifications` reads them, administrators only.
+- `custom:igor-bank-card`: a bank integration's accounts, month, spending by category with budgets, budgets left, operations by day and one in detail, in Igor's style with nothing else to install. Bar items take `below: 0` to turn red under zero.
 - A bar with `tabs: true` keeps its tabs at any width: they scroll sideways when they don't fit (an unfolded phone), the open one in sight, and the clock is never cut.
 - The wall's bar shows a bell with the count of notifications waiting, and a red dot when something was sent since the screen last showed the list (administrators); `notifications: notifs` opens that page, `notifications: false` removes it.
 
