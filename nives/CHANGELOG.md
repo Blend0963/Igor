@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.33.4 — The vacuum's button, the car without Home Assistant's bar
+
+- A robot vacuum's tile no longer calls `vacuum.start_pause`, which Home Assistant removed (« Action vacuum.start_pause introuvable »): it starts the robot, or pauses it while it cleans. Tiles and buttons configured with `vacuum.start_pause` do the same. The tile's icon moves with the robot: turning while it cleans, rocking on its way home, breathing in pause, red when stuck.
+- `igor-wall`: `kiosk: true` hides Home Assistant's top bar (its tabs, search and assistant buttons) on that wall's pages whatever the device's theme: the car's head unit no longer shows two rows of tabs.
+
 ## 0.33.3 — The alarm on the tablet, Igor's journal in Igor's look
 
 - `igor-tiles-card`: a tile `{alarm: <device_id>}` is an alarm clock (Alarm Clocks integration), as the wall's alarm card finds it: its time always shown under the name, lit while on, « coupé » when off; a tap turns it on or off, and while it rings stops it (the tile blinks amber); a long press opens its time.
