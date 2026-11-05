@@ -137,6 +137,7 @@
   //                            # auto: still while it fits, else one turn then a pause
   //     pause: 10              # with speed: auto, seconds at rest between two turns
   //     tap: /igor-wall/homelab  # a tap on the bar opens that page (else: the machines' detail)
+  //     edit: false            # no pencil (administrators: it puts the dashboard in edit mode)
   //     groups:
   //       - name: pve
   //         kind: hôte
@@ -179,6 +180,7 @@
     ".fix { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 100%; color: var(--fg); background: var(--bg); position: relative; z-index: 1; }",
     ".fix.left { border-right: 1px solid var(--line); }",
     ".fix.right { border-left: 1px solid var(--line); }",
+    ".fix.pen { padding: 0 10px; color: var(--dim); cursor: pointer; --mdc-icon-size: 17px; } .fix.pen:hover { color: var(--fg); } .fix.pen[hidden] { display: none; }",
     ".lens { width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle, #e1f5fe 0, #4fc3f7 30%, #0277bd 65%, #0d1014 100%); box-shadow: 0 0 0 1.5px #3b4a56; flex: none; }",
     ".eye { width: 18px; height: 18px; flex: none; display: block; }",
     ".brand { font-family: 'Chakra Petch', " + MONO + "; letter-spacing: 0.22em; font-weight: 600; color: var(--fg); }",
@@ -284,6 +286,15 @@
         this.run.classList.add("roll");
         this.run.style.setProperty("--speed", speed + "s");
       }
+      // A pencil, administrators only: the dashboard in edit mode (`edit: false`: none).
+      if (this.config.edit !== false) {
+        this.editEl = el("span", "fix right pen", this.root);
+        this.editEl.title = "Modifier le tableau de bord";
+        this.editEl.setAttribute("role", "button");
+        this.editEl.hidden = true;
+        icon(this.editEl, "mdi:pencil");
+        this.editEl.addEventListener("click", (ev) => { ev.stopPropagation(); editDashboard(this.root, this._hass); });
+      }
       this.clockEl = el("span", "fix right", this.root);
       this.detail = el("div", "detail", host);
       this.pop = el("div", "pop", host);
@@ -340,6 +351,7 @@
     }
     set hass(hass) {
       this._hass = hass;
+      if (this.editEl) this.editEl.hidden = !isAdmin(hass);
       var igor = igorSensor(hass);
       this.igorEl.textContent = igor ? (IGOR_WORDS[igor.state] || igor.state) : "";
       this.renderTabs();
@@ -1310,6 +1322,19 @@
     window.history.pushState(null, "", path);
     window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
   }
+  // The dashboard in edit mode, its top bar back (the wall's kiosk gives it
+  // way while editing): Home Assistant's « Terminé » and its raw editor.
+  // Administrators only; a YAML dashboard is edited in its file.
+  function isAdmin(hass) { return !!(hass && hass.user && hass.user.is_admin); }
+  function editDashboard(node, hass) {
+    var say = function (msg) { node.dispatchEvent(new CustomEvent("hass-notification", { bubbles: true, composed: true, detail: { message: msg } })); };
+    if (!isAdmin(hass)) { say("Seul un administrateur peut modifier ce tableau de bord."); return; }
+    var root = lovelaceRoot();
+    var ll = root && root.lovelace;
+    if (ll && ll.mode === "yaml") { say("Ce tableau de bord est en YAML : modifie son fichier."); return; }
+    if (ll && typeof ll.setEditMode === "function") { ll.setEditMode(true); window.scrollTo(0, 0); return; }
+    window.location.assign(window.location.pathname + "?edit=1");
+  }
   function service(hass, name, data, target) {
     // vacuum.start_pause is gone from Home Assistant: start, or pause if cleaning.
     if (name === "vacuum.start_pause" && target && typeof target.entity_id === "string") return vacuumTap(hass, target.entity_id);
@@ -1387,12 +1412,17 @@
   //     - { icon: mdi:cog, name: Réglages, navigate: /config }    # a page of Home Assistant
   //     - { icon: mdi:menu, name: Menu, menu: true }               # Home Assistant's sidebar
   //     - { icon: mdi:bow-tie, name: Igor, journal: true }         # Igor's conversations, over the page
+  //     - { icon: mdi:pencil, name: Modifier, edit: true }          # this dashboard in edit mode (administrators)
   class IgorButtonsCard extends IgorCard {
     setConfig(config) {
       if (!config || !Array.isArray(config.buttons) || !config.buttons.length) throw new Error("igor-buttons-card: buttons est requis");
       this.config = config;
     }
     getCardSize() { return 1; }
+    update(hass) {
+      var admin = isAdmin(hass);
+      this.shadowRoot.querySelectorAll("button[data-edit]").forEach(function (b) { b.hidden = !admin; });
+    }
     build() {
       // size: big: buttons to touch on a phone, like the giant tiles (a large
       // icon, the name under it), three a row unless `columns` says.
@@ -1413,9 +1443,11 @@
         else icon(btn, b.icon || "mdi:gesture-tap");
         el("span", "", btn, b.name || "");
         if (b.secondary) el("small", "", btn, b.secondary);
+        if (b.edit) { btn.dataset.edit = "1"; btn.hidden = !isAdmin(this._hass); }
         btn.addEventListener("click", () => {
           // tap_action: any Home Assistant action (url: app://…, assist…).
           if (b.tap_action) { haAction(this, b.tap_action); return; }
+          if (b.edit) { editDashboard(this, this._hass); return; }
           if (b.journal) { window.dispatchEvent(new CustomEvent("ll-custom", { detail: { igor_journal: true } })); return; }
           if (b.navigate) { navigate(String(b.navigate)); return; }
           if (b.menu) { this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })); return; }
@@ -4746,6 +4778,165 @@
     }
   }
 
+  // ----- igor-security-card: the alarm, the camera, its positions -----
+  //   type: custom:igor-security-card
+  //   alarm: input_boolean.alarm            # or an alarm_control_panel
+  //   active: binary_sensor.alarm_triggered # optional: « INTRUSION »
+  //   privacy: switch.camera_privacy_mode   # optional: the camera on or private
+  //   camera: camera.living_room            # optional: its saved positions found on its device
+  //   presets: select.camera_ptz_preset     # optional: those positions, named
+  // Arming is one tap. Disarming asks for the disarm code on a keypad and goes
+  // through nives.disarm (five wrong codes, ten minutes), never a plain switch.
+  class IgorSecurityCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !config.alarm) throw new Error("igor-security-card: alarm est requis");
+      this.config = config;
+    }
+    getCardSize() { return 6; }
+    build() {
+      this.style([
+        ".st { text-align: center; padding: 10px 0 12px; border-bottom: 1px solid var(--line); flex: none; }",
+        ".st b { display: block; font-family: 'Chakra Petch', " + MONO + "; font-size: 26px; letter-spacing: 0.24em; font-weight: 600; }",
+        ".st span { color: var(--dim); font-size: 11.5px; }",
+        ".st.armed b { color: var(--wait); } .st.off b { color: var(--okc); } .st.alert b { color: var(--bad); animation: igor-alert 1s steps(2) infinite; }",
+        "@keyframes igor-alert { 50% { opacity: 0.35; } } @media (prefers-reduced-motion: reduce) { .st.alert b { animation: none; } }",
+        ".row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; flex: none; }",
+        ".big { min-height: 84px; background: var(--card); border: 1px solid var(--line); border-radius: 6px; color: var(--fg); font-family: inherit; font-size: 13px; letter-spacing: 0.1em;",
+        "  text-transform: uppercase; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; cursor: pointer; --mdc-icon-size: 32px; }",
+        ".big[disabled] { opacity: 0.35; cursor: default; } .big:active:not([disabled]) { transform: scale(0.98); }",
+        ".big.arm { border-color: var(--wait); color: var(--wait); } .big.disarm { border-color: var(--okc); color: var(--okc); }",
+        ".big.cam.on { border-color: var(--acc); color: var(--acc); } .big.cam.off { color: var(--dim); }",
+        ".h { color: var(--dim); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; margin: 14px 0 6px; display: flex; align-items: center; gap: 7px; flex: none; }",
+        ".h::before { content: ''; width: 6px; height: 6px; background: var(--igor-signal, #e5323b); }",
+        ".pre { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; flex: none; }",
+        ".pre button { min-height: 52px; background: var(--card); border: 1px solid var(--line); border-radius: 4px; color: var(--fg); font: inherit; font-size: 12px; cursor: pointer; padding: 6px; }",
+        ".pre button.sel { border-color: var(--acc); color: var(--acc); }",
+        ".pad { position: fixed; inset: 0; z-index: 2147482990; background: rgba(0,0,0,0.78); display: flex; align-items: center; justify-content: center; }",
+        ".pad[hidden] { display: none; }",
+        ".box { background: #07080a; border: 1px solid var(--line); border-radius: 8px; padding: 18px; display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: 260px; }",
+        ".box .t { letter-spacing: 0.2em; font-size: 13px; color: var(--dim); }",
+        ".box .c { font-size: 26px; letter-spacing: 0.5em; color: var(--acc); min-height: 1.3em; min-width: 7em; text-align: center; border-bottom: 1px solid var(--line); }",
+        ".box .m { min-height: 1.3em; font-size: 12px; color: var(--bad); } .box .m.ok { color: var(--okc); }",
+        ".keys { display: grid; grid-template-columns: repeat(3, 72px); gap: 8px; }",
+        ".keys button { height: 58px; background: var(--card); border: 1px solid var(--line); border-radius: 4px; color: var(--fg); font: inherit; font-size: 22px; cursor: pointer; }",
+        ".keys .ok { border-color: var(--okc); color: var(--okc); font-size: 16px; }",
+        ".x { background: none; border: 1px solid var(--line); color: var(--dim); font: inherit; padding: 6px 16px; border-radius: 4px; cursor: pointer; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t", top, this.config.title || "sécurité");
+      this.stEl = el("div", "st", card);
+      this.stB = el("b", "", this.stEl);
+      this.stS = el("span", "", this.stEl);
+      var row = el("div", "row", card);
+      var mk = (cls, ic, label, fn) => { var b = el("button", "big " + cls, row); b.type = "button"; icon(b, ic); el("span", "", b, label); b.addEventListener("click", fn); return b; };
+      this.armB = mk("arm", "mdi:shield-lock", "armer", () => this.arm());
+      this.disB = mk("disarm", "mdi:shield-off", "désarmer", () => this.openPad());
+      if (this.config.privacy) {
+        var row2 = el("div", "row", card);
+        row2.style.gridTemplateColumns = "1fr";
+        this.camB = el("button", "big cam", row2);
+        this.camB.type = "button";
+        this.camIc = icon(this.camB, "mdi:cctv");
+        this.camL = el("span", "", this.camB, "caméra");
+        this.camB.addEventListener("click", () => {
+          if (this._hass) this._hass.callService("switch", "toggle", {}, { entity_id: this.config.privacy });
+        });
+      }
+      this.preH = el("div", "h", card, "positions de la caméra");
+      this.pre = el("div", "pre", card);
+      this.preH.hidden = this.pre.hidden = true;
+      // The keypad, over the page.
+      this.pad = el("div", "pad", this.shadowRoot);
+      this.pad.hidden = true;
+      var box = el("div", "box", this.pad);
+      el("div", "t", box, "CODE DE DÉSARMEMENT");
+      this.codeEl = el("div", "c", box);
+      this.msgEl = el("div", "m", box);
+      var keys = el("div", "keys", box);
+      this.code = "";
+      ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "OK"].forEach((k) => {
+        var b = el("button", k === "OK" ? "ok" : "", keys, k);
+        b.type = "button";
+        b.addEventListener("click", () => this.key(k));
+      });
+      var x = el("button", "x", box, "annuler");
+      x.type = "button";
+      x.addEventListener("click", () => this.closePad());
+      this.pad.addEventListener("click", (ev) => { if (ev.target === this.pad) this.closePad(); });
+    }
+    isOn(st) { return !!st && st.state !== "off" && st.state !== "disarmed" && st.state !== "unavailable" && st.state !== "unknown"; }
+    arm() {
+      var a = this.config.alarm, h = this._hass;
+      if (!h) return;
+      if (/^alarm_control_panel\./.test(a)) h.callService("alarm_control_panel", "alarm_arm_away", {}, { entity_id: a });
+      else h.callService("homeassistant", "turn_on", {}, { entity_id: a });
+    }
+    openPad() { this.code = ""; this.msgEl.textContent = ""; this.msgEl.className = "m"; this.codeEl.textContent = ""; this.pad.hidden = false; }
+    closePad() { this.pad.hidden = true; this.code = ""; }
+    key(k) {
+      if (k === "⌫") this.code = this.code.slice(0, -1);
+      else if (k === "OK") return this.send();
+      else if (this.code.length < 12) this.code += k;
+      this.msgEl.textContent = "";
+      this.codeEl.textContent = this.code.replace(/./g, "•");
+    }
+    send() {
+      var c = this.code;
+      this.code = "";
+      this.codeEl.textContent = "";
+      if (!c || !this._hass) return;
+      this.msgEl.className = "m";
+      this.msgEl.textContent = "…";
+      this._hass.callWS({ type: "call_service", domain: "nives", service: "disarm", service_data: { code: c }, return_response: true })
+        .then((r) => {
+          var res = (r && r.response) || {};
+          this.msgEl.className = "m" + (res.ok ? " ok" : "");
+          this.msgEl.textContent = res.message || (res.ok ? "Alarme désarmée." : "Refusé.");
+          if (res.ok) setTimeout(() => this.closePad(), 1200);
+        })
+        .catch(() => { this.msgEl.textContent = "Indisponible (mettez à jour Igor)."; });
+    }
+    // The camera's saved positions: the configured select, or the one with
+    // « preset » in its name on the camera's device.
+    presetEntity(hass) {
+      if (this.config.presets) return this.config.presets;
+      if (!this.config.camera || !hass.entities) return null;
+      var reg = hass.entities[this.config.camera], dev = reg && reg.device_id;
+      if (!dev) return null;
+      var found = null;
+      Object.keys(hass.entities).forEach((id) => { if (!found && /^select\./.test(id) && /preset/i.test(id) && hass.entities[id].device_id === dev) found = id; });
+      return found;
+    }
+    update(hass) {
+      var a = hass.states[this.config.alarm], act = this.config.active && hass.states[this.config.active];
+      var on = this.isOn(a), alert = (act && act.state === "on") || (a && a.state === "triggered");
+      this.stEl.className = "st " + (alert ? "alert" : on ? "armed" : "off");
+      this.stB.textContent = alert ? "INTRUSION" : on ? "ARMÉE" : "DÉSARMÉE";
+      this.stS.textContent = !a ? "alarme introuvable : " + this.config.alarm : alert ? "désarmer avec le code" : on ? "désarmer : le code" : "prête à être armée";
+      this.armB.disabled = on;
+      this.disB.disabled = !on && !alert;
+      if (this.camB) {
+        var p = hass.states[this.config.privacy], priv = p && p.state === "on";
+        this.camB.className = "big cam " + (priv ? "off" : "on");
+        this.camIc.setAttribute("icon", priv ? "mdi:cctv-off" : "mdi:cctv");
+        this.camL.textContent = priv ? "caméra privée · toucher pour activer" : "caméra active · toucher pour la couper";
+      }
+      var pe = this.presetEntity(hass), ps = pe && hass.states[pe];
+      var opts = ps && Array.isArray(ps.attributes.options) ? ps.attributes.options : [];
+      this.preH.hidden = this.pre.hidden = !opts.length;
+      var sig = pe + "|" + opts.join("|") + "|" + (ps ? ps.state : "");
+      if (sig === this.preSig) return;
+      this.preSig = sig;
+      this.pre.innerHTML = "";
+      opts.forEach((o) => {
+        var b = el("button", o === ps.state ? "sel" : "", this.pre, o);
+        b.type = "button";
+        b.addEventListener("click", () => hass.callService("select", "select_option", { option: o }, { entity_id: pe }));
+      });
+    }
+  }
+
   // ----- igor-alerts-card: what is wrong, first -----
   //   type: custom:igor-alerts-card
   //   gateway: sensor.opnsense_…_gateway_wan_dhcp_status   # the internet
@@ -4861,6 +5052,7 @@
   define("igor-news-card", IgorNewsCard, "Igor · dépêches", "Les derniers titres d'un flux RSS ou Atom (dépêches, actualités).");
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
   define("igor-car-card", IgorCarCard, "Igor · voiture", "La voiture qui roule : vitesse, régime, température, batterie, trajet.");
+  define("igor-security-card", IgorSecurityCard, "Igor · sécurité", "L'alarme (armer, désarmer avec le code), la caméra active ou privée, ses positions enregistrées.");
   define("igor-gps-card", IgorGpsCard, "Igor · GPS", "La voiture sur sa carte, orientée comme la route, collée à la route la plus proche.");
   define("igor-carmedia-card", IgorCarMediaCard, "Igor · musique de la voiture", "Le titre en cours sur l'autoradio et trois gros boutons.");
 

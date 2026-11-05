@@ -57,6 +57,7 @@ from .const import (
     NAMES_KEY,
     OPENWRT_KEY,
     SERVICE_DISARM,
+    CONF_ALARM_ACTIVE,
     CONF_ALARM_ENTITY,
     CONF_CODE_HASH,
     SERVICE_SCREEN,
@@ -1212,6 +1213,9 @@ def _async_register_disarm(hass: HomeAssistant) -> None:
         sec = security_settings(hass)
         stored = sec.get(CONF_CODE_HASH)
         entity_id = str(call.data["entity_id"])
+        # Never the alarm: this service only ever opens a screen.
+        if entity_id == sec.get(CONF_ALARM_ENTITY) or entity_id == sec.get(CONF_ALARM_ACTIVE):
+            return {"ok": False, "message": "Cette entité est l'alarme, pas un écran."}
         if not stored:
             return {"ok": False, "message": "Aucun code configuré (options d'Igor)."}
         wait = guard.blocked()

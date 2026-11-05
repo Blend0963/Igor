@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.35.2 — A pencil to edit the dashboard
+
+- The wall's bar has a pencil, for administrators only, that puts the dashboard in edit mode: Home Assistant's top bar comes back, with « Terminé » and the raw configuration editor, even on a `kiosk` wall that hides it. `edit: false` in the bar removes it.
+- `custom:igor-buttons-card`: a button with `edit: true` does the same, hidden for other accounts.
+
+## 0.35.1 — The alarm on a security page, with its code
+
+- `igor-security-card`: the alarm's state in large (ARMÉE, DÉSARMÉE, INTRUSION), « armer » in one tap, « désarmer » only with the disarm code on a keypad (through `nives.disarm`, five wrong codes and ten minutes), the camera active or private in one tap, and the camera's saved positions (its device's `select` with « preset » in its name, or `presets:`).
+- `nives.unlock_screen` refuses the alarm's entities outright: the maintenance code only ever opens a screen, never the alarm.
+
 ## 0.35.0 — A maintenance lock for the car, Igor's bar on the phone
 
 - Maintenance lock: a wall with `maintenance: input_boolean.x` makes its device remember that switch; while it is on, every page of Home Assistant on that device lies under a full-screen « MAINTENANCE » lock with a keypad (the car's head unit lent to a garage). It opens with the disarm code (`nives.unlock_screen`, same lockout as the alarm: five wrong codes, ten minutes; each wrong code fires `igor_security` and a notification) or with the switch turned off from another device. The last state is kept on the device, so the lock is up at once after a reload, even before Home Assistant answers. The keyboard reaches the keypad only.
