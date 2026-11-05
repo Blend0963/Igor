@@ -128,6 +128,12 @@
       this.update(hass, prev);
     }
     get hass() { return this._hass; }
+    // Back on the page (another tab, then this one again): a card that emptied
+    // itself when it left is drawn again at once, not at the next change in
+    // the house (an empty « Commandes » page until a light moved).
+    connectedCallback() {
+      if (!this._built && this._hass) { this._built = true; this.build(); this.update(this._hass, null); }
+    }
     build() {}
     update() {}
     style(extra) { el("style", "", this.shadowRoot, BASE + "\n" + (extra || "")); }
