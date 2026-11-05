@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.36.2 — A navigator that keeps to its route
+
+- `custom:igor-gps-card`, guided: the arrow stays on the route as long as it is within what the GPS may be off (45 to 120 m), never on a parallel street, and glides along the route itself; a new route only after 5 seconds really off it. Not guided, a parallel road going the same way takes over only after being clearly nearer for 3 seconds (a turn still switches at once). The zoom follows the speed (farther out on fast roads) and comes closer before a turn (`auto_zoom: false` to keep it still). The bottom bar (distance, time, arrival) takes the whole width.
+- `custom:igor-buttons-card`: `form:` asks a few numbers before the action, each prefilled with its last value and saved in its `input_number` (a fuel fill-up: litres and price per litre, with the total).
+- `custom:igor-carmedia-card`: the title follows the track: the newest of the session sensor and the title read in the player's notification wins (the session sensor of a head unit can keep an old title).
+
 ## 0.36.1 — Notifications as Home Assistant writes them
 
 - `custom:igor-notifications-card` shows Markdown: titles, bold, links (a link to a Home Assistant page opens it), lists and pictures, including a picture written into the text as image data (a robot vacuum's maintenance notice). Built as page elements, never as HTML; a picture only from a web address or as image data. A touch on a notification opens it whole.
