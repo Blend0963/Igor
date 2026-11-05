@@ -1827,6 +1827,72 @@
     });
     return out;
   }
+  // The alarm clock in front of everything (Alarm Clocks' own card: its time,
+  // its days, on or off), with « Répéter » / « Arrêter » while it rings.
+  // One window for the page, in the document itself (never cut by a card).
+  var ALARM_CSS = [
+    ".igor-alarm-pop { position: fixed; inset: 0; z-index: 2147482995; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; }",
+    ".igor-alarm-pop[hidden] { display: none; }",
+    ".igor-alarm-pop .box { width: min(560px, 94vw); max-height: 92vh; overflow: auto; background: #0d1014; border: 1px solid rgba(233,228,218,0.14); border-radius: var(--igor-radius, 3px); padding: 12px; box-sizing: border-box; }",
+    ".igor-alarm-pop .ring { display: flex; gap: 10px; margin-bottom: 10px; } .igor-alarm-pop .ring[hidden] { display: none; }",
+    ".igor-alarm-pop button { flex: 1; background: none; border: 1px solid rgba(233,228,218,0.18); border-radius: var(--igor-radius, 3px); color: #e9e4da; font: 13px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; text-transform: uppercase; padding: 14px; cursor: pointer; }",
+    ".igor-alarm-pop .ring button { border-color: rgba(217,164,65,0.6); color: #d9a441; font-size: 15px; padding: 18px; }",
+    ".igor-alarm-pop .close { display: block; flex: none; margin: 10px 0 0 auto; padding: 8px 18px; color: #8a929b; }"
+  ].join("\n");
+  var alarmPop = null;
+  async function alarmWindow(node, deviceId, extra) {
+    var hass = node._hass || node.hass;
+    if (!hass) return;
+    if (!alarmPop) {
+      var st = document.createElement("style");
+      st.textContent = ALARM_CSS;
+      document.head.appendChild(st);
+      var pop = document.createElement("div");
+      pop.className = "igor-alarm-pop";
+      pop.hidden = true;
+      var box = el("div", "box", pop);
+      var ring = el("div", "ring", box);
+      var slot = el("div", "", box);
+      var close = el("button", "close", box, "fermer");
+      close.type = "button";
+      alarmPop = { pop: pop, ring: ring, slot: slot, cards: {}, device: null, node: null, timer: null };
+      var shut = function () { pop.hidden = true; clearInterval(alarmPop.timer); alarmPop.timer = null; };
+      close.addEventListener("click", shut);
+      pop.addEventListener("click", function (ev) { if (ev.target === pop) shut(); });
+      [["snooze", "Répéter"], ["dismiss", "Arrêter"]].forEach(function (a) {
+        var b = el("button", "", ring, a[1]);
+        b.type = "button";
+        b.addEventListener("click", function () {
+          var h = alarmPop.node && (alarmPop.node._hass || alarmPop.node.hass), ids = h && alarmEntities(h, alarmPop.device);
+          if (ids && ids[a[0]]) h.callService("button", "press", {}, { entity_id: ids[a[0]] });
+          if (a[0] === "dismiss") shut();
+        });
+      });
+      document.body.appendChild(pop);
+    }
+    var A = alarmPop;
+    A.device = deviceId; A.node = node;
+    var card = A.cards[deviceId];
+    if (!card && window.loadCardHelpers) {
+      var helpers = await window.loadCardHelpers();
+      card = A.cards[deviceId] = helpers.createCardElement(Object.assign({ type: "custom:alarm-clocks-card", devices: [{ device_id: deviceId, expanded: true }],
+        show_settings: false, show_days: true, show_next_alarm: true, expandable: false }, extra || {}));
+    }
+    A.slot.innerHTML = "";
+    if (card) A.slot.appendChild(card);
+    else el("div", "", A.slot, "La carte de l'intégration Alarm Clocks n'est pas chargée.");
+    var refresh = function () {
+      var h = A.node && (A.node._hass || A.node.hass);
+      if (!h) return;
+      if (card) card.hass = h;
+      var ids = alarmEntities(h, A.device), s = ids.state && h.states[ids.state];
+      A.ring.hidden = !(s && (s.state === "ringing" || s.state === "snoozed"));
+    };
+    refresh();
+    clearInterval(A.timer);
+    A.timer = setInterval(refresh, 1000);
+    A.pop.hidden = false;
+  }
   class IgorAlarmCard extends IgorCard {
     setConfig(config) {
       if (!config || !config.device_id) throw new Error("igor-alarm-card: device_id est requis");
@@ -1853,28 +1919,11 @@
         b.addEventListener("click", (ev) => { ev.stopPropagation(); if (this.ids[a[0]]) this._hass.callService("button", "press", {}, { entity_id: this.ids[a[0]] }); });
       });
       card.addEventListener("click", () => this.open());
-      this.pop = el("div", "pop", this.shadowRoot);
-      this.pop.hidden = true;
-      this.pop.addEventListener("click", (ev) => { if (ev.target === this.pop) this.pop.hidden = true; });
       this.tick = setInterval(() => { if (this._hass) this.update(this._hass, null); }, 30000);
     }
-    async open() {
-      if (!this.full && window.loadCardHelpers) {
-        var helpers = await window.loadCardHelpers();
-        var box = el("div", "box", this.pop);
-        this.full = helpers.createCardElement(Object.assign({ type: "custom:alarm-clocks-card", devices: [{ device_id: this.config.device_id, expanded: true }],
-          show_settings: false, show_days: true, show_next_alarm: true, expandable: false }, this.config.full || {}));
-        box.appendChild(this.full);
-        var close = el("button", "close", box, "fermer");
-        close.type = "button";
-        close.addEventListener("click", () => { this.pop.hidden = true; });
-      }
-      if (this.full) this.full.hass = this._hass;
-      this.pop.hidden = false;
-    }
+    open() { alarmWindow(this, this.config.device_id, this.config.full); }
     update(hass, prev) {
       if (!this.ids || (prev && prev.entities !== hass.entities)) this.ids = alarmEntities(hass, this.config.device_id);
-      if (this.full && !this.pop.hidden) this.full.hass = hass;
       var ids = this.ids, s = function (id) { return id && hass.states[id] ? hass.states[id].state : ""; };
       var on = s(ids.enabled) === "on", state = s(ids.state);
       var time = s(ids.time).slice(0, 5);
@@ -1894,6 +1943,107 @@
       this.ic.parentElement.className = "tile " + (ringing ? "k-wait" : on ? "k-ok" : "");
       this.acts.hidden = !ringing;
     }
+  }
+
+  // What a tile shows of its entity, whatever it is: lit or not, its kind
+  // (its colour), its motion, and a word on what it does. Every state a thing
+  // can be in shows: a projector on its menu, a speaker playing, a fan
+  // turning, a shutter going up, a thermostat heating, a door open, a scene
+  // just set, a script running, a thing gone (unavailable).
+  var MEDIA_WORDS = { on: "allumé", idle: "prêt", paused: "en pause", buffering: "chargement…", playing: "en lecture", standby: "veille" };
+  var SENSOR_ON = { door: "ouverte", window: "ouverte", opening: "ouvert", garage_door: "ouverte", motion: "mouvement", occupancy: "occupé",
+    presence: "présent", plug: "branché", power: "sous tension", running: "en marche", light: "lumière", sound: "son", connectivity: "connecté",
+    lock: "déverrouillé", moving: "en mouvement", update: "mise à jour", battery_charging: "en charge" };
+  var PROBLEMS = ["problem", "safety", "smoke", "gas", "carbon_monoxide", "moisture", "tamper", "heat", "cold", "battery", "vibration"];
+  function tileLive(hass, t, st) {
+    var d = domainOf(t.entity), s = st ? st.state : "", a = (st && st.attributes) || {};
+    var out = { on: false, kind: "switch", motion: "", text: "", gone: !st || s === "unavailable", alarm: false };
+    if (out.gone) { out.text = st ? "indisponible" : "introuvable"; return out; }
+    // A tile that calls a service on its entity (a shutter's « Ouvrir »,
+    // a vacuum's « Base »): lit in its state, moving while it gets there.
+    if (t.service) {
+      out.kind = d === "cover" ? "cover" : d === "vacuum" ? "vac" : "switch";
+      var sv = t.service.split(".")[1] || "";
+      var moving = s === "opening" || s === "closing";
+      var busy = (sv === "open_cover" && s === "opening") || (sv === "close_cover" && s === "closing") || (sv === "stop_cover" && moving)
+        || (sv === "return_to_base" && s === "returning") || (sv === "start_pause" && s === "cleaning");
+      out.on = busy || Boolean(t.lit && s === t.lit);
+      if (busy) out.motion = s === "opening" ? "up" : s === "closing" ? "down" : s === "returning" ? "rock" : s === "cleaning" ? "spin" : "pulse";
+      if (sv === "start_pause") out.vac = s;
+      out.text = busy ? (s === "opening" ? "s'ouvre…" : s === "closing" ? "se ferme…" : s === "returning" ? "rentre…" : s === "cleaning" ? "aspire" : "")
+        : out.on ? stateText(hass, t.entity) : "";
+      if (sv === "stop_cover" && moving) out.text = "toucher pour arrêter";
+      return out;
+    }
+    if (d === "light") {
+      out.kind = "light"; out.on = s === "on";
+      out.rgb = out.on ? lightRgb(st) : null;
+      out.text = out.on ? (a.brightness != null ? Math.round(a.brightness / 2.55) + " %" : "allumée") : "";
+    } else if (d === "media_player") {
+      out.kind = "media"; out.on = ["off", "standby", "unknown", ""].indexOf(s) < 0;
+      out.motion = s === "playing" ? "beat" : s === "buffering" ? "pulse" : out.on ? "glow" : "";
+      var what = a.media_title ? a.media_title + (a.media_artist ? " · " + a.media_artist : "") : "";
+      out.text = !out.on ? "" : s === "playing" ? (what || a.app_name || a.source || "en lecture")
+        : s === "paused" ? "en pause" + (what ? " · " + what : "")
+        : a.app_name || a.source || MEDIA_WORDS[s] || s;
+      if (out.on && a.volume_level != null && a.is_volume_muted) out.text += " · muet";
+    } else if (d === "fan") {
+      out.kind = "fan"; out.on = s === "on";
+      var pct = a.percentage != null ? Number(a.percentage) : 50;
+      out.motion = out.on ? "spin" : "";
+      out.spin = out.on ? Math.max(0.5, 2.6 - (pct || 50) / 50) : 0;
+      out.text = out.on ? (a.percentage != null ? pct + " %" : "en marche") + (a.oscillating ? " · oscille" : "") + (a.preset_mode ? " · " + a.preset_mode : "") : "";
+    } else if (d === "cover") {
+      out.kind = "cover"; out.on = s === "open" || s === "opening" || s === "closing";
+      out.motion = s === "opening" ? "up" : s === "closing" ? "down" : "";
+      out.text = s === "opening" ? "s'ouvre…" : s === "closing" ? "se ferme…" : s === "open" ? (a.current_position != null && a.current_position < 100 ? "ouvert à " + a.current_position + " %" : "ouvert") : "";
+    } else if (d === "vacuum") {
+      out.kind = "vac"; out.vac = s; out.on = s === "cleaning" || s === "returning" || s === "paused";
+      out.alarm = s === "error";
+      out.text = { cleaning: "aspire", returning: "rentre…", paused: "en pause", error: "bloqué", docked: "" }[s] || "";
+    } else if (d === "climate" || d === "water_heater") {
+      var mode = d === "climate" ? s : a.operation_mode || s;
+      out.on = mode && mode !== "off";
+      out.kind = "climate";
+      var act = a.hvac_action || "";
+      out.rgb = !out.on ? null : /cool/.test(act || mode) ? [108, 196, 245] : /heat/.test(act || mode) ? [232, 128, 64] : /dry|fan/.test(act || mode) ? [89, 208, 224] : [92, 194, 143];
+      out.motion = /heating|cooling|drying|fan/.test(act) ? "breathe" : out.on ? "glow" : "";
+      var target = a.temperature != null ? String(a.temperature).replace(".", ",") + " °" : "";
+      out.text = out.on ? ({ heating: "chauffe", cooling: "refroidit", idle: "en attente", drying: "déshumidifie", fan: "ventile" }[act] || stateText(hass, t.entity)) + (target ? " · " + target : "") : "";
+    } else if (d === "lock") {
+      out.kind = "switch"; out.on = s === "unlocked" || s === "open" || s === "opening" || s === "unlocking";
+      out.alarm = s === "jammed";
+      out.motion = /ing$/.test(s) ? "pulse" : out.on ? "glow" : "";
+      out.text = { unlocked: "déverrouillée", open: "ouverte", opening: "s'ouvre…", unlocking: "se déverrouille…", locking: "se verrouille…", jammed: "bloquée" }[s] || "";
+    } else if (d === "binary_sensor") {
+      var dc = String(a.device_class || "");
+      if (PROBLEMS.indexOf(dc) >= 0) { out.alarm = s === "on"; out.text = out.alarm ? "alerte" : ""; }
+      else if (dc && s === "on") { out.on = true; out.kind = "sensor"; out.motion = /motion|occupancy|presence|sound|moving/.test(dc) ? "pulse" : "glow"; out.text = SENSOR_ON[dc] || "actif"; }
+      // Without a kind (a train line's sensor): its news is not a colour.
+    } else if (d === "scene") {
+      // A scene's state is when it was last set: lit a few seconds after.
+      var at = Date.parse(s);
+      out.on = !isNaN(at) && Date.now() - at < 8000;
+      out.kind = "scene"; out.motion = out.on ? "pulse" : "";
+      out.text = out.on ? "appliquée" : "";
+    } else if (d === "script") {
+      out.kind = "scene"; out.on = s === "on"; out.motion = out.on ? "spin" : ""; out.text = out.on ? "en cours…" : "";
+    } else if (d === "alarm_control_panel") {
+      out.kind = "switch"; out.on = s !== "disarmed";
+      out.alarm = s === "triggered"; out.motion = s === "arming" || s === "pending" ? "pulse" : out.on ? "glow" : "";
+      out.text = stateText(hass, t.entity);
+    } else if (d === "timer") {
+      out.on = s === "active" || s === "paused"; out.motion = s === "active" ? "pulse" : ""; out.text = out.on ? stateText(hass, t.entity) : "";
+    } else if (d === "person" || d === "device_tracker") {
+      out.kind = "sensor"; out.on = s === "home"; out.text = stateText(hass, t.entity);
+    } else {
+      // switch, input_boolean, automation, siren, humidifier, remote…
+      out.on = ["on", "open", "home", "active"].indexOf(s) >= 0;
+      out.motion = out.on ? "glow" : "";
+      out.text = out.on ? (d === "remote" ? a.current_activity || "allumée" : "activé") : "";
+    }
+    if (t.invert) { out.on = !out.on; out.motion = ""; }
+    return out;
   }
 
   // ----- igor-mini-card: a sensor, its 24 hours in one line -----
@@ -2373,8 +2523,9 @@
   // A tile with `service: cover.open_cover` (and `data`) calls it on its
   // entity instead of switching it; `lit: open` lights it in that state.
   // A tile with `alarm: <device_id>` is an alarm clock (Alarm Clocks
-  // integration): its time always shown, lit while on; a tap turns it on or
-  // off, and while it rings, stops it; a long press opens its settings.
+  // integration): its time always shown, lit while on; a tap opens the
+  // alarm clock in front (its time, its days, on or off; « Répéter » and
+  // « Arrêter » while it rings).
   class IgorTilesCard extends IgorCard {
     setConfig(config) {
       if (!config || !Array.isArray(config.tiles) || !config.tiles.length) throw new Error("igor-tiles-card: tiles est requis");
@@ -2417,12 +2568,30 @@
         "button.on.k-media { --tile-on: #b48ce0; --tile-on-border: rgba(180, 140, 224, 0.65); --tile-on-bg: rgba(180, 140, 224, 0.16); }",
         "button.on.k-fan { --tile-on: #59d0e0; --tile-on-border: rgba(89, 208, 224, 0.6); --tile-on-bg: rgba(89, 208, 224, 0.14); }",
         "button.on.k-switch { --tile-on: #e0a33a; --tile-on-border: rgba(224, 163, 58, 0.65); --tile-on-bg: rgba(224, 163, 58, 0.16); }",
-        "button.on.k-fan ha-icon { animation: igor-vac-spin var(--spin, 1.6s) linear infinite; }",
-        "button.on.k-media.playing ha-icon { animation: igor-live 1.6s ease-in-out infinite; }",
-        "button.on.k-switch ha-icon, button.on.k-media:not(.playing) ha-icon { animation: igor-glow 3s ease-in-out infinite; }",
+        "button.on.k-cover, button.on.k-vac { --tile-on: #5cc28f; --tile-on-border: rgba(92, 194, 143, 0.6); --tile-on-bg: rgba(92, 194, 143, 0.14); }",
+        "button.on.k-sensor { --tile-on: #6cc4f5; --tile-on-border: rgba(108, 196, 245, 0.6); --tile-on-bg: rgba(108, 196, 245, 0.14); }",
+        "button.on.k-scene { --tile-on: var(--acc); --tile-on-border: var(--acc); --tile-on-bg: rgba(108, 196, 245, 0.16); }",
+        // Its motion, while it does something.
+        "button.m-spin ha-icon { animation: igor-vac-spin var(--spin, 1.6s) linear infinite; }",
+        "button.m-beat ha-icon { animation: igor-live 1.6s ease-in-out infinite; }",
+        "button.m-glow ha-icon { animation: igor-glow 3s ease-in-out infinite; }",
+        "button.m-breathe ha-icon { animation: igor-glow 1.6s ease-in-out infinite, igor-vac-breathe 1.6s ease-in-out infinite; }",
+        "button.m-pulse ha-icon { animation: igor-live 0.9s ease-in-out infinite; }",
+        "button.m-rock ha-icon { animation: igor-vac-rock 0.9s ease-in-out infinite; }",
+        "button.m-up ha-icon { animation: igor-up 1.2s ease-in-out infinite; } button.m-down ha-icon { animation: igor-down 1.2s ease-in-out infinite; }",
+        "@keyframes igor-up { 0% { transform: translateY(6px); opacity: 0.5; } 100% { transform: translateY(-6px); opacity: 1; } }",
+        "@keyframes igor-down { 0% { transform: translateY(-6px); opacity: 0.5; } 100% { transform: translateY(6px); opacity: 1; } }",
         "@keyframes igor-live { 50% { transform: scale(1.12); } }",
         "@keyframes igor-glow { 50% { filter: drop-shadow(0 0 6px var(--tile-on, #e0a33a)); } }",
         "button.giant.on { box-shadow: 0 0 18px var(--tile-on-bg, rgba(217, 164, 65, 0.25)); }",
+        // On: a small light in the corner, breathing in the tile's colour.
+        "button { position: relative; }",
+        "button.giant.on::after, button.giant.alarm-on::after { content: ''; position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--tile-on, var(--wait)); box-shadow: 0 0 8px var(--tile-on, var(--wait)); animation: igor-vac-breathe 2.4s ease-in-out infinite; }",
+        "button.giant.alarm-on::after { background: var(--bad); box-shadow: 0 0 8px var(--bad); }",
+        "button.giant.alarm-on .s, button.giant.gone .s { display: block; font-size: 11px; margin-top: -6px; }",
+        "button.giant.alarm-on .s { color: var(--bad); }",
+        // Gone (unavailable): faded, dashed, says so.
+        "button.gone { opacity: 0.45; border-style: dashed; }",
         "button.giant:active { transform: scale(0.98); }",
         // Igor just acted on it (the tablet's voice display says so): a cyan flash.
         "button.flash { border-color: #59d0e0 !important; box-shadow: 0 0 0 2px rgba(89, 208, 224, 0.45); background: rgba(89, 208, 224, 0.14) !important; }",
@@ -2436,7 +2605,7 @@
         "@keyframes igor-vac-spin { to { transform: rotate(360deg); } }",
         "@keyframes igor-vac-rock { 50% { transform: translateX(6px); } }",
         "@keyframes igor-vac-breathe { 50% { opacity: 0.35; } }",
-        "@media (prefers-reduced-motion: reduce) { button[class*=vac-] ha-icon, button.on ha-icon { animation: none !important; } }"
+        "@media (prefers-reduced-motion: reduce) { button[class*=vac-] ha-icon, button[class*=m-] ha-icon, button.on ha-icon, button.on::after { animation: none !important; } }"
       ].join("\n"));
       var grid = el("div", "grid" + (giant && this.config.states ? " states" : ""), this.shadowRoot);
       var cols = Number(this.config.columns) || (small ? 1 : 2);
@@ -2453,17 +2622,11 @@
         var sub = el("span", "s", small ? b : b);
         if (small) b.appendChild(sub);
         var held = false, timer = null;
-        b.addEventListener("pointerdown", () => { held = false; timer = setTimeout(() => { held = true; moreInfo(this, t.alarm ? this.alarmIds(t).time || this.alarmIds(t).enabled : t.entity); }, 600); });
+        b.addEventListener("pointerdown", () => { held = false; timer = setTimeout(() => { held = true; if (t.alarm) alarmWindow(this, t.alarm, t.full); else moreInfo(this, t.entity); }, 600); });
         ["pointerup", "pointerleave", "pointercancel"].forEach((e) => b.addEventListener(e, () => clearTimeout(timer)));
         b.addEventListener("click", () => {
           if (held || !this._hass) return;
-          if (t.alarm) {
-            var a = this.alarmIds(t), st = a.state && this._hass.states[a.state];
-            var ringing = st && (st.state === "ringing" || st.state === "snoozed");
-            var id = ringing ? a.dismiss : a.enabled;
-            if (id) this._hass.callService(ringing ? "button" : "switch", ringing ? "press" : "toggle", {}, { entity_id: id });
-            return;
-          }
+          if (t.alarm) { alarmWindow(this, t.alarm, t.full); return; }
           var r = t.service === "vacuum.start_pause" ? vacuumTap(this._hass, t.entity)
             : t.service ? service(this._hass, t.service, t.data, t.target || { entity_id: t.entity }) : tap(this, this._hass, t.entity, t.tap);
           if (r && r.then) r.then(() => { b.classList.add("done"); setTimeout(() => b.classList.remove("done"), 700); });
@@ -2490,6 +2653,7 @@
       this._live = setInterval(() => {
         var ha = document.querySelector("home-assistant"), live = ha && ha.hass;
         if (live && live !== this._hass && live.states) this.hass = live;
+        else if (this._hass) this.update(this._hass, this._hass);
       }, 2000);
     }
     disconnectedCallback() {
@@ -2524,52 +2688,25 @@
         if (!x.t.icon && st && st.attributes.icon) x.ic.setAttribute("icon", st.attributes.icon);
         var text = x.t.secondary ? x.t.secondary.map(function (id) { return stateText(hass, id); }).join(" · ") : stateText(hass, x.t.entity);
         if (x.t.secondary && x.t.show_state) text = stateText(hass, x.t.entity) + " · " + text;
+        var live = tileLive(hass, x.t, st);
+        if (x.t.text && st && x.t.text[st.state] != null) live.text = String(x.t.text[st.state]);
+        else if (x.t.secondary || !live.text) live.text = live.on || live.gone ? live.text || text : text;
+        x.sub.textContent = live.text;
+        if (x.t.icon_off) x.ic.setAttribute("icon", live.on ? (x.t.icon || "mdi:help-circle-outline") : x.t.icon_off);
         var d = domainOf(x.t.entity);
-        // invert: lit while the entity is off (a camera's privacy switch).
-        var on = x.t.service ? Boolean(x.t.lit && st && st.state === x.t.lit) : d !== "scene" && isOn(hass, x.t.entity) !== Boolean(x.t.invert);
-        // A media player is on as soon as it is not off or asleep (a projector
-        // idle on its menu, a console on its home screen).
-        if (!x.t.service && d === "media_player" && st) on = ["off", "standby", "unavailable", "unknown", ""].indexOf(st.state) < 0;
-        // A sensor is not a switch: « on » is a problem (red) for a problem
-        // kind, lit for a door, a presence, a device running, else nothing
-        // (a train line's sensor: its departures are the news, not a colour).
-        var alarmOn = false;
-        if (d === "binary_sensor" && st && !x.t.service) {
-          var dc = String(st.attributes.device_class || "");
-          var isProblem = ["problem", "safety", "smoke", "gas", "carbon_monoxide", "moisture", "tamper", "heat", "cold", "battery", "vibration"].indexOf(dc) >= 0;
-          alarmOn = isProblem && st.state === "on";
-          if (isProblem || !dc) on = false;
-        }
-        x.b.classList.toggle("alarm-on", alarmOn);
-        if (x.t.text && st && x.t.text[st.state] != null) text = String(x.t.text[st.state]);
-        x.sub.textContent = text;
-        if (x.t.icon_off) x.ic.setAttribute("icon", on ? (x.t.icon || "mdi:help-circle-outline") : x.t.icon_off);
-        x.b.classList.toggle("scene", d === "scene" || d === "script");
-        // The start/pause tile of a robot vacuum (not its « base » one).
-        if (d === "vacuum" && (!x.t.service || x.t.service === "vacuum.start_pause")) {
-          var vs = st ? st.state : "";
-          ["cleaning", "returning", "paused", "error"].forEach((k) => x.b.classList.toggle("vac-" + k, vs === k));
-          if (!x.t.service) on = vs === "cleaning";
-        }
-        x.b.classList.toggle("on", on);
-        // Alive: each kind its colour and its motion when on, and a word on
-        // what it does (giant tiles show it only then).
-        var kind = d === "media_player" ? "media" : d === "fan" ? "fan" : d === "light" ? "light" : d === "cover" ? "cover" : d === "vacuum" ? "vac" : "switch";
-        if (x.kind !== kind) { if (x.kind) x.b.classList.remove("k-" + x.kind); x.b.classList.add("k-" + kind); x.kind = kind; }
-        x.b.classList.toggle("playing", on && st && st.state === "playing");
-        if (on && st && !x.t.text && !x.t.secondary) {
-          var a = st.attributes || {};
-          var live = kind === "media" ? (st.state === "playing" ? (a.media_title ? "en lecture · " + a.media_title : "en lecture") : a.app_name || a.source || (st.state === "paused" ? "en pause" : "allumé"))
-            : kind === "fan" && a.percentage != null ? a.percentage + " %"
-            : kind === "light" && a.brightness != null ? Math.round(a.brightness / 2.55) + " %"
-            : d === "input_boolean" || d === "switch" ? "activé" : text;
-          x.sub.textContent = live;
-        }
+        x.b.classList.toggle("scene", !x.t.service && (d === "scene" || d === "script"));
+        x.b.classList.toggle("on", live.on);
+        x.b.classList.toggle("alarm-on", live.alarm);
+        x.b.classList.toggle("gone", live.gone);
+        if (x.kind !== live.kind) { if (x.kind) x.b.classList.remove("k-" + x.kind); x.b.classList.add("k-" + live.kind); x.kind = live.kind; }
+        if (x.motion !== live.motion) { if (x.motion) x.b.classList.remove("m-" + x.motion); if (live.motion) x.b.classList.add("m-" + live.motion); x.motion = live.motion; }
+        // A vacuum's own classes (its tile moves with it).
+        ["cleaning", "returning", "paused", "error"].forEach((k) => x.b.classList.toggle("vac-" + k, live.vac === k));
         // A fan turns at its own speed.
-        if (kind === "fan") x.b.style.setProperty("--spin", on ? Math.max(0.5, 2.6 - ((st && st.attributes.percentage) || 50) / 50) + "s" : "");
+        x.b.style.setProperty("--spin", live.spin ? live.spin + "s" : "");
         // A light lit takes its bulb's colour (its colour, or its white's
-        // warmth); off, the tile is plainly off.
-        var rgb = on && d === "light" ? lightRgb(st) : null;
+        // warmth); a thermostat its mode's; off, the tile is plainly off.
+        var rgb = live.rgb;
         x.b.style.setProperty("--tile-on", rgb ? "rgb(" + rgb.join(",") + ")" : "");
         x.b.style.setProperty("--tile-on-border", rgb ? "rgba(" + rgb.join(",") + ",0.7)" : "");
         x.b.style.setProperty("--tile-on-bg", rgb ? "rgba(" + rgb.join(",") + ",0.18)" : "");
