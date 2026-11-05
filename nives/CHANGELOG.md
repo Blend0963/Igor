@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.34.0 — The car's map on the road
+
+- `igor-gps-card`: obd2mqtt's `voiture-gps-card` brought into Igor (it now comes with the add-on, no file to copy) in Igor's look: cyan arrow and trail, dark speed box. The arrow sits on the nearest road drawn on the map, within `snap` metres (20; 8 when stopped, so a car park stays a car park), and turns with it; between two fixes it goes on along the road for 4 seconds at most instead of 8 straight ahead, so a late or imprecise GPS no longer drives through houses. The trail follows the arrow as shown.
+
 ## 0.33.4 — The vacuum's button, the car without Home Assistant's bar
 
 - A robot vacuum's tile no longer calls `vacuum.start_pause`, which Home Assistant removed (« Action vacuum.start_pause introuvable »): it starts the robot, or pauses it while it cleans. Tiles and buttons configured with `vacuum.start_pause` do the same. The tile's icon moves with the robot: turning while it cleans, rocking on its way home, breathing in pause, red when stuck.
