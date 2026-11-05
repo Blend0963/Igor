@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.36.4 — The tablet keeps up
+
+- Tiles no longer stay on an old state when a kiosk tablet stops handing the cards Home Assistant's updates (a light switched off stayed lit until the page was reloaded): every tile is redrawn on each update, and the tiles read Home Assistant's live state themselves every 2 seconds.
+- The big status bar comes by itself on a tablet: a screen set up with `?igor_tablet`, or the « Igor (tablette) » / « Igor Journal (tablette) » themes (`igor-bar-size: big`). `size: normal` in the bar keeps it small.
+
 ## 0.36.3 — A tablet read from across the room
 
 - The wall's bar takes `size: big`: taller, larger letters, bigger eye, clock and buttons, for a small tablet seen from afar.
