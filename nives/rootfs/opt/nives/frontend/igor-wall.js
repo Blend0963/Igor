@@ -3817,10 +3817,12 @@
       }
       vis.forEach((v) => M.devs[v].forEach((dv) => node(dv.id, "device", (g, n) => {
         svgEl("circle", { r: 6, fill: M.color[v], stroke: "var(--bg)", "stroke-width": 1.5 }, g);
-        var t = svgEl("text", { x: 11, y: 4 }, g);
+        // A VPN peer: a ring, dashed and lit while it is connected, and where it is outside.
+        if (n.vpn) svgEl("circle", { r: 10, fill: "none", stroke: n.vpn.online ? "var(--okc)" : "var(--faint)", "stroke-width": 1.5, "stroke-dasharray": "3 2" }, g);
+        var t = svgEl("text", { x: n.vpn ? 14 : 11, y: 4 }, g);
         var name = this.label(n);
-        t.textContent = name.length > 24 ? name.slice(0, 23) + "…" : name;
-        if (name === n.ip) t.style.fill = "var(--faint)";
+        t.textContent = (name.length > 24 ? name.slice(0, 23) + "…" : name) + (n.vpn ? (n.vpn.online ? " ↗ " + (n.vpn.cc || "dehors") : " · hors ligne") : "");
+        if (name === n.ip || (n.vpn && !n.vpn.online)) t.style.fill = "var(--faint)";
       })));
       // The networks against each other: what passes, what is refused.
       if (this.matEl) { this.matEl.remove(); this.matEl = null; }
@@ -3986,6 +3988,12 @@
       if (n.net && n.net !== n.vlan) info.push("wi-fi " + n.net + (n.signal != null ? " · " + n.signal + " dBm" : ""));
       if (n.vendor) info.push(n.vendor);
       if (n.cc) info.push(countryName(n.cc));
+      if (n.vpn) {
+        var vp = n.vpn, ago = vp.handshake_s;
+        info.push(vp.online ? "connecté au VPN, hors de la maison" : "VPN : pas connecté" + (ago != null ? " (dernier contact il y a " + (ago < 3600 ? Math.round(ago / 60) + " min" : ago < 86400 ? Math.round(ago / 3600) + " h" : Math.round(ago / 86400) + " j") + ")" : ""));
+        if (vp.endpoint) info.push("depuis " + vp.endpoint + (vp.cc ? " · " + countryName(vp.cc) : "") + (vp.org ? " · " + vp.org : "") + (vp.where === "local" ? " (adresse privée : le réseau local ou un partage de connexion)" : ""));
+        if (vp.rx || vp.tx) info.push("reçu " + human(vp.rx) + " · envoyé " + human(vp.tx));
+      }
       info.forEach((x) => el("div", "v sub", s, x));
       var mine = edges.filter((e) => e.a === n.id || e.b === n.id).sort((a, b) => b.bytes - a.bytes);
       el("div", "h", s, "connexions");

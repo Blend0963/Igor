@@ -254,11 +254,12 @@ In OPNsense, **System → Access → Users**: add a user `igor` (a long random p
 | `Diagnostics: Show States` | who talks to whom (the map's flows) |
 | `Diagnostics: Logs: Firewall: Live View` | what the firewall refused (red dashes) |
 | `Firewall: Rules [new]` | each network's rules (recent OPNsense versions) |
+| `VPN: WireGuard: Status` (OPNsense 25.7 and later; `VPN: WireGuard` before) | who is on the VPN, and from where outside the house: a « VPN » block on the map, each peer with a ring lit while connected, the public address it connects from, its country and operator, its last contact and traffic |
 | the leases of your DHCP server: `Services: DHCP: Kea(v4)`, `Services: Dnsmasq DNS/DHCP: Settings`, or for ISC `Status: DHCP leases` (`Services: ISC DHCPv4: Leases` on 26.1 and later) | the devices' names |
 
 OPNsense grants by page, not by read or write: « Show States », « Firewall: Rules [new] » and the DHCP ones would also allow changes through the API. Igor only calls the reading ones; keep the key in `secrets.yaml` and nowhere else.
 
-The **OPNsense integration** for Home Assistant (hass-opnsense: CPU, memory, gateways, interfaces, WireGuard…) needs its own key. Rather than admin, give that user only what you use and turn on « Granular Sync Options » in the integration: `Lobby: Dashboard`, `Status: Interfaces` and `System: Firmware` always; `System: Gateways` (gateways), `Reporting: Traffic` (live traffic), `VPN: WireGuard: Status` (WireGuard), `Status: Services` (services), `System: Status` (notices), `Diagnostics: ARP Table` (device trackers), the DHCP leases above (lease counts). Its full list: the integration's `docs/granular_permissions.md`.
+The **OPNsense integration** for Home Assistant (hass-opnsense: CPU, memory, gateways, interfaces, WireGuard…) needs its own key. Rather than admin, give that user only what you use and turn on « Granular Sync Options » in the integration: `Lobby: Dashboard`, `Status: Interfaces` and `System: Firmware` always; `System: Gateways` (gateways), `Reporting: Traffic` (live traffic), `VPN: WireGuard: Configuration` (WireGuard, with the sync option « VPN Information and Switches »: its sensors read the tunnels' settings too, so « Status » alone leaves them unavailable), `Status: Services` (services), `System: Status` (notices), `Diagnostics: ARP Table` (device trackers), the DHCP leases above (lease counts). Its full list: the integration's `docs/granular_permissions.md`.
 
 Save, then under **API keys** press **+**: a file with the key and the secret downloads. In `secrets.yaml` and `configuration.yaml`, then restart Home Assistant:
 

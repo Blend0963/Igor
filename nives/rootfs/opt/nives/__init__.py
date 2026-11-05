@@ -1111,7 +1111,7 @@ def _async_register_net_map(hass: HomeAssistant) -> None:
     from homeassistant.helpers.service import async_register_admin_service
 
     from .openwrt import UbusError
-    from .opnsense import build_blocked, build_map, ip_kind, parse_log, parse_rules, parse_states
+    from .opnsense import add_vpn, build_blocked, build_map, ip_kind, parse_log, parse_rules, parse_states, parse_wireguard
 
     state: dict[str, Any] = {"cache": None}
 
@@ -1187,6 +1187,15 @@ def _async_register_net_map(hass: HomeAssistant) -> None:
             out["rules"] = parse_rules(await router.rules(session))
         except (PermissionError, FileNotFoundError, ValueError, aiohttp.ClientError, TimeoutError):
             out["rules"] = []
+        # WireGuard's peers: who is on the VPN, from where outside the house.
+        out["vpn"] = []
+        try:
+            out["vpn"] = parse_wireguard(await router.wireguard(session), time.time(), db.locate if ready else None)
+            add_vpn(out, out["vpn"])
+        except (PermissionError, FileNotFoundError) as err:
+            out["notes"].append(f"wireguard: {err} (privilege « VPN: WireGuard: Status »)")
+        except (ValueError, aiohttp.ClientError, TimeoutError) as err:
+            out["notes"].append(f"wireguard: {err}")
         # Each network (VLAN) and the router's address on it.
         out["vlans"] = sorted(
             ({"name": hosts[ip].get("net", ""), "gateway": ip} for ip in own
