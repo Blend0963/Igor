@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.36.8 — The wall's button hears the room
+
+- The wall's « parler » button (the Igor panel of the bar, `igor-assist-card`) goes through the ear in the room when igor-ear runs (0.4.1 or later): it says « Je vous écoute » and takes the next sentence with the microphone that already hears the room, instead of the satellite's own, which could hear nothing. New service `nives.listen` (any user) fires `igor_ear_listen`; igor-ear says it is there with `sensor.igor_ear`. Without it, the satellite listens as before.
+
 ## 0.36.7 — Silence is silence
 
 - Igor no longer acts on what speech-to-text makes up from silence (« Sous-titrage ST' 501 », « Sous-titres réalisés par la communauté d'Amara.org », « Merci d'avoir regardé », « [Musique] », a lone « Merci »…): nothing is answered, said or done. Igor's speech-to-text drops them and never sends a recording without a voice; the conversation agent drops them whatever engine wrote them.

@@ -564,7 +564,7 @@
         this.lastBox = el("div", "last", p);
         var b = el("div", "btns", p);
         btn(b, "ouvrir les discussions", function () { window.dispatchEvent(new CustomEvent("ll-custom", { detail: { igor_journal: true } })); });
-        if (ic.satellite) btn(b, "parler", function () { hass.callService("assist_satellite", "start_conversation", { preannounce: false, start_message: ic.start_message || "Je vous écoute..." }, { entity_id: ic.satellite }); });
+        if (ic.satellite) btn(b, "parler", function () { talkToIgor(hass, ic.satellite, ic.start_message); });
         if (ic.assist && hass.states[ic.assist]) btn(b, hass.states[ic.assist].state === "off" ? "rouvrir l'écoute" : "couper l'écoute", function () { hass.callService("homeassistant", "toggle", {}, { entity_id: ic.assist }); }, hass.states[ic.assist].state !== "off");
         if (fresh || !this.journal) this.loadJournal(); else this.fillJournal();
       }
@@ -1459,6 +1459,19 @@
   //   satellite: assist_satellite.living_room   # tap: talk to Igor
   //   assist: input_boolean.assist              # hold, or the pill: Igor on or off
   //   start_message: Je vous écoute...
+  // « Parler »: the ear in the room (igor-ear) says « Je vous écoute » and
+  // takes the next sentence with its own microphone, the one that hears the
+  // room; without it (no igor-ear seen this last 3 minutes, an older Igor),
+  // the satellite listens itself.
+  function talkToIgor(hass, satellite, message) {
+    var ear = hass.states["sensor.igor_ear"];
+    var fresh = ear && ear.state === "on" && Date.now() - Date.parse(ear.last_updated) < 180000 &&
+      (!ear.attributes.satellite || !satellite || ear.attributes.satellite === satellite);
+    if (fresh && hass.services && hass.services.nives && hass.services.nives.listen) {
+      return hass.callService("nives", "listen", Object.assign({ message: message || "Je vous écoute" }, satellite ? { satellite: satellite } : {}));
+    }
+    return hass.callService("assist_satellite", "start_conversation", { preannounce: false, start_message: message || "Je vous écoute..." }, { entity_id: satellite });
+  }
   class IgorAssistCard extends IgorCard {
     setConfig(config) { this.config = config || {}; }
     getCardSize() { return 1; }
@@ -1493,7 +1506,7 @@
       var busy = (sat && ["listening", "processing", "responding"].indexOf(sat.state) >= 0) ||
         (igor && ["heard", "thinking", "answering"].indexOf(igor.state) >= 0);
       if (busy) { cancelSatellite(this._hass, c.satellite, c.cancel_switch); return; }
-      this._hass.callService("assist_satellite", "start_conversation", { preannounce: false, start_message: c.start_message || "Je vous écoute..." }, { entity_id: c.satellite });
+      talkToIgor(this._hass, c.satellite, c.start_message);
     }
     toggle() { if (this.config.assist && this._hass) this._hass.callService("homeassistant", "toggle", {}, { entity_id: this.config.assist }); }
     update(hass) {

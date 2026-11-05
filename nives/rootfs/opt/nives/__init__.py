@@ -452,6 +452,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     if voice_display:
         entry.runtime_data.frontend_url = await _async_setup_frontend(hass)
         _async_register_heard(hass)
+        _async_register_listen(hass)
         _async_register_journal(hass)
         _async_register_news(hass)
         _async_register_dns_log(hass)
@@ -535,6 +536,33 @@ def _async_register_heard(hass: HomeAssistant) -> None:
                 sensor.heard(satellite, call.data["waiting"], call.data.get("seconds"))
 
     hass.services.async_register(DOMAIN, SERVICE_HEARD, _heard, schema=HEARD_SCHEMA)
+
+
+LISTEN_SCHEMA = vol.Schema(
+    {
+        vol.Optional("satellite"): vol.All(str, vol.Length(max=255)),
+        vol.Optional("message"): vol.All(str, vol.Length(max=200)),
+    }
+)
+
+
+@callback
+def _async_register_listen(hass: HomeAssistant) -> None:
+    """« Parler » on a wall: the ear in the room (igor-ear) answers « Je vous
+    écoute » and takes the next sentence, through the microphone it already
+    hears well. An event, so any user may press it (firing events directly
+    is for administrators)."""
+    from .const import EVENT_EAR_LISTEN, SERVICE_LISTEN
+
+    if hass.services.has_service(DOMAIN, SERVICE_LISTEN):
+        return
+
+    @callback
+    def _listen(call: ServiceCall) -> None:
+        data = {k: v for k, v in call.data.items() if v}
+        hass.bus.async_fire(EVENT_EAR_LISTEN, data, context=call.context)
+
+    hass.services.async_register(DOMAIN, SERVICE_LISTEN, _listen, schema=LISTEN_SCHEMA)
 
 
 SCREEN_SCHEMA = vol.Schema(

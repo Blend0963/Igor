@@ -485,3 +485,27 @@ def test_the_end_of_igors_own_words_heard_alone_is_its_voice():
     assert e["reason"] == "own_voice" and not e.get("sent")
     listener.said("Lequel, le salon ou la cuisine ?")
     assert listener.handle(audio())["reason"] != "own_voice"      # one word: an answer
+
+
+def test_wall_button_takes_the_next_sentence_without_the_name():
+    listener, clock, sent = make(["allume le salon", "et la cuisine"])
+    listener.listen_now(10)
+    clock.t = 4
+    e = listener.handle(audio())
+    assert e["accepted"] and e["reason"] == "followup" and sent == [(16000, None)]
+
+
+def test_wall_button_window_closes():
+    listener, clock, sent = make(["allume le salon"])
+    listener.listen_now(10)
+    clock.t = 30
+    assert not listener.handle(audio())["accepted"]
+    assert sent == []
+
+
+def test_wall_button_silence_is_not_a_request():
+    listener, clock, sent = make(["Sous-titrage ST' 501"])
+    listener.listen_now(10)
+    clock.t = 2
+    e = listener.handle(audio())
+    assert not e["accepted"] and sent == []

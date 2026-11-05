@@ -139,6 +139,8 @@ FRONTEND_CARDS = "igor-wall.js"
 VOICE_SENSOR_MARKER = "igor_voice"
 # Service a listener calls the moment it hears the name (sensor.py, heard).
 SERVICE_HEARD = "heard"
+SERVICE_LISTEN = "listen"
+EVENT_EAR_LISTEN = "igor_ear_listen"
 SERVICE_JOURNAL = "journal"
 # Headlines of an RSS or Atom feed for the wall's news card.
 SERVICE_NEWS = "news"
