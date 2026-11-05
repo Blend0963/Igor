@@ -1506,6 +1506,15 @@
   //     - { icon: mdi:bow-tie, name: Igor, journal: true }         # Igor's conversations, over the page
   //     - { icon: mdi:pencil, name: Modifier, edit: true }          # this dashboard in edit mode (administrators)
   //     - { icon: mdi:bank, name: Ma banque, dashboard: Ma banque }  # another dashboard by its sidebar name (view: its page)
+  //     - icon: mdi:gas-station                  # a few numbers asked first, then the action
+  //       name: Plein fait
+  //       form:
+  //         title: Plein
+  //         total: €                             # « total » = the fields multiplied, in that unit
+  //         fields:
+  //           - { entity: input_number.fuel_litres, name: Litres, unit: L }
+  //           - { entity: input_number.fuel_price, name: Prix du litre, unit: €/L }
+  //       service: script.fuel_done              # or tap_action
   class IgorButtonsCard extends IgorCard {
     setConfig(config) {
       if (!config || !Array.isArray(config.buttons) || !config.buttons.length) throw new Error("igor-buttons-card: buttons est requis");
@@ -1538,8 +1547,11 @@
         if (b.secondary) el("small", "", btn, b.secondary);
         if (b.edit) { btn.dataset.edit = "1"; btn.hidden = !isAdmin(this._hass); }
         btn.addEventListener("click", () => {
+          // form: the numbers asked first (each saved in its input_number), then the action.
+          if (b.form && !btn._formOk) { this.openForm(b, btn); return; }
+          btn._formOk = false;
           // tap_action: any Home Assistant action (url: app://…, assist…).
-          if (b.tap_action) { haAction(this, b.tap_action); return; }
+          if (b.tap_action) { haAction(this, b.form ? Object.assign({}, b.tap_action, { confirmation: undefined }) : b.tap_action); return; }
           if (b.edit) { editDashboard(this, this._hass); return; }
           if (b.journal) { window.dispatchEvent(new CustomEvent("ll-custom", { detail: { igor_journal: true } })); return; }
           if (b.dashboard) { openDashboard(this, this._hass, b.dashboard, b.view); return; }
@@ -1552,6 +1564,87 @@
           }).catch((e) => { btn.title = String(e && e.message || e); });
         });
       });
+    }
+    // The form over the page: one line per number, filled with what was entered
+    // last time (the entity's value, or this screen's memory when the entity
+    // was reset to 0 after use), « Valider » saves them and runs the action.
+    openForm(b, btn) {
+      var f = b.form || {}, hass = this._hass;
+      if (!hass) return;
+      if (!this.formCss) {
+        this.formCss = true;
+        el("style", "", this.shadowRoot, [
+          ".fov { position: fixed; inset: 0; z-index: 2147482995; background: rgba(7,8,10,0.82); display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }",
+          ".fbox { width: min(460px, 100%); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 18px; display: grid; gap: 14px; color: var(--fg); box-shadow: 0 10px 40px rgba(0,0,0,0.6); }",
+          ".fbox h4 { margin: 0; font-size: 13px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); display: flex; align-items: center; gap: 10px; --mdc-icon-size: 22px; } .fbox h4 ha-icon { color: var(--acc); }",
+          ".fl { display: grid; gap: 6px; } .fl span { color: var(--dim); font-size: 12px; letter-spacing: 0.06em; }",
+          ".fin { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 6px; background: var(--card); } .fin:focus-within { border-color: var(--acc); }",
+          ".fin input { flex: 1; min-width: 0; background: none; border: 0; color: var(--fg); font: inherit; font-size: 26px; padding: 12px 14px; font-variant-numeric: tabular-nums; outline: none; }",
+          ".fin u { text-decoration: none; color: var(--dim); padding: 0 14px; font-size: 15px; }",
+          ".ftot { color: var(--dim); font-size: 14px; } .ftot b { color: var(--fg); font-size: 20px; font-weight: 500; margin-left: 6px; }",
+          ".ferr { color: var(--bad); font-size: 13px; min-height: 1em; }",
+          ".fbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }",
+          ".fbtns button { min-height: 56px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; --mdc-icon-size: 22px; }",
+          ".fbtns button.ok { border-color: var(--acc); color: var(--acc); }"
+        ].join("\n"));
+      }
+      var ov = el("div", "fov", this.shadowRoot);
+      var box = el("div", "fbox", ov);
+      var h = el("h4", "", box); icon(h, b.icon || "mdi:form-textbox"); el("span", "", h, f.title || b.name || "");
+      var mem = function (id) { try { return window.localStorage.getItem("igor-form:" + id); } catch (e) { return null; } };
+      var inputs = (f.fields || []).map((fd) => {
+        var st = fd.entity && hass.states[fd.entity], a = (st && st.attributes) || {};
+        var cur = st ? parseFloat(st.state) : NaN;
+        var start = !isNaN(cur) && cur > 0 ? cur : parseFloat(mem(fd.entity));
+        var lab = el("label", "fl", box);
+        el("span", "", lab, fd.name || a.friendly_name || fd.entity);
+        var wrap = el("div", "fin", lab);
+        var inp = el("input", "", wrap);
+        inp.type = "text"; inp.inputMode = "decimal"; inp.autocomplete = "off";
+        inp.value = isNaN(start) ? "" : String(start).replace(".", ",");
+        el("u", "", wrap, fd.unit || a.unit_of_measurement || "");
+        return { fd: fd, inp: inp, min: a.min != null ? Number(a.min) : null, max: a.max != null ? Number(a.max) : null };
+      });
+      var num = (x) => parseFloat(String(x.inp.value).replace(/\s/g, "").replace(",", "."));
+      var tot = f.total ? el("div", "ftot", box) : null;
+      var showTot = () => {
+        if (!tot) return;
+        var v = inputs.reduce((acc, x) => acc * num(x), 1);
+        tot.innerHTML = ""; tot.appendChild(document.createTextNode("total"));
+        el("b", "", tot, isNaN(v) ? "—" : fr(v, 2) + " " + (f.total === true ? "" : f.total));
+      };
+      inputs.forEach((x) => x.inp.addEventListener("input", showTot));
+      showTot();
+      var err = el("div", "ferr", box);
+      var bt = el("div", "fbtns", box);
+      var no = el("button", "", bt); no.type = "button"; icon(no, "mdi:close"); el("span", "", no, "Annuler");
+      var ok = el("button", "ok", bt); ok.type = "button"; icon(ok, "mdi:check"); el("span", "", ok, "Valider");
+      var close = () => ov.remove();
+      no.addEventListener("click", close);
+      ov.addEventListener("click", (ev) => { if (ev.target === ov) close(); });
+      ok.addEventListener("click", async () => {
+        for (var i = 0; i < inputs.length; i++) {
+          var x = inputs[i], v = num(x);
+          if (isNaN(v) || v <= 0 || (x.min != null && v < x.min) || (x.max != null && v > x.max)) {
+            err.textContent = (x.fd.name || "valeur") + " : un nombre" + (x.max != null ? " entre " + fr(Math.max(x.min || 0, 0), 2) + " et " + fr(x.max, 2) : "") + ".";
+            x.inp.focus();
+            return;
+          }
+        }
+        ok.disabled = true;
+        try {
+          for (var j = 0; j < inputs.length; j++) {
+            var y = inputs[j], val = num(y);
+            try { window.localStorage.setItem("igor-form:" + y.fd.entity, String(val)); } catch (e) { /* no storage */ }
+            var dom = String(y.fd.entity).split(".")[0];
+            await hass.callService(dom === "input_text" ? "input_text" : dom === "number" ? "number" : "input_number", "set_value", { entity_id: y.fd.entity, value: dom === "input_text" ? String(val) : val });
+          }
+        } catch (e) { err.textContent = "Enregistrement impossible : " + (e && e.message || e); ok.disabled = false; return; }
+        close();
+        btn._formOk = true;
+        btn.click();
+      });
+      setTimeout(() => { if (inputs[0]) { inputs[0].inp.focus(); inputs[0].inp.select(); } }, 50);
     }
   }
 
@@ -4399,8 +4492,13 @@
         if (!title && k.indexOf("media_title") === 0) title = String(v);
         if (!artist && k.indexOf("media_artist") === 0) artist = String(v);
       });
+      // The title read in the player's notification (`fallback`) changes with
+      // each track; the session sensor, on a head unit, is sent rarely and can
+      // keep an old title: the one that changed last wins.
       var f = this.config.fallback && hass.states[this.config.fallback];
-      if (!title && f && ["unknown", "unavailable", "Inconnu"].indexOf(f.state) < 0) { title = f.state; artist = (f.attributes && f.attributes.artiste) || ""; }
+      var fOk = f && ["unknown", "unavailable", "Inconnu", ""].indexOf(f.state) < 0;
+      var when = (x) => (x ? Date.parse(x.last_updated || x.last_changed) || 0 : 0);
+      if (fOk && (!title || when(f) >= when(s))) { title = f.state; artist = (f.attributes && f.attributes.artiste) || ""; }
       var playing = s && s.state === "Playing";
       this.ti.textContent = title || "Rien en lecture";
       this.ar.textContent = (artist ? artist + " · " : "") + (playing ? "en lecture" : "en pause");
@@ -4428,6 +4526,7 @@
   //     - { name: Travail, location: [48.85, 2.35] }
   //   voice: true                           # instructions spoken (the browser's voice), false: silent; the 🔊 button mutes
   //   speed_limits: true                    # the limit sign from OpenStreetMap when speed_limit_entity says nothing (false: off)
+  //   auto_zoom: true                       # farther out the faster, closer before a turn (false: the zoom stays)
   //   overpass: https://overpass-api.de/api/interpreter
   //   router: https://router.project-osrm.org  # OSRM (the route); self-hosted possible
   //   geocoder: https://nominatim.openstreetmap.org  # the address search
@@ -4686,7 +4785,8 @@
         ".nav[hidden], .eta[hidden], .panel[hidden] { display: none; }" +
         ".nav ha-icon { color: #59d0e0; flex: none; } .nav .d { font-family: 'Chakra Petch', " + MONO + "; font-size: 30px; font-weight: 500; line-height: 1; } .nav .t { font-size: 14px; color: #c9ccd1; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }" +
         ".nav.arrived { border-left-color: #5cc28f; } .nav.arrived ha-icon { color: #5cc28f; } .nav.wait { border-left-color: #d9a441; }" +
-        ".eta { position: absolute; z-index: 2; bottom: 12px; left: 104px; right: 170px; display: flex; gap: 14px; align-items: baseline; justify-content: center; padding: 8px 12px; border-radius: 4px; background: rgba(7,8,10,0.88); border: 1px solid #22262c; color: #e9e4da; font-family: " + MONO + "; font-size: 15px; pointer-events: none; }" +
+        ".eta { position: absolute; z-index: 2; bottom: 12px; left: 12px; right: 12px; display: flex; gap: 14px; align-items: baseline; justify-content: space-around; padding: 8px 12px; border-radius: 4px; background: rgba(7,8,10,0.88); border: 1px solid #22262c; color: #e9e4da; font-family: " + MONO + "; font-size: 15px; pointer-events: none; }" +
+        ".withspeed .eta { left: 104px; } .withattr .eta { right: 52px; }" +
         ".eta b { font-family: 'Chakra Petch', " + MONO + "; font-size: 22px; font-weight: 500; } .eta span { color: #878c95; font-size: 12px; }" +
         ".panel { position: absolute; inset: 0; z-index: 4; background: rgba(7,8,10,0.96); color: #e9e4da; font-family: " + MONO + "; display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; overflow-y: auto; }" +
         ".panel .ph { display: flex; justify-content: space-between; align-items: center; color: #878c95; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; }" +
@@ -4714,6 +4814,8 @@
       var $ = (id) => this.root.getElementById(id);
       this.$ = $;
       $("card").classList.toggle("noattr", !!this.config.hide_attribution);
+      $("card").classList.toggle("withspeed", this.config.show_speed !== false);
+      $("card").classList.toggle("withattr", !this.config.hide_attribution);
       $("dest").addEventListener("click", () => this.openPanel());
       // The voice, on or off by a touch, kept by this screen.
       try { this.muted = window.localStorage.getItem("igor-gps-voice") === "off"; } catch (e) { this.muted = false; }
@@ -4921,17 +5023,16 @@
       return lines;
     }
     // The nearest road drawn around a point, within `snap` metres (null otherwise).
-    road(p, within, heading) {
+    road(p, within, heading, now) {
       var map = this.map;
       if (!map || !this.roads || !this.roads.length || !(within > 0)) return null;
       // The search square: `within` metres around p, in pixels at this zoom.
       var mpp = 40075016 * Math.cos(gpsRad(p[1])) / (512 * Math.pow(2, map.getZoom()));
       var lines = this.roadLines(p, null, Math.min(600, within / mpp + 10));
-      // Guided: the route's own line is a road, and the one to stay on.
-      if (this.route) lines.push(this.route.coords);
       // Moving, a road that goes the car's way wins over a nearer one across
       // it (a crossing street, a parallel lane of the other direction is fine).
       var best = null;
+      var bestStay = null;
       lines.forEach((l) => {
         var b = gpsOnLine(p, l);
         if (!b || b.dist > within) return;
@@ -4939,9 +5040,21 @@
         // Staying on the road already taken wins over a slightly nearer one
         // (a noisy fix should not jump to a side street).
         var stay = this.lastRoad && gpsOnLine(this.lastRoad, l);
-        b.score = b.dist + (off > 50 ? 1000 : off * 0.15) + (this.lastRoad && (!stay || stay.dist > 4) ? 10 : 0) - (this.route && l === this.route.coords ? 8 : 0);
+        b.stay = !!(stay && stay.dist <= 4);
+        b.score = b.dist + (off > 50 ? 1000 : off * 0.15) + (this.lastRoad && !b.stay ? 10 : 0);
         if (!best || b.score < best.score) best = b;
+        if (b.stay && b.score < 1000 && (!bestStay || b.score < bestStay.score)) bestStay = b;
       });
+      // Parallel roads going the same way (a GPS that wanders between them):
+      // the road taken is kept until the other one has been clearly nearer for
+      // 3 seconds. A real turn changes the heading and switches at once.
+      if (best && bestStay && best !== bestStay && best.score < 1000) {
+        if (best.dist + 6 < bestStay.dist) {
+          this.switchAt = this.switchAt || now || performance.now();
+          if ((now || performance.now()) - this.switchAt < 3000) return bestStay;
+        } else { this.switchAt = 0; return bestStay; }
+      }
+      this.switchAt = 0;
       return best && best.score < 1000 ? best : best && heading == null ? best : null;
     }
     tick() {
@@ -4958,7 +5071,9 @@
       if (snapM > 0) snapM = Math.max(snapM, Math.min(this.accuracy || 0, 150));
       if (snapM > 0 && (!this.snapAt || now - this.snapAt > 200)) {
         this.snapAt = now;
-        this.snapped = this.road(target, snapM, moving ? this.heading : null);
+        // Guided: the car is on its route as long as it is near enough (a GPS
+        // off by a few tens of metres, a parallel street), never on another road.
+        this.snapped = this.routeSnap(target, moving) || this.road(target, snapM, moving ? this.heading : null, now);
         if (this.snapped) this.lastRoad = this.snapped.point;
         this.$("snapEl").textContent = this.snapped ? "sur la route" : "";
       }
@@ -4967,14 +5082,16 @@
       if (moving && gpsAhead(this.pos, target, this.heading) < -0.5) target = this.pos;
       var s = this.snapped;
       if (s && moving && gpsAhead(this.pos, s.point, this.heading) < -0.5) s = null;
-      if (s && gpsDist(s.point, target) <= snapM * 1.5) {
+      if (s && gpsDist(s.point, target) <= (s.lock || snapM) * 1.5) {
         target = s.point;
         if (moving) this.heading = gpsLerpAngle(this.heading, gpsAlong(s.bearing, this.heading), 0.2);
       }
       // A leap (a late fix): the arrow drives there along the roads, not across.
       var before = this.pos;
       var jump = gpsDist(this.pos, target);
-      if (s && !this.way && jump > 25 && jump < 400) {
+      // On the route, the arrow follows the route itself, never the streets beside it.
+      if (s && s.onRoute) this.way = null;
+      if (s && !s.onRoute && !this.way && jump > 25 && jump < 400) {
         var way = gpsRoadPath(this.roadLines(this.pos, target, 40), this.pos, target);
         // Not a way that starts by turning back (a car does not).
         var backwards = moving && way && way.length > 1 && gpsDist(way[0], way[1]) > 1 && gpsTurn(this.heading, gpsBearing(way[0], way[1])) > 110;
@@ -5007,12 +5124,40 @@
       if (this.config.speed_limits !== false && (!this.limitAt || now - this.limitAt > 1000)) { this.limitAt = now; this.limitTick(now, moving); }
       if (this.follow) {
         var h = this.$("map").clientHeight;
-        this.map.jumpTo({ center: this.pos, bearing: this.headingUp ? this.shown : 0, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } });
+        var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } };
+        // As a navigator: farther out the faster (more road ahead), closer
+        // before a turn, back out after it; eased, never a jump.
+        if (this.config.auto_zoom !== false) {
+          var base = Number(this.config.zoom) || 16, kmh = speed * 3.6;
+          var tz = base - Math.max(0, Math.min(2.2, (kmh - 40) / 40));
+          if (this.route && this.nextDist != null && this.nextDist < 250) tz = Math.max(tz, base + 0.6);
+          this.zoomNow = this.zoomNow == null ? tz : this.zoomNow + (tz - this.zoomNow) * 0.02;
+          view.zoom = this.zoomNow;
+        }
+        this.map.jumpTo(view);
       }
     }
   }
 
   Object.assign(IgorGpsCard.prototype, {
+    // On the route: its nearest point around where the car was last on it,
+    // within what the GPS may be off (45 to 120 m), going the route's way.
+    routeSnap(p, moving) {
+      var R = this.route;
+      if (!R || !p) return null;
+      var lock = Math.max(45, Math.min((this.accuracy || 0) * 2, 120));
+      var best = null, from = Math.max(1, (this.seg || 1) - 20), to = Math.min(R.coords.length, (this.seg || 1) + 300);
+      for (var i = from; i < to; i++) {
+        var o = gpsOnLine(p, [R.coords[i - 1], R.coords[i]]);
+        if (o && (!best || o.dist < best.dist)) { best = o; best.i = i; }
+      }
+      if (!best || best.dist > lock) return null;
+      // Driving against the route's way (a U-turn made): not on it any more.
+      if (moving && Math.abs(((best.bearing - this.heading + 540) % 360) - 180) > 100) return null;
+      best.lock = lock;
+      best.onRoute = true;
+      return best;
+    },
     // The limit of the road the car is on: OpenStreetMap's ways around (Overpass),
     // asked again only when the car leaves the ways already known, at most every 8 s,
     // and only while it drives (a free service, not asked for a parked car).
@@ -5197,9 +5342,11 @@
       var along = R.cum[best.i - 1] + gpsDist(R.coords[best.i - 1], best.point);
       var left = Math.max(0, R.total - along);
       // Off the route for a few seconds, driving: a new one from here.
-      var off = Math.max(45, Math.min(this.accuracy || 0, 120));
+      // Off the route only after 5 seconds farther than the GPS may be off,
+      // driving: a parallel street seen for a moment is not a new route.
+      var off = Math.max(45, Math.min((this.accuracy || 0) * 2, 120));
       this.offCount = best.dist > off && moving ? (this.offCount || 0) + 1 : 0;
-      if (this.offCount >= 3 && now - (this.routeAt || 0) > 8000) {
+      if (this.offCount >= 5 && now - (this.routeAt || 0) > 8000) {
         this.offCount = 0;
         this.banner("mdi:routes", "", "Nouvel itinéraire…", "wait");
         this.say("Nouvel itinéraire");
@@ -5220,6 +5367,7 @@
       this.arrived = false;
       var next = null;
       for (var k = 0; k < R.steps.length; k++) { if (R.steps[k].at > along + 8) { next = R.steps[k]; break; } }
+      this.nextDist = next ? next.at - along : null;
       if (next) {
         var dn = next.at - along;
         this.banner(next.icon, gpsMetres(dn), next.text, "");
