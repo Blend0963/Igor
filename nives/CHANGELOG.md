@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.36.0 — Home Assistant's notifications on the dashboards
+
+- `custom:igor-notifications-card`: Home Assistant's notifications waiting (✕ clears one), and the ones it sent (the phone app, `notify.rappels`, Telegram) with their time, channel, links and position, so a notification lost on the way can still be read.
+- The integration notes every `notify.*` and Telegram message as it goes out, the newest 200 kept on Home Assistant's disk; `nives.notifications` reads them, administrators only.
+- `custom:igor-bank-card`: a bank integration's accounts, month, spending by category with budgets, budgets left, operations by day and one in detail, in Igor's style with nothing else to install. Bar items take `below: 0` to turn red under zero.
+- `nives.trip_map`: a tracker's trip drawn on a dark map, written to the media folder for a Telegram photo after a drive (administrators).
+- The network map shows the WireGuard peers in a « VPN » block: connected or not, the public address each one connects from, its country and operator, last contact and traffic (privilege `VPN: WireGuard: Status`). The docs now give hass-opnsense `VPN: WireGuard: Configuration`: with « Status » alone its WireGuard sensors stay unavailable.
+- `custom:igor-gps-card` guides: an address or a favourite (the flag), or a destination written in an `input_text` from a phone; the route on the map, the next turn and its distance, kilometres, minutes and arrival time left, the turns spoken in French, a new route when the car leaves it, the arrival. A button mutes the voice. Every new button is an Igor button with its icon (the destination panel, the notifications' clear, the keypads' erase), no symbols. The limit sign reads OpenStreetMap itself (the road the car is on, its direction) when the limit sensor has nothing.
+- A bar with `tabs: true` keeps its tabs at any width: they scroll sideways when they don't fit (an unfolded phone), the open one in sight, and the clock is never cut.
+- The wall's bar shows a bell with the count of notifications waiting, and a red dot when something was sent since the screen last showed the list (administrators); `notifications: notifs` opens that page, `notifications: false` removes it.
+
 ## 0.35.2 — A pencil to edit the dashboard
 
 - The wall's bar has a pencil, for administrators only, that puts the dashboard in edit mode: Home Assistant's top bar comes back, with « Terminé » and the raw configuration editor, even on a `kiosk` wall that hides it. `edit: false` in the bar removes it.

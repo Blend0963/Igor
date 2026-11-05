@@ -64,6 +64,9 @@ from .const import (
     API_JOURNAL_ENDPOINT,
     TOKEN_ACK_RELPATH,
     TOKEN_FILE_RELPATH,
+    SERVICE_NOTIFICATIONS,
+    NOTIFICATIONS_KEY,
+    SERVICE_TRIP_MAP,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -458,6 +461,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
         _async_register_wifi_scan(hass)
         _async_register_screen(hass)
     _async_register_disarm(hass)
+    await _async_register_notifications(hass)
+    _async_register_trip_map(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await _async_setup_update_watch(hass, entry)
@@ -598,6 +603,141 @@ def _async_register_journal(hass: HomeAssistant) -> None:
 
     hass.services.async_register(
         DOMAIN, SERVICE_JOURNAL, _journal, schema=JOURNAL_SCHEMA, supports_response=SupportsResponse.ONLY
+    )
+
+
+NOTIFICATIONS_SCHEMA = vol.Schema(
+    {vol.Optional("limit", default=50): vol.All(vol.Coerce(int), vol.Range(min=1, max=200))}
+)
+
+
+async def _async_register_notifications(hass: HomeAssistant) -> None:
+    """`nives.notifications`: the notifications Home Assistant sent (every
+    notify.* and telegram_bot.* call, notifications.py), the newest 200 kept
+    in .storage. Administrators only: the messages can be personal."""
+    if hass.services.has_service(DOMAIN, SERVICE_NOTIFICATIONS):
+        return
+    from homeassistant.const import EVENT_CALL_SERVICE
+    from homeassistant.helpers.service import async_register_admin_service
+    from homeassistant.helpers.storage import Store
+
+    from .notifications import DOMAINS, NotificationLog, record
+
+    store: Store = Store(hass, 1, NOTIFICATIONS_KEY)
+    try:
+        saved = await store.async_load()
+    except Exception:  # noqa: BLE001 - a damaged file: start again
+        saved = None
+    log = NotificationLog(saved.get("entries") if isinstance(saved, dict) else None)
+    hass.data[NOTIFICATIONS_KEY] = log
+
+    @callback
+    def _seen(event) -> None:
+        domain = event.data.get("domain")
+        if domain not in DOMAINS:
+            return
+        try:
+            entry = record(domain, str(event.data.get("service") or ""), event.data.get("service_data") or {})
+        except Exception:  # noqa: BLE001 - never in the way of the notification itself
+            return
+        if log.add(entry):
+            store.async_delay_save(lambda: {"entries": list(log.entries)}, 10)
+            # The screens' red dot: only the time, never the message.
+            hass.bus.async_fire("nives_notification", {"at": log.entries[-1]["at"]})
+
+    hass.bus.async_listen(EVENT_CALL_SERVICE, _seen)
+
+    async def _notifications(call: ServiceCall) -> ServiceResponse:
+        return {"entries": log.newest(call.data["limit"])}
+
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_NOTIFICATIONS, _notifications,
+        schema=NOTIFICATIONS_SCHEMA, supports_response=SupportsResponse.ONLY,
+    )
+
+
+TRIP_MAP_SCHEMA = vol.Schema(
+    {
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("start"): cv.datetime,
+        vol.Optional("end"): cv.datetime,
+        vol.Optional("name", default="trajet"): vol.All(str, vol.Match(r"^[a-z0-9_-]{1,40}$", msg="lettres minuscules, chiffres, - et _")),
+        vol.Optional("width", default=800): vol.All(vol.Coerce(int), vol.Range(min=200, max=1600)),
+        vol.Optional("height", default=560): vol.All(vol.Coerce(int), vol.Range(min=200, max=1600)),
+    }
+)
+
+
+@callback
+def _async_register_trip_map(hass: HomeAssistant) -> None:
+    """`nives.trip_map`: a device_tracker's way between two times, drawn on
+    a map (tripmap.py) and written to <media>/igor/<name>.png for
+    telegram_bot.send_photo. Administrators only: it is where someone went."""
+    if hass.services.has_service(DOMAIN, SERVICE_TRIP_MAP):
+        return
+    from homeassistant.helpers.service import async_register_admin_service
+    from homeassistant.util import dt as dt_util
+
+    from .tripmap import render
+
+    def _aware(value):
+        # A time without its zone is the house's local time.
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=dt_util.get_default_time_zone())
+        return dt_util.as_utc(value)
+
+    async def _positions(entity_id: str, start, end) -> list[tuple[float, float]]:
+        from homeassistant.components.recorder import get_instance, history
+
+        # Every change, the position's too (a tracker moving keeps its state).
+        changes = await get_instance(hass).async_add_executor_job(
+            lambda: history.get_significant_states(
+                hass, start, end, [entity_id], significant_changes_only=False, minimal_response=False, no_attributes=False
+            )
+        )
+        out = []
+        for st in changes.get(entity_id, []):
+            lat, lon = st.attributes.get("latitude"), st.attributes.get("longitude")
+            if lat is not None and lon is not None:
+                out.append((lat, lon))
+        return out
+
+    async def _trip_map(call: ServiceCall) -> ServiceResponse:
+        end = _aware(call.data.get("end")) or dt_util.utcnow()
+        start = _aware(call.data.get("start")) or end - timedelta(hours=2)
+        if start >= end:
+            return {"ok": False, "error": "le début doit précéder la fin"}
+        try:
+            points = await _positions(call.data["entity_id"], start, end)
+        except Exception as err:  # noqa: BLE001 - no recorder, a bad entity
+            return {"ok": False, "error": f"historique illisible : {err}"}
+        session = async_get_clientsession(hass)
+
+        async def _fetch(url: str) -> bytes | None:
+            try:
+                async with session.get(url, headers={"User-Agent": "Igor (Home Assistant)"}, timeout=aiohttp.ClientTimeout(total=10)) as r:
+                    return await r.read() if r.status == 200 else None
+            except (aiohttp.ClientError, TimeoutError):
+                return None
+
+        try:
+            png, info = await render(points, _fetch, call.data["width"], call.data["height"])
+        except ValueError as err:
+            return {"ok": False, "error": str(err), "points": len(points)}
+        folder = Path(hass.config.media_dirs.get("local") or hass.config.path("media")) / "igor"
+        path = folder / f"{call.data['name']}.png"
+
+        def _write() -> None:
+            folder.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(png)
+
+        await hass.async_add_executor_job(_write)
+        return {"ok": True, "path": str(path), **info}
+
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_TRIP_MAP, _trip_map, schema=TRIP_MAP_SCHEMA, supports_response=SupportsResponse.ONLY
     )
 
 
@@ -971,7 +1111,7 @@ def _async_register_net_map(hass: HomeAssistant) -> None:
     from homeassistant.helpers.service import async_register_admin_service
 
     from .openwrt import UbusError
-    from .opnsense import build_blocked, build_map, ip_kind, parse_log, parse_rules, parse_states
+    from .opnsense import add_vpn, build_blocked, build_map, ip_kind, parse_log, parse_rules, parse_states, parse_wireguard
 
     state: dict[str, Any] = {"cache": None}
 
@@ -1047,6 +1187,15 @@ def _async_register_net_map(hass: HomeAssistant) -> None:
             out["rules"] = parse_rules(await router.rules(session))
         except (PermissionError, FileNotFoundError, ValueError, aiohttp.ClientError, TimeoutError):
             out["rules"] = []
+        # WireGuard's peers: who is on the VPN, from where outside the house.
+        out["vpn"] = []
+        try:
+            out["vpn"] = parse_wireguard(await router.wireguard(session), time.time(), db.locate if ready else None)
+            add_vpn(out, out["vpn"])
+        except (PermissionError, FileNotFoundError) as err:
+            out["notes"].append(f"wireguard: {err} (privilege « VPN: WireGuard: Status »)")
+        except Exception as err:  # noqa: BLE001 - the VPN is a bonus: never the whole map
+            out["notes"].append(f"wireguard: {err}")
         # Each network (VLAN) and the router's address on it.
         out["vlans"] = sorted(
             ({"name": hosts[ip].get("net", ""), "gateway": ip} for ip in own

@@ -6,6 +6,8 @@
 //                             line that scrolls through the machines) and
 //                             columns of cards that reach the bottom
 //   custom:igor-journal-card  Igor's last exchanges, "historique" opens all
+//   custom:igor-notifications-card  Home Assistant's notifications, waiting and sent
+//   custom:igor-bank-card     a bank integration's accounts, month, categories, budgets, operations
 //   custom:igor-docker-card   the containers of a Portainer endpoint
 //   custom:igor-net-card      a router's traffic over the last hour
 //   custom:igor-energy-card   power now and hour by hour today
@@ -137,8 +139,9 @@
   //                            # auto: still while it fits, else one turn then a pause
   //     pause: 10              # with speed: auto, seconds at rest between two turns
   //     tap: /igor-wall/homelab  # a tap on the bar opens that page (else: the machines' detail)
+  //     notifications: notifs  # the bell (Home Assistant's notifications waiting) opens that page of this dashboard (or /a/page); false: no bell
   //     edit: false            # no pencil (administrators: it puts the dashboard in edit mode)
-  //     groups:
+  //     groups:                # an item: entity, label, unit, digits, warn/bad (from), below (red under)
   //       - name: pve
   //         kind: hôte
   //         status: binary_sensor.node_pve_status
@@ -172,6 +175,8 @@
     var warn = it.warn != null ? it.warn : unit === "%" ? 80 : unit === "°C" ? 65 : null;
     var bad = it.bad != null ? it.bad : unit === "%" ? 95 : unit === "°C" ? 80 : null;
     var level = bad != null && v >= bad ? "bad" : warn != null && v >= warn ? "warn" : "";
+    // `below: 0`: red under that value (an account overdrawn).
+    if (it.below != null && v < Number(it.below)) level = "bad";
     return { text: text, level: level, pct: pct };
   }
   var BAR_CSS = [
@@ -180,6 +185,8 @@
     ".fix { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 100%; color: var(--fg); background: var(--bg); position: relative; z-index: 1; }",
     ".fix.left { border-right: 1px solid var(--line); }",
     ".fix.right { border-left: 1px solid var(--line); }",
+    ".fix.bell { padding: 0 10px; gap: 4px; color: var(--wait); cursor: pointer; --mdc-icon-size: 16px; font-size: 11px; } .fix.bell[hidden] { display: none; }",
+    ".fix.bell .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--igor-signal, #e5323b); box-shadow: 0 0 6px var(--igor-signal, #e5323b); display: inline-block; } .fix.bell .dot[hidden] { display: none; }",
     ".fix.pen { padding: 0 10px; color: var(--dim); cursor: pointer; --mdc-icon-size: 17px; } .fix.pen:hover { color: var(--fg); } .fix.pen[hidden] { display: none; }",
     ".lens { width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle, #e1f5fe 0, #4fc3f7 30%, #0277bd 65%, #0d1014 100%); box-shadow: 0 0 0 1.5px #3b4a56; flex: none; }",
     ".eye { width: 18px; height: 18px; flex: none; display: block; }",
@@ -190,12 +197,16 @@
     ".tabs a:hover { color: var(--fg); }",
     ".tabs a.on { color: var(--fg); border-bottom-color: var(--igor-signal, #e5323b); }",
     "@media (max-width: 1100px) { .tabs:not(.keep) { display: none; } }",
+    // `tabs: true`: the tabs keep their room whatever the width (an unfolded
+    // phone, a small laptop): they scroll sideways when they don't fit, the
+    // machines' line takes what is left, the clock always shows.
+    ".tabs.keep { flex: 0 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; } .tabs.keep::-webkit-scrollbar { display: none; } .tabs.keep a { flex: none; }",
     // A phone: the pages' tabs take the bar and scroll sideways; the
     // machines' line gives them the room.
     "@media (max-width: 760px) { .tabs.keep { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; border-right: 0; }",
     "  .tabs.keep::-webkit-scrollbar { display: none; } .tabs.keep a { flex: none; padding: 0 12px; } .tabs.keep ~ .lane { display: none; }",
     "  .tabs.keep ~ .fix.right { font-size: 11px; padding: 0 10px; } .fix.left .state { display: none; } .fix.left { padding: 0 10px; } }",
-    ".lane { flex: 1; overflow: hidden; height: 100%; display: flex; align-items: center; position: relative; }",
+    ".lane { flex: 1 1 0; min-width: 0; overflow: hidden; height: 100%; display: flex; align-items: center; position: relative; }",
     ".run { display: flex; will-change: transform; }",
     ".run.roll { animation: roll var(--speed, 60s) linear infinite; }",
     ".seg { display: flex; gap: 8px; align-items: center; padding: 0 14px; border-right: 1px solid var(--line); }",
@@ -286,6 +297,26 @@
         this.run.classList.add("roll");
         this.run.style.setProperty("--speed", speed + "s");
       }
+      // A bell with Home Assistant's notifications waiting, when there are
+      // some: a touch opens `notifications: /a-page`, else Home Assistant's
+      // own list (`notifications: false`: no bell).
+      if (this.config.notifications !== false) {
+        this.bellEl = el("span", "fix right bell", this.root);
+        this.bellEl.setAttribute("role", "button");
+        this.bellEl.hidden = true;
+        icon(this.bellEl, "mdi:bell-ring");
+        this.bellN = el("b", "", this.bellEl, "");
+        // A red dot: something was sent since this screen last showed the list.
+        this.bellDot = el("i", "dot", this.bellEl);
+        this.bellDot.hidden = true;
+        this.bellEl.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          var to = this.config.notifications;
+          // `notifications: notifs`: a page of this dashboard.
+          if (typeof to === "string") navigate(to.charAt(0) === "/" ? to : "/" + window.location.pathname.split("/")[1] + "/" + to);
+          else this.root.dispatchEvent(new CustomEvent("hass-show-notifications", { bubbles: true, composed: true }));
+        });
+      }
       // A pencil, administrators only: the dashboard in edit mode (`edit: false`: none).
       if (this.config.edit !== false) {
         this.editEl = el("span", "fix right pen", this.root);
@@ -340,18 +371,45 @@
         var a = el("a", decodeURIComponent(parts[2] || "") === seg ? "on" : "", this.tabsEl, v.title || seg);
         a.addEventListener("click", () => { navigate("/" + parts[1] + "/" + seg); });
       });
-      // The open page's tab in sight (a phone scrolls them).
-      var on = this.tabsEl.querySelector("a.on");
-      if (on && this.tabsEl.scrollWidth > this.tabsEl.clientWidth) this.tabsEl.scrollLeft = Math.max(0, on.offsetLeft - (this.tabsEl.clientWidth - on.offsetWidth) / 2);
+      this.tabInSight();
+    }
+    // The open page's tab in sight when the tabs scroll (a phone, folded or not).
+    tabInSight() {
+      if (!this.tabsEl) return;
+      requestAnimationFrame(() => {
+        var t = this.tabsEl, on = t.querySelector("a.on");
+        if (!on || t.scrollWidth <= t.clientWidth) return;
+        var box = t.getBoundingClientRect(), r = on.getBoundingClientRect();
+        t.scrollLeft = Math.max(0, t.scrollLeft + (r.left - box.left) - (box.width - r.width) / 2);
+      });
     }
     clock() {
       var d = new Date();
       // A phone: the time alone, the tabs need the room.
-      this.clockEl.textContent = window.innerWidth < 760 ? hhmm(d) : d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }) + " · " + hhmm(d);
+      var narrow = window.innerWidth < (this.config.tabs === true ? 1100 : 760);
+      this.clockEl.textContent = narrow ? hhmm(d) : d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }) + " · " + hhmm(d);
     }
     set hass(hass) {
       this._hass = hass;
       if (this.editEl) this.editEl.hidden = !isAdmin(hass);
+      if (this.bellEl && !this.unbell && hass.connection) {
+        this.waitingN = 0;
+        this.unbell = watchPersistent(hass, (list) => { this.waitingN = list.length; this.showBell(); });
+        // What was sent (administrators): the newest one now, then each one
+        // as it goes out (the integration's nives_notification event).
+        if (isAdmin(hass)) {
+          newestSent(hass).then((at) => { this.sentAt = at; this.showBell(); });
+          var stopped = false, unsub = null;
+          try {
+            hass.connection.subscribeEvents((ev) => { this.sentAt = (ev && ev.data && ev.data.at) || new Date().toISOString(); this.showBell(); }, "nives_notification")
+              .then((u) => { if (stopped) u(); else unsub = u; }).catch(() => {});
+          } catch (e) { /* an old Home Assistant: the dot on the next load only */ }
+          this.onSeen = () => this.showBell();
+          window.addEventListener("igor-notifications-seen", this.onSeen);
+          var stopWatch = this.unbell;
+          this.unbell = () => { stopWatch(); stopped = true; if (unsub) unsub(); window.removeEventListener("igor-notifications-seen", this.onSeen); };
+        }
+      }
       var igor = igorSensor(hass);
       this.igorEl.textContent = igor ? (IGOR_WORDS[igor.state] || igor.state) : "";
       this.renderTabs();
@@ -576,7 +634,17 @@
         });
       }
     }
-    destroy() { clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); clearTimeout(this.autoTimer); }
+    showBell() {
+      if (!this.bellEl) return;
+      var n = this.waitingN || 0;
+      var fresh = !!this.sentAt && this.sentAt > seenSent();
+      this.bellEl.hidden = !n && !fresh;
+      this.bellN.textContent = n ? (n > 9 ? "9+" : String(n)) : "";
+      this.bellDot.hidden = !fresh;
+      this.tabInSight();
+      this.bellEl.title = (n ? n + " à traiter" : "") + (n && fresh ? " · " : "") + (fresh ? "nouvelle notification" : "");
+    }
+    destroy() { if (this.unbell) { this.unbell(); this.unbell = null; } clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); clearTimeout(this.autoTimer); }
   }
 
   // ===== igor-wall: the whole screen =====
@@ -3749,10 +3817,12 @@
       }
       vis.forEach((v) => M.devs[v].forEach((dv) => node(dv.id, "device", (g, n) => {
         svgEl("circle", { r: 6, fill: M.color[v], stroke: "var(--bg)", "stroke-width": 1.5 }, g);
-        var t = svgEl("text", { x: 11, y: 4 }, g);
+        // A VPN peer: a ring, dashed and lit while it is connected, and where it is outside.
+        if (n.vpn) svgEl("circle", { r: 10, fill: "none", stroke: n.vpn.online ? "var(--okc)" : "var(--faint)", "stroke-width": 1.5, "stroke-dasharray": "3 2" }, g);
+        var t = svgEl("text", { x: n.vpn ? 14 : 11, y: 4 }, g);
         var name = this.label(n);
-        t.textContent = name.length > 24 ? name.slice(0, 23) + "…" : name;
-        if (name === n.ip) t.style.fill = "var(--faint)";
+        t.textContent = (name.length > 24 ? name.slice(0, 23) + "…" : name) + (n.vpn ? (n.vpn.online ? " ↗ " + (n.vpn.cc || "dehors") : " · hors ligne") : "");
+        if (name === n.ip || (n.vpn && !n.vpn.online)) t.style.fill = "var(--faint)";
       })));
       // The networks against each other: what passes, what is refused.
       if (this.matEl) { this.matEl.remove(); this.matEl = null; }
@@ -3918,6 +3988,12 @@
       if (n.net && n.net !== n.vlan) info.push("wi-fi " + n.net + (n.signal != null ? " · " + n.signal + " dBm" : ""));
       if (n.vendor) info.push(n.vendor);
       if (n.cc) info.push(countryName(n.cc));
+      if (n.vpn) {
+        var vp = n.vpn, ago = vp.handshake_s;
+        info.push(vp.online ? "connecté au VPN, hors de la maison" : "VPN : pas connecté" + (ago != null ? " (dernier contact il y a " + (ago < 3600 ? Math.round(ago / 60) + " min" : ago < 86400 ? Math.round(ago / 3600) + " h" : Math.round(ago / 86400) + " j") + ")" : ""));
+        if (vp.endpoint) info.push("depuis " + vp.endpoint + (vp.cc ? " · " + countryName(vp.cc) : "") + (vp.org ? " · " + vp.org : "") + (vp.where === "local" ? " (adresse privée : le réseau local ou un partage de connexion)" : ""));
+        if (vp.rx || vp.tx) info.push("reçu " + human(vp.rx) + " · envoyé " + human(vp.tx));
+      }
       info.forEach((x) => el("div", "v sub", s, x));
       var mine = edges.filter((e) => e.a === n.id || e.b === n.id).sort((a, b) => b.bytes - a.bytes);
       el("div", "h", s, "connexions");
@@ -4320,6 +4396,15 @@
   //   theme: sombre                         # sombre, clair, or auto (light by day, dark at night)
   //   hide_attribution: false
   //   style: <a MapLibre style URL>         # another base map
+  //   destination: input_text.car_destination  # « lat,lon;Nom »: guidance there (set it from a phone, or the card's flag)
+  //   favorites:                            # the flag's quick places
+  //     - { name: Maison, zone: zone.home }
+  //     - { name: Travail, location: [48.85, 2.35] }
+  //   voice: true                           # instructions spoken (the browser's voice), false: silent; the 🔊 button mutes
+  //   speed_limits: true                    # the limit sign from OpenStreetMap when speed_limit_entity says nothing (false: off)
+  //   overpass: https://overpass-api.de/api/interpreter
+  //   router: https://router.project-osrm.org  # OSRM (the route); self-hosted possible
+  //   geocoder: https://nominatim.openstreetmap.org  # the address search
   // Taken from obd2mqtt's voiture-gps-card (MapLibre, heading up, smooth
   // movement, trail, limit sign), in Igor's look, with two changes: the arrow
   // sits on the nearest road drawn on the map (a GPS a few metres off no
@@ -4473,6 +4558,65 @@
   var GPS_SIGN = '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="49.5" fill="#fff" stroke="rgba(0,0,0,0.35)" stroke-width="1"/>' +
     '<circle cx="50" cy="50" r="42.5" fill="none" stroke="#c8102e" stroke-width="11"/>' +
     '<text x="50" y="53" text-anchor="middle" dominant-baseline="middle" fill="#1a1a1a" font-family="\'Barlow Condensed\', \'Roboto Condensed\', \'Arial Narrow\', sans-serif" font-weight="700" font-size="44" letter-spacing="-1"></text></svg>';
+  // ----- guidance: OSRM's route, its steps in French -----
+  var GPS_SIDE = { left: "à gauche", right: "à droite", "slight left": "légèrement à gauche", "slight right": "légèrement à droite",
+    "sharp left": "franchement à gauche", "sharp right": "franchement à droite", straight: "tout droit", uturn: "demi-tour" };
+  var GPS_ICON = { left: "mdi:arrow-left-top", right: "mdi:arrow-right-top", "slight left": "mdi:arrow-top-left", "slight right": "mdi:arrow-top-right",
+    "sharp left": "mdi:arrow-left-bottom", "sharp right": "mdi:arrow-right-bottom", straight: "mdi:arrow-up", uturn: "mdi:arrow-u-left-top" };
+  function gpsStep(st) {
+    var m = st.maneuver || {}, type = m.type || "", mod = m.modifier || "straight", side = GPS_SIDE[mod] || "";
+    var road = st.name || st.ref || "";
+    var on = road ? " sur " + road : "";
+    var text, ic = GPS_ICON[mod] || "mdi:arrow-up";
+    if (type === "depart") { text = "Partez" + (road ? " par " + road : ""); ic = "mdi:navigation-variant"; }
+    else if (type === "arrive") { text = "Arrivée à destination" + (mod === "left" ? ", sur la gauche" : mod === "right" ? ", sur la droite" : ""); ic = "mdi:flag-checkered"; }
+    else if (type === "roundabout" || type === "rotary" || type === "roundabout turn") {
+      var n = m.exit || 1;
+      text = "Au rond-point, prenez la " + (n === 1 ? "1re" : n + "e") + " sortie" + on; ic = "mdi:rotate-left";
+    } else if (type === "exit roundabout" || type === "exit rotary") { text = "Sortez du rond-point" + on; ic = "mdi:rotate-left"; }
+    else if (mod === "uturn") { text = "Faites demi-tour" + on; }
+    else if (type === "merge") { text = "Insérez-vous" + (side && mod !== "straight" ? " " + side : "") + on; ic = "mdi:call-merge"; }
+    else if (type === "on ramp") { text = "Prenez la bretelle" + (mod !== "straight" ? " " + side : "") + on; }
+    else if (type === "off ramp") { text = "Prenez la sortie" + (mod !== "straight" ? " " + side : "") + (st.exits ? " " + st.exits : "") + (st.destinations ? " vers " + st.destinations : on); }
+    else if (type === "fork") { text = "Restez " + (/left/.test(mod) ? "à gauche" : /right/.test(mod) ? "à droite" : "tout droit") + on; ic = "mdi:call-split"; }
+    else if (type === "continue" || type === "new name" || mod === "straight") { text = "Continuez" + (mod === "straight" ? " tout droit" : " " + side) + on; }
+    else { text = "Tournez " + side + on; }
+    return { text: text, icon: ic, road: road, loc: m.location };
+  }
+  function gpsMetres(m) {
+    if (m >= 1000) return (m >= 10000 ? Math.round(m / 1000) : (Math.round(m / 100) / 10).toString().replace(".", ",")) + " km";
+    return (m >= 100 ? Math.round(m / 50) * 50 : Math.max(10, Math.round(m / 10) * 10)) + " m";
+  }
+  // « 48.85,2.35;Maison » (or « 48.85,2.35 ») → { lat, lon, name }.
+  function gpsParseDest(v) {
+    var s = String(v || "").trim(), m = s.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)(?:\s*;\s*(.*))?$/);
+    if (!m) return null;
+    var lat = Number(m[1]), lon = Number(m[2]);
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    return { lat: lat, lon: lon, name: (m[3] || "").trim() || "destination" };
+  }
+  // An OpenStreetMap way's limit (km/h) in the car's direction, or null.
+  var GPS_ZONES = { "FR:urban": 50, "FR:rural": 80, "FR:motorway": 130, "FR:zone30": 30, "FR:zone20": 20, "FR:walk": 20, "FR:living_street": 20, "FR:trunk": 110, "FR:expressway": 110 };
+  function gpsLimitValue(v) {
+    var s = String(v || "").trim();
+    if (!s || s === "none" || s === "signals" || s === "variable") return null;
+    if (GPS_ZONES[s] != null) return GPS_ZONES[s];
+    var m = s.match(/^(\d+)\s*(mph)?/);
+    if (!m) { var z = s.match(/^[A-Z]{2}:(?:zone)?(\d+)$/); return z ? Number(z[1]) : null; }
+    return m[2] ? Math.round(Number(m[1]) * 1.609) : Number(m[1]);
+  }
+  function gpsWayLimit(tags, forward) {
+    var t = tags || {};
+    var dir = forward ? t["maxspeed:forward"] : t["maxspeed:backward"];
+    var v = gpsLimitValue(dir) || gpsLimitValue(t.maxspeed) || gpsLimitValue(t["zone:maxspeed"]) || gpsLimitValue(t["maxspeed:type"]) || gpsLimitValue(t["source:maxspeed"]);
+    if (v) return v;
+    // Without a sign in the map: only what the road's kind says for sure.
+    if (t.highway === "motorway") return 130;
+    if (t.highway === "living_street") return 20;
+    return null;
+  }
+  window.__igorGpsNav = { step: gpsStep, metres: gpsMetres, parse: gpsParseDest, limit: gpsWayLimit };
+
   class IgorGpsCard extends HTMLElement {
     setConfig(config) {
       if (!config || !config.entity) throw new Error("igor-gps-card: entity est requis (le device_tracker de l'autoradio)");
@@ -4511,15 +4655,57 @@
         ".snap { position: absolute; right: 12px; bottom: 12px; z-index: 2; font-family: " + MONO + "; font-size: 10px; color: #3d454e; letter-spacing: 0.1em; text-transform: uppercase; }" +
         ".noattr .maplibregl-ctrl-attrib, .noattr .maplibregl-ctrl-bottom-right { display: none !important; }" +
         "@media (prefers-reduced-motion: reduce) { .sign.over { animation: none; } }" +
+        // guidance: the next turn on top, the rest of the way at the bottom, the destination panel
+        ".nav { position: absolute; z-index: 2; top: 10px; left: 64px; right: 100px; display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-radius: 4px; background: rgba(7,8,10,0.92); border: 1px solid #22262c; border-left: 4px solid #59d0e0; color: #e9e4da; font-family: " + MONO + "; --mdc-icon-size: 44px; }" +
+        ".nav[hidden], .eta[hidden], .panel[hidden] { display: none; }" +
+        ".nav ha-icon { color: #59d0e0; flex: none; } .nav .d { font-family: 'Chakra Petch', " + MONO + "; font-size: 30px; font-weight: 500; line-height: 1; } .nav .t { font-size: 14px; color: #c9ccd1; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }" +
+        ".nav.arrived { border-left-color: #5cc28f; } .nav.arrived ha-icon { color: #5cc28f; } .nav.wait { border-left-color: #d9a441; }" +
+        ".eta { position: absolute; z-index: 2; bottom: 12px; left: 104px; right: 170px; display: flex; gap: 14px; align-items: baseline; justify-content: center; padding: 8px 12px; border-radius: 4px; background: rgba(7,8,10,0.88); border: 1px solid #22262c; color: #e9e4da; font-family: " + MONO + "; font-size: 15px; pointer-events: none; }" +
+        ".eta b { font-family: 'Chakra Petch', " + MONO + "; font-size: 22px; font-weight: 500; } .eta span { color: #878c95; font-size: 12px; }" +
+        ".panel { position: absolute; inset: 0; z-index: 4; background: rgba(7,8,10,0.96); color: #e9e4da; font-family: " + MONO + "; display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; overflow-y: auto; }" +
+        ".panel .ph { display: flex; justify-content: space-between; align-items: center; color: #878c95; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; }" +
+        ".panel form { display: flex; gap: 8px; } .panel input { flex: 1; min-width: 0; font: inherit; font-size: 17px; padding: 12px; border-radius: 4px; border: 1px solid #22262c; background: #0d1014; color: #e9e4da; }" +
+        ".panel button { font: inherit; font-size: 15px; padding: 12px 16px; border-radius: 4px; border: 1px solid #22262c; background: #12171c; color: #e9e4da; cursor: pointer; text-align: left;" +
+        " display: flex; align-items: center; gap: 12px; --mdc-icon-size: 24px; min-height: 52px; } .panel button ha-icon { color: #59d0e0; flex: none; } .panel button > div { min-width: 0; }" +
+        ".panel button[hidden] { display: none; }" +
+        ".panel button.ic { width: 48px; height: 48px; min-height: 0; padding: 0; justify-content: center; } .panel button.ic ha-icon { color: #e9e4da; }" +
+        ".panel button.go ha-icon, .panel button.stop ha-icon { color: inherit; } .panel button.go, .panel button.stop { justify-content: center; }" +
+        ".panel button.go { background: #59d0e0; color: #07080a; border-color: #59d0e0; text-align: center; } .panel button.stop { border-color: #e5323b; color: #e5323b; text-align: center; }" +
+        ".panel .list { display: grid; gap: 8px; } .panel .list small { display: block; color: #878c95; font-size: 12px; margin-top: 3px; } .panel .note { color: #878c95; font-size: 13px; }" +
         '</style><ha-card id="card"><div id="map"></div><div class="msg" id="msg">Chargement de la carte…</div>' +
         '<div class="btns"><button id="recenter" title="Recentrer" hidden><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' +
-        '<button id="orient" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button></div>' +
+        '<button id="orient" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button>' +
+        '<button id="dest" title="Destination"><ha-icon icon="mdi:flag-checkered"></ha-icon></button>' +
+        '<button id="voice" title="Voix du guidage"><ha-icon icon="mdi:volume-high"></ha-icon></button></div>' +
+        '<div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div><div class="d" id="navD"></div><div class="t" id="navT"></div></div></div>' +
+        '<div class="eta" id="eta" hidden></div>' +
+        '<div class="panel" id="panel" hidden><div class="ph"><span>destination</span><button id="pclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
+        '<form id="pform"><input id="pq" type="text" enterkeyhint="search" placeholder="Adresse, ville, lieu…" autocomplete="off"><button class="go" type="submit"><ha-icon icon="mdi:magnify"></ha-icon><span>Chercher</span></button></form>' +
+        '<div class="list" id="plist"></div><div class="list" id="pfav"></div><button class="stop" id="pstop" hidden><ha-icon icon="mdi:close-octagon-outline"></ha-icon><span>Arrêter le guidage</span></button></div>' +
         '<div class="hud sp"><div class="speed" id="speed"><b>0</b><span>KM/H</span></div></div>' +
         '<div class="hud lim"><div class="sign" id="limit" hidden>' + GPS_SIGN + "</div></div>" +
         '<div class="snap" id="snapEl"></div></ha-card>';
       var $ = (id) => this.root.getElementById(id);
       this.$ = $;
       $("card").classList.toggle("noattr", !!this.config.hide_attribution);
+      $("dest").addEventListener("click", () => this.openPanel());
+      // The voice, on or off by a touch, kept by this screen.
+      try { this.muted = window.localStorage.getItem("igor-gps-voice") === "off"; } catch (e) { this.muted = false; }
+      var showVoice = () => {
+        $("voice").hidden = this.config.voice === false;
+        $("voice").firstElementChild.setAttribute("icon", this.muted ? "mdi:volume-off" : "mdi:volume-high");
+        $("voice").title = this.muted ? "Voix coupée" : "Voix du guidage";
+      };
+      showVoice();
+      $("voice").addEventListener("click", () => {
+        this.muted = !this.muted;
+        try { window.localStorage.setItem("igor-gps-voice", this.muted ? "off" : "on"); } catch (e) { /* no storage */ }
+        if (this.muted && window.speechSynthesis) window.speechSynthesis.cancel();
+        showVoice();
+      });
+      $("pclose").addEventListener("click", () => { $("panel").hidden = true; });
+      $("pstop").addEventListener("click", () => { this.setDestination(null, true); $("panel").hidden = true; });
+      $("pform").addEventListener("submit", (ev) => { ev.preventDefault(); this.search($("pq").value); });
       $("recenter").addEventListener("click", () => this.setFollow(true));
       $("orient").addEventListener("click", () => {
         this.headingUp = !this.headingUp;
@@ -4567,6 +4753,14 @@
       this.accuracy = Number(a.gps_accuracy != null ? a.gps_accuracy : a.accuracy) || 0;
       if (!this.fix || this.fix.updated !== st.last_updated) this.onFix(p, course, speed, st.last_updated);
       this.overlays();
+      // A destination set elsewhere (the phone, Igor): guidance there.
+      var de = this.config.destination && this._hass.states[this.config.destination];
+      if (de && de.state !== this.destState) {
+        this.destState = de.state;
+        var dd = gpsParseDest(de.state);
+        if (!dd && this.dest) this.setDestination(null, false);
+        else if (dd && (!this.dest || gpsDist([dd.lon, dd.lat], [this.dest.lon, this.dest.lat]) > 5)) this.setDestination(dd, false);
+      }
       if (!this.loading) this.init(p);
       else if (this.map && this.styleNow !== this.styleUrl()) {
         this.styleNow = this.styleUrl();
@@ -4627,7 +4821,10 @@
     overlays() {
       var kmh = Math.round(this.speedMps() * 3.6);
       var le = this.config.speed_limit_entity && this._hass.states[this.config.speed_limit_entity];
-      var limit = le ? parseFloat(le.state) : NaN, over = !isNaN(limit) && kmh > limit + 3;
+      var limit = le ? parseFloat(le.state) : NaN;
+      // The entity says nothing (no sensor, unknown): the limit read here from OpenStreetMap.
+      if (isNaN(limit) && this.config.speed_limits !== false && this.osmLimit) limit = this.osmLimit;
+      var over = !isNaN(limit) && kmh > limit + 3;
       var sp = this.$("speed");
       sp.hidden = this.config.show_speed === false;
       sp.firstElementChild.textContent = kmh;
@@ -4657,6 +4854,13 @@
       map.on("style.load", () => {
         // The roads of whatever base map: line layers of OpenMapTiles' « transportation ».
         this.roads = (map.getStyle().layers || []).filter((l) => l.type === "line" && /transportation|road/i.test(String(l["source-layer"] || ""))).map((l) => l.id);
+        if (!map.getSource("route")) {
+          map.addSource("route", { type: "geojson", data: this.routeData() });
+          map.addLayer({ id: "route-case", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": "#07080a", "line-width": 11, "line-opacity": 0.8 } });
+          map.addLayer({ id: "route", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": "#3b8cff", "line-width": 7 } });
+        }
         if (!map.getSource("trail")) {
           map.addSource("trail", { type: "geojson", data: this.trailData() });
           map.addLayer({ id: "trail", type: "line", source: "trail", layout: { "line-cap": "round", "line-join": "round" },
@@ -4697,6 +4901,8 @@
       // The search square: `within` metres around p, in pixels at this zoom.
       var mpp = 40075016 * Math.cos(gpsRad(p[1])) / (512 * Math.pow(2, map.getZoom()));
       var lines = this.roadLines(p, null, Math.min(600, within / mpp + 10));
+      // Guided: the route's own line is a road, and the one to stay on.
+      if (this.route) lines.push(this.route.coords);
       // Moving, a road that goes the car's way wins over a nearer one across
       // it (a crossing street, a parallel lane of the other direction is fine).
       var best = null;
@@ -4707,7 +4913,7 @@
         // Staying on the road already taken wins over a slightly nearer one
         // (a noisy fix should not jump to a side street).
         var stay = this.lastRoad && gpsOnLine(this.lastRoad, l);
-        b.score = b.dist + (off > 50 ? 1000 : off * 0.15) + (this.lastRoad && (!stay || stay.dist > 4) ? 10 : 0);
+        b.score = b.dist + (off > 50 ? 1000 : off * 0.15) + (this.lastRoad && (!stay || stay.dist > 4) ? 10 : 0) - (this.route && l === this.route.coords ? 8 : 0);
         if (!best || b.score < best.score) best = b;
       });
       return best && best.score < 1000 ? best : best && heading == null ? best : null;
@@ -4771,12 +4977,245 @@
         var on = s && gpsDist(this.pos, s.point) < 3 ? s : null;
         this.addTrail(on ? s.point : this.pos, on);
       }
+      if (this.route && (!this.navAt || now - this.navAt > 1000)) { this.navAt = now; this.navTick(now, moving); }
+      if (this.config.speed_limits !== false && (!this.limitAt || now - this.limitAt > 1000)) { this.limitAt = now; this.limitTick(now, moving); }
       if (this.follow) {
         var h = this.$("map").clientHeight;
         this.map.jumpTo({ center: this.pos, bearing: this.headingUp ? this.shown : 0, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } });
       }
     }
   }
+
+  Object.assign(IgorGpsCard.prototype, {
+    // The limit of the road the car is on: OpenStreetMap's ways around (Overpass),
+    // asked again only when the car leaves the ways already known, at most every 8 s,
+    // and only while it drives (a free service, not asked for a parked car).
+    limitTick(now, moving) {
+      var p = this.pos;
+      if (!p) return;
+      var le = this.config.speed_limit_entity && this._hass.states[this.config.speed_limit_entity];
+      if (le && !isNaN(parseFloat(le.state))) return;
+      var ways = this.limitWays || [], best = null;
+      ways.forEach((w) => {
+        var o = gpsOnLine(p, w.geom);
+        if (!o) return;
+        var along = gpsAlong(o.bearing, this.heading), off = Math.abs(((along - this.heading + 540) % 360) - 180);
+        o.score = o.dist + (moving && off > 50 ? 40 : 0);
+        o.w = w;
+        if (!best || o.score < best.score) best = o;
+      });
+      if (best && best.dist < 25) {
+        // Forward when the car goes the way the way is drawn.
+        var fwd = Math.abs(((best.bearing - this.heading + 540) % 360) - 180) < 90;
+        var v = gpsWayLimit(best.w.tags, fwd);
+        if (v !== this.osmLimit) { this.osmLimit = v; this.overlays(); }
+        return;
+      }
+      if (!moving || this.limitBusy || (this.limitAsked && now - this.limitAsked < 8000)) return;
+      this.limitAsked = now;
+      this.limitBusy = true;
+      var q = '[out:json][timeout:8];way(around:60,' + p[1].toFixed(6) + ',' + p[0].toFixed(6) + ')[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|road)(_link)?$"];out tags geom;';
+      fetch(String(this.config.overpass || "https://overpass-api.de/api/interpreter"), { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } })
+        .then((r) => r.json())
+        .then((j) => {
+          this.limitWays = (j.elements || []).filter((e) => e.type === "way" && Array.isArray(e.geometry) && e.geometry.length > 1)
+            .map((e) => ({ tags: e.tags || {}, geom: e.geometry.map((g) => [g.lon, g.lat]) }));
+          if (!this.limitWays.length) { this.osmLimit = null; this.overlays(); }
+        })
+        .catch(() => { /* no answer: the sign stays as it was */ })
+        .then(() => { this.limitBusy = false; });
+    },
+    routeData() {
+      return { type: "Feature", geometry: { type: "LineString", coordinates: this.route ? this.route.coords : [] } };
+    },
+    openPanel() {
+      var $ = this.$;
+      $("panel").hidden = false;
+      $("pstop").hidden = !this.dest;
+      $("plist").innerHTML = "";
+      var fav = $("pfav");
+      fav.innerHTML = "";
+      var favs = this.config.favorites || [{ name: "Maison", zone: "zone.home" }];
+      favs.forEach((f) => {
+        var at = null;
+        var ent = f.zone || f.entity;
+        var st = ent && this._hass.states[ent];
+        if (st && st.attributes.latitude != null) at = { lat: Number(st.attributes.latitude), lon: Number(st.attributes.longitude) };
+        else if (Array.isArray(f.location)) at = { lat: Number(f.location[0]), lon: Number(f.location[1]) };
+        if (!at) return;
+        var b = document.createElement("button");
+        b.type = "button";
+        var fi = document.createElement("ha-icon"); fi.setAttribute("icon", f.icon || (ent === "zone.home" ? "mdi:home" : "mdi:star-outline")); b.appendChild(fi);
+        var fl = document.createElement("span"); fl.textContent = f.name || ent; b.appendChild(fl);
+        b.addEventListener("click", () => { this.setDestination({ lat: at.lat, lon: at.lon, name: f.name || ent }, true); $("panel").hidden = true; });
+        fav.appendChild(b);
+      });
+      setTimeout(() => $("pq").focus(), 50);
+    },
+    // OpenStreetMap's search (Nominatim): on « Chercher » only, never as one types.
+    async search(q) {
+      var list = this.$("plist");
+      q = String(q || "").trim();
+      list.innerHTML = "";
+      if (!q) return;
+      var note = document.createElement("div"); note.className = "note"; note.textContent = "Recherche…"; list.appendChild(note);
+      var here = this.pos || (this.fix && this.fix.point);
+      var url = String(this.config.geocoder || "https://nominatim.openstreetmap.org").replace(/\/$/, "") + "/search?format=jsonv2&limit=6&accept-language=fr&q=" + encodeURIComponent(q) +
+        (here ? "&viewbox=" + [here[0] - 1, here[1] + 1, here[0] + 1, here[1] - 1].map((x) => x.toFixed(4)).join(",") : "");
+      var rows;
+      try { rows = await (await fetch(url, { headers: { Accept: "application/json" } })).json(); }
+      catch (e) { note.textContent = "Recherche impossible (pas d'internet ?)"; return; }
+      list.innerHTML = "";
+      if (!Array.isArray(rows) || !rows.length) { note.textContent = "Rien trouvé."; list.appendChild(note); return; }
+      rows.forEach((r) => {
+        var lat = Number(r.lat), lon = Number(r.lon);
+        if (isNaN(lat) || isNaN(lon)) return;
+        var b = document.createElement("button");
+        b.type = "button";
+        var parts = String(r.display_name || "").split(", ");
+        var ri = document.createElement("ha-icon"); ri.setAttribute("icon", "mdi:map-marker-outline"); b.appendChild(ri);
+        var rt = document.createElement("div"); rt.textContent = r.name || parts[0]; b.appendChild(rt);
+        var sm = document.createElement("small");
+        sm.textContent = parts.slice(r.name ? 0 : 1, 4).join(", ") + (here ? " · " + gpsMetres(gpsDist(here, [lon, lat])) : "");
+        rt.appendChild(sm);
+        b.addEventListener("click", () => { this.setDestination({ lat: lat, lon: lon, name: r.name || parts[0] }, true); this.$("panel").hidden = true; });
+        list.appendChild(b);
+      });
+    },
+    setDestination(d, write) {
+      this.dest = d;
+      this.route = null;
+      this.spoken = {};
+      this.offCount = 0;
+      if (write && this.config.destination && this._hass) {
+        var v = d ? d.lat.toFixed(6) + "," + d.lon.toFixed(6) + ";" + String(d.name || "").slice(0, 60) : "";
+        this.destState = v;
+        this._hass.callService("input_text", "set_value", { entity_id: this.config.destination, value: v }).catch(() => {});
+      }
+      if (this.destMarker) { this.destMarker.remove(); this.destMarker = null; }
+      var src = this.map && this.map.getSource("route");
+      if (src) src.setData(this.routeData());
+      this.$("nav").hidden = !d;
+      this.$("eta").hidden = true;
+      if (!d) return;
+      this.banner("mdi:map-search", "", "Calcul de l'itinéraire vers " + d.name + "…", "wait");
+      if (this.map && window.maplibregl) {
+        var flag = document.createElement("div");
+        flag.innerHTML = '<svg viewBox="0 0 24 24" width="34" height="34"><path d="M5 21V4h11l-1.5 3.5L16 11H7v10z" fill="#e5323b" stroke="#07080a" stroke-width="1.2"/></svg>';
+        this.destMarker = new window.maplibregl.Marker({ element: flag, anchor: "bottom-left" }).setLngLat([d.lon, d.lat]).addTo(this.map);
+      }
+      this.routeTo();
+    },
+    async routeTo() {
+      var d = this.dest, from = this.pos || (this.fix && this.fix.point);
+      if (!d) return;
+      if (!from) { setTimeout(() => this.routeTo(), 2000); return; }
+      this.routeAt = performance.now();
+      var url = String(this.config.router || "https://router.project-osrm.org").replace(/\/$/, "") + "/route/v1/driving/" +
+        from[0].toFixed(6) + "," + from[1].toFixed(6) + ";" + d.lon.toFixed(6) + "," + d.lat.toFixed(6) +
+        "?overview=full&geometries=geojson&steps=true" + (this.speedMps() > 2 ? "&bearings=" + Math.round(this.heading) + ",60;" : "");
+      var body;
+      try { body = await (await fetch(url)).json(); }
+      catch (e) { this.banner("mdi:wifi-off", "", "Itinéraire indisponible (pas d'internet ?)", "wait"); return; }
+      if (this.dest !== d) return;
+      var r = body && body.routes && body.routes[0];
+      if (!r || !r.geometry) { this.banner("mdi:map-marker-question", "", "Pas d'itinéraire vers " + d.name, "wait"); return; }
+      var coords = r.geometry.coordinates, cum = [0];
+      for (var i = 1; i < coords.length; i++) cum.push(cum[i - 1] + gpsDist(coords[i - 1], coords[i]));
+      var steps = [];
+      (r.legs || []).forEach((leg) => (leg.steps || []).forEach((st) => {
+        var s = gpsStep(st);
+        if (!s.loc) return;
+        // Where the step's turn lies along the route.
+        var o = gpsOnLine(s.loc, coords);
+        s.at = o ? cum[o.seg - 1] + gpsDist(coords[o.seg - 1], o.point) : 0;
+        steps.push(s);
+      }));
+      this.route = { coords: coords, cum: cum, steps: steps, total: cum[cum.length - 1], duration: r.duration || 0 };
+      this.seg = 1;
+      var src = this.map && this.map.getSource("route");
+      if (src) src.setData(this.routeData());
+      this.navTick(performance.now(), false);
+    },
+    banner(icon, dist, text, cls) {
+      var $ = this.$;
+      $("nav").hidden = false;
+      $("nav").className = "nav" + (cls ? " " + cls : "");
+      $("navIcon").setAttribute("icon", icon);
+      $("navD").textContent = dist;
+      $("navT").textContent = text;
+    },
+    say(text) {
+      if (this.config.voice === false || this.muted || !window.speechSynthesis) return;
+      try {
+        var u = new SpeechSynthesisUtterance(text);
+        u.lang = "fr-FR";
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+      } catch (e) { /* no voice on this screen */ }
+    },
+    navTick(now, moving) {
+      var R = this.route, p = this.pos;
+      if (!R || !p) return;
+      // Where the car is along the route: the nearest segment, near the last one first.
+      var best = null, from = Math.max(1, (this.seg || 1) - 10), to = Math.min(R.coords.length, (this.seg || 1) + 400);
+      for (var pass = 0; pass < 2 && (!best || best.dist > 60); pass++) {
+        var a = pass ? 1 : from, b = pass ? R.coords.length : to;
+        for (var i = a; i < b; i++) {
+          var o = gpsOnLine(p, [R.coords[i - 1], R.coords[i]]);
+          if (o && (!best || o.dist < best.dist)) { best = o; best.i = i; }
+        }
+      }
+      if (!best) return;
+      this.seg = best.i;
+      var along = R.cum[best.i - 1] + gpsDist(R.coords[best.i - 1], best.point);
+      var left = Math.max(0, R.total - along);
+      // Off the route for a few seconds, driving: a new one from here.
+      var off = Math.max(45, Math.min(this.accuracy || 0, 120));
+      this.offCount = best.dist > off && moving ? (this.offCount || 0) + 1 : 0;
+      if (this.offCount >= 3 && now - (this.routeAt || 0) > 8000) {
+        this.offCount = 0;
+        this.banner("mdi:routes", "", "Nouvel itinéraire…", "wait");
+        this.say("Nouvel itinéraire");
+        this.routeTo();
+        return;
+      }
+      var d = this.dest;
+      if (left < 30 || (d && gpsDist(p, [d.lon, d.lat]) < 30)) {
+        if (!this.arrived) {
+          this.arrived = true;
+          this.banner("mdi:flag-checkered", "", "Vous êtes arrivé" + (d && d.name !== "destination" ? " : " + d.name : ""), "arrived");
+          this.$("eta").hidden = true;
+          this.say("Vous êtes arrivé");
+          setTimeout(() => { if (this.arrived) { this.arrived = false; this.setDestination(null, true); } }, 15000);
+        }
+        return;
+      }
+      this.arrived = false;
+      var next = null;
+      for (var k = 0; k < R.steps.length; k++) { if (R.steps[k].at > along + 8) { next = R.steps[k]; break; } }
+      if (next) {
+        var dn = next.at - along;
+        this.banner(next.icon, gpsMetres(dn), next.text, "");
+        // Spoken at 1 km on fast roads, 400 m, 100 m, and at the turn.
+        var key = next.at.toFixed(0), sp = this.spoken[key] || 0;
+        var stage = dn < 40 ? 3 : dn < 130 ? 2 : dn < 450 ? 1 : 0;
+        if (stage > sp) {
+          this.spoken[key] = stage;
+          this.say(stage === 3 ? next.text : "Dans " + gpsMetres(dn).replace(" m", " mètres").replace(" km", " kilomètres") + ", " + next.text.charAt(0).toLowerCase() + next.text.slice(1));
+        }
+      }
+      // The rest of the way: kilometres, minutes, arrival time.
+      var secs = R.total ? R.duration * (left / R.total) : 0;
+      var eta = new Date(Date.now() + secs * 1000);
+      var e = this.$("eta");
+      e.hidden = false;
+      e.innerHTML = "";
+      var b1 = document.createElement("b"); b1.textContent = gpsMetres(left); e.appendChild(b1);
+      var b2 = document.createElement("b"); b2.textContent = secs >= 3600 ? Math.floor(secs / 3600) + " h " + String(Math.round((secs % 3600) / 60)).padStart(2, "0") : Math.max(1, Math.round(secs / 60)) + " min"; e.appendChild(b2);
+      var sp2 = document.createElement("span"); sp2.textContent = "arrivée " + hhmm(eta) + (d && d.name !== "destination" ? " · " + d.name : ""); e.appendChild(sp2);
+    }
+  });
 
   // ----- igor-security-card: the alarm, the camera, its positions -----
   //   type: custom:igor-security-card
@@ -4818,7 +5257,7 @@
         ".box .c { font-size: 26px; letter-spacing: 0.5em; color: var(--acc); min-height: 1.3em; min-width: 7em; text-align: center; border-bottom: 1px solid var(--line); }",
         ".box .m { min-height: 1.3em; font-size: 12px; color: var(--bad); } .box .m.ok { color: var(--okc); }",
         ".keys { display: grid; grid-template-columns: repeat(3, 72px); gap: 8px; }",
-        ".keys button { height: 58px; background: var(--card); border: 1px solid var(--line); border-radius: 4px; color: var(--fg); font: inherit; font-size: 22px; cursor: pointer; }",
+        ".keys button { height: 58px; background: var(--card); border: 1px solid var(--line); border-radius: 4px; color: var(--fg); font: inherit; font-size: 22px; cursor: pointer; display: grid; place-items: center; --mdc-icon-size: 24px; }",
         ".keys .ok { border-color: var(--okc); color: var(--okc); font-size: 16px; }",
         ".x { background: none; border: 1px solid var(--line); color: var(--dim); font: inherit; padding: 6px 16px; border-radius: 4px; cursor: pointer; }"
       ].join("\n"));
@@ -4855,8 +5294,9 @@
       this.msgEl = el("div", "m", box);
       var keys = el("div", "keys", box);
       this.code = "";
-      ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "OK"].forEach((k) => {
-        var b = el("button", k === "OK" ? "ok" : "", keys, k);
+      ["1", "2", "3", "4", "5", "6", "7", "8", "9", "del", "0", "OK"].forEach((k) => {
+        var b = el("button", k === "OK" ? "ok" : "", keys, k === "del" ? null : k);
+        if (k === "del") { icon(b, "mdi:backspace-outline"); b.title = "Effacer"; b.setAttribute("aria-label", "Effacer"); }
         b.type = "button";
         b.addEventListener("click", () => this.key(k));
       });
@@ -4875,7 +5315,7 @@
     openPad() { this.code = ""; this.msgEl.textContent = ""; this.msgEl.className = "m"; this.codeEl.textContent = ""; this.pad.hidden = false; }
     closePad() { this.pad.hidden = true; this.code = ""; }
     key(k) {
-      if (k === "⌫") this.code = this.code.slice(0, -1);
+      if (k === "del") this.code = this.code.slice(0, -1);
       else if (k === "OK") return this.send();
       else if (this.code.length < 12) this.code += k;
       this.msgEl.textContent = "";
@@ -5019,6 +5459,433 @@
     }
   }
 
+  // ----- Home Assistant's notifications: those waiting and those sent -----
+  // The ones waiting (persistent_notification, the bell of the sidebar),
+  // live; `cb(list)` with the newest first. Returns a function that stops.
+  function watchPersistent(hass, cb) {
+    var current = {}, stop = null, done = false;
+    var emit = function () {
+      cb(Object.keys(current).map(function (k) { return current[k]; })
+        .sort(function (a, b) { return Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0); }));
+    };
+    try {
+      hass.connection.subscribeMessage(function (m) {
+        if (!m) return;
+        if (m.type === "current") current = {};
+        var n = m.notifications || {};
+        Object.keys(n).forEach(function (k) {
+          if (m.type === "removed") delete current[k]; else current[k] = n[k];
+        });
+        emit();
+      }, { type: "persistent_notification/subscribe" }).then(function (u) { if (done) u(); else stop = u; }).catch(function () { cb([]); });
+    } catch (e) { cb([]); }
+    return function () { done = true; if (stop) { try { stop(); } catch (e) { /* gone */ } stop = null; } };
+  }
+  // The newest sent notification this screen has shown (kept by the browser).
+  function seenSent() {
+    try { return window.localStorage.getItem("igor-notifications-seen") || ""; } catch (e) { return ""; }
+  }
+  function markSent(at) {
+    if (!at || at <= seenSent()) return;
+    try { window.localStorage.setItem("igor-notifications-seen", at); } catch (e) { /* no storage */ }
+    window.dispatchEvent(new Event("igor-notifications-seen"));
+  }
+  function newestSent(hass) {
+    return hass.callWS({ type: "call_service", domain: "nives", service: "notifications", service_data: { limit: 1 }, return_response: true })
+      .then(function (r) { var e = r && r.response && r.response.entries; return e && e[0] ? e[0].at : ""; })
+      .catch(function () { return ""; });
+  }
+  function whenText(iso) {
+    var d = new Date(iso);
+    if (isNaN(d)) return "";
+    return d.toDateString() === new Date().toDateString() ? hhmm(d) : pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + " " + hhmm(d);
+  }
+  // Text with its web addresses as links (built as nodes, never as HTML).
+  function linked(parent, text) {
+    String(text || "").split(/(https?:\/\/[^\s<>"]+)/).forEach(function (part, i) {
+      if (i % 2) {
+        var a = el("a", "", parent, part.length > 48 ? part.slice(0, 45) + "…" : part);
+        a.href = part; a.target = "_blank"; a.rel = "noopener noreferrer";
+      } else if (part) parent.appendChild(document.createTextNode(part));
+    });
+  }
+  function channelName(e) {
+    if (e.channel === "telegram" || e.service.indexOf("telegram_bot.") === 0) return "telegram";
+    if (/mobile_app_/.test(e.target || "")) return "téléphone";
+    if (e.service === "notify.persistent_notification") return "ha";
+    return String(e.target || e.service).replace(/^notify\./, "");
+  }
+
+  //   type: custom:igor-notifications-card
+  //   title: notifications
+  //   limit: 30             # sent notifications read (the newest)
+  //   waiting: true         # Home Assistant's notifications to deal with, on top
+  //   sent: true            # what Home Assistant sent (notify, Telegram), administrators only
+  class IgorNotificationsCard extends IgorCard {
+    setConfig(config) { this.config = config || {}; }
+    getCardSize() { return 6; }
+    build() {
+      this.style([
+        ".list { flex: 1; min-height: 0; overflow-y: auto; }",
+        ".sec { color: var(--faint); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; padding: 8px 0 3px; display: flex; justify-content: space-between; }",
+        ".n { display: grid; grid-template-columns: 6ch minmax(0, 1fr) auto; gap: 2px 10px; padding: 7px 0; border-bottom: 1px solid var(--line); align-items: start; }",
+        ".n .h { color: var(--faint); font-variant-numeric: tabular-nums; }",
+        ".n .b { min-width: 0; display: grid; gap: 2px; }",
+        ".n b { color: var(--fg); font-weight: 500; overflow-wrap: anywhere; }",
+        ".n .m { color: var(--dim); white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }",
+        ".n.open .m { -webkit-line-clamp: unset; display: block; }",
+        ".n .m a, .n .map { color: var(--acc); text-decoration: none; }",
+        ".n .map { font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; --mdc-icon-size: 14px; }",
+        ".n.wait { border-left: 2px solid var(--igor-signal, #e5323b); padding-left: 8px; }",
+        ".chip { font-size: 10px; border-radius: 99px; padding: 1px 8px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }",
+        ".x { background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 4px; width: 30px; height: 30px; padding: 0; display: grid; place-items: center; cursor: pointer; --mdc-icon-size: 16px; }",
+        ".x:hover { color: var(--fg); border-color: var(--acc); }",
+        ".empty { color: var(--dim); padding: 8px 0; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      el("span", "t sub", top, (this.config.title || "notifications").toUpperCase()).style.letterSpacing = "0.12em";
+      this.countEl = el("span", "sub", top, "");
+      this.list = el("div", "list", card);
+      this.waiting = [];
+      this.sent = null;
+      this.error = "";
+    }
+    connectedCallback() {
+      if (this._built && this._hass) this.start(this._hass);
+    }
+    disconnectedCallback() {
+      clearInterval(this.timer); this.timer = null;
+      if (this.unwatch) { this.unwatch(); this.unwatch = null; }
+    }
+    update(hass) {
+      if (!this.timer && this.isConnected) this.start(hass);
+    }
+    start(hass) {
+      if (this.config.waiting !== false && !this.unwatch) {
+        this.unwatch = watchPersistent(hass, (list) => { this.waiting = list; this.render(); });
+      }
+      if (this.config.sent !== false) {
+        this.load();
+        clearInterval(this.timer);
+        this.timer = setInterval(() => this.load(), 30000);
+      } else if (!this.timer) this.timer = -1;
+    }
+    load() {
+      var hass = this._hass;
+      if (!hass || this.loading) return;
+      if (!(hass.user && hass.user.is_admin)) { this.error = "envoyées : réservé aux administrateurs"; this.render(); return; }
+      this.loading = true;
+      var limit = Math.max(1, Math.min(200, Number(this.config.limit) || 30));
+      hass.callWS({ type: "call_service", domain: "nives", service: "notifications", service_data: { limit: limit }, return_response: true })
+        .then((r) => { this.sent = (r && r.response && r.response.entries) || []; this.error = ""; })
+        .catch(() => { this.error = "historique indisponible (intégration Igor à jour ?)"; })
+        .then(() => { this.loading = false; this.render(); });
+    }
+    row(cls, when, title, message, right) {
+      var n = el("div", "n " + cls, this.list);
+      el("span", "h", n, when);
+      var b = el("div", "b", n);
+      if (title) el("b", "", b, title);
+      if (message) linked(el("div", "m", b), message);
+      n.addEventListener("click", (ev) => { if (ev.target.tagName !== "A" && ev.target.tagName !== "BUTTON") n.classList.toggle("open"); });
+      if (right) n.appendChild(right);
+      return b;
+    }
+    render() {
+      this.list.innerHTML = "";
+      var w = this.waiting || [];
+      this.countEl.textContent = w.length ? w.length + " à traiter" : "";
+      if (this.config.waiting !== false && w.length) {
+        el("div", "sec", this.list, "à traiter");
+        w.forEach((p) => {
+          var x = el("button", "x", null);
+          icon(x, "mdi:close");
+          x.type = "button"; x.title = "Effacer"; x.setAttribute("aria-label", "Effacer");
+          x.addEventListener("click", () => {
+            this._hass.callService("persistent_notification", "dismiss", { notification_id: p.notification_id });
+          });
+          this.row("wait", whenText(p.created_at), p.title || "", p.message || "", x);
+        });
+      }
+      if (this.config.sent === false) {
+        if (!w.length) el("div", "empty", this.list, "Rien à traiter.");
+        return;
+      }
+      el("div", "sec", this.list, "envoyées");
+      if (this.error) { el("div", "empty", this.list, this.error); return; }
+      if (this.sent == null) { el("div", "empty", this.list, "…"); return; }
+      if (!this.sent.length) { el("div", "empty", this.list, "Aucune notification envoyée pour l'instant."); return; }
+      if (this.isConnected && this.sent[0].at) markSent(this.sent[0].at);
+      this.sent.forEach((e) => {
+        var b = this.row("", whenText(e.at), e.title, e.message, el("span", "chip", null, channelName(e)));
+        if (e.latitude != null && e.longitude != null) {
+          var a = el("a", "map", b);
+          icon(a, "mdi:map-marker-outline");
+          a.appendChild(document.createTextNode("voir sur la carte"));
+          a.href = "https://www.google.com/maps/search/?api=1&query=" + e.latitude + "," + e.longitude;
+          a.target = "_blank"; a.rel = "noopener noreferrer";
+        }
+      });
+    }
+  }
+
+  // ----- igor-bank-card: money, in Igor's style (a bank integration's sensors) -----
+  //   type: custom:igor-bank-card
+  //   show: overview        # total, accounts, the month (spent, income, saved, budget)
+  //         categories      # spending by category, against its budget or last month
+  //         operations      # a list of operations from an attribute, by day
+  //         selected        # one operation in detail
+  //         budgets         # what is left of the month's budgets
+  //         accounts        # each account's spending by category
+  //   (each mode's keys are in DOCS.md; every sensor is optional)
+  function money(v, d) {
+    if (v == null || isNaN(v)) return "—";
+    return fr(Number(v), d == null ? 2 : d) + " €";
+  }
+  function signed(v, d) { return (v > 0 ? "+" : "") + money(v, d); }
+  function numOf(hass, id, attr) {
+    var st = id && hass.states[id];
+    if (!st) return null;
+    var v = parseFloat(attr ? st.attributes[attr] : st.state);
+    return isNaN(v) ? null : v;
+  }
+  function dayText(iso) {
+    var s = String(iso || "");
+    return /^\d{4}-\d\d-\d\d/.test(s) ? s.slice(8, 10) + "/" + s.slice(5, 7) + "/" + s.slice(0, 4) : s;
+  }
+  class IgorBankCard extends IgorCard {
+    setConfig(config) {
+      var show = (config && config.show) || "overview";
+      if (["overview", "categories", "operations", "selected", "budgets", "accounts"].indexOf(show) < 0) throw new Error("igor-bank-card: show inconnu (" + show + ")");
+      this.config = Object.assign({}, config, { show: show });
+    }
+    getCardSize() { return 5; }
+    ids() {
+      var c = this.config, out = [c.total, c.spent, c.income, c.budgets, c.entity, c.filter];
+      (c.accounts || []).forEach(function (a) { out.push(a.balance, a.transactions); });
+      (c.categories || []).forEach(function (a) { out.push(a.entity); });
+      return out.filter(Boolean);
+    }
+    build() {
+      this.style([
+        ".body { flex: 1; min-height: 0; overflow-y: auto; display: grid; gap: 10px; align-content: start; padding-top: 4px; }",
+        ".hero { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }",
+        ".hero b { font-size: clamp(26px, 5vw, 38px); font-weight: 300; letter-spacing: -0.01em; color: var(--fg); font-variant-numeric: tabular-nums; }",
+        ".hero b.neg, .neg { color: var(--bad) !important; } .pos { color: var(--okc); }",
+        ".lbl { color: var(--faint); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }",
+        ".grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 8px; }",
+        ".tile { border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; display: grid; gap: 3px; min-width: 0; cursor: pointer; background: var(--bg); }",
+        ".tile .v { font-size: 18px; color: var(--fg); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".tile .s { color: var(--dim); font-size: 11px; }",
+        ".tile.nav { place-items: center; text-align: center; --mdc-icon-size: 26px; color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; font-size: 10.5px; gap: 6px; }",
+        ".tile.nav ha-icon { color: var(--fg); }",
+        ".row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 3px 10px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); --mdc-icon-size: 18px; }",
+        ".row.tap { cursor: pointer; } .row.tap:hover .n { color: var(--acc); }",
+        ".row ha-icon { color: var(--dim); }",
+        ".row .n { color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".row .a { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--fg); }",
+        ".row .d { grid-column: 2 / 4; color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".row .bar { grid-column: 2 / 4; }",
+        ".bar i.warn { background: var(--wait); } .bar i.bad { background: var(--bad); } .bar i.ok { background: var(--okc); }",
+        ".day { color: var(--faint); font-size: 10px; letter-spacing: 0.14em; padding: 8px 0 0; }",
+        ".sum { color: var(--dim); font-size: 11.5px; }",
+        ".big { text-align: center; display: grid; gap: 4px; padding: 6px 0; }",
+        ".big b { font-size: clamp(30px, 6vw, 44px); font-weight: 300; }",
+        ".kv { display: grid; grid-template-columns: 1fr auto; gap: 5px 14px; font-variant-numeric: tabular-nums; } .kv .l { color: var(--dim); } .kv .v { text-align: right; }",
+        "pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 8px; margin: 0; font: inherit; color: var(--dim); }",
+        ".more { color: var(--acc); cursor: pointer; background: none; border: 0; font: inherit; padding: 4px 0; justify-self: start; }",
+        ".empty { color: var(--dim); }",
+        "h5 { margin: 6px 0 2px; font-size: 12px; font-weight: 500; color: var(--fg); display: flex; justify-content: space-between; } h5 span { color: var(--dim); font-weight: 400; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var top = el("div", "top", card);
+      var defaults = { overview: "comptes", categories: "dépenses par catégorie", operations: "opérations", selected: "opération", budgets: "budgets du mois", accounts: "par compte" };
+      el("span", "t sub", top, String(this.config.title || defaults[this.config.show]).toUpperCase()).style.letterSpacing = "0.12em";
+      this.side = el("span", "sub", top, "");
+      this.body = el("div", "body", card);
+    }
+    update(hass, prev) {
+      if (!changed(prev, hass, this.ids())) return;
+      this.body.innerHTML = "";
+      this.side.textContent = "";
+      try { this["show_" + this.config.show](hass); }
+      catch (e) { el("div", "empty", this.body, "Données indisponibles."); }
+    }
+    go(path) {
+      if (!path) return;
+      navigate(path.charAt(0) === "/" ? path : "/" + window.location.pathname.split("/")[1] + "/" + path);
+    }
+    tile(parent, label, value, sub, cls, onTap) {
+      var t = el("div", "tile", parent);
+      el("span", "lbl", t, label);
+      el("span", "v " + (cls || ""), t, value);
+      if (sub) el("span", "s", t, sub);
+      if (onTap) t.addEventListener("click", onTap);
+      return t;
+    }
+    bar(parent, pct, level) {
+      var b = el("div", "bar", parent);
+      var i = el("i", level || "", b);
+      i.style.width = Math.max(0, Math.min(100, pct || 0)) + "%";
+      return b;
+    }
+    show_overview(hass) {
+      var c = this.config, b = this.body;
+      if (c.total) {
+        var t = numOf(hass, c.total), over = numOf(hass, c.total, "overdrawn_accounts") || 0;
+        var hero = el("div", "hero", b);
+        var big = el("b", t != null && t < 0 ? "neg" : "", hero, money(t));
+        big.style.cursor = "pointer";
+        big.addEventListener("click", () => moreInfo(this, c.total));
+        el("span", "sub", hero, "solde total · " + (t != null && t < 0 ? "à découvert" : "créditeur") + (over ? " · " + over + " compte" + (over > 1 ? "s" : "") + " à découvert" : ""));
+      }
+      if ((c.accounts || []).length) {
+        var g = el("div", "grid", b);
+        c.accounts.forEach((a) => {
+          var v = numOf(hass, a.balance), spent = numOf(hass, a.transactions, "month_spent");
+          this.tile(g, a.name || a.balance, money(v), spent != null ? fr(spent, 0) + " € dépensés ce mois" : "", v != null && v < 0 ? "neg" : "", () => moreInfo(this, a.balance));
+        });
+      }
+      var spent = numOf(hass, c.spent), income = numOf(hass, c.income), prevM = numOf(hass, c.spent, "previous_month");
+      if (spent != null || income != null) {
+        el("div", "lbl", b, "ce mois-ci");
+        var m = el("div", "grid", b);
+        var vs = spent != null && prevM ? Math.round(((spent - prevM) / prevM) * 100) : null;
+        if (spent != null) this.tile(m, "dépenses", money(spent, 0), vs != null ? (vs > 0 ? "+" : "") + vs + " % vs mois dernier" : "", "", () => moreInfo(this, c.spent));
+        if (income != null) this.tile(m, "revenus", money(income, 0), "", "pos", () => moreInfo(this, c.income));
+        if (spent != null && income != null) this.tile(m, "épargne", signed(income - spent, 0), "revenus − dépenses", income - spent >= 0 ? "pos" : "neg");
+      }
+      if (c.budgets && hass.states[c.budgets]) {
+        var tb = numOf(hass, c.budgets, "total_budget") || 0, ts = numOf(hass, c.budgets, "total_spent_budgeted") || 0, n = numOf(hass, c.budgets) || 0;
+        var r = el("div", "row" + (c.budgets_page ? " tap" : ""), b);
+        icon(r, "mdi:target");
+        el("span", "n", r, !tb ? "Aucun budget" : tb - ts >= 0 ? "Il reste " + money(tb - ts, 0) : "Budget dépassé de " + money(ts - tb, 0));
+        el("span", "a", r, tb ? fr(ts, 0) + " / " + fr(tb, 0) + " €" : "");
+        if (tb) this.bar(r, (ts / tb) * 100, ts > tb ? "bad" : n ? "warn" : "ok");
+        if (n) el("span", "d", r, n + " catégorie" + (n > 1 ? "s" : "") + " dépassée" + (n > 1 ? "s" : ""));
+        if (c.budgets_page) r.addEventListener("click", () => this.go(c.budgets_page));
+      }
+      if ((c.links || []).length) {
+        var l = el("div", "grid", b);
+        c.links.forEach((k) => {
+          var t2 = el("div", "tile nav", l);
+          icon(t2, k.icon || "mdi:arrow-right");
+          el("span", "", t2, k.name || "");
+          t2.addEventListener("click", () => this.go(k.navigate));
+        });
+      }
+    }
+    show_categories(hass) {
+      var c = this.config;
+      var rows = (c.categories || []).map(function (k) {
+        return { k: k, v: numOf(hass, k.entity) || 0, budget: numOf(hass, k.entity, "budget"), prev: numOf(hass, k.entity, "previous_month") };
+      }).filter(function (r) { return hass.states[r.k.entity]; });
+      if (c.hide_zero !== false) rows = rows.filter(function (r) { return r.v > 0 || r.budget; });
+      rows.sort(function (a, b) { return b.v - a.v; });
+      var total = rows.reduce(function (a, r) { return a + r.v; }, 0);
+      this.side.textContent = money(total, 0);
+      if (!rows.length) { el("div", "empty", this.body, "Aucune dépense ce mois-ci."); return; }
+      var top = rows[0].v || 1;
+      rows.forEach((r) => {
+        var row = el("div", "row tap", this.body);
+        icon(row, r.k.icon || "mdi:tag");
+        el("span", "n", row, r.k.name || r.k.entity);
+        el("span", "a" + (r.budget && r.v > r.budget ? " neg" : ""), row, money(r.v, 0) + (r.budget ? " / " + fr(r.budget, 0) + " €" : ""));
+        var pct = r.budget ? (r.v / r.budget) * 100 : (r.v / top) * 100;
+        this.bar(row, pct, r.budget ? (r.v > r.budget ? "bad" : pct >= 80 ? "warn" : "ok") : "");
+        el("span", "d", row, (total ? Math.round((r.v / total) * 100) + " % des dépenses" : "") + (r.prev ? " · " + fr(r.prev, 0) + " € le mois dernier" : ""));
+        row.addEventListener("click", () => {
+          // The operations of this category: the integration's filter, then its page.
+          if (c.filter && this._hass) {
+            this._hass.callService("select", "select_option", { entity_id: c.filter, option: r.k.option || r.k.name });
+            this.go(c.operations || "operations");
+          } else moreInfo(this, r.k.entity);
+        });
+      });
+    }
+    show_operations(hass) {
+      var c = this.config, st = hass.states[c.entity];
+      if (!st) { el("div", "empty", this.body, "Capteur introuvable."); return; }
+      var a = st.attributes;
+      var ops = a[c.attribute || (a.operations ? "operations" : "recent_transactions")] || [];
+      var limit = Number(c.limit) || 50;
+      if (a.total != null && (a.filter || a.period)) {
+        this.side.textContent = a.total + " opération" + (a.total > 1 ? "s" : "");
+        el("div", "sum", this.body, [a.filter, a.period].filter(Boolean).join(" · ") + (a.sum_out != null ? " · sorties " + money(Number(a.sum_out)) + " · entrées " + money(Number(a.sum_in)) : ""));
+      }
+      if (!ops.length) { el("div", "empty", this.body, "Aucune opération."); return; }
+      var day = null;
+      ops.slice(0, limit).forEach((t) => {
+        if (c.by_day !== false && t.date !== day) { day = t.date; el("div", "day", this.body, dayText(day)); }
+        var row = el("div", "row", this.body);
+        icon(row, t.icon || "mdi:receipt");
+        el("span", "n", row, String(t.merchant || t.label || "").trim());
+        var amt = Number(t.amount);
+        el("span", "a " + (amt > 0 ? "pos" : ""), row, signed(amt));
+        el("span", "d", row, [c.by_day === false && t.date ? dayText(t.date).slice(0, 5) : "", t.category_name, t.account, t.pending ? "en attente" : ""].filter(Boolean).join(" · "));
+      });
+      if (c.more) {
+        var m = el("button", "more", this.body, "toutes les opérations ›");
+        m.type = "button";
+        m.addEventListener("click", () => this.go(c.more));
+      }
+    }
+    show_selected(hass) {
+      var st = hass.states[this.config.entity];
+      var a = st && st.attributes;
+      if (!a || a.amount == null) { el("div", "empty", this.body, "Aucune opération pour ce filtre."); return; }
+      var d = a.detail || {};
+      var big = el("div", "big", this.body);
+      var amt = Number(a.amount);
+      el("b", amt > 0 ? "pos" : "", big, signed(amt));
+      el("span", "", big, st.state);
+      el("span", "sub", big, [a.category_name, a.account].filter(Boolean).join(" · "));
+      var kv = el("div", "kv", this.body);
+      [["date d'achat", dayText(a.date)], ["comptabilisée le", dayText(d.booking_date)], ["statut", a.pending ? "en attente" : "comptabilisée"], ["position", a.position != null ? a.position + " / " + a.total : ""]]
+        .forEach(function (p) { if (!p[1]) return; el("span", "l", kv, p[0]); el("span", "v", kv, p[1]); });
+      if (a.label) { el("div", "lbl", this.body, "libellé exact"); el("pre", "", this.body, String(a.label)); }
+    }
+    show_budgets(hass) {
+      var c = this.config, st = hass.states[c.entity];
+      var rows = (st && st.attributes.budgets) || [];
+      if (!rows.length) { el("div", "empty", this.body, "Aucun budget défini : renseigne un montant ci-dessous (0 = pas de budget)."); return; }
+      var tb = numOf(hass, c.entity, "total_budget") || 0, ts = numOf(hass, c.entity, "total_spent_budgeted") || 0, left = tb - ts;
+      var now = new Date(), days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1;
+      var big = el("div", "big", this.body);
+      el("span", "lbl", big, left >= 0 ? "il te reste" : "budget dépassé de");
+      el("b", left < 0 ? "neg" : "", big, money(Math.abs(left), 0));
+      el("span", "sub", big, fr(ts, 0) + " € dépensés sur " + fr(tb, 0) + " €" + (left > 0 ? " · " + fr(left / days, 0) + " €/jour jusqu'à la fin du mois" : ""));
+      this.bar(this.body, tb ? (ts / tb) * 100 : 0, ts > tb ? "bad" : ts / tb >= 0.8 ? "warn" : "ok");
+      rows.slice().sort(function (a, b) { return (b.used_pct || 0) - (a.used_pct || 0); }).forEach((r) => {
+        var row = el("div", "row", this.body);
+        icon(row, r.over ? "mdi:alert-circle" : "mdi:target");
+        el("span", "n", row, r.category);
+        var l = r.budget - r.spent;
+        el("span", "a" + (l < 0 ? " neg" : ""), row, l >= 0 ? "reste " + money(l, 0) : "dépassé de " + money(-l, 0));
+        this.bar(row, r.used_pct, r.over ? "bad" : r.used_pct >= 80 ? "warn" : "ok");
+        el("span", "d", row, fr(r.spent, 0) + " € sur " + fr(r.budget, 0) + " €");
+      });
+    }
+    show_accounts(hass) {
+      (this.config.accounts || []).forEach((acc) => {
+        var st = hass.states[acc.transactions];
+        if (!st) return;
+        var spent = Number(st.attributes.month_spent) || 0, got = Number(st.attributes.month_received) || 0;
+        var h = el("h5", "", this.body, acc.name || acc.transactions);
+        el("span", "", h, fr(spent, 0) + " € dépensés · " + fr(got, 0) + " € reçus");
+        var cats = st.attributes.by_category || {};
+        Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; }).forEach((k) => {
+          var row = el("div", "row", this.body);
+          icon(row, "mdi:tag-outline");
+          el("span", "n", row, k);
+          el("span", "a", row, money(cats[k], 0));
+          this.bar(row, spent ? (cats[k] / spent) * 100 : 0, "");
+        });
+      });
+    }
+  }
+
   function define(name, cls, label, description) {
     if (!customElements.get(name)) customElements.define(name, cls);
     window.customCards = window.customCards || [];
@@ -5026,6 +5893,8 @@
   }
   define("igor-wall", IgorWall, "Igor · mur", "Tout l'écran : barre d'état des machines et colonnes de cartes jusqu'en bas.");
   define("igor-journal-card", IgorJournalCard, "Igor · journal", "Les derniers échanges avec Igor.");
+  define("igor-bank-card", IgorBankCard, "Igor · banque", "Les comptes, le mois, les dépenses par catégorie, les budgets et les opérations d'une intégration bancaire.");
+  define("igor-notifications-card", IgorNotificationsCard, "Igor · notifications", "Les notifications de Home Assistant : celles à traiter, et celles envoyées (téléphone, Telegram).");
   define("igor-docker-card", IgorDockerCard, "Igor · Docker", "Les conteneurs de Portainer.");
   define("igor-net-card", IgorNetCard, "Igor · réseau", "Le débit d'un routeur sur la dernière heure.");
   define("igor-energy-card", IgorEnergyCard, "Igor · énergie", "La puissance, heure par heure aujourd'hui.");
@@ -5215,7 +6084,7 @@
         ".c{height:2.4em;font-size:clamp(18px,3.4vh,28px);letter-spacing:.5em;color:#59d0e0;min-width:8em;text-align:center;border-bottom:1px solid #22262c}" +
         ".m{min-height:1.4em;color:#e5323b;font-size:clamp(12px,2vh,15px)}.m.ok{color:#5cc28f}" +
         ".k{display:grid;grid-template-columns:repeat(3,minmax(64px,11vh));gap:1.2vh}" +
-        ".k button{height:min(9vh,64px);background:#111417;border:1px solid #22262c;border-radius:4px;color:#e9e4da;font:inherit;font-size:clamp(18px,3vh,26px);cursor:pointer}" +
+        ".k button{height:min(9vh,64px);background:#111417;border:1px solid #22262c;border-radius:4px;color:#e9e4da;font:inherit;font-size:clamp(18px,3vh,26px);cursor:pointer;display:grid;place-items:center;--mdc-icon-size:26px}" +
         ".k button:active{background:#1b1f24}.k .ok{border-color:#59d0e0;color:#59d0e0}" +
         "</style><div class=l>" + EYE.replace('style="width:100%;height:100%;display:block"', "") +
         "<div class=t>MAINTENANCE</div><div class=s>écran verrouillé · code pour déverrouiller</div>" +
@@ -5223,10 +6092,16 @@
       codeEl = root.querySelector(".c");
       msgEl = root.querySelector(".m");
       var pad = root.querySelector(".k");
-      ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "OK"].forEach(function (k) {
+      ["1", "2", "3", "4", "5", "6", "7", "8", "9", "del", "0", "OK"].forEach(function (k) {
         var b = document.createElement("button");
         b.type = "button";
-        b.textContent = k;
+        if (k === "del") {
+          var ic = document.createElement("ha-icon");
+          ic.setAttribute("icon", "mdi:backspace-outline");
+          b.appendChild(ic);
+          b.title = "Effacer";
+          b.setAttribute("aria-label", "Effacer");
+        } else b.textContent = k;
         if (k === "OK") b.className = "ok";
         b.addEventListener("click", function () { press(k); });
         pad.appendChild(b);
@@ -5237,7 +6112,7 @@
     function draw() { if (codeEl) codeEl.textContent = code.replace(/./g, "•"); }
     function hide() { if (lockEl) { lockEl.remove(); lockEl = null; code = ""; } }
     function press(k) {
-      if (k === "⌫") code = code.slice(0, -1);
+      if (k === "del") code = code.slice(0, -1);
       else if (k === "OK") { submit(); return; }
       else if (code.length < 12) code += k;
       msgEl.textContent = "";
@@ -5265,7 +6140,7 @@
       ev.stopPropagation();
       ev.preventDefault();
       if (/^[0-9]$/.test(ev.key)) press(ev.key);
-      else if (ev.key === "Backspace") press("⌫");
+      else if (ev.key === "Backspace") press("del");
       else if (ev.key === "Enter") press("OK");
     }, true);
     setInterval(function () {

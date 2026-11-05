@@ -39,6 +39,9 @@ ARP_PATHS = ("/api/diagnostics/interface/search_arp", "/api/diagnostics/interfac
 STATES_PATH = "/api/diagnostics/firewall/query_states"
 LOG_PATH = "/api/diagnostics/firewall/log"
 RULES_PATH = "/api/firewall/filter/search_rule"
+WIREGUARD_PATH = "/api/wireguard/service/show"
+# A peer heard from within this many seconds is connected (WireGuard re-handshakes every 2 min).
+VPN_ONLINE_S = 180
 
 
 def ip_kind(ip: str) -> str:
@@ -317,6 +320,70 @@ def parse_rules(body: Any) -> list[dict]:
     return out
 
 
+def parse_wireguard(body: Any, now: float, locate=None) -> list[dict]:
+    """WireGuard's peers (OPNsense « wg show »): who is connected from where.
+
+    Each peer: its name, tunnel, its addresses inside the tunnel, the public
+    address it connects from (outside the house), that address's country and
+    operator, its last handshake and traffic."""
+    peers = []
+    for r in _rows(body):
+        if str(r.get("type", "")).lower() != "peer":
+            continue
+        endpoint = str(r.get("endpoint") or "")
+        host, port = ("", "")
+        if endpoint and endpoint not in ("(none)", "none"):
+            host, port = split_host(endpoint)  # « 203.0.113.4:51820 » or « [2001:db8::1]:51820 »
+        try:
+            hs = float(r.get("latest-handshake") or r.get("latest_handshake") or 0)
+        except (TypeError, ValueError):
+            hs = 0.0
+        age = int(now - hs) if hs > 0 else None
+        tunnel = [a.split("/", 1)[0].strip() for a in str(r.get("allowed-ips") or r.get("allowed_ips") or "").split(",") if a.strip()]
+        cc, org = ("", "")
+        if host and locate and ip_kind(host) == "public":
+            try:
+                cc, org = locate(host)
+            except Exception:  # noqa: BLE001 - no database: no place
+                cc, org = ("", "")
+        peers.append({
+            "name": str(r.get("name") or r.get("peer-name") or r.get("description") or "")[:60] or (tunnel[0] if tunnel else "pair"),
+            "tunnel": str(r.get("ifname") or r.get("if") or "")[:40],
+            "ips": [ip for ip in tunnel if ip_kind(ip)][:8],
+            "endpoint": host,
+            "port": port,
+            "where": ip_kind(host) if host else "",
+            "cc": cc or "",
+            "org": short_org(org) if org else "",
+            "handshake_s": age,
+            "online": age is not None and age <= VPN_ONLINE_S,
+            "rx": _num(r.get("transfer-rx") or r.get("transfer_rx")),
+            "tx": _num(r.get("transfer-tx") or r.get("transfer_tx")),
+        })
+    return peers
+
+
+def add_vpn(out: dict, peers: list[dict]) -> None:
+    """The peers on the map: a block « VPN · <tunnel> » with each peer, the
+    address it has inside the tunnel, and where it is outside."""
+    byid = {n["id"]: n for n in out.get("nodes", [])}
+    for p in peers:
+        vlan = "VPN · " + (p["tunnel"] or "wireguard")
+        ip = p["ips"][0] if p["ips"] else "vpn:" + p["name"]
+        info = {k: p[k] for k in ("name", "endpoint", "cc", "org", "where", "handshake_s", "online", "rx", "tx")}
+        n = byid.get(ip)
+        if n is None:
+            n = {"id": ip, "kind": "device", "ip": ip if p["ips"] else "", "name": p["name"], "mac": "", "net": "",
+                 "vlan": vlan, "vendor": "", "signal": None}
+            out.setdefault("nodes", []).append(n)
+            byid[ip] = n
+        else:
+            n["vlan"] = vlan
+            if n.get("name") in ("", n.get("ip")):
+                n["name"] = p["name"]
+        n["vpn"] = info
+
+
 class OPNsense:
     """The API, with the key and secret as HTTP basic credentials."""
 
@@ -370,6 +437,9 @@ class OPNsense:
 
     async def rules(self, session) -> Any:
         return await self._req(session, "POST", RULES_PATH, {"current": 1, "rowCount": 500, "searchPhrase": ""})
+
+    async def wireguard(self, session) -> Any:
+        return await self._req(session, "GET", WIREGUARD_PATH)
 
     async def states(self, session) -> Any:
         return await self._req(session, "POST", STATES_PATH,
