@@ -4311,6 +4311,14 @@
     var x = Math.cos(gpsRad(a[1])) * Math.sin(gpsRad(b[1])) - Math.sin(gpsRad(a[1])) * Math.cos(gpsRad(b[1])) * Math.cos(gpsRad(b[0] - a[0]));
     return (gpsDeg(Math.atan2(y, x)) + 360) % 360;
   }
+  // How far `to` lies ahead of `from` along a heading (metres; negative: behind).
+  function gpsAhead(from, to, heading) {
+    var d = gpsDist(from, to);
+    if (d < 0.01) return 0;
+    var diff = gpsRad(gpsBearing(from, to) - heading);
+    return d * Math.cos(diff);
+  }
+  function gpsTurn(a, b) { return Math.abs(((b - a + 540) % 360) - 180); }
   function gpsLerpAngle(a, b, t) { var d = ((b - a + 540) % 360) - 180; return (a + d * t + 360) % 360; }
   // The nearest point to p on a set of lines ([[lon, lat], …] each), in
   // metres on a local flat projection: { point, dist, bearing } of the
@@ -4521,8 +4529,19 @@
     }
     onFix(p, course, gpsSpeed, updated) {
       var prev = this.fix && this.fix.point;
-      if (typeof course === "number" && course > 0 && (gpsSpeed || 0) > GPS_MOVING) this.heading = course;
-      else if (prev && gpsDist(prev, p) > 8) this.heading = gpsBearing(prev, p);
+      var cand = null;
+      if (typeof course === "number" && course > 0 && (gpsSpeed || 0) > GPS_MOVING) cand = course;
+      else if (prev && gpsDist(prev, p) > 8) cand = gpsBearing(prev, p);
+      // A car does not turn back on its road while it drives: a heading
+      // reversed by one doubtful fix is ignored; three in a row (a real
+      // U-turn) are believed. Stopped, the heading stays as it was.
+      var rolling = this.speedMps() > 1.5;
+      if (cand != null && rolling) {
+        if (gpsTurn(this.heading, cand) > 110) {
+          this.reverseVotes = (this.reverseVotes || 0) + 1;
+          if (this.reverseVotes >= 3) { this.heading = cand; this.reverseVotes = 0; }
+        } else { this.heading = cand; this.reverseVotes = 0; }
+      } else if (cand != null && !this.fix) this.heading = cand;
       this.fix = { point: p, time: performance.now(), gpsSpeed: isFinite(gpsSpeed) ? gpsSpeed : 0, updated: updated };
     }
     // The trail is drawn on the roads only: each point the arrow takes on a
@@ -4534,6 +4553,8 @@
       if (snapOn && !onRoad) { this.cut = true; return; }
       var piece = this.trail[this.trail.length - 1], last = piece && piece[piece.length - 1];
       if (last && !this.cut && gpsDist(last, p) < 5) return;
+      // Driving, the trail does not come back on itself either.
+      if (last && !this.cut && this.speedMps() > 1.5 && gpsAhead(last, p, this.heading) < -2) return;
       var path = null;
       if (last && onRoad && gpsDist(last, p) > 8) {
         var way = gpsRoadPath(this.roadLines(last, p, 40), last, p);
@@ -4663,16 +4684,23 @@
         if (this.snapped) this.lastRoad = this.snapped.point;
         this.$("snapEl").textContent = this.snapped ? "sur la route" : "";
       }
+      // Driving, the arrow never goes back along its road: a target behind
+      // it (a late or noisy fix) holds it where it is.
+      if (moving && gpsAhead(this.pos, target, this.heading) < -0.5) target = this.pos;
       var s = this.snapped;
+      if (s && moving && gpsAhead(this.pos, s.point, this.heading) < -0.5) s = null;
       if (s && gpsDist(s.point, target) <= snapM * 1.5) {
         target = s.point;
         if (moving) this.heading = gpsLerpAngle(this.heading, gpsAlong(s.bearing, this.heading), 0.2);
       }
       // A leap (a late fix): the arrow drives there along the roads, not across.
+      var before = this.pos;
       var jump = gpsDist(this.pos, target);
       if (s && !this.way && jump > 25 && jump < 400) {
         var way = gpsRoadPath(this.roadLines(this.pos, target, 40), this.pos, target);
-        if (way && way.length > 2) { this.way = way.slice(1); this.wayFrom = now; this.wayLen = jump; }
+        // Not a way that starts by turning back (a car does not).
+        var backwards = moving && way && way.length > 1 && gpsDist(way[0], way[1]) > 1 && gpsTurn(this.heading, gpsBearing(way[0], way[1])) > 110;
+        if (way && way.length > 2 && !backwards) { this.way = way.slice(1); this.wayFrom = now; this.wayLen = jump; }
       }
       if (this.way && this.way.length) {
         // About a second for the whole way, at least the car's speed.
@@ -4687,6 +4715,8 @@
         var k = jump > 400 ? 1 : 0.15;
         this.pos = [this.pos[0] + (target[0] - this.pos[0]) * k, this.pos[1] + (target[1] - this.pos[1]) * k];
       }
+      // Last guard: driving, not a step back (a big jump, a real relocation, still goes).
+      if (moving && jump <= 400 && gpsAhead(before, this.pos, this.heading) < -0.2) this.pos = before;
       this.shown = gpsLerpAngle(this.shown, this.heading, 0.1);
       this.marker.setLngLat(this.pos).setRotation(this.shown);
       if (!this.trailAt || now - this.trailAt > 500) {
