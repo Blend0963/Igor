@@ -4665,7 +4665,11 @@
         ".panel { position: absolute; inset: 0; z-index: 4; background: rgba(7,8,10,0.96); color: #e9e4da; font-family: " + MONO + "; display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; overflow-y: auto; }" +
         ".panel .ph { display: flex; justify-content: space-between; align-items: center; color: #878c95; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; }" +
         ".panel form { display: flex; gap: 8px; } .panel input { flex: 1; min-width: 0; font: inherit; font-size: 17px; padding: 12px; border-radius: 4px; border: 1px solid #22262c; background: #0d1014; color: #e9e4da; }" +
-        ".panel button { font: inherit; font-size: 15px; padding: 12px 16px; border-radius: 4px; border: 1px solid #22262c; background: #12171c; color: #e9e4da; cursor: pointer; text-align: left; }" +
+        ".panel button { font: inherit; font-size: 15px; padding: 12px 16px; border-radius: 4px; border: 1px solid #22262c; background: #12171c; color: #e9e4da; cursor: pointer; text-align: left;" +
+        " display: flex; align-items: center; gap: 12px; --mdc-icon-size: 24px; min-height: 52px; } .panel button ha-icon { color: #59d0e0; flex: none; } .panel button > div { min-width: 0; }" +
+        ".panel button[hidden] { display: none; }" +
+        ".panel button.ic { width: 48px; height: 48px; min-height: 0; padding: 0; justify-content: center; } .panel button.ic ha-icon { color: #e9e4da; }" +
+        ".panel button.go ha-icon, .panel button.stop ha-icon { color: inherit; } .panel button.go, .panel button.stop { justify-content: center; }" +
         ".panel button.go { background: #59d0e0; color: #07080a; border-color: #59d0e0; text-align: center; } .panel button.stop { border-color: #e5323b; color: #e5323b; text-align: center; }" +
         ".panel .list { display: grid; gap: 8px; } .panel .list small { display: block; color: #878c95; font-size: 12px; margin-top: 3px; } .panel .note { color: #878c95; font-size: 13px; }" +
         '</style><ha-card id="card"><div id="map"></div><div class="msg" id="msg">Chargement de la carte…</div>' +
@@ -4675,9 +4679,9 @@
         '<button id="voice" title="Voix du guidage"><ha-icon icon="mdi:volume-high"></ha-icon></button></div>' +
         '<div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div><div class="d" id="navD"></div><div class="t" id="navT"></div></div></div>' +
         '<div class="eta" id="eta" hidden></div>' +
-        '<div class="panel" id="panel" hidden><div class="ph"><span>destination</span><button id="pclose" title="Fermer">✕</button></div>' +
-        '<form id="pform"><input id="pq" type="search" placeholder="Adresse, ville, lieu…" autocomplete="off"><button class="go" type="submit">Chercher</button></form>' +
-        '<div class="list" id="plist"></div><div class="list" id="pfav"></div><button class="stop" id="pstop" hidden>Arrêter le guidage</button></div>' +
+        '<div class="panel" id="panel" hidden><div class="ph"><span>destination</span><button id="pclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
+        '<form id="pform"><input id="pq" type="text" enterkeyhint="search" placeholder="Adresse, ville, lieu…" autocomplete="off"><button class="go" type="submit"><ha-icon icon="mdi:magnify"></ha-icon><span>Chercher</span></button></form>' +
+        '<div class="list" id="plist"></div><div class="list" id="pfav"></div><button class="stop" id="pstop" hidden><ha-icon icon="mdi:close-octagon-outline"></ha-icon><span>Arrêter le guidage</span></button></div>' +
         '<div class="hud sp"><div class="speed" id="speed"><b>0</b><span>KM/H</span></div></div>' +
         '<div class="hud lim"><div class="sign" id="limit" hidden>' + GPS_SIGN + "</div></div>" +
         '<div class="snap" id="snapEl"></div></ha-card>';
@@ -5041,7 +5045,8 @@
         if (!at) return;
         var b = document.createElement("button");
         b.type = "button";
-        b.textContent = "★ " + (f.name || ent);
+        var fi = document.createElement("ha-icon"); fi.setAttribute("icon", f.icon || (ent === "zone.home" ? "mdi:home" : "mdi:star-outline")); b.appendChild(fi);
+        var fl = document.createElement("span"); fl.textContent = f.name || ent; b.appendChild(fl);
         b.addEventListener("click", () => { this.setDestination({ lat: at.lat, lon: at.lon, name: f.name || ent }, true); $("panel").hidden = true; });
         fav.appendChild(b);
       });
@@ -5068,10 +5073,11 @@
         var b = document.createElement("button");
         b.type = "button";
         var parts = String(r.display_name || "").split(", ");
-        b.textContent = r.name || parts[0];
+        var ri = document.createElement("ha-icon"); ri.setAttribute("icon", "mdi:map-marker-outline"); b.appendChild(ri);
+        var rt = document.createElement("div"); rt.textContent = r.name || parts[0]; b.appendChild(rt);
         var sm = document.createElement("small");
         sm.textContent = parts.slice(r.name ? 0 : 1, 4).join(", ") + (here ? " · " + gpsMetres(gpsDist(here, [lon, lat])) : "");
-        b.appendChild(sm);
+        rt.appendChild(sm);
         b.addEventListener("click", () => { this.setDestination({ lat: lat, lon: lon, name: r.name || parts[0] }, true); this.$("panel").hidden = true; });
         list.appendChild(b);
       });
@@ -5251,7 +5257,7 @@
         ".box .c { font-size: 26px; letter-spacing: 0.5em; color: var(--acc); min-height: 1.3em; min-width: 7em; text-align: center; border-bottom: 1px solid var(--line); }",
         ".box .m { min-height: 1.3em; font-size: 12px; color: var(--bad); } .box .m.ok { color: var(--okc); }",
         ".keys { display: grid; grid-template-columns: repeat(3, 72px); gap: 8px; }",
-        ".keys button { height: 58px; background: var(--card); border: 1px solid var(--line); border-radius: 4px; color: var(--fg); font: inherit; font-size: 22px; cursor: pointer; }",
+        ".keys button { height: 58px; background: var(--card); border: 1px solid var(--line); border-radius: 4px; color: var(--fg); font: inherit; font-size: 22px; cursor: pointer; display: grid; place-items: center; --mdc-icon-size: 24px; }",
         ".keys .ok { border-color: var(--okc); color: var(--okc); font-size: 16px; }",
         ".x { background: none; border: 1px solid var(--line); color: var(--dim); font: inherit; padding: 6px 16px; border-radius: 4px; cursor: pointer; }"
       ].join("\n"));
@@ -5288,8 +5294,9 @@
       this.msgEl = el("div", "m", box);
       var keys = el("div", "keys", box);
       this.code = "";
-      ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "OK"].forEach((k) => {
-        var b = el("button", k === "OK" ? "ok" : "", keys, k);
+      ["1", "2", "3", "4", "5", "6", "7", "8", "9", "del", "0", "OK"].forEach((k) => {
+        var b = el("button", k === "OK" ? "ok" : "", keys, k === "del" ? null : k);
+        if (k === "del") { icon(b, "mdi:backspace-outline"); b.title = "Effacer"; b.setAttribute("aria-label", "Effacer"); }
         b.type = "button";
         b.addEventListener("click", () => this.key(k));
       });
@@ -5308,7 +5315,7 @@
     openPad() { this.code = ""; this.msgEl.textContent = ""; this.msgEl.className = "m"; this.codeEl.textContent = ""; this.pad.hidden = false; }
     closePad() { this.pad.hidden = true; this.code = ""; }
     key(k) {
-      if (k === "⌫") this.code = this.code.slice(0, -1);
+      if (k === "del") this.code = this.code.slice(0, -1);
       else if (k === "OK") return this.send();
       else if (this.code.length < 12) this.code += k;
       this.msgEl.textContent = "";
@@ -5528,10 +5535,10 @@
         ".n .m { color: var(--dim); white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }",
         ".n.open .m { -webkit-line-clamp: unset; display: block; }",
         ".n .m a, .n .map { color: var(--acc); text-decoration: none; }",
-        ".n .map { font-size: 11px; cursor: pointer; }",
+        ".n .map { font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; --mdc-icon-size: 14px; }",
         ".n.wait { border-left: 2px solid var(--igor-signal, #e5323b); padding-left: 8px; }",
         ".chip { font-size: 10px; border-radius: 99px; padding: 1px 8px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }",
-        ".x { background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 4px; font: inherit; padding: 2px 9px; cursor: pointer; }",
+        ".x { background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 4px; width: 30px; height: 30px; padding: 0; display: grid; place-items: center; cursor: pointer; --mdc-icon-size: 16px; }",
         ".x:hover { color: var(--fg); border-color: var(--acc); }",
         ".empty { color: var(--dim); padding: 8px 0; }"
       ].join("\n"));
@@ -5592,8 +5599,9 @@
       if (this.config.waiting !== false && w.length) {
         el("div", "sec", this.list, "à traiter");
         w.forEach((p) => {
-          var x = el("button", "x", null, "✕");
-          x.type = "button"; x.title = "Effacer";
+          var x = el("button", "x", null);
+          icon(x, "mdi:close");
+          x.type = "button"; x.title = "Effacer"; x.setAttribute("aria-label", "Effacer");
           x.addEventListener("click", () => {
             this._hass.callService("persistent_notification", "dismiss", { notification_id: p.notification_id });
           });
@@ -5612,7 +5620,9 @@
       this.sent.forEach((e) => {
         var b = this.row("", whenText(e.at), e.title, e.message, el("span", "chip", null, channelName(e)));
         if (e.latitude != null && e.longitude != null) {
-          var a = el("a", "map", b, "📍 voir sur la carte ›");
+          var a = el("a", "map", b);
+          icon(a, "mdi:map-marker-outline");
+          a.appendChild(document.createTextNode("voir sur la carte"));
           a.href = "https://www.google.com/maps/search/?api=1&query=" + e.latitude + "," + e.longitude;
           a.target = "_blank"; a.rel = "noopener noreferrer";
         }
@@ -6074,7 +6084,7 @@
         ".c{height:2.4em;font-size:clamp(18px,3.4vh,28px);letter-spacing:.5em;color:#59d0e0;min-width:8em;text-align:center;border-bottom:1px solid #22262c}" +
         ".m{min-height:1.4em;color:#e5323b;font-size:clamp(12px,2vh,15px)}.m.ok{color:#5cc28f}" +
         ".k{display:grid;grid-template-columns:repeat(3,minmax(64px,11vh));gap:1.2vh}" +
-        ".k button{height:min(9vh,64px);background:#111417;border:1px solid #22262c;border-radius:4px;color:#e9e4da;font:inherit;font-size:clamp(18px,3vh,26px);cursor:pointer}" +
+        ".k button{height:min(9vh,64px);background:#111417;border:1px solid #22262c;border-radius:4px;color:#e9e4da;font:inherit;font-size:clamp(18px,3vh,26px);cursor:pointer;display:grid;place-items:center;--mdc-icon-size:26px}" +
         ".k button:active{background:#1b1f24}.k .ok{border-color:#59d0e0;color:#59d0e0}" +
         "</style><div class=l>" + EYE.replace('style="width:100%;height:100%;display:block"', "") +
         "<div class=t>MAINTENANCE</div><div class=s>écran verrouillé · code pour déverrouiller</div>" +
@@ -6082,10 +6092,16 @@
       codeEl = root.querySelector(".c");
       msgEl = root.querySelector(".m");
       var pad = root.querySelector(".k");
-      ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "OK"].forEach(function (k) {
+      ["1", "2", "3", "4", "5", "6", "7", "8", "9", "del", "0", "OK"].forEach(function (k) {
         var b = document.createElement("button");
         b.type = "button";
-        b.textContent = k;
+        if (k === "del") {
+          var ic = document.createElement("ha-icon");
+          ic.setAttribute("icon", "mdi:backspace-outline");
+          b.appendChild(ic);
+          b.title = "Effacer";
+          b.setAttribute("aria-label", "Effacer");
+        } else b.textContent = k;
         if (k === "OK") b.className = "ok";
         b.addEventListener("click", function () { press(k); });
         pad.appendChild(b);
@@ -6096,7 +6112,7 @@
     function draw() { if (codeEl) codeEl.textContent = code.replace(/./g, "•"); }
     function hide() { if (lockEl) { lockEl.remove(); lockEl = null; code = ""; } }
     function press(k) {
-      if (k === "⌫") code = code.slice(0, -1);
+      if (k === "del") code = code.slice(0, -1);
       else if (k === "OK") { submit(); return; }
       else if (code.length < 12) code += k;
       msgEl.textContent = "";
@@ -6124,7 +6140,7 @@
       ev.stopPropagation();
       ev.preventDefault();
       if (/^[0-9]$/.test(ev.key)) press(ev.key);
-      else if (ev.key === "Backspace") press("⌫");
+      else if (ev.key === "Backspace") press("del");
       else if (ev.key === "Enter") press("OK");
     }, true);
     setInterval(function () {
