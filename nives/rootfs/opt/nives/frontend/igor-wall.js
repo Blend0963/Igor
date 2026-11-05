@@ -194,12 +194,16 @@
     ".tabs a:hover { color: var(--fg); }",
     ".tabs a.on { color: var(--fg); border-bottom-color: var(--igor-signal, #e5323b); }",
     "@media (max-width: 1100px) { .tabs:not(.keep) { display: none; } }",
+    // `tabs: true`: the tabs keep their room whatever the width (an unfolded
+    // phone, a small laptop): they scroll sideways when they don't fit, the
+    // machines' line takes what is left, the clock always shows.
+    ".tabs.keep { flex: 0 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; } .tabs.keep::-webkit-scrollbar { display: none; } .tabs.keep a { flex: none; }",
     // A phone: the pages' tabs take the bar and scroll sideways; the
     // machines' line gives them the room.
     "@media (max-width: 760px) { .tabs.keep { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; border-right: 0; }",
     "  .tabs.keep::-webkit-scrollbar { display: none; } .tabs.keep a { flex: none; padding: 0 12px; } .tabs.keep ~ .lane { display: none; }",
     "  .tabs.keep ~ .fix.right { font-size: 11px; padding: 0 10px; } .fix.left .state { display: none; } .fix.left { padding: 0 10px; } }",
-    ".lane { flex: 1; overflow: hidden; height: 100%; display: flex; align-items: center; position: relative; }",
+    ".lane { flex: 1 1 0; min-width: 0; overflow: hidden; height: 100%; display: flex; align-items: center; position: relative; }",
     ".run { display: flex; will-change: transform; }",
     ".run.roll { animation: roll var(--speed, 60s) linear infinite; }",
     ".seg { display: flex; gap: 8px; align-items: center; padding: 0 14px; border-right: 1px solid var(--line); }",
@@ -364,14 +368,23 @@
         var a = el("a", decodeURIComponent(parts[2] || "") === seg ? "on" : "", this.tabsEl, v.title || seg);
         a.addEventListener("click", () => { navigate("/" + parts[1] + "/" + seg); });
       });
-      // The open page's tab in sight (a phone scrolls them).
-      var on = this.tabsEl.querySelector("a.on");
-      if (on && this.tabsEl.scrollWidth > this.tabsEl.clientWidth) this.tabsEl.scrollLeft = Math.max(0, on.offsetLeft - (this.tabsEl.clientWidth - on.offsetWidth) / 2);
+      this.tabInSight();
+    }
+    // The open page's tab in sight when the tabs scroll (a phone, folded or not).
+    tabInSight() {
+      if (!this.tabsEl) return;
+      requestAnimationFrame(() => {
+        var t = this.tabsEl, on = t.querySelector("a.on");
+        if (!on || t.scrollWidth <= t.clientWidth) return;
+        var box = t.getBoundingClientRect(), r = on.getBoundingClientRect();
+        t.scrollLeft = Math.max(0, t.scrollLeft + (r.left - box.left) - (box.width - r.width) / 2);
+      });
     }
     clock() {
       var d = new Date();
       // A phone: the time alone, the tabs need the room.
-      this.clockEl.textContent = window.innerWidth < 760 ? hhmm(d) : d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }) + " · " + hhmm(d);
+      var narrow = window.innerWidth < (this.config.tabs === true ? 1100 : 760);
+      this.clockEl.textContent = narrow ? hhmm(d) : d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }) + " · " + hhmm(d);
     }
     set hass(hass) {
       this._hass = hass;
@@ -625,6 +638,7 @@
       this.bellEl.hidden = !n && !fresh;
       this.bellN.textContent = n ? (n > 9 ? "9+" : String(n)) : "";
       this.bellDot.hidden = !fresh;
+      this.tabInSight();
       this.bellEl.title = (n ? n + " à traiter" : "") + (n && fresh ? " · " : "") + (fresh ? "nouvelle notification" : "");
     }
     destroy() { if (this.unbell) { this.unbell(); this.unbell = null; } clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); clearTimeout(this.autoTimer); }
