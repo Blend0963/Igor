@@ -51,7 +51,10 @@
     "svg.chart { flex: 1; min-height: 30px; width: 100%; display: block; margin-top: 6px; }",
     ".link { color: var(--acc); cursor: pointer; background: none; border: 0; font: inherit; padding: 0; }",
     ".link:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }",
-    "[hidden] { display: none !important; }"
+    "[hidden] { display: none !important; }",
+    // A list longer than its card scrolls (never a line cut in half), with a thin bar.
+    "::-webkit-scrollbar { width: 4px; height: 4px; } ::-webkit-scrollbar-thumb { background: var(--line); } ::-webkit-scrollbar-track { background: transparent; }",
+    "* { scrollbar-color: var(--line) transparent; }"
   ].join("\n");
 
   // ----- small helpers -----
@@ -196,7 +199,10 @@
     ".fix.bell .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--igor-signal, #e5323b); box-shadow: 0 0 6px var(--igor-signal, #e5323b); display: inline-block; } .fix.bell .dot[hidden] { display: none; }",
     ".fix.pen { padding: 0 10px; color: var(--dim); cursor: pointer; --mdc-icon-size: 17px; } .fix.pen:hover { color: var(--fg); } .fix.pen[hidden] { display: none; }",
     ".ticker.big { height: 48px; font-size: 16px; } .ticker.big .brand { font-size: 18px; } .ticker.big .eye { width: 28px; height: 28px; }",
-    ".ticker.big .state { font-size: 14px; } .ticker.big .tabs a { font-size: 13px; padding: 0 16px; } .ticker.big .kind { font-size: 12px; }",
+    ".ticker.big .state { font-size: 14px; } .ticker.big .tabs a { font-size: 12.5px; padding: 0 12px; letter-spacing: 0.1em; } .ticker.big .kind { font-size: 12px; }",
+    // On a wide screen the tabs take at most half the bar (scrolling if there
+    // are more): the machines' line keeps its room.
+    "@media (min-width: 761px) { .tabs { flex: 0 1 auto; min-width: 0; max-width: 48%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; } .tabs::-webkit-scrollbar { display: none; } .tabs a { flex: none; } }",
     ".ticker.big ~ .pop { top: 54px; }",
     ".ticker.big .fix { gap: 10px; padding: 0 16px; } .ticker.big .fix.right { font-size: 18px; } .ticker.big .fix.pen, .ticker.big .fix.bell { --mdc-icon-size: 22px; }",
     ".lens { width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle, #e1f5fe 0, #4fc3f7 30%, #0277bd 65%, #0d1014 100%); box-shadow: 0 0 0 1.5px #3b4a56; flex: none; }",
@@ -801,7 +807,7 @@
     setConfig(config) { this.config = config || {}; }
     build() {
       this.style([
-        ".list { flex: 1; min-height: 0; overflow: hidden; }",
+        ".list { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }",
         ".e { display: grid; grid-template-columns: 5ch minmax(0, 1fr) auto; gap: 4px 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }",
         ".e > .b { grid-column: 2 / 4; display: grid; gap: 4px; min-width: 0; }",
         ".q { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
@@ -983,7 +989,7 @@
     setConfig(config) { this.config = config || {}; }
     build() {
       this.style([
-        ".list { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }",
+        ".list { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; display: flex; flex-direction: column; }",
         ".ct { display: grid; grid-template-columns: 8px minmax(0, 1fr) 7ch 40px 6ch; gap: 6px; align-items: center; padding: 2px 0; cursor: pointer; }",
         ".hid { color: var(--faint); font-size: 10.5px; margin-top: auto; padding-top: 4px; flex: none; }",
         ".dot { width: 7px; height: 7px; border-radius: 50%; background: var(--okc); }",
@@ -2407,6 +2413,7 @@
         "button.giant:not(.on):not(.act):not(.alarm):not(.scene) ha-icon { color: var(--faint); }",
         // Alive: the line of what it does, its colour and its motion, when on.
         "button.giant.on .s { display: block; font-size: 11px; color: var(--fg); opacity: 0.8; margin-top: -6px; max-width: 92%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.02em; text-transform: none; }",
+        "button.alarm-on { border-color: var(--bad); background: rgba(224, 103, 95, 0.14); } button.alarm-on ha-icon { color: var(--bad); }",
         "button.on.k-media { --tile-on: #b48ce0; --tile-on-border: rgba(180, 140, 224, 0.65); --tile-on-bg: rgba(180, 140, 224, 0.16); }",
         "button.on.k-fan { --tile-on: #59d0e0; --tile-on-border: rgba(89, 208, 224, 0.6); --tile-on-bg: rgba(89, 208, 224, 0.14); }",
         "button.on.k-switch { --tile-on: #e0a33a; --tile-on-border: rgba(224, 163, 58, 0.65); --tile-on-bg: rgba(224, 163, 58, 0.16); }",
@@ -2523,6 +2530,17 @@
         // A media player is on as soon as it is not off or asleep (a projector
         // idle on its menu, a console on its home screen).
         if (!x.t.service && d === "media_player" && st) on = ["off", "standby", "unavailable", "unknown", ""].indexOf(st.state) < 0;
+        // A sensor is not a switch: « on » is a problem (red) for a problem
+        // kind, lit for a door, a presence, a device running, else nothing
+        // (a train line's sensor: its departures are the news, not a colour).
+        var alarmOn = false;
+        if (d === "binary_sensor" && st && !x.t.service) {
+          var dc = String(st.attributes.device_class || "");
+          var isProblem = ["problem", "safety", "smoke", "gas", "carbon_monoxide", "moisture", "tamper", "heat", "cold", "battery", "vibration"].indexOf(dc) >= 0;
+          alarmOn = isProblem && st.state === "on";
+          if (isProblem || !dc) on = false;
+        }
+        x.b.classList.toggle("alarm-on", alarmOn);
         if (x.t.text && st && x.t.text[st.state] != null) text = String(x.t.text[st.state]);
         x.sub.textContent = text;
         if (x.t.icon_off) x.ic.setAttribute("icon", on ? (x.t.icon || "mdi:help-circle-outline") : x.t.icon_off);
@@ -2876,7 +2894,7 @@
     }
     build() {
       this.style([
-        ".list { flex: 1; min-height: 0; overflow: hidden; }",
+        ".list { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }",
         ".n { display: grid; grid-template-columns: 5ch minmax(0, 1fr); gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--line); line-height: 1.35; }",
         ".n:last-child { border-bottom: 0; }",
         ".n .h { color: var(--faint); font-variant-numeric: tabular-nums; }",
@@ -5952,7 +5970,7 @@
     ids() {
       var c = this.config, out = [c.total, c.spent, c.income, c.budgets, c.entity, c.filter];
       (c.accounts || []).forEach(function (a) { out.push(a.balance, a.transactions); });
-      (c.categories || []).forEach(function (a) { out.push(a.entity); });
+      (c.categories || []).forEach(function (a) { out.push(a.entity, a.budget); });
       return out.filter(Boolean);
     }
     build() {
@@ -6135,24 +6153,47 @@
       if (a.label) { el("div", "lbl", this.body, "libellé exact"); el("pre", "", this.body, String(a.label)); }
     }
     show_budgets(hass) {
-      var c = this.config, st = hass.states[c.entity];
-      var rows = (st && st.attributes.budgets) || [];
-      if (!rows.length) { el("div", "empty", this.body, "Aucun budget défini : renseigne un montant ci-dessous (0 = pas de budget)."); return; }
-      var tb = numOf(hass, c.entity, "total_budget") || 0, ts = numOf(hass, c.entity, "total_spent_budgeted") || 0, left = tb - ts;
+      var c = this.config, st = c.entity && hass.states[c.entity];
+      // With `categories` (name, entity: what was spent, budget: its number
+      // entity, icon): every category, with or without a budget, a touch sets it.
+      var rows = (c.categories || []).filter((k) => hass.states[k.entity] || hass.states[k.budget]).map((k) => {
+        var spent = numOf(hass, k.entity) || 0;
+        var budget = numOf(hass, k.budget);
+        if (budget == null) budget = numOf(hass, k.entity, "budget");
+        budget = budget || 0;
+        return { k: k, category: k.name, spent: spent, budget: budget, used_pct: budget ? (spent / budget) * 100 : 0, over: budget > 0 && spent > budget };
+      });
+      if (!rows.length) rows = ((st && st.attributes.budgets) || []).map(function (r) { return { category: r.category, spent: r.spent, budget: r.budget, used_pct: r.used_pct, over: r.over }; });
+      var set = rows.filter(function (r) { return r.budget > 0; });
+      var tb = set.reduce(function (a, r) { return a + r.budget; }, 0), ts = set.reduce(function (a, r) { return a + r.spent; }, 0), left = tb - ts;
+      if (st && !c.categories) { tb = numOf(hass, c.entity, "total_budget") || tb; ts = numOf(hass, c.entity, "total_spent_budgeted") || ts; left = tb - ts; }
       var now = new Date(), days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1;
-      var big = el("div", "big", this.body);
-      el("span", "lbl", big, left >= 0 ? "il te reste" : "budget dépassé de");
-      el("b", left < 0 ? "neg" : "", big, money(Math.abs(left), 0));
-      el("span", "sub", big, fr(ts, 0) + " € dépensés sur " + fr(tb, 0) + " €" + (left > 0 ? " · " + fr(left / days, 0) + " €/jour jusqu'à la fin du mois" : ""));
-      this.bar(this.body, tb ? (ts / tb) * 100 : 0, ts > tb ? "bad" : ts / tb >= 0.8 ? "warn" : "ok");
-      rows.slice().sort(function (a, b) { return (b.used_pct || 0) - (a.used_pct || 0); }).forEach((r) => {
-        var row = el("div", "row", this.body);
-        icon(row, r.over ? "mdi:alert-circle" : "mdi:target");
+      if (tb > 0) {
+        var big = el("div", "big", this.body);
+        el("span", "lbl", big, left >= 0 ? "il te reste" : "budget dépassé de");
+        el("b", left < 0 ? "neg" : "", big, money(Math.abs(left), 0));
+        el("span", "sub", big, fr(ts, 0) + " € dépensés sur " + fr(tb, 0) + " €" + (left > 0 ? " · " + fr(left / days, 0) + " €/jour jusqu'à la fin du mois" : ""));
+        this.bar(this.body, (ts / tb) * 100, ts > tb ? "bad" : ts / tb >= 0.8 ? "warn" : "ok");
+      } else {
+        el("div", "empty", this.body, "Aucun budget pour l'instant : touche une catégorie pour lui en donner un.");
+      }
+      this.side.textContent = set.length ? set.length + " budget" + (set.length > 1 ? "s" : "") : "";
+      // Budgets first (the most used on top), then the categories without one.
+      rows.sort(function (a, b) { return (b.budget > 0) - (a.budget > 0) || (b.used_pct || 0) - (a.used_pct || 0) || b.spent - a.spent; });
+      rows.forEach((r) => {
+        var row = el("div", "row" + (r.k && r.k.budget ? " tap" : ""), this.body);
+        icon(row, r.over ? "mdi:alert-circle" : (r.k && r.k.icon) || "mdi:target");
         el("span", "n", row, r.category);
-        var l = r.budget - r.spent;
-        el("span", "a" + (l < 0 ? " neg" : ""), row, l >= 0 ? "reste " + money(l, 0) : "dépassé de " + money(-l, 0));
-        this.bar(row, r.used_pct, r.over ? "bad" : r.used_pct >= 80 ? "warn" : "ok");
-        el("span", "d", row, fr(r.spent, 0) + " € sur " + fr(r.budget, 0) + " €");
+        if (r.budget > 0) {
+          var l = r.budget - r.spent;
+          el("span", "a" + (l < 0 ? " neg" : ""), row, l >= 0 ? "reste " + money(l, 0) : "dépassé de " + money(-l, 0));
+          this.bar(row, r.used_pct, r.over ? "bad" : r.used_pct >= 80 ? "warn" : "ok");
+          el("span", "d", row, fr(r.spent, 0) + " € sur " + fr(r.budget, 0) + " €" + (r.k && r.k.budget ? " · toucher pour changer" : ""));
+        } else {
+          el("span", "a", row, money(r.spent, 0));
+          el("span", "d", row, "pas de budget" + (r.k && r.k.budget ? " · toucher pour en fixer un" : ""));
+        }
+        if (r.k && r.k.budget) row.addEventListener("click", () => moreInfo(this, r.k.budget));
       });
     }
     show_accounts(hass) {

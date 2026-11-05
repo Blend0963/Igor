@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.36.5 — Room to read
+
+- Lists scroll instead of cutting their last lines (journal, containers, news), with a thin bar in the wall's colours.
+- A binary sensor no longer lights a tile in amber as if it were a switch (« Ligne J » on the wall): a sensor stays neutral, and turns red only when it reports a problem (problem, safety, smoke, gas, moisture, battery…).
+- On a wide screen, the bar's tabs take at most half its width and scroll if needed, so the running ticker keeps its room with the big bar.
+- `custom:igor-bank-card` budgets: every spending category is listed (`categories:` with its spent sensor and its budget `number`), budgets first, then « pas de budget · toucher pour en fixer un »; a tap opens the budget to set it. Totals and what is left per day stay at the top.
+
 ## 0.36.4 — The tablet keeps up
 
 - Tiles no longer stay on an old state when a kiosk tablet stops handing the cards Home Assistant's updates (a light switched off stayed lit until the page was reloaded): every tile is redrawn on each update, and the tiles read Home Assistant's live state themselves every 2 seconds.
