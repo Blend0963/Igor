@@ -4396,6 +4396,13 @@
   //   theme: sombre                         # sombre, clair, or auto (light by day, dark at night)
   //   hide_attribution: false
   //   style: <a MapLibre style URL>         # another base map
+  //   destination: input_text.car_destination  # « lat,lon;Nom »: guidance there (set it from a phone, or the card's flag)
+  //   favorites:                            # the flag's quick places
+  //     - { name: Maison, zone: zone.home }
+  //     - { name: Travail, location: [48.85, 2.35] }
+  //   voice: true                           # instructions spoken (the browser's voice), false: silent
+  //   router: https://router.project-osrm.org  # OSRM (the route); self-hosted possible
+  //   geocoder: https://nominatim.openstreetmap.org  # the address search
   // Taken from obd2mqtt's voiture-gps-card (MapLibre, heading up, smooth
   // movement, trail, limit sign), in Igor's look, with two changes: the arrow
   // sits on the nearest road drawn on the map (a GPS a few metres off no
@@ -4549,6 +4556,45 @@
   var GPS_SIGN = '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="49.5" fill="#fff" stroke="rgba(0,0,0,0.35)" stroke-width="1"/>' +
     '<circle cx="50" cy="50" r="42.5" fill="none" stroke="#c8102e" stroke-width="11"/>' +
     '<text x="50" y="53" text-anchor="middle" dominant-baseline="middle" fill="#1a1a1a" font-family="\'Barlow Condensed\', \'Roboto Condensed\', \'Arial Narrow\', sans-serif" font-weight="700" font-size="44" letter-spacing="-1"></text></svg>';
+  // ----- guidance: OSRM's route, its steps in French -----
+  var GPS_SIDE = { left: "à gauche", right: "à droite", "slight left": "légèrement à gauche", "slight right": "légèrement à droite",
+    "sharp left": "franchement à gauche", "sharp right": "franchement à droite", straight: "tout droit", uturn: "demi-tour" };
+  var GPS_ICON = { left: "mdi:arrow-left-top", right: "mdi:arrow-right-top", "slight left": "mdi:arrow-top-left", "slight right": "mdi:arrow-top-right",
+    "sharp left": "mdi:arrow-left-bottom", "sharp right": "mdi:arrow-right-bottom", straight: "mdi:arrow-up", uturn: "mdi:arrow-u-left-top" };
+  function gpsStep(st) {
+    var m = st.maneuver || {}, type = m.type || "", mod = m.modifier || "straight", side = GPS_SIDE[mod] || "";
+    var road = st.name || st.ref || "";
+    var on = road ? " sur " + road : "";
+    var text, ic = GPS_ICON[mod] || "mdi:arrow-up";
+    if (type === "depart") { text = "Partez" + (road ? " par " + road : ""); ic = "mdi:navigation-variant"; }
+    else if (type === "arrive") { text = "Arrivée à destination" + (mod === "left" ? ", sur la gauche" : mod === "right" ? ", sur la droite" : ""); ic = "mdi:flag-checkered"; }
+    else if (type === "roundabout" || type === "rotary" || type === "roundabout turn") {
+      var n = m.exit || 1;
+      text = "Au rond-point, prenez la " + (n === 1 ? "1re" : n + "e") + " sortie" + on; ic = "mdi:rotate-left";
+    } else if (type === "exit roundabout" || type === "exit rotary") { text = "Sortez du rond-point" + on; ic = "mdi:rotate-left"; }
+    else if (mod === "uturn") { text = "Faites demi-tour" + on; }
+    else if (type === "merge") { text = "Insérez-vous" + (side && mod !== "straight" ? " " + side : "") + on; ic = "mdi:call-merge"; }
+    else if (type === "on ramp") { text = "Prenez la bretelle" + (mod !== "straight" ? " " + side : "") + on; }
+    else if (type === "off ramp") { text = "Prenez la sortie" + (mod !== "straight" ? " " + side : "") + (st.exits ? " " + st.exits : "") + (st.destinations ? " vers " + st.destinations : on); }
+    else if (type === "fork") { text = "Restez " + (/left/.test(mod) ? "à gauche" : /right/.test(mod) ? "à droite" : "tout droit") + on; ic = "mdi:call-split"; }
+    else if (type === "continue" || type === "new name" || mod === "straight") { text = "Continuez" + (mod === "straight" ? " tout droit" : " " + side) + on; }
+    else { text = "Tournez " + side + on; }
+    return { text: text, icon: ic, road: road, loc: m.location };
+  }
+  function gpsMetres(m) {
+    if (m >= 1000) return (m >= 10000 ? Math.round(m / 1000) : (Math.round(m / 100) / 10).toString().replace(".", ",")) + " km";
+    return (m >= 100 ? Math.round(m / 50) * 50 : Math.max(10, Math.round(m / 10) * 10)) + " m";
+  }
+  // « 48.85,2.35;Maison » (or « 48.85,2.35 ») → { lat, lon, name }.
+  function gpsParseDest(v) {
+    var s = String(v || "").trim(), m = s.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)(?:\s*;\s*(.*))?$/);
+    if (!m) return null;
+    var lat = Number(m[1]), lon = Number(m[2]);
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    return { lat: lat, lon: lon, name: (m[3] || "").trim() || "destination" };
+  }
+  window.__igorGpsNav = { step: gpsStep, metres: gpsMetres, parse: gpsParseDest };
+
   class IgorGpsCard extends HTMLElement {
     setConfig(config) {
       if (!config || !config.entity) throw new Error("igor-gps-card: entity est requis (le device_tracker de l'autoradio)");
@@ -4587,15 +4633,38 @@
         ".snap { position: absolute; right: 12px; bottom: 12px; z-index: 2; font-family: " + MONO + "; font-size: 10px; color: #3d454e; letter-spacing: 0.1em; text-transform: uppercase; }" +
         ".noattr .maplibregl-ctrl-attrib, .noattr .maplibregl-ctrl-bottom-right { display: none !important; }" +
         "@media (prefers-reduced-motion: reduce) { .sign.over { animation: none; } }" +
+        // guidance: the next turn on top, the rest of the way at the bottom, the destination panel
+        ".nav { position: absolute; z-index: 2; top: 10px; left: 64px; right: 100px; display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-radius: 4px; background: rgba(7,8,10,0.92); border: 1px solid #22262c; border-left: 4px solid #59d0e0; color: #e9e4da; font-family: " + MONO + "; --mdc-icon-size: 44px; }" +
+        ".nav[hidden], .eta[hidden], .panel[hidden] { display: none; }" +
+        ".nav ha-icon { color: #59d0e0; flex: none; } .nav .d { font-family: 'Chakra Petch', " + MONO + "; font-size: 30px; font-weight: 500; line-height: 1; } .nav .t { font-size: 14px; color: #c9ccd1; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }" +
+        ".nav.arrived { border-left-color: #5cc28f; } .nav.arrived ha-icon { color: #5cc28f; } .nav.wait { border-left-color: #d9a441; }" +
+        ".eta { position: absolute; z-index: 2; bottom: 12px; left: 104px; right: 170px; display: flex; gap: 14px; align-items: baseline; justify-content: center; padding: 8px 12px; border-radius: 4px; background: rgba(7,8,10,0.88); border: 1px solid #22262c; color: #e9e4da; font-family: " + MONO + "; font-size: 15px; pointer-events: none; }" +
+        ".eta b { font-family: 'Chakra Petch', " + MONO + "; font-size: 22px; font-weight: 500; } .eta span { color: #878c95; font-size: 12px; }" +
+        ".panel { position: absolute; inset: 0; z-index: 4; background: rgba(7,8,10,0.96); color: #e9e4da; font-family: " + MONO + "; display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; overflow-y: auto; }" +
+        ".panel .ph { display: flex; justify-content: space-between; align-items: center; color: #878c95; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; }" +
+        ".panel form { display: flex; gap: 8px; } .panel input { flex: 1; min-width: 0; font: inherit; font-size: 17px; padding: 12px; border-radius: 4px; border: 1px solid #22262c; background: #0d1014; color: #e9e4da; }" +
+        ".panel button { font: inherit; font-size: 15px; padding: 12px 16px; border-radius: 4px; border: 1px solid #22262c; background: #12171c; color: #e9e4da; cursor: pointer; text-align: left; }" +
+        ".panel button.go { background: #59d0e0; color: #07080a; border-color: #59d0e0; text-align: center; } .panel button.stop { border-color: #e5323b; color: #e5323b; text-align: center; }" +
+        ".panel .list { display: grid; gap: 8px; } .panel .list small { display: block; color: #878c95; font-size: 12px; margin-top: 3px; } .panel .note { color: #878c95; font-size: 13px; }" +
         '</style><ha-card id="card"><div id="map"></div><div class="msg" id="msg">Chargement de la carte…</div>' +
         '<div class="btns"><button id="recenter" title="Recentrer" hidden><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' +
-        '<button id="orient" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button></div>' +
+        '<button id="orient" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button>' +
+        '<button id="dest" title="Destination"><ha-icon icon="mdi:flag-checkered"></ha-icon></button></div>' +
+        '<div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div><div class="d" id="navD"></div><div class="t" id="navT"></div></div></div>' +
+        '<div class="eta" id="eta" hidden></div>' +
+        '<div class="panel" id="panel" hidden><div class="ph"><span>destination</span><button id="pclose" title="Fermer">✕</button></div>' +
+        '<form id="pform"><input id="pq" type="search" placeholder="Adresse, ville, lieu…" autocomplete="off"><button class="go" type="submit">Chercher</button></form>' +
+        '<div class="list" id="plist"></div><div class="list" id="pfav"></div><button class="stop" id="pstop" hidden>Arrêter le guidage</button></div>' +
         '<div class="hud sp"><div class="speed" id="speed"><b>0</b><span>KM/H</span></div></div>' +
         '<div class="hud lim"><div class="sign" id="limit" hidden>' + GPS_SIGN + "</div></div>" +
         '<div class="snap" id="snapEl"></div></ha-card>';
       var $ = (id) => this.root.getElementById(id);
       this.$ = $;
       $("card").classList.toggle("noattr", !!this.config.hide_attribution);
+      $("dest").addEventListener("click", () => this.openPanel());
+      $("pclose").addEventListener("click", () => { $("panel").hidden = true; });
+      $("pstop").addEventListener("click", () => { this.setDestination(null, true); $("panel").hidden = true; });
+      $("pform").addEventListener("submit", (ev) => { ev.preventDefault(); this.search($("pq").value); });
       $("recenter").addEventListener("click", () => this.setFollow(true));
       $("orient").addEventListener("click", () => {
         this.headingUp = !this.headingUp;
@@ -4643,6 +4712,14 @@
       this.accuracy = Number(a.gps_accuracy != null ? a.gps_accuracy : a.accuracy) || 0;
       if (!this.fix || this.fix.updated !== st.last_updated) this.onFix(p, course, speed, st.last_updated);
       this.overlays();
+      // A destination set elsewhere (the phone, Igor): guidance there.
+      var de = this.config.destination && this._hass.states[this.config.destination];
+      if (de && de.state !== this.destState) {
+        this.destState = de.state;
+        var dd = gpsParseDest(de.state);
+        if (!dd && this.dest) this.setDestination(null, false);
+        else if (dd && (!this.dest || gpsDist([dd.lon, dd.lat], [this.dest.lon, this.dest.lat]) > 5)) this.setDestination(dd, false);
+      }
       if (!this.loading) this.init(p);
       else if (this.map && this.styleNow !== this.styleUrl()) {
         this.styleNow = this.styleUrl();
@@ -4733,6 +4810,13 @@
       map.on("style.load", () => {
         // The roads of whatever base map: line layers of OpenMapTiles' « transportation ».
         this.roads = (map.getStyle().layers || []).filter((l) => l.type === "line" && /transportation|road/i.test(String(l["source-layer"] || ""))).map((l) => l.id);
+        if (!map.getSource("route")) {
+          map.addSource("route", { type: "geojson", data: this.routeData() });
+          map.addLayer({ id: "route-case", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": "#07080a", "line-width": 11, "line-opacity": 0.8 } });
+          map.addLayer({ id: "route", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": "#3b8cff", "line-width": 7 } });
+        }
         if (!map.getSource("trail")) {
           map.addSource("trail", { type: "geojson", data: this.trailData() });
           map.addLayer({ id: "trail", type: "line", source: "trail", layout: { "line-cap": "round", "line-join": "round" },
@@ -4773,6 +4857,8 @@
       // The search square: `within` metres around p, in pixels at this zoom.
       var mpp = 40075016 * Math.cos(gpsRad(p[1])) / (512 * Math.pow(2, map.getZoom()));
       var lines = this.roadLines(p, null, Math.min(600, within / mpp + 10));
+      // Guided: the route's own line is a road, and the one to stay on.
+      if (this.route) lines.push(this.route.coords);
       // Moving, a road that goes the car's way wins over a nearer one across
       // it (a crossing street, a parallel lane of the other direction is fine).
       var best = null;
@@ -4783,7 +4869,7 @@
         // Staying on the road already taken wins over a slightly nearer one
         // (a noisy fix should not jump to a side street).
         var stay = this.lastRoad && gpsOnLine(this.lastRoad, l);
-        b.score = b.dist + (off > 50 ? 1000 : off * 0.15) + (this.lastRoad && (!stay || stay.dist > 4) ? 10 : 0);
+        b.score = b.dist + (off > 50 ? 1000 : off * 0.15) + (this.lastRoad && (!stay || stay.dist > 4) ? 10 : 0) - (this.route && l === this.route.coords ? 8 : 0);
         if (!best || b.score < best.score) best = b;
       });
       return best && best.score < 1000 ? best : best && heading == null ? best : null;
@@ -4847,12 +4933,204 @@
         var on = s && gpsDist(this.pos, s.point) < 3 ? s : null;
         this.addTrail(on ? s.point : this.pos, on);
       }
+      if (this.route && (!this.navAt || now - this.navAt > 1000)) { this.navAt = now; this.navTick(now, moving); }
       if (this.follow) {
         var h = this.$("map").clientHeight;
         this.map.jumpTo({ center: this.pos, bearing: this.headingUp ? this.shown : 0, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } });
       }
     }
   }
+
+  Object.assign(IgorGpsCard.prototype, {
+    routeData() {
+      return { type: "Feature", geometry: { type: "LineString", coordinates: this.route ? this.route.coords : [] } };
+    },
+    openPanel() {
+      var $ = this.$;
+      $("panel").hidden = false;
+      $("pstop").hidden = !this.dest;
+      $("plist").innerHTML = "";
+      var fav = $("pfav");
+      fav.innerHTML = "";
+      var favs = this.config.favorites || [{ name: "Maison", zone: "zone.home" }];
+      favs.forEach((f) => {
+        var at = null;
+        var ent = f.zone || f.entity;
+        var st = ent && this._hass.states[ent];
+        if (st && st.attributes.latitude != null) at = { lat: Number(st.attributes.latitude), lon: Number(st.attributes.longitude) };
+        else if (Array.isArray(f.location)) at = { lat: Number(f.location[0]), lon: Number(f.location[1]) };
+        if (!at) return;
+        var b = document.createElement("button");
+        b.type = "button";
+        b.textContent = "★ " + (f.name || ent);
+        b.addEventListener("click", () => { this.setDestination({ lat: at.lat, lon: at.lon, name: f.name || ent }, true); $("panel").hidden = true; });
+        fav.appendChild(b);
+      });
+      setTimeout(() => $("pq").focus(), 50);
+    },
+    // OpenStreetMap's search (Nominatim): on « Chercher » only, never as one types.
+    async search(q) {
+      var list = this.$("plist");
+      q = String(q || "").trim();
+      list.innerHTML = "";
+      if (!q) return;
+      var note = document.createElement("div"); note.className = "note"; note.textContent = "Recherche…"; list.appendChild(note);
+      var here = this.pos || (this.fix && this.fix.point);
+      var url = String(this.config.geocoder || "https://nominatim.openstreetmap.org").replace(/\/$/, "") + "/search?format=jsonv2&limit=6&accept-language=fr&q=" + encodeURIComponent(q) +
+        (here ? "&viewbox=" + [here[0] - 1, here[1] + 1, here[0] + 1, here[1] - 1].map((x) => x.toFixed(4)).join(",") : "");
+      var rows;
+      try { rows = await (await fetch(url, { headers: { Accept: "application/json" } })).json(); }
+      catch (e) { note.textContent = "Recherche impossible (pas d'internet ?)"; return; }
+      list.innerHTML = "";
+      if (!Array.isArray(rows) || !rows.length) { note.textContent = "Rien trouvé."; list.appendChild(note); return; }
+      rows.forEach((r) => {
+        var lat = Number(r.lat), lon = Number(r.lon);
+        if (isNaN(lat) || isNaN(lon)) return;
+        var b = document.createElement("button");
+        b.type = "button";
+        var parts = String(r.display_name || "").split(", ");
+        b.textContent = r.name || parts[0];
+        var sm = document.createElement("small");
+        sm.textContent = parts.slice(r.name ? 0 : 1, 4).join(", ") + (here ? " · " + gpsMetres(gpsDist(here, [lon, lat])) : "");
+        b.appendChild(sm);
+        b.addEventListener("click", () => { this.setDestination({ lat: lat, lon: lon, name: r.name || parts[0] }, true); this.$("panel").hidden = true; });
+        list.appendChild(b);
+      });
+    },
+    setDestination(d, write) {
+      this.dest = d;
+      this.route = null;
+      this.spoken = {};
+      this.offCount = 0;
+      if (write && this.config.destination && this._hass) {
+        var v = d ? d.lat.toFixed(6) + "," + d.lon.toFixed(6) + ";" + String(d.name || "").slice(0, 60) : "";
+        this.destState = v;
+        this._hass.callService("input_text", "set_value", { entity_id: this.config.destination, value: v }).catch(() => {});
+      }
+      if (this.destMarker) { this.destMarker.remove(); this.destMarker = null; }
+      var src = this.map && this.map.getSource("route");
+      if (src) src.setData(this.routeData());
+      this.$("nav").hidden = !d;
+      this.$("eta").hidden = true;
+      if (!d) return;
+      this.banner("mdi:map-search", "", "Calcul de l'itinéraire vers " + d.name + "…", "wait");
+      if (this.map && window.maplibregl) {
+        var flag = document.createElement("div");
+        flag.innerHTML = '<svg viewBox="0 0 24 24" width="34" height="34"><path d="M5 21V4h11l-1.5 3.5L16 11H7v10z" fill="#e5323b" stroke="#07080a" stroke-width="1.2"/></svg>';
+        this.destMarker = new window.maplibregl.Marker({ element: flag, anchor: "bottom-left" }).setLngLat([d.lon, d.lat]).addTo(this.map);
+      }
+      this.routeTo();
+    },
+    async routeTo() {
+      var d = this.dest, from = this.pos || (this.fix && this.fix.point);
+      if (!d) return;
+      if (!from) { setTimeout(() => this.routeTo(), 2000); return; }
+      this.routeAt = performance.now();
+      var url = String(this.config.router || "https://router.project-osrm.org").replace(/\/$/, "") + "/route/v1/driving/" +
+        from[0].toFixed(6) + "," + from[1].toFixed(6) + ";" + d.lon.toFixed(6) + "," + d.lat.toFixed(6) +
+        "?overview=full&geometries=geojson&steps=true" + (this.speedMps() > 2 ? "&bearings=" + Math.round(this.heading) + ",60;" : "");
+      var body;
+      try { body = await (await fetch(url)).json(); }
+      catch (e) { this.banner("mdi:wifi-off", "", "Itinéraire indisponible (pas d'internet ?)", "wait"); return; }
+      if (this.dest !== d) return;
+      var r = body && body.routes && body.routes[0];
+      if (!r || !r.geometry) { this.banner("mdi:map-marker-question", "", "Pas d'itinéraire vers " + d.name, "wait"); return; }
+      var coords = r.geometry.coordinates, cum = [0];
+      for (var i = 1; i < coords.length; i++) cum.push(cum[i - 1] + gpsDist(coords[i - 1], coords[i]));
+      var steps = [];
+      (r.legs || []).forEach((leg) => (leg.steps || []).forEach((st) => {
+        var s = gpsStep(st);
+        if (!s.loc) return;
+        // Where the step's turn lies along the route.
+        var o = gpsOnLine(s.loc, coords);
+        s.at = o ? cum[o.seg - 1] + gpsDist(coords[o.seg - 1], o.point) : 0;
+        steps.push(s);
+      }));
+      this.route = { coords: coords, cum: cum, steps: steps, total: cum[cum.length - 1], duration: r.duration || 0 };
+      this.seg = 1;
+      var src = this.map && this.map.getSource("route");
+      if (src) src.setData(this.routeData());
+      this.navTick(performance.now(), false);
+    },
+    banner(icon, dist, text, cls) {
+      var $ = this.$;
+      $("nav").hidden = false;
+      $("nav").className = "nav" + (cls ? " " + cls : "");
+      $("navIcon").setAttribute("icon", icon);
+      $("navD").textContent = dist;
+      $("navT").textContent = text;
+    },
+    say(text) {
+      if (this.config.voice === false || !window.speechSynthesis) return;
+      try {
+        var u = new SpeechSynthesisUtterance(text);
+        u.lang = "fr-FR";
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+      } catch (e) { /* no voice on this screen */ }
+    },
+    navTick(now, moving) {
+      var R = this.route, p = this.pos;
+      if (!R || !p) return;
+      // Where the car is along the route: the nearest segment, near the last one first.
+      var best = null, from = Math.max(1, (this.seg || 1) - 10), to = Math.min(R.coords.length, (this.seg || 1) + 400);
+      for (var pass = 0; pass < 2 && (!best || best.dist > 60); pass++) {
+        var a = pass ? 1 : from, b = pass ? R.coords.length : to;
+        for (var i = a; i < b; i++) {
+          var o = gpsOnLine(p, [R.coords[i - 1], R.coords[i]]);
+          if (o && (!best || o.dist < best.dist)) { best = o; best.i = i; }
+        }
+      }
+      if (!best) return;
+      this.seg = best.i;
+      var along = R.cum[best.i - 1] + gpsDist(R.coords[best.i - 1], best.point);
+      var left = Math.max(0, R.total - along);
+      // Off the route for a few seconds, driving: a new one from here.
+      var off = Math.max(45, Math.min(this.accuracy || 0, 120));
+      this.offCount = best.dist > off && moving ? (this.offCount || 0) + 1 : 0;
+      if (this.offCount >= 3 && now - (this.routeAt || 0) > 8000) {
+        this.offCount = 0;
+        this.banner("mdi:routes", "", "Nouvel itinéraire…", "wait");
+        this.say("Nouvel itinéraire");
+        this.routeTo();
+        return;
+      }
+      var d = this.dest;
+      if (left < 30 || (d && gpsDist(p, [d.lon, d.lat]) < 30)) {
+        if (!this.arrived) {
+          this.arrived = true;
+          this.banner("mdi:flag-checkered", "", "Vous êtes arrivé" + (d && d.name !== "destination" ? " : " + d.name : ""), "arrived");
+          this.$("eta").hidden = true;
+          this.say("Vous êtes arrivé");
+          setTimeout(() => { if (this.arrived) { this.arrived = false; this.setDestination(null, true); } }, 15000);
+        }
+        return;
+      }
+      this.arrived = false;
+      var next = null;
+      for (var k = 0; k < R.steps.length; k++) { if (R.steps[k].at > along + 8) { next = R.steps[k]; break; } }
+      if (next) {
+        var dn = next.at - along;
+        this.banner(next.icon, gpsMetres(dn), next.text, "");
+        // Spoken at 1 km on fast roads, 400 m, 100 m, and at the turn.
+        var key = next.at.toFixed(0), sp = this.spoken[key] || 0;
+        var stage = dn < 40 ? 3 : dn < 130 ? 2 : dn < 450 ? 1 : 0;
+        if (stage > sp) {
+          this.spoken[key] = stage;
+          this.say(stage === 3 ? next.text : "Dans " + gpsMetres(dn).replace(" m", " mètres").replace(" km", " kilomètres") + ", " + next.text.charAt(0).toLowerCase() + next.text.slice(1));
+        }
+      }
+      // The rest of the way: kilometres, minutes, arrival time.
+      var secs = R.total ? R.duration * (left / R.total) : 0;
+      var eta = new Date(Date.now() + secs * 1000);
+      var e = this.$("eta");
+      e.hidden = false;
+      e.innerHTML = "";
+      var b1 = document.createElement("b"); b1.textContent = gpsMetres(left); e.appendChild(b1);
+      var b2 = document.createElement("b"); b2.textContent = secs >= 3600 ? Math.floor(secs / 3600) + " h " + String(Math.round((secs % 3600) / 60)).padStart(2, "0") : Math.max(1, Math.round(secs / 60)) + " min"; e.appendChild(b2);
+      var sp2 = document.createElement("span"); sp2.textContent = "arrivée " + hhmm(eta) + (d && d.name !== "destination" ? " · " + d.name : ""); e.appendChild(sp2);
+    }
+  });
 
   // ----- igor-security-card: the alarm, the camera, its positions -----
   //   type: custom:igor-security-card
