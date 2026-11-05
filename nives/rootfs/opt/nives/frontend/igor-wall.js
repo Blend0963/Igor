@@ -2398,6 +2398,16 @@
         "button.giant.act ha-icon { color: var(--fg); }",
         // Off is off: a faint icon, no colour; on: the bulb's colour, lit.
         "button.giant:not(.on):not(.act):not(.alarm):not(.scene) ha-icon { color: var(--faint); }",
+        // Alive: the line of what it does, its colour and its motion, when on.
+        "button.giant.on .s { display: block; font-size: 11px; color: var(--fg); opacity: 0.8; margin-top: -6px; max-width: 92%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.02em; text-transform: none; }",
+        "button.on.k-media { --tile-on: #b48ce0; --tile-on-border: rgba(180, 140, 224, 0.65); --tile-on-bg: rgba(180, 140, 224, 0.16); }",
+        "button.on.k-fan { --tile-on: #59d0e0; --tile-on-border: rgba(89, 208, 224, 0.6); --tile-on-bg: rgba(89, 208, 224, 0.14); }",
+        "button.on.k-switch { --tile-on: #e0a33a; --tile-on-border: rgba(224, 163, 58, 0.65); --tile-on-bg: rgba(224, 163, 58, 0.16); }",
+        "button.on.k-fan ha-icon { animation: igor-vac-spin var(--spin, 1.6s) linear infinite; }",
+        "button.on.k-media.playing ha-icon { animation: igor-live 1.6s ease-in-out infinite; }",
+        "button.on.k-switch ha-icon, button.on.k-media:not(.playing) ha-icon { animation: igor-glow 3s ease-in-out infinite; }",
+        "@keyframes igor-live { 50% { transform: scale(1.12); } }",
+        "@keyframes igor-glow { 50% { filter: drop-shadow(0 0 6px var(--tile-on, #e0a33a)); } }",
         "button.giant.on { box-shadow: 0 0 18px var(--tile-on-bg, rgba(217, 164, 65, 0.25)); }",
         "button.giant:active { transform: scale(0.98); }",
         // Igor just acted on it (the tablet's voice display says so): a cyan flash.
@@ -2412,7 +2422,7 @@
         "@keyframes igor-vac-spin { to { transform: rotate(360deg); } }",
         "@keyframes igor-vac-rock { 50% { transform: translateX(6px); } }",
         "@keyframes igor-vac-breathe { 50% { opacity: 0.35; } }",
-        "@media (prefers-reduced-motion: reduce) { button[class*=vac-] ha-icon { animation: none !important; } }"
+        "@media (prefers-reduced-motion: reduce) { button[class*=vac-] ha-icon, button.on ha-icon { animation: none !important; } }"
       ].join("\n"));
       var grid = el("div", "grid" + (giant && this.config.states ? " states" : ""), this.shadowRoot);
       var cols = Number(this.config.columns) || (small ? 1 : 2);
@@ -2493,6 +2503,9 @@
         var d = domainOf(x.t.entity);
         // invert: lit while the entity is off (a camera's privacy switch).
         var on = x.t.service ? Boolean(x.t.lit && st && st.state === x.t.lit) : d !== "scene" && isOn(hass, x.t.entity) !== Boolean(x.t.invert);
+        // A media player is on as soon as it is not off or asleep (a projector
+        // idle on its menu, a console on its home screen).
+        if (!x.t.service && d === "media_player" && st) on = ["off", "standby", "unavailable", "unknown", ""].indexOf(st.state) < 0;
         if (x.t.text && st && x.t.text[st.state] != null) text = String(x.t.text[st.state]);
         x.sub.textContent = text;
         if (x.t.icon_off) x.ic.setAttribute("icon", on ? (x.t.icon || "mdi:help-circle-outline") : x.t.icon_off);
@@ -2504,6 +2517,21 @@
           if (!x.t.service) on = vs === "cleaning";
         }
         x.b.classList.toggle("on", on);
+        // Alive: each kind its colour and its motion when on, and a word on
+        // what it does (giant tiles show it only then).
+        var kind = d === "media_player" ? "media" : d === "fan" ? "fan" : d === "light" ? "light" : d === "cover" ? "cover" : d === "vacuum" ? "vac" : "switch";
+        if (x.kind !== kind) { if (x.kind) x.b.classList.remove("k-" + x.kind); x.b.classList.add("k-" + kind); x.kind = kind; }
+        x.b.classList.toggle("playing", on && st && st.state === "playing");
+        if (on && st && !x.t.text && !x.t.secondary) {
+          var a = st.attributes || {};
+          var live = kind === "media" ? (st.state === "playing" ? (a.media_title ? "en lecture · " + a.media_title : "en lecture") : a.app_name || a.source || (st.state === "paused" ? "en pause" : "allumé"))
+            : kind === "fan" && a.percentage != null ? a.percentage + " %"
+            : kind === "light" && a.brightness != null ? Math.round(a.brightness / 2.55) + " %"
+            : d === "input_boolean" || d === "switch" ? "activé" : text;
+          x.sub.textContent = live;
+        }
+        // A fan turns at its own speed.
+        if (kind === "fan") x.b.style.setProperty("--spin", on ? Math.max(0.5, 2.6 - ((st && st.attributes.percentage) || 50) / 50) + "s" : "");
         // A light lit takes its bulb's colour (its colour, or its white's
         // warmth); off, the tile is plainly off.
         var rgb = on && d === "light" ? lightRgb(st) : null;

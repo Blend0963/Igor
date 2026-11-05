@@ -4,6 +4,7 @@
 
 - The wall's bar takes `size: big`: taller, larger letters, bigger eye, clock and buttons, for a small tablet seen from afar.
 - Light tiles: off is plainly off (a faint icon, no colour); on, the tile takes the bulb's colour, from its colour or, for a white bulb, its warmth (kelvin), with a soft glow.
+- Tiles come alive: a media player is lit as soon as it is on (a projector on its menu, a console on its home screen), in violet, its icon beating while it plays, with what it plays or its source; a fan in cyan, its icon turning at its speed; a mode or switch in amber, gently glowing, « activé »; a light shows its brightness. Off, nothing moves.
 
 ## 0.36.2 — A navigator that keeps to its route
 
