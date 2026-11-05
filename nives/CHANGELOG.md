@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.36.1 — Notifications as Home Assistant writes them
+
+- `custom:igor-notifications-card` shows Markdown: titles, bold, links (a link to a Home Assistant page opens it), lists and pictures, including a picture written into the text as image data (a robot vacuum's maintenance notice). Built as page elements, never as HTML; a picture only from a web address or as image data. A touch on a notification opens it whole.
+- A page left and opened again showed nothing until something changed in the house (the phone's « Commandes » one time out of two): the tiles, news, DNS, map, Wi-Fi, network and talkers cards are drawn again as soon as they are back.
+- A button can open another dashboard by its sidebar name: `dashboard: Ma banque` (`igor-buttons-card`, the bank card's `links`), its address looked up, so it no longer lands on the home page when the address is not the one guessed. A bar's `tap:` without a leading « / » is a page of the same dashboard.
+
 ## 0.36.0 — Home Assistant's notifications on the dashboards
 
 - `custom:igor-notifications-card`: Home Assistant's notifications waiting (✕ clears one), and the ones it sent (the phone app, `notify.rappels`, Telegram) with their time, channel, links and position, so a notification lost on the way can still be read.

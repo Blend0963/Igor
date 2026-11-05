@@ -128,6 +128,12 @@
       this.update(hass, prev);
     }
     get hass() { return this._hass; }
+    // Back on the page (another tab, then this one again): a card that emptied
+    // itself when it left is drawn again at once, not at the next change in
+    // the house (an empty « Commandes » page until a light moved).
+    connectedCallback() {
+      if (!this._built && this._hass) { this._built = true; this.build(); this.update(this._hass, null); }
+    }
     build() {}
     update() {}
     style(extra) { el("style", "", this.shadowRoot, BASE + "\n" + (extra || "")); }
@@ -333,7 +339,12 @@
       // The machines' detail closes with its « fermer » only; the clock and
       // « igor » open their own panels.
       // `tap: /a-page` opens that page (the homelab) instead of the detail.
-      this.root.addEventListener("click", () => { if (this.config.tap) navigate(String(this.config.tap)); else this.openDetail(); });
+      this.root.addEventListener("click", () => {
+        var tap = this.config.tap ? String(this.config.tap) : "";
+        // `tap: maison`: a page of this dashboard; `tap: /a/page` anywhere.
+        if (tap) navigate(tap.charAt(0) === "/" ? tap : "/" + window.location.pathname.split("/")[1] + "/" + tap);
+        else this.openDetail();
+      });
       left.addEventListener("click", (ev) => { ev.stopPropagation(); this.togglePop("igor"); });
       this.clockEl.addEventListener("click", (ev) => { ev.stopPropagation(); this.togglePop("time"); });
       this.page = 0;
@@ -1403,6 +1414,19 @@
     if (ll && typeof ll.setEditMode === "function") { ll.setEditMode(true); window.scrollTo(0, 0); return; }
     window.location.assign(window.location.pathname + "?edit=1");
   }
+  // Another dashboard by its name in the sidebar (« Ma banque ») or its
+  // address: the address is looked up, so a button keeps working whatever
+  // the dashboard's address is.
+  function openDashboard(node, hass, name, view) {
+    var want = String(name || "").trim().toLowerCase().replace(/^\//, "");
+    var go = function (path) { navigate("/" + path + (view ? "/" + String(view).replace(/^\//, "") : "")); };
+    if (!hass || !want) return;
+    hass.callWS({ type: "lovelace/dashboards/list" }).then(function (list) {
+      var d = (list || []).find(function (x) { return String(x.title || "").toLowerCase() === want || String(x.url_path || "").toLowerCase() === want; });
+      if (d) go(d.url_path);
+      else node.dispatchEvent(new CustomEvent("hass-notification", { bubbles: true, composed: true, detail: { message: "Tableau de bord introuvable : " + name } }));
+    }).catch(function () { go(want); });
+  }
   function service(hass, name, data, target) {
     // vacuum.start_pause is gone from Home Assistant: start, or pause if cleaning.
     if (name === "vacuum.start_pause" && target && typeof target.entity_id === "string") return vacuumTap(hass, target.entity_id);
@@ -1481,6 +1505,7 @@
   //     - { icon: mdi:menu, name: Menu, menu: true }               # Home Assistant's sidebar
   //     - { icon: mdi:bow-tie, name: Igor, journal: true }         # Igor's conversations, over the page
   //     - { icon: mdi:pencil, name: Modifier, edit: true }          # this dashboard in edit mode (administrators)
+  //     - { icon: mdi:bank, name: Ma banque, dashboard: Ma banque }  # another dashboard by its sidebar name (view: its page)
   class IgorButtonsCard extends IgorCard {
     setConfig(config) {
       if (!config || !Array.isArray(config.buttons) || !config.buttons.length) throw new Error("igor-buttons-card: buttons est requis");
@@ -1517,6 +1542,7 @@
           if (b.tap_action) { haAction(this, b.tap_action); return; }
           if (b.edit) { editDashboard(this, this._hass); return; }
           if (b.journal) { window.dispatchEvent(new CustomEvent("ll-custom", { detail: { igor_journal: true } })); return; }
+          if (b.dashboard) { openDashboard(this, this._hass, b.dashboard, b.view); return; }
           if (b.navigate) { navigate(String(b.navigate)); return; }
           if (b.menu) { this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })); return; }
           if (!this._hass) return;
@@ -5500,13 +5526,48 @@
     if (isNaN(d)) return "";
     return d.toDateString() === new Date().toDateString() ? hhmm(d) : pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + " " + hhmm(d);
   }
-  // Text with its web addresses as links (built as nodes, never as HTML).
-  function linked(parent, text) {
-    String(text || "").split(/(https?:\/\/[^\s<>"]+)/).forEach(function (part, i) {
-      if (i % 2) {
-        var a = el("a", "", parent, part.length > 48 ? part.slice(0, 45) + "…" : part);
-        a.href = part; a.target = "_blank"; a.rel = "noopener noreferrer";
-      } else if (part) parent.appendChild(document.createTextNode(part));
+  // Home Assistant's notifications are Markdown (titles, bold, links, pictures,
+  // often a picture written into the text): shown as such, built as nodes,
+  // never as HTML. A picture is kept only from a web address or as image data.
+  var MD_IMG = /^(data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+\/=]+|https?:\/\/\S+)$/;
+  function mdInline(parent, text) {
+    String(text || "").split(/(\*\*[^*]+\*\*|\[[^\]]*\]\([^)\s]+\)|https?:\/\/[^\s<>")]+)/).forEach(function (part) {
+      if (!part) return;
+      var b = part.match(/^\*\*([^*]+)\*\*$/), l = part.match(/^\[([^\]]*)\]\(([^)\s]+)\)$/);
+      if (b) el("strong", "", parent, b[1]);
+      else if (l || /^https?:\/\//.test(part)) {
+        var href = l ? l[2] : part, label = l ? (l[1] || l[2]) : part;
+        if (/^https?:\/\//.test(href)) {
+          var a = el("a", "", parent, label.length > 48 ? label.slice(0, 45) + "…" : label);
+          a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer";
+        } else if (/^\//.test(href)) {
+          var n = el("a", "", parent, label);
+          n.href = href;
+          n.addEventListener("click", function (ev) { ev.preventDefault(); navigate(href); });
+        } else parent.appendChild(document.createTextNode(label));
+      } else parent.appendChild(document.createTextNode(part));
+    });
+  }
+  function markdown(parent, text) {
+    // A picture's data wrapped over several lines is one address again.
+    var src = String(text || "").replace(/!\[([^\]]*)\]\(\s*([^)]*?)\s*\)/g, function (m, alt, url) {
+      return "\n![" + alt + "](" + url.replace(/\s+/g, "") + ")\n";
+    });
+    var para = null;
+    src.split(/\r?\n/).forEach(function (line) {
+      var t = line.trim();
+      if (!t) { para = null; return; }
+      var img = t.match(/^!\[([^\]]*)\]\(([^)]+)\)$/), h = t.match(/^#{1,6}\s+(.*)$/), li = t.match(/^[-*]\s+(.*)$/);
+      if (img) {
+        para = null;
+        if (MD_IMG.test(img[2])) { var im = el("img", "pic", parent); im.src = img[2]; im.alt = img[1] || ""; im.loading = "lazy"; }
+        return;
+      }
+      if (h) { para = null; mdInline(el("div", "mh", parent), h[1]); return; }
+      if (li) { para = null; var d = el("div", "li", parent); mdInline(d, li[1]); return; }
+      if (para) para.appendChild(document.createElement("br"));
+      else para = el("div", "p", parent);
+      mdInline(para, t);
     });
   }
   function channelName(e) {
@@ -5532,8 +5593,11 @@
         ".n .h { color: var(--faint); font-variant-numeric: tabular-nums; }",
         ".n .b { min-width: 0; display: grid; gap: 2px; }",
         ".n b { color: var(--fg); font-weight: 500; overflow-wrap: anywhere; }",
-        ".n .m { color: var(--dim); white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }",
-        ".n.open .m { -webkit-line-clamp: unset; display: block; }",
+        ".n .m { color: var(--dim); overflow-wrap: anywhere; max-height: 15em; overflow: hidden; display: grid; gap: 4px; }",
+        ".n .m .mh { color: var(--fg); font-weight: 500; } .n .m strong { color: var(--fg); font-weight: 500; } .n .m .li::before { content: '· '; color: var(--faint); }",
+        ".n .m .pic { max-width: min(100%, 320px); max-height: 7em; border-radius: 4px; border: 1px solid var(--line); background: var(--bg); object-fit: contain; }",
+        ".n.open .m .pic { max-height: 260px; }",
+        ".n.open .m { max-height: none; }",
         ".n .m a, .n .map { color: var(--acc); text-decoration: none; }",
         ".n .map { font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; --mdc-icon-size: 14px; }",
         ".n.wait { border-left: 2px solid var(--igor-signal, #e5323b); padding-left: 8px; }",
@@ -5587,7 +5651,7 @@
       el("span", "h", n, when);
       var b = el("div", "b", n);
       if (title) el("b", "", b, title);
-      if (message) linked(el("div", "m", b), message);
+      if (message) markdown(el("div", "m", b), message);
       n.addEventListener("click", (ev) => { if (ev.target.tagName !== "A" && ev.target.tagName !== "BUTTON") n.classList.toggle("open"); });
       if (right) n.appendChild(right);
       return b;
@@ -5772,7 +5836,7 @@
           var t2 = el("div", "tile nav", l);
           icon(t2, k.icon || "mdi:arrow-right");
           el("span", "", t2, k.name || "");
-          t2.addEventListener("click", () => this.go(k.navigate));
+          t2.addEventListener("click", () => { if (k.dashboard) openDashboard(this, this._hass, k.dashboard, k.view); else this.go(k.navigate); });
         });
       }
     }
