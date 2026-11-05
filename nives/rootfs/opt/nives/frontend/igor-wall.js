@@ -4315,22 +4315,41 @@
   // The nearest point to p on a set of lines ([[lon, lat], …] each), in
   // metres on a local flat projection: { point, dist, bearing } of the
   // segment, or null without lines.
-  function gpsNearest(p, lines) {
+  function gpsOnLine(p, line) {
     var kx = Math.cos(gpsRad(p[1])) * GPS_R * Math.PI / 180, ky = GPS_R * Math.PI / 180;
     var best = null;
-    lines.forEach(function (line) {
-      for (var i = 1; i < line.length; i++) {
-        var ax = (line[i - 1][0] - p[0]) * kx, ay = (line[i - 1][1] - p[1]) * ky;
-        var bx = (line[i][0] - p[0]) * kx, by = (line[i][1] - p[1]) * ky;
-        var dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
-        var t = len ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len)) : 0;
-        var qx = ax + t * dx, qy = ay + t * dy, d = Math.hypot(qx, qy);
-        if (!best || d < best.dist) {
-          best = { dist: d, point: [p[0] + qx / kx, p[1] + qy / ky], bearing: (gpsDeg(Math.atan2(dx, dy)) + 360) % 360 };
-        }
+    for (var i = 1; i < line.length; i++) {
+      var ax = (line[i - 1][0] - p[0]) * kx, ay = (line[i - 1][1] - p[1]) * ky;
+      var bx = (line[i][0] - p[0]) * kx, by = (line[i][1] - p[1]) * ky;
+      var dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+      var t = len ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len)) : 0;
+      var qx = ax + t * dx, qy = ay + t * dy, d = Math.hypot(qx, qy);
+      if (!best || d < best.dist) {
+        best = { dist: d, point: [p[0] + qx / kx, p[1] + qy / ky], bearing: (gpsDeg(Math.atan2(dx, dy)) + 360) % 360, line: line, seg: i, t: t };
       }
+    }
+    return best;
+  }
+  function gpsNearest(p, lines) {
+    var best = null;
+    lines.forEach(function (line) {
+      var b = gpsOnLine(p, line);
+      if (b && (!best || b.dist < best.dist)) best = b;
     });
     return best;
+  }
+  // From a to b along a road line: the line's own vertices between the two,
+  // so the trail bends with the road; null when a is not on that line or the
+  // way round is much longer than the gap (another branch of the road).
+  function gpsAlongLine(line, a, b) {
+    var pa = gpsOnLine(a, line), pb = gpsOnLine(b, line);
+    if (!pa || !pb || pa.dist > 4 || pb.dist > 4) return null;
+    var out = [], i;
+    if (pa.seg < pb.seg || (pa.seg === pb.seg && pa.t <= pb.t)) { for (i = pa.seg; i < pb.seg; i++) out.push(line[i]); }
+    else { for (i = pa.seg - 1; i >= pb.seg; i--) out.push(line[i]); }
+    var len = 0, prev = a;
+    out.concat([b]).forEach(function (q) { len += gpsDist(prev, q); prev = q; });
+    return len <= Math.max(3 * gpsDist(a, b), gpsDist(a, b) + 60) ? out : null;
   }
   // The road's direction closest to where the car heads (a road goes both ways).
   function gpsAlong(roadBearing, heading) {
@@ -4338,7 +4357,62 @@
     var d1 = Math.abs(((roadBearing - heading + 540) % 360) - 180), d2 = Math.abs(((back - heading + 540) % 360) - 180);
     return d1 <= d2 ? roadBearing : back;
   }
-  window.__igorGpsMath = { nearest: gpsNearest, along: gpsAlong, project: gpsProject, dist: gpsDist };
+  // The shortest way from a to b on a set of road lines (as drawn on the map,
+  // cut at tiles and crossings): a small graph of their points, the pieces
+  // joined where one ends on another (within 3 m), a and b set on their
+  // nearest segments, then Dijkstra. The points of the way, or null when
+  // there is none or it is much longer than the gap (not the same road).
+  function gpsRoadPath(lines, a, b) {
+    var nodes = [], key = {}, adj = [];
+    var node = function (q) {
+      var k = q[0].toFixed(6) + "," + q[1].toFixed(6);
+      if (key[k] == null) { key[k] = nodes.length; nodes.push(q); adj.push([]); }
+      return key[k];
+    };
+    var edge = function (i, j) {
+      if (i === j) return;
+      var d = gpsDist(nodes[i], nodes[j]);
+      adj[i].push([j, d]); adj[j].push([i, d]);
+    };
+    var segs = [];
+    lines.forEach(function (l) {
+      for (var i = 1; i < l.length; i++) { var u = node(l[i - 1]), v = node(l[i]); edge(u, v); segs.push([u, v]); }
+    });
+    // A point onto its nearest segment, joined to both ends of it.
+    var attach = function (q, within, skip) {
+      var best = null;
+      segs.forEach(function (sg) {
+        if (skip != null && (sg[0] === skip || sg[1] === skip)) return;
+        var o = gpsOnLine(q, [nodes[sg[0]], nodes[sg[1]]]);
+        if (o && o.dist <= within && (!best || o.dist < best.o.dist)) best = { o: o, sg: sg };
+      });
+      if (!best) return null;
+      var m = node(best.o.point);
+      edge(m, best.sg[0]); edge(m, best.sg[1]);
+      return m;
+    };
+    // Ends of pieces resting on another piece (tile cuts, T crossings).
+    lines.forEach(function (l) {
+      [l[0], l[l.length - 1]].forEach(function (end) { var e = node(end); var m = attach(end, 3, e); if (m != null) edge(e, m); });
+    });
+    var ia = attach(a, 30), ib = attach(b, 30);
+    if (ia == null || ib == null) return null;
+    var dist = new Array(nodes.length).fill(Infinity), prev = new Array(nodes.length).fill(-1), done = new Array(nodes.length).fill(false);
+    dist[ia] = 0;
+    for (;;) {
+      var u = -1, du = Infinity;
+      for (var i = 0; i < nodes.length; i++) if (!done[i] && dist[i] < du) { du = dist[i]; u = i; }
+      if (u < 0 || u === ib) break;
+      done[u] = true;
+      adj[u].forEach(function (e) { if (du + e[1] < dist[e[0]]) { dist[e[0]] = du + e[1]; prev[e[0]] = u; } });
+    }
+    var gap = gpsDist(a, b);
+    if (!isFinite(dist[ib]) || dist[ib] > Math.max(2.5 * gap, gap + 80)) return null;
+    var out = [];
+    for (var at = ib; at >= 0; at = prev[at]) out.unshift(nodes[at]);
+    return out;
+  }
+  window.__igorGpsMath = { roadPath: gpsRoadPath, nearest: gpsNearest, along: gpsAlong, alongLine: gpsAlongLine, project: gpsProject, dist: gpsDist };
   var GPS_ARROW = '<svg viewBox="0 0 40 40" width="46" height="46"><circle cx="20" cy="20" r="18" fill="rgba(89,208,224,0.18)"/>' +
     '<path d="M20 4 L32 33 L20 26 L8 33 Z" fill="#59d0e0" stroke="#07080a" stroke-width="2.5" stroke-linejoin="round"/></svg>';
   // The French speed limit sign (B14): kept as the real thing, readable at a glance.
@@ -4348,7 +4422,7 @@
   class IgorGpsCard extends HTMLElement {
     setConfig(config) {
       if (!config || !config.entity) throw new Error("igor-gps-card: entity est requis (le device_tracker de l'autoradio)");
-      this.config = Object.assign({ zoom: 16, pitch: 45, heading_up: true, follow_pause: 15, theme: "sombre", snap: 20 }, config);
+      this.config = Object.assign({ zoom: 16, pitch: 45, heading_up: true, follow_pause: 15, theme: "sombre", snap: 50 }, config);
       this.headingUp = this.config.heading_up !== false;
     }
     getCardSize() { return 6; }
@@ -4435,6 +4509,8 @@
         return;
       }
       var p = [lon, lat];
+      // How far the GPS may be off (metres), as the companion app says.
+      this.accuracy = Number(a.gps_accuracy != null ? a.gps_accuracy : a.accuracy) || 0;
       if (!this.fix || this.fix.updated !== st.last_updated) this.onFix(p, course, speed, st.last_updated);
       this.overlays();
       if (!this.loading) this.init(p);
@@ -4449,12 +4525,29 @@
       else if (prev && gpsDist(prev, p) > 8) this.heading = gpsBearing(prev, p);
       this.fix = { point: p, time: performance.now(), gpsSpeed: isFinite(gpsSpeed) ? gpsSpeed : 0, updated: updated };
     }
-    // The trail follows the arrow as shown (on the road), not the raw fixes.
-    addTrail(p) {
-      var last = this.trail[this.trail.length - 1];
-      if (last && gpsDist(last, p) < 5) return;
-      this.trail.push(p);
-      if (this.trail.length > GPS_TRAIL) this.trail.shift();
+    // The trail is drawn on the roads only: each point the arrow takes on a
+    // road, joined to the last one along that road's own shape; off the road
+    // (snap on) nothing is drawn, and a gap that cannot be followed on the
+    // road starts a new piece instead of a line across the houses.
+    addTrail(p, onRoad) {
+      var snapOn = (Number(this.config.snap) || 0) > 0;
+      if (snapOn && !onRoad) { this.cut = true; return; }
+      var piece = this.trail[this.trail.length - 1], last = piece && piece[piece.length - 1];
+      if (last && !this.cut && gpsDist(last, p) < 5) return;
+      var path = null;
+      if (last && onRoad && gpsDist(last, p) > 8) {
+        var way = gpsRoadPath(this.roadLines(last, p, 40), last, p);
+        if (way) path = way.slice(1, -1);
+      }
+      // A cut while off the road joins back along the road when it can.
+      if (piece && this.cut && last && onRoad && gpsDist(last, p) < 400) {
+        var back = gpsRoadPath(this.roadLines(last, p, 40), last, p);
+        if (back) { path = back.slice(1, -1); this.cut = false; }
+      }
+      if (!piece || this.cut || (!path && gpsDist(last, p) > 25)) { this.trail.push([p]); this.cut = false; }
+      else piece.push.apply(piece, (path || []).concat([p]));
+      var n = this.trail.reduce(function (a, x) { return a + x.length; }, 0);
+      while (n > GPS_TRAIL && this.trail.length) { n -= this.trail[0].length; this.trail.shift(); }
       var src = this.map && this.map.getSource("trail");
       if (src) src.setData(this.trailData());
     }
@@ -4480,7 +4573,7 @@
         sign.classList.toggle("over", over);
       }
     }
-    trailData() { return { type: "Feature", geometry: { type: "LineString", coordinates: this.trail } }; }
+    trailData() { return { type: "Feature", geometry: { type: "MultiLineString", coordinates: this.trail.filter(function (x) { return x.length > 1; }) } }; }
     async init(p) {
       this.loading = true;
       var ml;
@@ -4510,22 +4603,47 @@
       this.shown = this.heading;
       if (!this.raf) this.raf = requestAnimationFrame(() => this.tick());
     }
-    // The nearest road drawn around a point, within `snap` metres (null otherwise).
-    road(p, within) {
+    // The road lines drawn between two points (and a margin around them).
+    roadLines(a, b, margin) {
       var map = this.map;
-      if (!map || !this.roads || !this.roads.length || !(within > 0)) return null;
-      var c = map.project(p), r = 70;
+      if (!map || !this.roads || !this.roads.length) return [];
+      var pa = map.project(a), pb = b ? map.project(b) : pa, m = margin || 60;
       var feats;
-      try { feats = map.queryRenderedFeatures([[c.x - r, c.y - r], [c.x + r, c.y + r]], { layers: this.roads }); } catch (e) { return null; }
+      try {
+        feats = map.queryRenderedFeatures([[Math.min(pa.x, pb.x) - m, Math.min(pa.y, pb.y) - m], [Math.max(pa.x, pb.x) + m, Math.max(pa.y, pb.y) + m]], { layers: this.roads });
+      } catch (e) { return []; }
       var lines = [];
       feats.forEach((f) => {
-        var g = f.geometry;
-        if (!g) return;
+        var g = f.geometry, cls = String((f.properties && (f.properties.class || f.properties.subclass)) || "");
+        // Only where a car drives: no railway, path, footway, cycleway, ferry.
+        if (!g || /rail|transit|path|footway|pedestrian|cycle|bicycle|bridleway|steps|track|ferry|cable|aerial|pier/.test(cls)) return;
+        if (/rail|path|ferry|aeroway|pier|transit|cable/.test(String(f.layer && f.layer.id || ""))) return;
         if (g.type === "LineString") lines.push(g.coordinates);
         else if (g.type === "MultiLineString") g.coordinates.forEach((l) => lines.push(l));
       });
-      var best = gpsNearest(p, lines);
-      return best && best.dist <= within ? best : null;
+      return lines;
+    }
+    // The nearest road drawn around a point, within `snap` metres (null otherwise).
+    road(p, within, heading) {
+      var map = this.map;
+      if (!map || !this.roads || !this.roads.length || !(within > 0)) return null;
+      // The search square: `within` metres around p, in pixels at this zoom.
+      var mpp = 40075016 * Math.cos(gpsRad(p[1])) / (512 * Math.pow(2, map.getZoom()));
+      var lines = this.roadLines(p, null, Math.min(600, within / mpp + 10));
+      // Moving, a road that goes the car's way wins over a nearer one across
+      // it (a crossing street, a parallel lane of the other direction is fine).
+      var best = null;
+      lines.forEach((l) => {
+        var b = gpsOnLine(p, l);
+        if (!b || b.dist > within) return;
+        var off = heading == null ? 0 : Math.abs(((gpsAlong(b.bearing, heading) - heading + 540) % 360) - 180);
+        // Staying on the road already taken wins over a slightly nearer one
+        // (a noisy fix should not jump to a side street).
+        var stay = this.lastRoad && gpsOnLine(this.lastRoad, l);
+        b.score = b.dist + (off > 50 ? 1000 : off * 0.15) + (this.lastRoad && (!stay || stay.dist > 4) ? 10 : 0);
+        if (!best || b.score < best.score) best = b;
+      });
+      return best && best.score < 1000 ? best : best && heading == null ? best : null;
     }
     tick() {
       this.raf = requestAnimationFrame(() => this.tick());
@@ -4534,12 +4652,15 @@
       // Between two fixes: on along the heading, 4 s at most.
       var elapsed = Math.min((now - this.fix.time) / 1000, GPS_PREDICT_S);
       var target = moving ? gpsProject(this.fix.point, this.heading, speed * elapsed) : this.fix.point;
-      // Onto the road, a few times a second: stopped, only when very close
-      // (a car park stays a car park).
+      // Onto the road, a few times a second, moving or stopped, as a
+      // navigator does: within `snap` metres, or what the GPS says it may be
+      // off by when that is more (at most 150 m).
       var snapM = Number(this.config.snap) || 0;
+      if (snapM > 0) snapM = Math.max(snapM, Math.min(this.accuracy || 0, 150));
       if (snapM > 0 && (!this.snapAt || now - this.snapAt > 200)) {
         this.snapAt = now;
-        this.snapped = this.road(target, moving ? snapM : Math.min(snapM, 8));
+        this.snapped = this.road(target, snapM, moving ? this.heading : null);
+        if (this.snapped) this.lastRoad = this.snapped.point;
         this.$("snapEl").textContent = this.snapped ? "sur la route" : "";
       }
       var s = this.snapped;
@@ -4547,11 +4668,33 @@
         target = s.point;
         if (moving) this.heading = gpsLerpAngle(this.heading, gpsAlong(s.bearing, this.heading), 0.2);
       }
-      var jump = gpsDist(this.pos, target), k = jump > 200 ? 1 : 0.15;
-      this.pos = [this.pos[0] + (target[0] - this.pos[0]) * k, this.pos[1] + (target[1] - this.pos[1]) * k];
+      // A leap (a late fix): the arrow drives there along the roads, not across.
+      var jump = gpsDist(this.pos, target);
+      if (s && !this.way && jump > 25 && jump < 400) {
+        var way = gpsRoadPath(this.roadLines(this.pos, target, 40), this.pos, target);
+        if (way && way.length > 2) { this.way = way.slice(1); this.wayFrom = now; this.wayLen = jump; }
+      }
+      if (this.way && this.way.length) {
+        // About a second for the whole way, at least the car's speed.
+        var step = Math.max(this.wayLen * 0.06, speed * 0.016 * 1.2), left = step;
+        while (left > 0 && this.way.length) {
+          var nx = this.way[0], d = gpsDist(this.pos, nx);
+          if (d <= left) { this.pos = nx; this.way.shift(); left -= d; }
+          else { var f = left / d; this.pos = [this.pos[0] + (nx[0] - this.pos[0]) * f, this.pos[1] + (nx[1] - this.pos[1]) * f]; left = 0; }
+        }
+        if (!this.way.length || now - this.wayFrom > 2500) this.way = null;
+      } else {
+        var k = jump > 400 ? 1 : 0.15;
+        this.pos = [this.pos[0] + (target[0] - this.pos[0]) * k, this.pos[1] + (target[1] - this.pos[1]) * k];
+      }
       this.shown = gpsLerpAngle(this.shown, this.heading, 0.1);
       this.marker.setLngLat(this.pos).setRotation(this.shown);
-      if (!this.trailAt || now - this.trailAt > 500) { this.trailAt = now; this.addTrail(this.pos); }
+      if (!this.trailAt || now - this.trailAt > 500) {
+        this.trailAt = now;
+        // On the road only once the arrow has reached it (not while gliding across).
+        var on = s && gpsDist(this.pos, s.point) < 3 ? s : null;
+        this.addTrail(on ? s.point : this.pos, on);
+      }
       if (this.follow) {
         var h = this.$("map").clientHeight;
         this.map.jumpTo({ center: this.pos, bearing: this.headingUp ? this.shown : 0, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } });
