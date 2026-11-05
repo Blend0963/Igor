@@ -25,13 +25,13 @@ Igor Journal: &igor_journal
   ha-font-family-heading: *mono
   ha-font-family-code: *mono
   # Thin lines, small corners, no shadows.
-  ha-card-border-radius: "6px"
+  ha-card-border-radius: "3px"
   ha-card-border-width: "1px"
   ha-card-box-shadow: "none"
-  ha-dialog-border-radius: "8px"
-  ha-badge-border-radius: "6px"
-  mdc-shape-small: "4px"
-  mdc-shape-medium: "6px"
+  ha-dialog-border-radius: "3px"
+  ha-badge-border-radius: "3px"
+  mdc-shape-small: "3px"
+  mdc-shape-medium: "3px"
   # Mushroom cards more compact: a whole screen of them fits without scrolling.
   mush-spacing: "8px"
   mush-icon-size: "30px"
@@ -333,13 +333,13 @@ Igor: &igor
       ha-font-family-body: *igor_mono
       ha-font-family-code: *igor_mono
       ha-font-family-heading: "'Chakra Petch', 'Rajdhani', ui-monospace, 'JetBrains Mono', Menlo, monospace"
-      ha-card-border-radius: "2px"
+      ha-card-border-radius: "3px"
       ha-card-border-width: "1px"
       ha-card-box-shadow: "none"
-      ha-dialog-border-radius: "4px"
-      ha-badge-border-radius: "2px"
-      mdc-shape-small: "2px"
-      mdc-shape-medium: "2px"
+      ha-dialog-border-radius: "3px"
+      ha-badge-border-radius: "3px"
+      mdc-shape-small: "3px"
+      mdc-shape-medium: "3px"
       primary-color: "#59d0e0"
       accent-color: "#e5323b"
       dark-primary-color: "#2d8f9c"
