@@ -2090,6 +2090,9 @@
   // false leaves the name out too; states: true shows the state under it.
   // A tile with `service: cover.open_cover` (and `data`) calls it on its
   // entity instead of switching it; `lit: open` lights it in that state.
+  // A tile with `alarm: <device_id>` is an alarm clock (Alarm Clocks
+  // integration): its time always shown, lit while on; a tap turns it on or
+  // off, and while it rings, stops it; a long press opens its settings.
   class IgorTilesCard extends IgorCard {
     setConfig(config) {
       if (!config || !Array.isArray(config.tiles) || !config.tiles.length) throw new Error("igor-tiles-card: tiles est requis");
@@ -2119,6 +2122,9 @@
         "button.giant .n { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }",
         "button.giant.on .n { color: var(--fg); }",
         "button.giant .s { display: none; }",
+        "button.giant.alarm .s { display: block; font-size: 15px; margin-top: -6px; color: var(--fg); font-variant-numeric: tabular-nums; }",
+        "button.giant.alarm.ring { border-color: var(--wait); background: rgba(217, 164, 65, 0.18); animation: igor-ring 1s ease-in-out infinite; }",
+        "@keyframes igor-ring { 50% { background: rgba(217, 164, 65, 0.05); } }",
         ".grid.states button.giant .s { display: block; font-size: 11px; margin-top: -8px; }",
         "button.giant.act ha-icon { color: var(--fg); }",
         "button.giant:active { transform: scale(0.98); }",
@@ -2132,19 +2138,26 @@
       // A last row short of tiles: its last tile widens to the end, no hole.
       var rest = this.config.tiles.length % cols;
       this.tiles = this.config.tiles.map((t, i) => {
-        var b = el("button", small ? "small" : giant ? "giant" + (t.service ? " act" : "") : "big", grid);
+        var b = el("button", (small ? "small" : giant ? "giant" + (t.service ? " act" : "") : "big") + (t.alarm ? " alarm" : ""), grid);
         b.type = "button";
         if (rest && i === this.config.tiles.length - 1) b.style.gridColumn = "span " + (cols - rest + 1);
-        var ic = icon(b, t.icon || "mdi:help-circle-outline");
+        var ic = icon(b, t.icon || (t.alarm ? "mdi:alarm" : "mdi:help-circle-outline"));
         var mid = small ? el("span", "", b) : b;
         if (!(giant && this.config.labels === false)) el("span", "n", mid, t.name || t.entity);
         var sub = el("span", "s", small ? b : b);
         if (small) b.appendChild(sub);
         var held = false, timer = null;
-        b.addEventListener("pointerdown", () => { held = false; timer = setTimeout(() => { held = true; moreInfo(this, t.entity); }, 600); });
+        b.addEventListener("pointerdown", () => { held = false; timer = setTimeout(() => { held = true; moreInfo(this, t.alarm ? this.alarmIds(t).time || this.alarmIds(t).enabled : t.entity); }, 600); });
         ["pointerup", "pointerleave", "pointercancel"].forEach((e) => b.addEventListener(e, () => clearTimeout(timer)));
         b.addEventListener("click", () => {
           if (held || !this._hass) return;
+          if (t.alarm) {
+            var a = this.alarmIds(t), st = a.state && this._hass.states[a.state];
+            var ringing = st && (st.state === "ringing" || st.state === "snoozed");
+            var id = ringing ? a.dismiss : a.enabled;
+            if (id) this._hass.callService(ringing ? "button" : "switch", ringing ? "press" : "toggle", {}, { entity_id: id });
+            return;
+          }
           var r = t.service ? service(this._hass, t.service, t.data, t.target || { entity_id: t.entity }) : tap(this, this._hass, t.entity, t.tap);
           if (r && r.then) r.then(() => { b.classList.add("done"); setTimeout(() => b.classList.remove("done"), 700); });
         });
@@ -2170,8 +2183,24 @@
       this._built = false;
       this.shadowRoot.innerHTML = "";
     }
+    // The alarm clock's entities, found from its device (as igor-alarm-card).
+    alarmIds(t) {
+      var hass = this._hass;
+      if (!hass) return {};
+      if (!t._ids || t._reg !== hass.entities) { t._ids = alarmEntities(hass, t.alarm); t._reg = hass.entities; }
+      return t._ids;
+    }
     update(hass, prev) {
       this.tiles.forEach((x) => {
+        if (x.t.alarm) {
+          var a = this.alarmIds(x.t), s = (id) => (id && hass.states[id] ? hass.states[id].state : "");
+          var on = s(a.enabled) === "on", state = s(a.state), ringing = state === "ringing" || state === "snoozed";
+          var time = s(a.time).slice(0, 5);
+          x.sub.textContent = ringing ? (state === "ringing" ? "sonne · toucher" : "répétition") : (time || "—") + (on ? "" : " · coupé");
+          x.b.classList.toggle("on", on);
+          x.b.classList.toggle("ring", ringing);
+          return;
+        }
         var ids = [x.t.entity].concat(x.t.secondary || []);
         if (!changed(prev, hass, ids)) return;
         var st = hass.states[x.t.entity];
