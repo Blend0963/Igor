@@ -98,6 +98,14 @@ journalctl --user -u igor-ear -f                    # follow it
 
 Update: `git -C ~/MaDo pull && bash ~/MaDo/ear/install.sh && systemctl --user restart igor-ear`.
 
+A USB microphone that drops and comes back (a loose plug, a hub, a VM's USB
+passthrough) is a new PipeWire source: a stream on the old one is moved
+elsewhere and hears nothing of the room, while everything looks « running ».
+igor-ear watches the source's number, reads the microphone again by itself and
+restarts `[audio] restart_with_mic` (linux-voice-assistant by default, which
+would keep the old one). `pactl list short sources`: the microphone should be
+RUNNING; SUSPENDED means nobody reads it.
+
 ## Smart mode: without the name
 
 `[mode] addressing = "smart"` also takes requests said without "Igor". A
