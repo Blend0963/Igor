@@ -465,7 +465,42 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
         entry.async_create_background_task(
             hass, _async_merge_memory(hass, entry), "nives_memory_merge"
         )
+    # The key, on the server's side too: its thread panel refuses while the
+    # key is away, as Assist does here. Sent now and every five minutes (the
+    # server may have restarted since).
+    async def _push_lock(_now=None) -> None:
+        await _async_push_lock(hass, entry)
+
+    entry.async_create_background_task(hass, _push_lock(), "nives_lock_push")
+    entry.async_on_unload(async_track_time_interval(hass, _push_lock, LOCK_PUSH_INTERVAL))
     return True
+
+
+LOCK_PUSH_INTERVAL = timedelta(minutes=5)
+
+
+async def _async_push_lock(hass: HomeAssistant, entry: IgorConfigEntry) -> None:
+    """Tell the Igor server which entity is the key and who is still answered
+    while it is away (`POST /api/security`). Never fails setup: logs only."""
+    from .const import CONF_KEY_ENTITY
+    from .security import settings as security_settings
+
+    data = getattr(entry, "runtime_data", None)
+    if data is None:
+        return
+    sec = security_settings(hass)
+    body = {"key_entity": sec.get(CONF_KEY_ENTITY) or "", "allowed_users": sec.get("allowed_users") or []}
+    headers = {"Authorization": f"Bearer {data.api_token}"} if data.api_token else {}
+    try:
+        async with async_get_clientsession(hass).post(
+            f"{data.api_url}/api/security", json=body, headers=headers, timeout=aiohttp.ClientTimeout(total=15)
+        ) as response:
+            if response.status == 404:
+                return  # an older server
+            if response.status != 200:
+                _LOGGER.warning("Igor: the server did not take the key settings (HTTP %s)", response.status)
+    except Exception as err:  # noqa: BLE001 - a background push must never break anything
+        _LOGGER.debug("Igor: key settings not sent yet: %s", err)
 
 
 HEARD_SCHEMA = vol.Schema(
