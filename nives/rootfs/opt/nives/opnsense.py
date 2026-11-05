@@ -333,7 +333,7 @@ def parse_wireguard(body: Any, now: float, locate=None) -> list[dict]:
         endpoint = str(r.get("endpoint") or "")
         host, port = ("", "")
         if endpoint and endpoint not in ("(none)", "none"):
-            host, port = split_host(endpoint)  # « 1.2.3.4:51820 » or « [2001:db8::1]:51820 »
+            host, port = split_host(endpoint)  # « 203.0.113.4:51820 » or « [2001:db8::1]:51820 »
         try:
             hs = float(r.get("latest-handshake") or r.get("latest_handshake") or 0)
         except (TypeError, ValueError):

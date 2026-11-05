@@ -1194,7 +1194,7 @@ def _async_register_net_map(hass: HomeAssistant) -> None:
             add_vpn(out, out["vpn"])
         except (PermissionError, FileNotFoundError) as err:
             out["notes"].append(f"wireguard: {err} (privilege « VPN: WireGuard: Status »)")
-        except (ValueError, aiohttp.ClientError, TimeoutError) as err:
+        except Exception as err:  # noqa: BLE001 - the VPN is a bonus: never the whole map
             out["notes"].append(f"wireguard: {err}")
         # Each network (VLAN) and the router's address on it.
         out["vlans"] = sorted(
