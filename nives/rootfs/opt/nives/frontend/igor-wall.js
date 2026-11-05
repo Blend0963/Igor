@@ -1297,6 +1297,8 @@
     window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
   }
   function service(hass, name, data, target) {
+    // vacuum.start_pause is gone from Home Assistant: start, or pause if cleaning.
+    if (name === "vacuum.start_pause" && target && typeof target.entity_id === "string") return vacuumTap(hass, target.entity_id);
     var parts = String(name || "").split(".");
     if (parts.length !== 2) return Promise.reject(new Error("service " + name));
     return hass.callService(parts[0], parts[1], data || {}, target);
@@ -2067,12 +2069,19 @@
   function tap(node, hass, id, how) {
     var d = domainOf(id);
     how = how || (d === "scene" ? "scene" : d === "script" ? "script" :
-      ["light", "switch", "fan", "input_boolean", "cover"].indexOf(d) >= 0 ? "toggle" : d === "media_player" ? "play_pause" : "more-info");
+      ["light", "switch", "fan", "input_boolean", "cover"].indexOf(d) >= 0 ? "toggle" : d === "media_player" ? "play_pause" : d === "vacuum" ? "vacuum" : "more-info");
     if (how === "scene") return hass.callService("scene", "turn_on", {}, { entity_id: id });
     if (how === "script") return hass.callService("script", "turn_on", {}, { entity_id: id });
     if (how === "toggle") return hass.callService("homeassistant", "toggle", {}, { entity_id: id });
     if (how === "play_pause") return hass.callService("media_player", "media_play_pause", {}, { entity_id: id });
+    if (how === "vacuum") return vacuumTap(hass, id);
     moreInfo(node, id);
+  }
+  // A robot vacuum: start it, or pause it while it cleans (Home Assistant
+  // dropped vacuum.start_pause; start and pause remain).
+  function vacuumTap(hass, id) {
+    var st = hass.states[id];
+    return hass.callService("vacuum", st && st.state === "cleaning" ? "pause" : "start", {}, { entity_id: id });
   }
 
   // ----- igor-tiles-card: big buttons, for a finger from afar -----
@@ -2130,7 +2139,17 @@
         "button.giant:active { transform: scale(0.98); }",
         // Igor just acted on it (the tablet's voice display says so): a cyan flash.
         "button.flash { border-color: #59d0e0 !important; box-shadow: 0 0 0 2px rgba(89, 208, 224, 0.45); background: rgba(89, 208, 224, 0.14) !important; }",
-        "button.flash ha-icon { color: #59d0e0 !important; }"
+        "button.flash ha-icon { color: #59d0e0 !important; }",
+        // A robot vacuum's tile moves with it: turning while it cleans,
+        // rocking on its way home, breathing in pause, red when stuck.
+        "button.vac-cleaning ha-icon { animation: igor-vac-spin 2.4s linear infinite; }",
+        "button.vac-returning ha-icon { animation: igor-vac-rock 0.9s ease-in-out infinite; }",
+        "button.vac-paused ha-icon { animation: igor-vac-breathe 1.6s ease-in-out infinite; }",
+        "button.vac-error ha-icon { color: var(--bad) !important; }",
+        "@keyframes igor-vac-spin { to { transform: rotate(360deg); } }",
+        "@keyframes igor-vac-rock { 50% { transform: translateX(6px); } }",
+        "@keyframes igor-vac-breathe { 50% { opacity: 0.35; } }",
+        "@media (prefers-reduced-motion: reduce) { button[class*=vac-] ha-icon { animation: none !important; } }"
       ].join("\n"));
       var grid = el("div", "grid" + (giant && this.config.states ? " states" : ""), this.shadowRoot);
       var cols = Number(this.config.columns) || (small ? 1 : 2);
@@ -2158,7 +2177,8 @@
             if (id) this._hass.callService(ringing ? "button" : "switch", ringing ? "press" : "toggle", {}, { entity_id: id });
             return;
           }
-          var r = t.service ? service(this._hass, t.service, t.data, t.target || { entity_id: t.entity }) : tap(this, this._hass, t.entity, t.tap);
+          var r = t.service === "vacuum.start_pause" ? vacuumTap(this._hass, t.entity)
+            : t.service ? service(this._hass, t.service, t.data, t.target || { entity_id: t.entity }) : tap(this, this._hass, t.entity, t.tap);
           if (r && r.then) r.then(() => { b.classList.add("done"); setTimeout(() => b.classList.remove("done"), 700); });
         });
         return { t: t, b: b, ic: ic, sub: sub };
@@ -2214,6 +2234,12 @@
         x.sub.textContent = text;
         if (x.t.icon_off) x.ic.setAttribute("icon", on ? (x.t.icon || "mdi:help-circle-outline") : x.t.icon_off);
         x.b.classList.toggle("scene", d === "scene" || d === "script");
+        // The start/pause tile of a robot vacuum (not its « base » one).
+        if (d === "vacuum" && (!x.t.service || x.t.service === "vacuum.start_pause")) {
+          var vs = st ? st.state : "";
+          ["cleaning", "returning", "paused", "error"].forEach((k) => x.b.classList.toggle("vac-" + k, vs === k));
+          if (!x.t.service) on = vs === "cleaning";
+        }
         x.b.classList.toggle("on", on);
         // A light lit in a colour: the tile takes that colour.
         var rgb = on && d === "light" && st && Array.isArray(st.attributes.rgb_color) ? st.attributes.rgb_color : null;
@@ -4363,6 +4389,22 @@
   }
   // Only a page that shows an igor-wall loses the bar: another dashboard
   // (one with several tabs, say) keeps its tabs on the same device.
+  function currentView(root) {
+    var cfg = root && root.lovelace && root.lovelace.config;
+    if (!cfg || !Array.isArray(cfg.views)) return undefined;
+    var seg = decodeURIComponent((window.location.pathname.split("/")[2] || ""));
+    for (var i = 0; i < cfg.views.length; i++) {
+      if (cfg.views[i] && String(cfg.views[i].path || "") === seg) return cfg.views[i];
+    }
+    return cfg.views[/^\d+$/.test(seg) ? Number(seg) : 0] || null;
+  }
+  // A wall with `kiosk: true` (a car's head unit): no top bar on its pages,
+  // whatever the device's theme.
+  function viewKiosk(root) {
+    var view = currentView(root);
+    if (!view) return false;
+    try { return /"type":"custom:igor-wall"[^]*?"kiosk":true|"kiosk":true[^]*?"type":"custom:igor-wall"/.test(JSON.stringify(view)); } catch (e) { return false; }
+  }
   function viewHasWall(root) {
     var cfg = root && root.lovelace && root.lovelace.config;
     if (!cfg || !Array.isArray(cfg.views)) return true;
@@ -4377,11 +4419,11 @@
   }
   function wantsNoHeader(root) {
     var v = getComputedStyle(document.documentElement).getPropertyValue("--igor-hide-header").trim().replace(/["']/g, "");
-    if (v !== "1" && v !== "true") return false;
     var q = window.location.search || "";
     if (/[?&](barre|edit)(=|&|$)/.test(q)) return false;
     if (root && root.lovelace && root.lovelace.editMode) return false;
-    return viewHasWall(root);
+    if (v === "1" || v === "true") return viewHasWall(root);
+    return viewKiosk(root);
   }
   function wantsNoMenu(root) {
     var v = getComputedStyle(document.documentElement).getPropertyValue("--igor-hide-menu").trim().replace(/["']/g, "");
