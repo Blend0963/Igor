@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.36.3 — A tablet read from across the room
+
+- The wall's bar takes `size: big`: taller, larger letters, bigger eye, clock and buttons, for a small tablet seen from afar.
+- Light tiles: off is plainly off (a faint icon, no colour); on, the tile takes the bulb's colour, from its colour or, for a white bulb, its warmth (kelvin), with a soft glow.
+- Tiles come alive: a media player is lit as soon as it is on (a projector on its menu, a console on its home screen), in violet, its icon beating while it plays, with what it plays or its source; a fan in cyan, its icon turning at its speed; a mode or switch in amber, gently glowing, « activé »; a light shows its brightness. Off, nothing moves.
+- One shape everywhere, sharp: every card, tile, button, panel, label and window of Igor's cards follows one radius, `--igor-radius`, taken from the theme's card radius; the Igor themes set it to 3 px (the Igor Journal theme went from 6 px, dialogs from 8 px). Only dots stay round.
+
 ## 0.36.2 — A navigator that keeps to its route
 
 - `custom:igor-gps-card`, guided: the arrow stays on the route as long as it is within what the GPS may be off (45 to 120 m), never on a parallel street, and glides along the route itself; a new route only after 5 seconds really off it. Not guided, a parallel road going the same way takes over only after being clearly nearer for 3 seconds (a turn still switches at once). The zoom follows the speed (farther out on fast roads) and comes closer before a turn (`auto_zoom: false` to keep it still). The bottom bar (distance, time, arrival) takes the whole width.
