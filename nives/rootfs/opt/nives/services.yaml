@@ -62,6 +62,17 @@ news:
         number:
           min: 1
           max: 50
+listen:
+  fields:
+    satellite:
+      example: assist_satellite.living_room
+      selector:
+        entity:
+          domain: assist_satellite
+    message:
+      example: Je vous écoute
+      selector:
+        text:
 screen:
   fields:
     action:

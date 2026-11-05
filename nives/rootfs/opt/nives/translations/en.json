@@ -120,6 +120,20 @@
         }
       }
     },
+    "listen": {
+      "name": "Listen",
+      "description": "Asks the ear in the room (igor-ear) to say « Je vous écoute » and take the next sentence as a request, through its own microphone. What the wall's « parler » button calls.",
+      "fields": {
+        "satellite": {
+          "name": "Satellite",
+          "description": "The voice satellite whose ear should listen. Empty: every ear."
+        },
+        "message": {
+          "name": "Message",
+          "description": "What is said before listening."
+        }
+      }
+    },
     "screen": {
       "name": "Desk screen",
       "description": "Orders for the desk screen shared with a PC (igor-ear's screen service): show the PC or the dashboard, sleep, wake, or open a settings window over the dashboard.",

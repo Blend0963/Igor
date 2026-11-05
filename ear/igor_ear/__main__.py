@@ -338,6 +338,9 @@ def run(settings: Settings) -> None:
     utterances: queue.Queue[Utterance] = queue.Queue(maxsize=8)
     pending: deque[Utterance] = deque()
 
+    if settings.act and settings.satellite and settings.ha_url and settings.ha_token:
+        threading.Thread(target=wall_button, args=(settings, say, listener), daemon=True).start()
+
     def worker() -> None:
         last_prune = time.monotonic()
         while True:
@@ -529,6 +532,61 @@ def report(settings: Settings) -> None:
         if e["accepted"]:
             sent = f"  -> heard {e.get('voxtral', '')!r}, answered {e.get('answer') or e.get('error', '')!r}" if e.get("sent") else ""
             print(f"  {e['time']}  [{e['reason']}]  {e.get('text', '')}{sent}")
+
+
+EAR_LISTEN = "igor_ear_listen"
+EAR_SENSOR = "sensor.igor_ear"
+
+
+def wall_button(settings: Settings, say, listener) -> None:
+    """The wall's « parler » button (Igor's `nives.listen`): this ear says
+    « Je vous écoute » and takes the next sentence through its own
+    microphone, the one that hears the room. The wall knows this ear is here
+    by `sensor.igor_ear`, sent every minute."""
+    import json
+
+    from . import ha
+    from .machine import post
+
+    def beat() -> None:
+        while True:
+            try:
+                post(settings.ha_url, settings.ha_token, EAR_SENSOR,
+                     {"state": "on", "attributes": {"friendly_name": "Igor ear", "icon": "mdi:ear-hearing",
+                                                    "satellite": settings.satellite}})
+            except Exception as err:  # noqa: BLE001 - the wall then uses the satellite
+                log.debug("igor-ear sensor not sent: %s", err)
+            time.sleep(60)
+
+    threading.Thread(target=beat, daemon=True).start()
+
+    def answer(data: dict) -> None:
+        message = str(data.get("message") or "Je vous écoute").strip()
+        try:
+            say(message)
+        except Exception as err:  # noqa: BLE001 - it listens all the same
+            log.info("Could not say %r: %s", message, err)
+        listener.listen_now(max(settings.followup_seconds, 8.0) + 2.0)
+
+    delay = 5
+    while True:
+        try:
+            conn = ha.connect(settings.ha_url, settings.ha_token)
+            conn.send(json.dumps({"id": 1, "type": "subscribe_events", "event_type": EAR_LISTEN}))
+            log.info("Listening to the wall's « parler » button (%s)", EAR_LISTEN)
+            delay = 5
+            for raw in conn:
+                msg = json.loads(raw)
+                if msg.get("type") != "event":
+                    continue
+                data = (msg.get("event") or {}).get("data") or {}
+                if data.get("satellite") and data.get("satellite") != settings.satellite:
+                    continue
+                threading.Thread(target=answer, args=(data,), daemon=True).start()
+        except Exception as err:  # noqa: BLE001
+            log.warning("The wall's button: Home Assistant unreachable (%s); retrying in %ss", err, delay)
+        time.sleep(delay)
+        delay = min(delay * 2, 120)
 
 
 def screen(settings: Settings, check: bool = False) -> int:

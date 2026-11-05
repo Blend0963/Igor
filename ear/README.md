@@ -106,6 +106,15 @@ restarts `[audio] restart_with_mic` (linux-voice-assistant by default, which
 would keep the old one). `pactl list short sources`: the microphone should be
 RUNNING; SUSPENDED means nobody reads it.
 
+## The wall's « parler » button
+
+The wall's « parler » button (Igor 0.36.8 or later) goes through this ear when
+it runs: Igor's `nives.listen` service fires `igor_ear_listen`, this ear says
+« Je vous écoute » through the satellite and takes the next sentence, within
+about ten seconds, with its own microphone, without the name. The wall knows
+the ear is there by `sensor.igor_ear`, sent every minute; without it, the
+satellite listens itself, as before.
+
 ## Smart mode: without the name
 
 `[mode] addressing = "smart"` also takes requests said without "Igor". A

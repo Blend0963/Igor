@@ -162,6 +162,17 @@ class Listener:
         if self.on_heard is not None:
             self.on_heard(True, self.name_wait)
 
+    def listen_now(self, seconds: float) -> None:
+        """« Parler » pressed on a wall: the next sentence, said within
+        `seconds`, is the request, without the name (as after Igor's own
+        question)."""
+        self._armed, self._armed_until = None, float("-inf")
+        self._followup_until = self.clock() + seconds
+        self._conversation = None
+        log.info("Asked to listen: the next sentence, for %.0f s, is for Igor", seconds)
+        if self.on_heard is not None:
+            self.on_heard(True, seconds)
+
     def disarm(self) -> None:
         """The order will not be taken here (the satellite listens for it)."""
         self._armed, self._armed_until = None, float("-inf")
