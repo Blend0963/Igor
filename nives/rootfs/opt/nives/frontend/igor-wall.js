@@ -4400,7 +4400,9 @@
   //   favorites:                            # the flag's quick places
   //     - { name: Maison, zone: zone.home }
   //     - { name: Travail, location: [48.85, 2.35] }
-  //   voice: true                           # instructions spoken (the browser's voice), false: silent
+  //   voice: true                           # instructions spoken (the browser's voice), false: silent; the 🔊 button mutes
+  //   speed_limits: true                    # the limit sign from OpenStreetMap when speed_limit_entity says nothing (false: off)
+  //   overpass: https://overpass-api.de/api/interpreter
   //   router: https://router.project-osrm.org  # OSRM (the route); self-hosted possible
   //   geocoder: https://nominatim.openstreetmap.org  # the address search
   // Taken from obd2mqtt's voiture-gps-card (MapLibre, heading up, smooth
@@ -4593,7 +4595,27 @@
     if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
     return { lat: lat, lon: lon, name: (m[3] || "").trim() || "destination" };
   }
-  window.__igorGpsNav = { step: gpsStep, metres: gpsMetres, parse: gpsParseDest };
+  // An OpenStreetMap way's limit (km/h) in the car's direction, or null.
+  var GPS_ZONES = { "FR:urban": 50, "FR:rural": 80, "FR:motorway": 130, "FR:zone30": 30, "FR:zone20": 20, "FR:walk": 20, "FR:living_street": 20, "FR:trunk": 110, "FR:expressway": 110 };
+  function gpsLimitValue(v) {
+    var s = String(v || "").trim();
+    if (!s || s === "none" || s === "signals" || s === "variable") return null;
+    if (GPS_ZONES[s] != null) return GPS_ZONES[s];
+    var m = s.match(/^(\d+)\s*(mph)?/);
+    if (!m) { var z = s.match(/^[A-Z]{2}:(?:zone)?(\d+)$/); return z ? Number(z[1]) : null; }
+    return m[2] ? Math.round(Number(m[1]) * 1.609) : Number(m[1]);
+  }
+  function gpsWayLimit(tags, forward) {
+    var t = tags || {};
+    var dir = forward ? t["maxspeed:forward"] : t["maxspeed:backward"];
+    var v = gpsLimitValue(dir) || gpsLimitValue(t.maxspeed) || gpsLimitValue(t["zone:maxspeed"]) || gpsLimitValue(t["maxspeed:type"]) || gpsLimitValue(t["source:maxspeed"]);
+    if (v) return v;
+    // Without a sign in the map: only what the road's kind says for sure.
+    if (t.highway === "motorway") return 130;
+    if (t.highway === "living_street") return 20;
+    return null;
+  }
+  window.__igorGpsNav = { step: gpsStep, metres: gpsMetres, parse: gpsParseDest, limit: gpsWayLimit };
 
   class IgorGpsCard extends HTMLElement {
     setConfig(config) {
@@ -4649,7 +4671,8 @@
         '</style><ha-card id="card"><div id="map"></div><div class="msg" id="msg">Chargement de la carte…</div>' +
         '<div class="btns"><button id="recenter" title="Recentrer" hidden><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' +
         '<button id="orient" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button>' +
-        '<button id="dest" title="Destination"><ha-icon icon="mdi:flag-checkered"></ha-icon></button></div>' +
+        '<button id="dest" title="Destination"><ha-icon icon="mdi:flag-checkered"></ha-icon></button>' +
+        '<button id="voice" title="Voix du guidage"><ha-icon icon="mdi:volume-high"></ha-icon></button></div>' +
         '<div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div><div class="d" id="navD"></div><div class="t" id="navT"></div></div></div>' +
         '<div class="eta" id="eta" hidden></div>' +
         '<div class="panel" id="panel" hidden><div class="ph"><span>destination</span><button id="pclose" title="Fermer">✕</button></div>' +
@@ -4662,6 +4685,20 @@
       this.$ = $;
       $("card").classList.toggle("noattr", !!this.config.hide_attribution);
       $("dest").addEventListener("click", () => this.openPanel());
+      // The voice, on or off by a touch, kept by this screen.
+      try { this.muted = window.localStorage.getItem("igor-gps-voice") === "off"; } catch (e) { this.muted = false; }
+      var showVoice = () => {
+        $("voice").hidden = this.config.voice === false;
+        $("voice").firstElementChild.setAttribute("icon", this.muted ? "mdi:volume-off" : "mdi:volume-high");
+        $("voice").title = this.muted ? "Voix coupée" : "Voix du guidage";
+      };
+      showVoice();
+      $("voice").addEventListener("click", () => {
+        this.muted = !this.muted;
+        try { window.localStorage.setItem("igor-gps-voice", this.muted ? "off" : "on"); } catch (e) { /* no storage */ }
+        if (this.muted && window.speechSynthesis) window.speechSynthesis.cancel();
+        showVoice();
+      });
       $("pclose").addEventListener("click", () => { $("panel").hidden = true; });
       $("pstop").addEventListener("click", () => { this.setDestination(null, true); $("panel").hidden = true; });
       $("pform").addEventListener("submit", (ev) => { ev.preventDefault(); this.search($("pq").value); });
@@ -4780,7 +4817,10 @@
     overlays() {
       var kmh = Math.round(this.speedMps() * 3.6);
       var le = this.config.speed_limit_entity && this._hass.states[this.config.speed_limit_entity];
-      var limit = le ? parseFloat(le.state) : NaN, over = !isNaN(limit) && kmh > limit + 3;
+      var limit = le ? parseFloat(le.state) : NaN;
+      // The entity says nothing (no sensor, unknown): the limit read here from OpenStreetMap.
+      if (isNaN(limit) && this.config.speed_limits !== false && this.osmLimit) limit = this.osmLimit;
+      var over = !isNaN(limit) && kmh > limit + 3;
       var sp = this.$("speed");
       sp.hidden = this.config.show_speed === false;
       sp.firstElementChild.textContent = kmh;
@@ -4934,6 +4974,7 @@
         this.addTrail(on ? s.point : this.pos, on);
       }
       if (this.route && (!this.navAt || now - this.navAt > 1000)) { this.navAt = now; this.navTick(now, moving); }
+      if (this.config.speed_limits !== false && (!this.limitAt || now - this.limitAt > 1000)) { this.limitAt = now; this.limitTick(now, moving); }
       if (this.follow) {
         var h = this.$("map").clientHeight;
         this.map.jumpTo({ center: this.pos, bearing: this.headingUp ? this.shown : 0, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } });
@@ -4942,6 +4983,44 @@
   }
 
   Object.assign(IgorGpsCard.prototype, {
+    // The limit of the road the car is on: OpenStreetMap's ways around (Overpass),
+    // asked again only when the car leaves the ways already known, at most every 8 s,
+    // and only while it drives (a free service, not asked for a parked car).
+    limitTick(now, moving) {
+      var p = this.pos;
+      if (!p) return;
+      var le = this.config.speed_limit_entity && this._hass.states[this.config.speed_limit_entity];
+      if (le && !isNaN(parseFloat(le.state))) return;
+      var ways = this.limitWays || [], best = null;
+      ways.forEach((w) => {
+        var o = gpsOnLine(p, w.geom);
+        if (!o) return;
+        var along = gpsAlong(o.bearing, this.heading), off = Math.abs(((along - this.heading + 540) % 360) - 180);
+        o.score = o.dist + (moving && off > 50 ? 40 : 0);
+        o.w = w;
+        if (!best || o.score < best.score) best = o;
+      });
+      if (best && best.dist < 25) {
+        // Forward when the car goes the way the way is drawn.
+        var fwd = Math.abs(((best.bearing - this.heading + 540) % 360) - 180) < 90;
+        var v = gpsWayLimit(best.w.tags, fwd);
+        if (v !== this.osmLimit) { this.osmLimit = v; this.overlays(); }
+        return;
+      }
+      if (!moving || this.limitBusy || (this.limitAsked && now - this.limitAsked < 8000)) return;
+      this.limitAsked = now;
+      this.limitBusy = true;
+      var q = '[out:json][timeout:8];way(around:60,' + p[1].toFixed(6) + ',' + p[0].toFixed(6) + ')[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|road)(_link)?$"];out tags geom;';
+      fetch(String(this.config.overpass || "https://overpass-api.de/api/interpreter"), { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } })
+        .then((r) => r.json())
+        .then((j) => {
+          this.limitWays = (j.elements || []).filter((e) => e.type === "way" && Array.isArray(e.geometry) && e.geometry.length > 1)
+            .map((e) => ({ tags: e.tags || {}, geom: e.geometry.map((g) => [g.lon, g.lat]) }));
+          if (!this.limitWays.length) { this.osmLimit = null; this.overlays(); }
+        })
+        .catch(() => { /* no answer: the sign stays as it was */ })
+        .then(() => { this.limitBusy = false; });
+    },
     routeData() {
       return { type: "Feature", geometry: { type: "LineString", coordinates: this.route ? this.route.coords : [] } };
     },
@@ -5061,7 +5140,7 @@
       $("navT").textContent = text;
     },
     say(text) {
-      if (this.config.voice === false || !window.speechSynthesis) return;
+      if (this.config.voice === false || this.muted || !window.speechSynthesis) return;
       try {
         var u = new SpeechSynthesisUtterance(text);
         u.lang = "fr-FR";
