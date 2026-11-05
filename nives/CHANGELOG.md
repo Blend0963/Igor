@@ -4,7 +4,7 @@
 
 - `custom:igor-notifications-card`: Home Assistant's notifications waiting (✕ clears one), and the ones it sent (the phone app, `notify.rappels`, Telegram) with their time, channel, links and position, so a notification lost on the way can still be read.
 - The integration notes every `notify.*` and Telegram message as it goes out, the newest 200 kept on Home Assistant's disk; `nives.notifications` reads them, administrators only.
-- The wall's bar shows a bell with the count of notifications waiting; `notifications: notifs` opens that page, `notifications: false` removes it.
+- The wall's bar shows a bell with the count of notifications waiting, and a red dot when something was sent since the screen last showed the list (administrators); `notifications: notifs` opens that page, `notifications: false` removes it.
 
 ## 0.35.2 — A pencil to edit the dashboard
 

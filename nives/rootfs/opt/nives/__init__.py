@@ -640,6 +640,8 @@ async def _async_register_notifications(hass: HomeAssistant) -> None:
             return
         if log.add(entry):
             store.async_delay_save(lambda: {"entries": list(log.entries)}, 10)
+            # The screens' red dot: only the time, never the message.
+            hass.bus.async_fire("nives_notification", {"at": log.entries[-1]["at"]})
 
     hass.bus.async_listen(EVENT_CALL_SERVICE, _seen)
 

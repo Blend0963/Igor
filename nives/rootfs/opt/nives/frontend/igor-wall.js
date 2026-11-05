@@ -183,6 +183,7 @@
     ".fix.left { border-right: 1px solid var(--line); }",
     ".fix.right { border-left: 1px solid var(--line); }",
     ".fix.bell { padding: 0 10px; gap: 4px; color: var(--wait); cursor: pointer; --mdc-icon-size: 16px; font-size: 11px; } .fix.bell[hidden] { display: none; }",
+    ".fix.bell .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--igor-signal, #e5323b); box-shadow: 0 0 6px var(--igor-signal, #e5323b); display: inline-block; } .fix.bell .dot[hidden] { display: none; }",
     ".fix.pen { padding: 0 10px; color: var(--dim); cursor: pointer; --mdc-icon-size: 17px; } .fix.pen:hover { color: var(--fg); } .fix.pen[hidden] { display: none; }",
     ".lens { width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle, #e1f5fe 0, #4fc3f7 30%, #0277bd 65%, #0d1014 100%); box-shadow: 0 0 0 1.5px #3b4a56; flex: none; }",
     ".eye { width: 18px; height: 18px; flex: none; display: block; }",
@@ -298,6 +299,9 @@
         this.bellEl.hidden = true;
         icon(this.bellEl, "mdi:bell-ring");
         this.bellN = el("b", "", this.bellEl, "");
+        // A red dot: something was sent since this screen last showed the list.
+        this.bellDot = el("i", "dot", this.bellEl);
+        this.bellDot.hidden = true;
         this.bellEl.addEventListener("click", (ev) => {
           ev.stopPropagation();
           var to = this.config.notifications;
@@ -373,11 +377,22 @@
       this._hass = hass;
       if (this.editEl) this.editEl.hidden = !isAdmin(hass);
       if (this.bellEl && !this.unbell && hass.connection) {
-        this.unbell = watchPersistent(hass, (list) => {
-          this.bellEl.hidden = !list.length;
-          this.bellN.textContent = list.length > 9 ? "9+" : String(list.length);
-          this.bellEl.title = list.length + " notification" + (list.length > 1 ? "s" : "") + " à traiter";
-        });
+        this.waitingN = 0;
+        this.unbell = watchPersistent(hass, (list) => { this.waitingN = list.length; this.showBell(); });
+        // What was sent (administrators): the newest one now, then each one
+        // as it goes out (the integration's nives_notification event).
+        if (isAdmin(hass)) {
+          newestSent(hass).then((at) => { this.sentAt = at; this.showBell(); });
+          var stopped = false, unsub = null;
+          try {
+            hass.connection.subscribeEvents((ev) => { this.sentAt = (ev && ev.data && ev.data.at) || new Date().toISOString(); this.showBell(); }, "nives_notification")
+              .then((u) => { if (stopped) u(); else unsub = u; }).catch(() => {});
+          } catch (e) { /* an old Home Assistant: the dot on the next load only */ }
+          this.onSeen = () => this.showBell();
+          window.addEventListener("igor-notifications-seen", this.onSeen);
+          var stopWatch = this.unbell;
+          this.unbell = () => { stopWatch(); stopped = true; if (unsub) unsub(); window.removeEventListener("igor-notifications-seen", this.onSeen); };
+        }
       }
       var igor = igorSensor(hass);
       this.igorEl.textContent = igor ? (IGOR_WORDS[igor.state] || igor.state) : "";
@@ -602,6 +617,15 @@
           });
         });
       }
+    }
+    showBell() {
+      if (!this.bellEl) return;
+      var n = this.waitingN || 0;
+      var fresh = !!this.sentAt && this.sentAt > seenSent();
+      this.bellEl.hidden = !n && !fresh;
+      this.bellN.textContent = n ? (n > 9 ? "9+" : String(n)) : "";
+      this.bellDot.hidden = !fresh;
+      this.bellEl.title = (n ? n + " à traiter" : "") + (n && fresh ? " · " : "") + (fresh ? "nouvelle notification" : "");
     }
     destroy() { if (this.unbell) { this.unbell(); this.unbell = null; } clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); clearTimeout(this.autoTimer); }
   }
@@ -5068,6 +5092,20 @@
     } catch (e) { cb([]); }
     return function () { done = true; if (stop) { try { stop(); } catch (e) { /* gone */ } stop = null; } };
   }
+  // The newest sent notification this screen has shown (kept by the browser).
+  function seenSent() {
+    try { return window.localStorage.getItem("igor-notifications-seen") || ""; } catch (e) { return ""; }
+  }
+  function markSent(at) {
+    if (!at || at <= seenSent()) return;
+    try { window.localStorage.setItem("igor-notifications-seen", at); } catch (e) { /* no storage */ }
+    window.dispatchEvent(new Event("igor-notifications-seen"));
+  }
+  function newestSent(hass) {
+    return hass.callWS({ type: "call_service", domain: "nives", service: "notifications", service_data: { limit: 1 }, return_response: true })
+      .then(function (r) { var e = r && r.response && r.response.entries; return e && e[0] ? e[0].at : ""; })
+      .catch(function () { return ""; });
+  }
   function whenText(iso) {
     var d = new Date(iso);
     if (isNaN(d)) return "";
@@ -5188,6 +5226,7 @@
       if (this.error) { el("div", "empty", this.list, this.error); return; }
       if (this.sent == null) { el("div", "empty", this.list, "…"); return; }
       if (!this.sent.length) { el("div", "empty", this.list, "Aucune notification envoyée pour l'instant."); return; }
+      if (this.isConnected && this.sent[0].at) markSent(this.sent[0].at);
       this.sent.forEach((e) => {
         var b = this.row("", whenText(e.at), e.title, e.message, el("span", "chip", null, channelName(e)));
         if (e.latitude != null && e.longitude != null) {
