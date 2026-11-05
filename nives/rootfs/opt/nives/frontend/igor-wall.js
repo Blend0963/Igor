@@ -2586,8 +2586,8 @@
         "button.giant.on { box-shadow: 0 0 18px var(--tile-on-bg, rgba(217, 164, 65, 0.25)); }",
         // On: a small light in the corner, breathing in the tile's colour.
         "button { position: relative; }",
-        "button.giant.on::after, button.giant.alarm-on::after { content: ''; position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--tile-on, var(--wait)); box-shadow: 0 0 8px var(--tile-on, var(--wait)); animation: igor-vac-breathe 2.4s ease-in-out infinite; }",
-        "button.giant.alarm-on::after { background: var(--bad); box-shadow: 0 0 8px var(--bad); }",
+        "button.giant.on::after, button.giant.alarm-on::after, button.big.on::after, button.big.alarm-on::after { content: ''; position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--tile-on, var(--wait)); box-shadow: 0 0 8px var(--tile-on, var(--wait)); animation: igor-vac-breathe 2.4s ease-in-out infinite; }",
+        "button.alarm-on::after { background: var(--bad); box-shadow: 0 0 8px var(--bad); }",
         "button.giant.alarm-on .s, button.giant.gone .s { display: block; font-size: 11px; margin-top: -6px; }",
         "button.giant.alarm-on .s { color: var(--bad); }",
         // Gone (unavailable): faded, dashed, says so.
