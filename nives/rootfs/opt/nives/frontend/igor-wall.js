@@ -333,7 +333,12 @@
       // The machines' detail closes with its « fermer » only; the clock and
       // « igor » open their own panels.
       // `tap: /a-page` opens that page (the homelab) instead of the detail.
-      this.root.addEventListener("click", () => { if (this.config.tap) navigate(String(this.config.tap)); else this.openDetail(); });
+      this.root.addEventListener("click", () => {
+        var tap = this.config.tap ? String(this.config.tap) : "";
+        // `tap: maison`: a page of this dashboard; `tap: /a/page` anywhere.
+        if (tap) navigate(tap.charAt(0) === "/" ? tap : "/" + window.location.pathname.split("/")[1] + "/" + tap);
+        else this.openDetail();
+      });
       left.addEventListener("click", (ev) => { ev.stopPropagation(); this.togglePop("igor"); });
       this.clockEl.addEventListener("click", (ev) => { ev.stopPropagation(); this.togglePop("time"); });
       this.page = 0;
@@ -1403,6 +1408,19 @@
     if (ll && typeof ll.setEditMode === "function") { ll.setEditMode(true); window.scrollTo(0, 0); return; }
     window.location.assign(window.location.pathname + "?edit=1");
   }
+  // Another dashboard by its name in the sidebar (« Ma banque ») or its
+  // address: the address is looked up, so a button keeps working whatever
+  // the dashboard's address is.
+  function openDashboard(node, hass, name, view) {
+    var want = String(name || "").trim().toLowerCase().replace(/^\//, "");
+    var go = function (path) { navigate("/" + path + (view ? "/" + String(view).replace(/^\//, "") : "")); };
+    if (!hass || !want) return;
+    hass.callWS({ type: "lovelace/dashboards/list" }).then(function (list) {
+      var d = (list || []).find(function (x) { return String(x.title || "").toLowerCase() === want || String(x.url_path || "").toLowerCase() === want; });
+      if (d) go(d.url_path);
+      else node.dispatchEvent(new CustomEvent("hass-notification", { bubbles: true, composed: true, detail: { message: "Tableau de bord introuvable : " + name } }));
+    }).catch(function () { go(want); });
+  }
   function service(hass, name, data, target) {
     // vacuum.start_pause is gone from Home Assistant: start, or pause if cleaning.
     if (name === "vacuum.start_pause" && target && typeof target.entity_id === "string") return vacuumTap(hass, target.entity_id);
@@ -1481,6 +1499,7 @@
   //     - { icon: mdi:menu, name: Menu, menu: true }               # Home Assistant's sidebar
   //     - { icon: mdi:bow-tie, name: Igor, journal: true }         # Igor's conversations, over the page
   //     - { icon: mdi:pencil, name: Modifier, edit: true }          # this dashboard in edit mode (administrators)
+  //     - { icon: mdi:bank, name: Ma banque, dashboard: Ma banque }  # another dashboard by its sidebar name (view: its page)
   class IgorButtonsCard extends IgorCard {
     setConfig(config) {
       if (!config || !Array.isArray(config.buttons) || !config.buttons.length) throw new Error("igor-buttons-card: buttons est requis");
@@ -1517,6 +1536,7 @@
           if (b.tap_action) { haAction(this, b.tap_action); return; }
           if (b.edit) { editDashboard(this, this._hass); return; }
           if (b.journal) { window.dispatchEvent(new CustomEvent("ll-custom", { detail: { igor_journal: true } })); return; }
+          if (b.dashboard) { openDashboard(this, this._hass, b.dashboard, b.view); return; }
           if (b.navigate) { navigate(String(b.navigate)); return; }
           if (b.menu) { this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })); return; }
           if (!this._hass) return;
@@ -5810,7 +5830,7 @@
           var t2 = el("div", "tile nav", l);
           icon(t2, k.icon || "mdi:arrow-right");
           el("span", "", t2, k.name || "");
-          t2.addEventListener("click", () => this.go(k.navigate));
+          t2.addEventListener("click", () => { if (k.dashboard) openDashboard(this, this._hass, k.dashboard, k.view); else this.go(k.navigate); });
         });
       }
     }
