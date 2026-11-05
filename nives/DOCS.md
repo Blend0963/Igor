@@ -104,7 +104,7 @@ The theme also recolours the named colours cards use (Mushroom's `green`, `amber
 
 The integration adds cards for a tablet screen filled to the bottom, in the theme's style. Put them in a **panel** view:
 
-- `custom:igor-wall` takes the whole screen: a one-line **status bar** on top that scrolls slowly through your machines (a touch opens the detail of each), then **columns** of cards that reach the bottom of the screen. Each column lists cards, `heading: <title>` for a small title, and `grow: true` with `card: <a card>` for the card that takes the height left. On a phone the columns stack. `above:` and `below:` take cards across the whole width, over and under the columns (a band that comes and goes with a `conditional` card, a row of apps). `kiosk: true` on a wall hides Home Assistant's top bar on its pages whatever the device's theme (a car's head unit). In the bar, `speed: auto` keeps the line still while it fits and otherwise scrolls it once every `pause` seconds (10 by default); `name: 407` follows IGOR, and `tabs: true` keeps the pages' tabs on a narrow screen (a car's head unit).
+- `custom:igor-wall` takes the whole screen: a one-line **status bar** on top that scrolls slowly through your machines (a touch opens the detail of each), then **columns** of cards that reach the bottom of the screen. Each column lists cards, `heading: <title>` for a small title, and `grow: true` with `card: <a card>` for the card that takes the height left. On a phone the columns stack. `above:` and `below:` take cards across the whole width, over and under the columns (a band that comes and goes with a `conditional` card, a row of apps). On a phone, a bar with `tabs: true` scrolls its tabs sideways and stays on top of the page. `kiosk: true` on a wall hides Home Assistant's top bar on its pages whatever the device's theme (a car's head unit). In the bar, `speed: auto` keeps the line still while it fits and otherwise scrolls it once every `pause` seconds (10 by default); `name: 407` follows IGOR, and `tabs: true` keeps the pages' tabs on a narrow screen (a car's head unit).
 - `custom:igor-journal-card`: Igor's last exchanges (newest on top), what was done and how long each step took, today's count; « historique » opens the full history.
 - `custom:igor-docker-card`: the containers of the Portainer integration, each with its load, memory, image and uptime; a stopped one turns red.
 - `custom:igor-net-card`: a router's traffic down and up over the last hour (`down`, `up`, with `scale: 0.008` for kB/s shown in Mb/s), its gateway and extra figures.
@@ -251,6 +251,10 @@ nives:
 ```
 
 Give the wall, the tablet and the desk screen a Home Assistant account of their own (not yours): an account in `allowed_users` keeps the thread panel open wherever it is logged in. The installed app, which uses Igor's API key rather than a Home Assistant login, is not checked: whoever holds the key is the owner.
+
+### A maintenance lock for a screen
+
+Before lending the car (a garage, an inspection), lock its head unit: create a toggle helper (Settings → Devices & services → Helpers → Create helper → Toggle, e.g. « Voiture maintenance »), add `maintenance: input_boolean.voiture_maintenance` to the screen's walls, and a big button that turns it on. While it is on, every page of Home Assistant on that device is covered by a « MAINTENANCE » screen with a keypad; the disarm code (Igor's options) opens it (`nives.unlock_screen`, the alarm's lockout), or turn the switch off from your phone. Other devices are not affected. Home Assistant itself cannot hide entities from a non-admin account: the lock covers the screen, it does not change what that account could reach otherwise.
 
 ### Names
 

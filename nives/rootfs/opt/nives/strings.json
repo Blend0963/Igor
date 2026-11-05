@@ -183,6 +183,20 @@
     "wifi_scan": {
       "name": "Wi-Fi scan",
       "description": "The Wi-Fi networks around, heard by the OpenWrt access points (a radio may pause a second or two). Administrators only."
+    },
+    "unlock_screen": {
+      "name": "Unlock a screen",
+      "description": "Turns a screen's maintenance lock (an input_boolean) off with the disarm code. Shares the alarm's lockout: five wrong codes in ten minutes refuse every try for ten minutes.",
+      "fields": {
+        "code": {
+          "name": "Code",
+          "description": "The disarm code."
+        },
+        "entity_id": {
+          "name": "Maintenance switch",
+          "description": "The input_boolean that locks the screen."
+        }
+      }
     }
   }
 }

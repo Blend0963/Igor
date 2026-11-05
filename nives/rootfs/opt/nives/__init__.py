@@ -1161,6 +1161,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 
 DISARM_SCHEMA = vol.Schema({vol.Required("code"): vol.All(str, vol.Length(min=1, max=32))})
+# Only an input_boolean can be a screen's maintenance lock.
+UNLOCK_SCREEN_SCHEMA = vol.Schema({
+    vol.Required("code"): vol.All(str, vol.Length(min=1, max=32)),
+    vol.Required("entity_id"): vol.All(str, vol.Match(r"^input_boolean\.[a-z0-9_]+$")),
+})
 
 
 @callback
@@ -1199,6 +1204,34 @@ def _async_register_disarm(hass: HomeAssistant) -> None:
 
     hass.services.async_register(
         DOMAIN, SERVICE_DISARM, _disarm, schema=DISARM_SCHEMA, supports_response=SupportsResponse.OPTIONAL
+    )
+
+    async def _unlock_screen(call: ServiceCall) -> ServiceResponse:
+        """A screen's maintenance lock off (the car's head unit lent to a
+        garage): the same code and the same lockout as the alarm."""
+        sec = security_settings(hass)
+        stored = sec.get(CONF_CODE_HASH)
+        entity_id = str(call.data["entity_id"])
+        if not stored:
+            return {"ok": False, "message": "Aucun code configuré (options d'Igor)."}
+        wait = guard.blocked()
+        if wait:
+            return {"ok": False, "message": f"Trop d'essais : réessayez dans {int(wait // 60) + 1} min."}
+        good = await hass.async_add_executor_job(check_code, str(call.data["code"]), stored)
+        if not good:
+            guard.failed()
+            security_event(hass, "bad_code", user=call.context.user_id, screen=entity_id)
+            persistent_notification.async_create(
+                hass, "Un code erroné a été saisi pour sortir du mode maintenance.", title="Igor · sécurité", notification_id="igor_bad_code"
+            )
+            return {"ok": False, "message": "Code erroné."}
+        guard.succeeded()
+        await hass.services.async_call("input_boolean", "turn_off", {"entity_id": entity_id}, blocking=True)
+        security_event(hass, "screen_unlocked", user=call.context.user_id, screen=entity_id)
+        return {"ok": True, "message": "Déverrouillé."}
+
+    hass.services.async_register(
+        DOMAIN, "unlock_screen", _unlock_screen, schema=UNLOCK_SCREEN_SCHEMA, supports_response=SupportsResponse.OPTIONAL
     )
 
 

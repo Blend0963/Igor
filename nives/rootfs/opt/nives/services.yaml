@@ -55,6 +55,18 @@ disarm:
       selector:
         text:
           type: password
+unlock_screen:
+  fields:
+    code:
+      required: true
+      selector:
+        text:
+          type: password
+    entity_id:
+      required: true
+      selector:
+        entity:
+          domain: input_boolean
 dns_log:
   fields:
     limit:

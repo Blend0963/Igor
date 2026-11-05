@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.35.0 — A maintenance lock for the car, Igor's bar on the phone
+
+- Maintenance lock: a wall with `maintenance: input_boolean.x` makes its device remember that switch; while it is on, every page of Home Assistant on that device lies under a full-screen « MAINTENANCE » lock with a keypad (the car's head unit lent to a garage). It opens with the disarm code (`nives.unlock_screen`, same lockout as the alarm: five wrong codes, ten minutes; each wrong code fires `igor_security` and a notification) or with the switch turned off from another device. The last state is kept on the device, so the lock is up at once after a reload, even before Home Assistant answers. The keyboard reaches the keypad only.
+
+- A wall's bar with `tabs: true` on a phone: the pages' tabs take the bar and scroll sideways (the open one brought into sight), the machines' line and the date give them the room, the clock shows the time alone; the bar stays on top while a stacked wall scrolls. With `kiosk: true`, the phone shows Igor's bar instead of Home Assistant's, as the wall, the PC and the car do.
+
 ## 0.34.1 — On the road, like a navigator
 
 - `igor-gps-card`: the arrow is always on a road, moving or stopped (no more car park exception that left it in a building), within 50 m by default, or what the GPS says it may be off by (`gps_accuracy`, up to 150 m). Only roads a car drives on count: no railway, path, footway or cycleway. A road going the car's way, and the road already taken, win over a slightly nearer one, so a noisy fix no longer jumps to a side street.
