@@ -408,7 +408,14 @@ def run(settings: Settings) -> None:
     away = False
     closed = False
     deaf = False
-    for frame in frames(settings.source):
+    def mic_back() -> None:
+        # The satellite read the old source too: it starts again on the new one.
+        import subprocess
+        for unit in settings.restart_with_mic:
+            subprocess.run(["systemctl", "--user", "restart", unit], timeout=30, check=False)
+            print(f"Microphone back: {unit} restarted", flush=True)
+
+    for frame in frames(settings.source, mic_back):
         # Igor is speaking: its own voice is not a sentence.
         if voice.speaking():
             if not deaf:

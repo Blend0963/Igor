@@ -89,6 +89,9 @@ NAME_REPLIES = (
 @dataclass
 class Settings:
     source: str = "default"
+    # User services restarted when the microphone comes back as a new source
+    # (linux-voice-assistant keeps reading the old one otherwise).
+    restart_with_mic: list[str] = field(default_factory=lambda: ["linux-voice-assistant"])
     model: str = "small"
     device: str = "auto"
     language: str = "fr"
@@ -183,6 +186,8 @@ def load(path: Path = CONFIG) -> Settings:
     mode = data.get("mode", {})
     s = Settings()
     s.source = str(audio.get("source", s.source))
+    if "restart_with_mic" in audio:
+        s.restart_with_mic = [str(u) for u in (audio.get("restart_with_mic") or []) if str(u).strip()]
     s.model = str(stt.get("model", s.model))
     s.device = str(stt.get("device", s.device))
     s.language = str(stt.get("language", s.language))

@@ -47,6 +47,10 @@ spotter = "vosk"
 [audio]
 # The microphone, from `pactl list short sources`.
 source = "alsa_input.usb-Generalplus_Usb_Audio_Device-00.mono-fallback"
+# A USB microphone that drops and comes back is a new source: igor-ear reads
+# it again by itself, and restarts these user services, which would keep
+# reading the old one (empty list: none).
+# restart_with_mic = ["linux-voice-assistant"]
 
 [stt]
 # Local transcription, used only to hear the name; Igor gets the audio
