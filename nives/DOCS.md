@@ -127,6 +127,16 @@ bar:
         - {entity: sensor.bank_spent_this_month, label: dépenses, unit: €, digits: 0}
 ```
 
+**A trip on a map.** `nives.trip_map` (administrators) draws a `device_tracker`'s way between `start` and `end` on a dark OpenStreetMap background and writes it to the media folder (`/media/igor/<name>.png`, never served without a login), for `telegram_bot.send_photo` after a drive. It returns `path`, the number of positions and the distance:
+
+```yaml
+- action: nives.trip_map
+  data: {entity_id: device_tracker.car, start: "{{ trip_start }}", end: "{{ trip_end }}", name: trip}
+  response_variable: map
+- action: telegram_bot.send_photo
+  data: {entity_id: notify.my_chat, file: "{{ map.path }}", caption: "42 km · 38 min"}
+```
+
 **Notifications.** `custom:igor-notifications-card` shows Home Assistant's notifications waiting (each with ✕ to clear it), then the ones Home Assistant **sent**: every `notify.*` call (the phone app, `notify.rappels`…) and every Telegram message, with the time, the channel, the text with its links, and « voir sur la carte » when a position went with it. So a notification lost on the way (a phone without Google, Telegram muted) can still be read. The integration notes them as they go out and keeps the newest 200 on Home Assistant's disk (`.storage/nives_notifications`); the list (`nives.notifications`) is for administrators only, since messages can be personal. Options: `title`, `limit` (30), `waiting: false`, `sent: false`.
 - `custom:igor-journal-card`: Igor's last exchanges (newest on top), what was done and how long each step took, today's count; « historique » opens the full history.
 - `custom:igor-docker-card`: the containers of the Portainer integration, each with its load, memory, image and uptime; a stopped one turns red.

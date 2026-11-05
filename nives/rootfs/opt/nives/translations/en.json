@@ -221,6 +221,28 @@
           "description": "How many notifications, the newest ones."
         }
       }
+    },
+    "trip_map": {
+      "name": "Trip map",
+      "description": "A device tracker's way between two times, drawn on a map and written to the media folder (igor/<name>.png) for telegram_bot.send_photo. Administrators only. Returns the file's path, the number of positions and the distance.",
+      "fields": {
+        "entity_id": {
+          "name": "Tracker",
+          "description": "The device_tracker whose history is drawn."
+        },
+        "start": {
+          "name": "Start",
+          "description": "The trip's start (default: two hours before the end)."
+        },
+        "end": {
+          "name": "End",
+          "description": "The trip's end (default: now)."
+        },
+        "name": {
+          "name": "File name",
+          "description": "The picture's name in the media folder's igor folder."
+        }
+      }
     }
   }
 }
