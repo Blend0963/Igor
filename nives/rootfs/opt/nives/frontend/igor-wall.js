@@ -5177,6 +5177,7 @@
   //   street_names: true                    # the road where the car is, at the bottom (false: off)
   //   dead_reckoning: true                  # in a tunnel, on at the OBD speed (speed_entity) for 3 min (false: off)
   //   traffic: true                         # live traffic and incidents once a TomTom key is set in Igor's options (false: never)
+  //   closure_ask: false                    # a closed road on the route (TomTom): round it at once (true: ask first)
   //   traffic_map: false                    # the traffic over the whole map too (default: only the route, orange where it slows, red where it is jammed)
   //   overpass: https://overpass-api.de/api/interpreter
   //   router: https://router.project-osrm.org  # OSRM (the route); self-hosted possible
@@ -6940,12 +6941,20 @@
       }
       if (!found) { ask.hidden = true; this.closure = null; return; }
       var I = found.i;
+      // A closed road is known only from TomTom, a sure source: the way goes
+      // round it at once, said and shown (`closure_ask: true` asks first).
+      if (this.config.closure_ask !== true) {
+        this.closure = found;
+        ask.hidden = true;
+        this.answerClosure(true, true);
+        return;
+      }
       this.$("askS").textContent = "à " + gpsMetres(found.d) + (I.from && I.to ? " · " + I.from + " → " + I.to : I.text && I.text !== I.label ? " · " + I.text : "");
       if (!this.closure || this.closure.i.id !== I.id) this.say("Route fermée sur votre itinéraire. Voulez-vous l'éviter ?");
       this.closure = found;
       ask.hidden = false;
     },
-    answerClosure(avoid) {
+    answerClosure(avoid, auto) {
       var c = this.closure;
       this.$("ask").hidden = true;
       if (!c) return;
@@ -6955,8 +6964,9 @@
       // The closed road's box, 80 m round it, avoided until the trip ends.
       var lons = c.i.line.map((q) => q[0]), lats = c.i.line.map((q) => q[1]), pad = 0.0008;
       this.avoid = (this.avoid || []).concat([[Math.min.apply(null, lons) - pad, Math.min.apply(null, lats) - pad, Math.max.apply(null, lons) + pad, Math.max.apply(null, lats) + pad]]);
-      this.banner("mdi:routes", "", "Itinéraire qui évite la route fermée…", "wait");
-      this.say("Je cherche un autre chemin");
+      this.bannerHold = performance.now() + 10000;
+      this.banner("mdi:road-variant", "", "Route fermée · déviation" + (c.i.from ? " (" + c.i.from + ")" : ""), "wait");
+      this.say(auto ? "Route fermée sur votre itinéraire, je vous dévie" : "Je cherche un autre chemin");
       this.routeTo();
     },
     showAlert(a) {

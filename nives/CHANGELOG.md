@@ -3,6 +3,7 @@
 ## 0.37.7 — The town's limit, not the motorway's
 
 - `custom:igor-gps-card`, the limit sign: off the roads it has read (a street not loaded yet, OpenStreetMap busy), the card no longer keeps showing the last road's limit as if it were this one's — the motorway's 130 carried into a town. The last limit seen is now carried, greyed, only along the same kind of road; a street with no sign in the map shows what such a street is in France, greyed as probable (50 in a residential street, 20 in a living street); otherwise the sign is barred. `speed_limit_entity` (a sensor polled every 15 s, reading any road within 20 m) is used only when it is less than 45 s old and the card knows no road under the car.
+- A closed road on the route (from TomTom, the only source of closures) is avoided at once, without asking: « Route fermée · déviation » for 10 seconds and « Route fermée sur votre itinéraire, je vous dévie » spoken (`closure_ask: true` brings the question back).
 - « Route déviée · nouvel itinéraire » stays on top for 10 seconds, long enough to be read, before the next instruction takes its place.
 - A road named after its number (« A 10 ») shows the shield alone.
 
