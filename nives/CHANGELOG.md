@@ -1,9 +1,12 @@
 # Changelog
 
-## 0.37.5 — TomTom finds the places
+## 0.37.6 — The traffic on your route
 
 - `custom:igor-gps-card`, the traffic is the route's own: no more green over the whole map; the route stays blue where it flows, turns orange where it slows and red where it is jammed (TomTom's traffic sections of the route), the arrival time counts the jams (« arrivée 21:05 · dont 6 min de bouchons ») and the route is asked again every 3 minutes while driving, so colours and time follow the traffic. The whole map's traffic stays one touch away in the layers list (« Trafic sur toute la carte », `traffic_map: true`).
 - The instruction on top says what to do and how far (« 1,2 km · Prenez la sortie 14 »); the road's name, its numbers and « direction Fleury-les-Aubrais » come only when the turn is near — about 25 seconds ahead: 250 m in town, up to 1.5 km on a motorway.
+
+## 0.37.5 — TomTom finds the places
+
 - The car's services for the head unit's account without making it an administrator: Igor's options get « The car's screen (not administrators) »; the users chosen there may use the live traffic (incidents and the flow tiles), TomTom's routes and the guidance services (`nives.traffic`, `nives.route`, `nives.car_go`, `car_nearby`, `car_stop`); everything else stays for administrators. A screen whose account is refused says so in the layers list instead of « add a TomTom key ».
 - With the TomTom key, « où est la station-service la plus proche ? » asks TomTom: along the route, its places (brands, a richer map of France) with the detour TomTom works out itself, up to 15 minutes; not guided, its places around the car. Without a key, or when TomTom does not answer or finds nothing, OpenStreetMap as before. The GPS card's dots, cameras, lights and limits stay on OpenStreetMap (free and unlimited; TomTom's free quota would not last a drive).
 - `custom:igor-gps-card`: the third Overpass mirror (maps.mail.ru), whose certificate browsers refuse (« could not be loaded securely »), is replaced by overpass.kumi.systems.
