@@ -321,10 +321,9 @@
       for (var c = 0; c < copies; c++) this.buildCopy(c);
       if (this.auto) {
         this.copy2 = Array.prototype.slice.call(this.run.children, this.segs.length);
-        this.run.addEventListener("animationend", () => {
-          this.run.style.animation = "none";
-          this.autoTimer = setTimeout(() => this.autoTurn(), (Number(this.config.pause) || 10) * 1000);
-        });
+        // The turn's end only puts the line back; the next turn is timed by
+        // autoTurn itself (an animation ends unseen while its page is away).
+        this.run.addEventListener("animationend", () => { this.run.style.animation = "none"; });
         this.autoTimer = setTimeout(() => this.autoTurn(), 3000);
       } else if (!this.paged) {
         this.run.classList.add("roll");
@@ -474,7 +473,11 @@
     // Pages: as many machines as the line holds, the next ones 8 s later.
     // One turn if the line is longer than its lane (at about 40 px a second).
     autoTurn() {
-      if (!this.root.isConnected) return;
+      clearTimeout(this.autoTimer);
+      if (this.dead) return;
+      // Another page shows (Home Assistant keeps this one aside): the turns
+      // go on as soon as it is back, never stop for good.
+      if (!this.root.isConnected || !this.lane.clientWidth) { this.autoTimer = setTimeout(() => this.autoTurn(), 2000); return; }
       var wide = this.segs.reduce((w, sg) => w + sg.offsetWidth, 0);
       var over = wide > this.lane.clientWidth + 2;
       this.copy2.forEach((sg) => { sg.hidden = !over; });
@@ -482,7 +485,9 @@
       if (!over || still) { this.autoTimer = setTimeout(() => this.autoTurn(), 5000); return; }
       this.run.style.animation = "none";
       void this.run.offsetWidth;
-      this.run.style.animation = "roll " + Math.max(6, wide / 40).toFixed(1) + "s linear 1";
+      var secs = Math.max(6, wide / 40);
+      this.run.style.animation = "roll " + secs.toFixed(1) + "s linear 1";
+      this.autoTimer = setTimeout(() => { this.run.style.animation = "none"; this.autoTurn(); }, (secs + (Number(this.config.pause) || 10)) * 1000);
     }
     nextPage(first) {
       if (!this.segs.length) return;
@@ -682,7 +687,7 @@
       this.tabInSight();
       this.bellEl.title = (n ? n + " à traiter" : "") + (n && fresh ? " · " : "") + (fresh ? "nouvelle notification" : "");
     }
-    destroy() { if (this.unbell) { this.unbell(); this.unbell = null; } clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); clearTimeout(this.autoTimer); }
+    destroy() { this.dead = true; if (this.unbell) { this.unbell(); this.unbell = null; } clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); clearTimeout(this.autoTimer); }
   }
 
   // ===== igor-wall: the whole screen =====

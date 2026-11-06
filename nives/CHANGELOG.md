@@ -3,6 +3,7 @@
 ## 0.37.0 — Igor opens its eye
 
 - An opening, after Home Assistant's own logo: the first time an Igor wall shows after the app starts, Igor's eye opens over it — the pillar rises, the red ring draws itself, the pupil lights and beats twice, « IGOR » closes in below — and fades into the dashboard after 3 seconds. Once per session (a page reload does not replay it); a touch skips it; `intro: false` on a wall turns it off. Home Assistant's own start-up logo, in its app and while its interface loads, cannot be replaced.
+- The bar's line with `speed: auto` no longer freezes on a page that was left during its pause (Home Assistant keeps a page aside, and its next turn was dropped for good): turns go on as soon as the page is back, on every page.
 
 ## 0.36.9 — Read from the driver's seat
 
