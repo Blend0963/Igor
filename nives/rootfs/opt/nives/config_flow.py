@@ -28,6 +28,8 @@ from .const import (
     CONF_ALARM_ACTIVE,
     CONF_NEW_CODE,
     CONF_CODE_HASH,
+    CONF_TRAFFIC_KEY,
+    CONF_ALLOWED_USERS,
     DEFAULT_API_URL,
     DEFAULT_SHARED_MEMORY,
     DEFAULT_USER_ID,
@@ -210,8 +212,24 @@ class OptionsFlow(config_entries.OptionsFlow):
                     user_input[CONF_CODE_HASH] = await self.hass.async_add_executor_job(hash_code, code)
                 elif current.get(CONF_CODE_HASH):
                     user_input[CONF_CODE_HASH] = current[CONF_CODE_HASH]
+                # The traffic key: never shown back. Left empty, the key
+                # already set stays; a dash removes it.
+                key = str(user_input.pop(CONF_TRAFFIC_KEY, "") or "").strip()
+                if key == "-":
+                    key = ""
+                elif not key:
+                    key = str(current.get(CONF_TRAFFIC_KEY) or "")
+                if key:
+                    user_input[CONF_TRAFFIC_KEY] = key
                 return self.async_create_entry(title="", data=user_input)
 
+        # Home Assistant's people, to pick who Igor still answers while the
+        # key is away (no name to type wrong); names set in YAML stay listed.
+        users = [u for u in await self.hass.auth.async_get_users() if not u.system_generated and u.is_active]
+        allowed_now = [str(a) for a in current.get(CONF_ALLOWED_USERS) or []]
+        choices = [selector.SelectOptionDict(value=u.id, label=u.name or u.id) for u in users]
+        known = {u.id for u in users}
+        choices += [selector.SelectOptionDict(value=a, label=a) for a in allowed_now if a not in known]
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -243,6 +261,15 @@ class OptionsFlow(config_entries.OptionsFlow):
                         description={"suggested_value": current.get(CONF_ALARM_ACTIVE)},
                     ): selector.EntitySelector(selector.EntitySelectorConfig(domain="binary_sensor")),
                     vol.Optional(CONF_NEW_CODE, default=""): selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+                    ),
+                    vol.Optional(
+                        CONF_ALLOWED_USERS,
+                        description={"suggested_value": allowed_now},
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(options=choices, multiple=True, custom_value=True)
+                    ),
+                    vol.Optional(CONF_TRAFFIC_KEY, default=""): selector.TextSelector(
                         selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
                     ),
                 }

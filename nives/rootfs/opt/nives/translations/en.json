@@ -41,7 +41,9 @@
           "key_entity": "Key",
           "alarm_entity": "Alarm",
           "alarm_active_entity": "Alarm in progress",
-          "new_disarm_code": "New disarm code"
+          "new_disarm_code": "New disarm code",
+          "traffic_key": "TomTom key (live traffic)",
+          "allowed_users": "Still answered while the key is away"
         },
         "data_description": {
           "shared_memory": "On (recommended): everyone shares one memory, so something you tell a voice satellite is also known in the app and on the dashboard, and the other way round. Off: each Home Assistant user gets a memory of their own, and voice satellites and automations use the memory named below.",
@@ -50,7 +52,9 @@
           "key_entity": "A binary sensor that is on while the key is there (a USB key's presence). Off, unknown or unavailable: the screens lock and Igor refuses every request.",
           "alarm_entity": "What arms the alarm: an input_boolean, a switch or an alarm panel. The disarm code turns it off.",
           "alarm_active_entity": "A binary sensor that is on while the alarm is going off: the screens show the alert.",
-          "new_disarm_code": "Digits only, at least 4. Only a salted hash is kept, never the code. Leave empty to keep the current code."
+          "new_disarm_code": "Digits only, at least 4. Only a salted hash is kept, never the code. Leave empty to keep the current code.",
+          "traffic_key": "Optional. Shows traffic, closed roads and incidents on the wall's GPS card (a free key from developer.tomtom.com). Kept in Home Assistant only, never sent to a dashboard. Leave empty to keep the current key; a single dash (-) removes it.",
+          "allowed_users": "Home Assistant users Igor still answers while the key is unplugged (the car's account, your phone). Never a voice satellite or an automation: they have no user."
         }
       }
     },
@@ -255,6 +259,46 @@
         "name": {
           "name": "File name",
           "description": "The picture's name in the media folder's igor folder."
+        }
+      }
+    },
+    "traffic": {
+      "name": "Traffic",
+      "description": "Traffic incidents (closed roads, roadworks, accidents, jams) around a point, from TomTom, for the GPS card. Needs a TomTom key in Igor's options; without one it answers enabled: false. Administrators only. Returns them to the caller.",
+      "fields": {
+        "latitude": {
+          "name": "Latitude",
+          "description": "Where to look."
+        },
+        "longitude": {
+          "name": "Longitude",
+          "description": "Where to look."
+        },
+        "radius_km": {
+          "name": "Radius",
+          "description": "How far around the point, in kilometres."
+        }
+      }
+    },
+    "route": {
+      "name": "Route with traffic",
+      "description": "A driving route that knows the live traffic and goes round closed roads (TomTom, the key in Igor's options), for the GPS card. Administrators only. Without a key it answers enabled: false.",
+      "fields": {
+        "from": {
+          "name": "From",
+          "description": "[latitude, longitude]."
+        },
+        "to": {
+          "name": "To",
+          "description": "[latitude, longitude]."
+        },
+        "heading": {
+          "name": "Heading",
+          "description": "Where the car faces, in degrees."
+        },
+        "avoid": {
+          "name": "Avoid",
+          "description": "Boxes to go round: [min longitude, min latitude, max longitude, max latitude]."
         }
       }
     }

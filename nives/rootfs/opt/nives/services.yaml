@@ -129,3 +129,43 @@ dns_map:
 wifi_clients: {}
 net_map: {}
 wifi_scan: {}
+traffic:
+  fields:
+    latitude:
+      required: true
+      selector:
+        number:
+          min: -85
+          max: 85
+          step: any
+    longitude:
+      required: true
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any
+    radius_km:
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 50
+route:
+  fields:
+    from:
+      required: true
+      selector:
+        object:
+    to:
+      required: true
+      selector:
+        object:
+    heading:
+      selector:
+        number:
+          min: 0
+          max: 360
+    avoid:
+      selector:
+        object:
