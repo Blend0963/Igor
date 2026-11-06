@@ -5177,6 +5177,7 @@
   //   street_names: true                    # the road where the car is, at the bottom (false: off)
   //   dead_reckoning: true                  # in a tunnel, on at the OBD speed (speed_entity) for 3 min (false: off)
   //   traffic: true                         # live traffic and incidents once a TomTom key is set in Igor's options (false: never)
+  //   traffic_map: false                    # the traffic over the whole map too (default: only the route, orange where it slows, red where it is jammed)
   //   overpass: https://overpass-api.de/api/interpreter
   //   router: https://router.project-osrm.org  # OSRM (the route); self-hosted possible
   //   geocoder: https://nominatim.openstreetmap.org  # the address search
@@ -5431,9 +5432,16 @@
     "sharp left": "franchement à gauche", "sharp right": "franchement à droite", straight: "tout droit", uturn: "demi-tour" };
   var GPS_ICON = { left: "mdi:arrow-left-top", right: "mdi:arrow-right-top", "slight left": "mdi:arrow-top-left", "slight right": "mdi:arrow-top-right",
     "sharp left": "mdi:arrow-left-bottom", "sharp right": "mdi:arrow-right-bottom", straight: "mdi:arrow-up", uturn: "mdi:arrow-u-left-top" };
+  // The instruction, with the road's name and the sign's places (`names`),
+  // or short: what to do only, the names shown just before the turn.
   function gpsStep(st) {
+    var full = gpsStepText(st, true), short = gpsStepText(st, false);
+    full.short = short.text;
+    return full;
+  }
+  function gpsStepText(st, names) {
     var m = st.maneuver || {}, type = m.type || "", mod = m.modifier || "straight", side = GPS_SIDE[mod] || "";
-    var road = st.name || st.ref || "";
+    var road = names ? st.name || st.ref || "" : "";
     var on = road ? " sur " + road : "";
     var text, ic = GPS_ICON[mod] || "mdi:arrow-up";
     if (type === "depart") { text = "Partez" + (road ? " par " + road : ""); ic = "mdi:navigation-variant"; }
@@ -5447,7 +5455,7 @@
     else if (type === "on ramp") { text = "Prenez la bretelle" + (mod !== "straight" ? " " + side : "") + on; }
     else if (type === "off ramp") {
       // As the sign says: « Sortie 12 », or « Sortie Porte Dauphine » when it has no number.
-      var dx = gpsDirections(st), first = dx.to.split(", ")[0];
+      var dx = gpsDirections(st), first = names ? dx.to.split(", ")[0] : "";
       text = "Prenez la sortie" + (st.exits ? " " + String(st.exits).split(";")[0] : first ? " " + first : mod !== "straight" ? " " + side : "") + (st.exits || !first ? on : "");
       ic = /left/.test(mod) ? "mdi:arrow-top-left" : "mdi:arrow-top-right";
     }
@@ -5472,7 +5480,20 @@
     var m = String(x.maneuver || "");
     var ic = GPS_TT_ICON[m] || (/^ROUNDABOUT/.test(m) ? "mdi:rotate-left" : /LEFT/.test(m) ? "mdi:arrow-left-top" : /RIGHT/.test(m) ? "mdi:arrow-right-top" : "mdi:arrow-up");
     var text = String(x.text || "").trim() || (/^ARRIVE/.test(m) ? "Arrivée à destination" : "Continuez");
-    return { text: text, icon: ic, road: x.road || "", refs: x.refs || [], to: x.to || "", exit: x.exit || "" };
+    var side = /LEFT/.test(m) ? "à gauche" : /RIGHT/.test(m) ? "à droite" : "";
+    var n = Number(x.exit) || 0;
+    var short = /^ARRIVE|WAYPOINT/.test(m) ? text
+      : m === "DEPART" ? "Partez"
+      : /^ROUNDABOUT/.test(m) ? "Au rond-point" + (n ? ", prenez la " + (n === 1 ? "1re" : n + "e") + " sortie" : "")
+      : /EXIT/.test(m) ? "Prenez la sortie" + (x.exit ? " " + x.exit : side ? " " + side : "")
+      : /UTURN/.test(m) ? "Faites demi-tour"
+      : /^SHARP/.test(m) ? "Tournez franchement " + side
+      : /^TURN/.test(m) ? "Tournez " + side
+      : /^(KEEP|BEAR)/.test(m) ? "Restez " + side
+      : /ENTER|ENTRANCE/.test(m) ? "Insérez-vous"
+      : m === "STRAIGHT" ? "Continuez tout droit"
+      : text;
+    return { text: text, short: short, icon: ic, road: x.road || "", refs: x.refs || [], to: x.to || "", exit: x.exit || "" };
   }
   function gpsMetres(m) {
     if (m >= 1000) return (m >= 10000 ? Math.round(m / 1000) : (Math.round(m / 100) / 10).toString().replace(".", ",")) + " km";
@@ -6002,6 +6023,12 @@
           map.addLayer({ id: "route", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
             paint: { "line-color": "#3b8cff", "line-width": 7 } });
         }
+        // The route's slow stretches (TomTom): orange when it slows, red when it is jammed.
+        if (!map.getSource("routejam")) {
+          map.addSource("routejam", { type: "geojson", data: this.routeJamData() });
+          map.addLayer({ id: "routejam", type: "line", source: "routejam", layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": ["match", ["get", "level"], 2, "#e5323b", "#f08c1a"], "line-width": 7 } });
+        }
         if (!map.getSource("trail")) {
           map.addSource("trail", { type: "geojson", data: this.trailData() });
           map.addLayer({ id: "trail", type: "line", source: "trail", layout: { "line-cap": "round", "line-join": "round" },
@@ -6291,6 +6318,14 @@
         .catch(() => { /* no answer: the sign stays as it was, asked again shortly */ })
         .then(() => { this.limitBusy = false; });
     },
+    routeJamData() {
+      var R = this.route, feats = [];
+      (R && R.jams || []).forEach((j) => {
+        var pts = R.coords.slice(Math.max(0, j.start), Math.min(R.coords.length, j.end + 1));
+        if (pts.length > 1) feats.push({ type: "Feature", geometry: { type: "LineString", coordinates: pts }, properties: { level: j.level } });
+      });
+      return { type: "FeatureCollection", features: feats };
+    },
     routeData() {
       return { type: "Feature", geometry: { type: "LineString", coordinates: this.route ? this.route.coords : [] } };
     },
@@ -6361,6 +6396,8 @@
         this.destState = v;
         this._hass.callService("input_text", "set_value", { entity_id: this.config.destination, value: v }).catch(() => {});
       }
+      var jclr = this.map && this.map.getSource("routejam");
+      if (jclr) jclr.setData(this.routeJamData());
       if (this.destMarker) { this.destMarker.remove(); this.destMarker = null; }
       (this.viaMarkers || []).forEach((m) => m.remove());
       this.viaMarkers = [];
@@ -6404,7 +6441,7 @@
         if (this.dest !== d) return;
         if (tt && tt.ok && tt.route) {
           var R0 = tt.route;
-          this.useRoute(R0.coords, R0.steps.map((x) => Object.assign(gpsTomTomStep(x), { loc: x.loc })), R0.duration, "tomtom");
+          this.useRoute(R0.coords, R0.steps.map((x) => Object.assign(gpsTomTomStep(x), { loc: x.loc })), R0.duration, "tomtom", { jams: R0.jams || [], delay: R0.delay || 0 });
           return;
         }
         if (this.avoid && this.avoid.length) this.banner("mdi:road-variant", "", "Impossible d'éviter la route fermée" + (tt && tt.error ? " (" + tt.error + ")" : ""), "wait");
@@ -6429,7 +6466,7 @@
       }));
       this.useRoute(r.geometry.coordinates, raw, r.duration || 0, "osrm");
     },
-    useRoute(coords, raw, duration, source) {
+    useRoute(coords, raw, duration, source, extra) {
       var cum = [0];
       for (var i = 1; i < coords.length; i++) cum.push(cum[i - 1] + gpsDist(coords[i - 1], coords[i]));
       var steps = [];
@@ -6440,11 +6477,13 @@
         s.at = o ? cum[o.seg - 1] + gpsDist(coords[o.seg - 1], o.point) : 0;
         steps.push(s);
       });
-      this.route = { coords: coords, cum: cum, steps: steps, total: cum[cum.length - 1], duration: duration, source: source };
+      this.route = { coords: coords, cum: cum, steps: steps, total: cum[cum.length - 1], duration: duration, source: source, jams: extra && extra.jams || [], delay: extra && extra.delay || 0 };
       this.seg = 1;
       this.showStreet();
       var src = this.map && this.map.getSource("route");
       if (src) src.setData(this.routeData());
+      var jsrc = this.map && this.map.getSource("routejam");
+      if (jsrc) jsrc.setData(this.routeJamData());
       this.navTick(performance.now(), false);
     },
     banner(icon, dist, text, cls, step) {
@@ -6459,7 +6498,7 @@
       x.innerHTML = "";
       var refs = (step && step.refs) || [], to = (step && step.to) || "";
       // Not again what the instruction already says.
-      if (to && text.indexOf(to.split(", ")[0]) >= 0 && !refs.length) to = to.split(", ").slice(1).join(", ");
+      if (to && text.indexOf(to.split(", ")[0]) >= 0) to = to.split(", ").slice(1).join(", ");
       refs.forEach(function (r) { var b = document.createElement("span"); b.className = "shield " + gpsShield(r); b.textContent = r; x.appendChild(b); });
       if (to) x.appendChild(document.createTextNode("direction " + to));
       x.hidden = !refs.length && !to;
@@ -6503,6 +6542,12 @@
         return;
       }
       var d = this.dest;
+      // TomTom's route, with its traffic, asked again every 3 minutes: the
+      // jams move, and so do the colours and the arrival time.
+      if (R.source === "tomtom" && moving && now - (this.routeAt || 0) > 180000 && !this.routeBusy) {
+        this.routeBusy = true;
+        Promise.resolve(this.routeTo()).catch(() => {}).then(() => { this.routeBusy = false; });
+      }
       // The stop reached: said once, then the way goes on to the destination
       // (the stop leaves the destination, so a new route does not go back).
       if (d && d.via && d.via.length && gpsDist(p, [d.via[0].lon, d.via[0].lat]) < 50) {
@@ -6527,7 +6572,11 @@
       this.nextDist = next ? next.at - along : null;
       if (next) {
         var dn = next.at - along;
-        this.banner(next.icon, gpsMetres(dn), next.text, "", next);
+        // What to do and how far, always; the road's name and the sign's
+        // places (« direction Fleury-les-Aubrais ») only when the turn comes
+        // (about 25 s ahead: 250 m in town, up to 1.5 km on a motorway).
+        var soon = dn < Math.max(250, Math.min(1500, this.speedMps() * 25));
+        this.banner(next.icon, gpsMetres(dn), soon ? next.text : next.short || next.text, "", soon ? next : null);
         // Spoken at 1 km on fast roads, 400 m, 100 m, and at the turn.
         var key = next.at.toFixed(0), sp = this.spoken[key] || 0;
         var stage = dn < 40 ? 3 : dn < 130 ? 2 : dn < 450 ? 1 : 0;
@@ -6554,6 +6603,8 @@
       else fig(String(Math.max(1, Math.round(secs / 60))), "min");
       var sp2 = document.createElement("span");
       var at = document.createElement("i"); at.textContent = "arrivée " + hhmm(eta); sp2.appendChild(at);
+      var jamMin = R.source === "tomtom" && R.delay >= 60 ? Math.round(R.delay / 60) : 0;
+      if (jamMin) at.textContent += " · dont " + jamMin + " min de bouchons";
       if (d && d.name !== "destination") sp2.appendChild(document.createTextNode(d.name + (d.via && d.via.length ? " · étape " + d.via[0].name : "")));
       e.appendChild(sp2);
       // The road where the car is, at the end of the line.
@@ -6568,10 +6619,10 @@
       try { saved = JSON.parse(window.localStorage.getItem("igor-gps-layers") || "null"); } catch (e) { saved = null; }
       var pois = Array.isArray(c.pois) ? c.pois : GPS_POI_DEFAULT;
       var cam = ["radar", "zone", "off"].indexOf(c.cameras) >= 0 ? c.cameras : c.cameras === false ? "off" : "zone";
-      this.layers = { cameras: cam, traffic: c.traffic !== false, incidents: c.traffic !== false };
+      this.layers = { cameras: cam, trafficMap: c.traffic_map === true, incidents: c.traffic !== false };
       Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") this.layers[k] = pois.indexOf(k) >= 0; });
       if (saved && typeof saved === "object") Object.keys(this.layers).forEach((k) => { if (saved[k] !== undefined) this.layers[k] = saved[k]; });
-      if (c.traffic === false) { this.layers.traffic = false; this.layers.incidents = false; }
+      if (c.traffic === false) { this.layers.trafficMap = false; this.layers.incidents = false; }
       this.applyLayers();
     },
     saveLayers() {
@@ -6618,7 +6669,7 @@
         head("Circulation en direct");
         var why = this.traffic && this.traffic.denied ? "Ce compte n'y a pas accès : le choisir dans les options d'Igor (« The car's screen »)"
           : !this.trafficOn() ? "Ajouter une clé TomTom dans les options d'Igor" : this.traffic.error || "";
-        toggle("traffic", "Trafic (fluide, ralenti, bouché)", "#e5823b", why);
+        toggle("trafficMap", "Trafic sur toute la carte", "#e5823b", why || "Sinon, seulement sur l'itinéraire : orange ralenti, rouge bouché");
         toggle("incidents", "Routes fermées, travaux, accidents", "#e5323b", why);
       }
     },
@@ -6628,7 +6679,7 @@
       var kinds = this.poiKinds().filter((k) => k !== "camera" || this.layers.cameras === "radar");
       map.setFilter("pois", ["in", ["get", "kind"], ["literal", kinds.filter((k) => k !== "signals")]]);
       map.setFilter("pois-sig", ["in", ["get", "kind"], ["literal", kinds.indexOf("signals") >= 0 ? ["signals"] : []]]);
-      if (map.getLayer("traffic")) map.setLayoutProperty("traffic", "visibility", this.layers.traffic ? "visible" : "none");
+      if (map.getLayer("traffic")) map.setLayoutProperty("traffic", "visibility", this.layers.trafficMap ? "visible" : "none");
       ["incidents", "incidents-closed", "incidents-pt"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", this.layers.incidents ? "visible" : "none"); });
     },
     // The card's layers on the base map (again after a change of style).

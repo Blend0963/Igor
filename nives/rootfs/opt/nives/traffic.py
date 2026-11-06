@@ -147,6 +147,8 @@ def route_params(key: str, heading: float | None) -> dict[str, str]:
         "instructionsType": "text",
         "language": "fr-FR",
         "routeRepresentation": "polyline",
+        # Where on the way the traffic is slow: coloured on the card's route.
+        "sectionType": "traffic",
     }
     if heading is not None:
         params["vehicleHeading"] = str(int(heading) % 360)
@@ -181,14 +183,18 @@ def parse_route(body: Any) -> dict[str, Any] | None:
         return None
     r = routes[0]
     coords: list[list[float]] = []
+    # TomTom's point index (over all legs) → the index in `coords` (repeats dropped).
+    index: list[int] = []
     for leg in r.get("legs") or []:
         for pt in (leg or {}).get("points") or []:
             try:
                 q = [float(pt["longitude"]), float(pt["latitude"])]
             except (KeyError, TypeError, ValueError):
+                index.append(max(0, len(coords) - 1))
                 continue
             if not coords or coords[-1] != q:
                 coords.append(q)
+            index.append(len(coords) - 1)
     if len(coords) < 2:
         return None
     summary = r.get("summary") or {}
@@ -214,8 +220,25 @@ def parse_route(body: Any) -> dict[str, Any] | None:
                 "to": str(ins.get("signpostText") or "")[:80],
             }
         )
+    jams = []
+    for sec in r.get("sections") or []:
+        if not isinstance(sec, dict) or str(sec.get("sectionType") or "").upper() != "TRAFFIC":
+            continue
+        try:
+            a, b = int(sec["startPointIndex"]), int(sec["endPointIndex"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not index or a >= len(index):
+            continue
+        cat = str(sec.get("simpleCategory") or "").upper()
+        magnitude = int(sec.get("magnitudeOfDelay") or 0) if str(sec.get("magnitudeOfDelay") or "0").isdigit() else 0
+        # Slow (orange) or very slow (red): TomTom's magnitude, 3 and up, or a closed road, is red.
+        level = 2 if magnitude >= 3 or cat == "ROAD_CLOSURE" else 1
+        jams.append({"start": index[a], "end": index[min(b, len(index) - 1)], "level": level,
+                     "delay": int(sec.get("delayInSeconds") or 0), "kind": cat.lower()})
     return {
         "coords": coords,
+        "jams": jams,
         "distance": float(summary.get("lengthInMeters") or 0),
         "duration": float(summary.get("travelTimeInSeconds") or 0),
         "delay": float(summary.get("trafficDelayInSeconds") or 0),
