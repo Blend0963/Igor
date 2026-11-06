@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.37.1 — Intelligent Governance & Operations Relay
+
+- The opening says what IGOR stands for: once the eye is open and the name in, « INTELLIGENT GOVERNANCE & OPERATIONS RELAY » is typed under it, initials in red, with a red cursor; the opening lasts 3.6 seconds (a touch still skips it).
+
 ## 0.37.0 — Igor opens its eye
 
 - An opening, after Home Assistant's own logo: the first time an Igor wall shows after the app starts, Igor's eye opens over it — the pillar rises, the red ring draws itself, the pupil lights and beats twice, « IGOR » closes in below — and fades into the dashboard after 3 seconds. Once per session (a page reload does not replay it); a touch skips it; `intro: false` on a wall turns it off. Home Assistant's own start-up logo, in its app and while its interface loads, cannot be replaced.
