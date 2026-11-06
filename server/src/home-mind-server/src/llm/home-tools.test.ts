@@ -100,3 +100,27 @@ describe("home tools", () => {
     expect(await handleHomeTool(ha, "get_config_item", { entity_id: "light.x" })).toHaveProperty("error");
   });
 });
+
+describe("car tools", () => {
+  it("drive Igor's integration and hand back its answer", async () => {
+    const callService = vi.fn().mockResolvedValue({ service_response: { ok: true, minutes: 15 } });
+    const ha = { callService } as unknown as HomeAssistantClient;
+    expect(await handleHomeTool(ha, "car_navigate", { destination: "la maison" })).toEqual({ ok: true, minutes: 15 });
+    expect(callService).toHaveBeenLastCalledWith("nives", "car_go", undefined, { query: "la maison", return_response: true });
+    await handleHomeTool(ha, "car_navigate", { stop: true });
+    expect(callService).toHaveBeenLastCalledWith("nives", "car_go", undefined, { stop: true, return_response: true });
+    await handleHomeTool(ha, "car_find_nearby", { kind: "fuel" });
+    expect(callService).toHaveBeenLastCalledWith("nives", "car_nearby", undefined, { kind: "fuel", return_response: true });
+    await handleHomeTool(ha, "car_add_stop", { choice: 2 });
+    expect(callService).toHaveBeenLastCalledWith("nives", "car_stop", undefined, { choice: 2, return_response: true });
+    await handleHomeTool(ha, "car_add_stop", { latitude: 47.9, longitude: 1.9, name: "Total" });
+    expect(callService).toHaveBeenLastCalledWith("nives", "car_stop", undefined, { latitude: 47.9, longitude: 1.9, name: "Total", return_response: true });
+    expect(await handleHomeTool(ha, "car_navigate", {})).toHaveProperty("error");
+  });
+
+  it("says the car is not set up when the service is missing", async () => {
+    const ha = { callService: vi.fn().mockRejectedValue(new Error("HA API error 400: Service not found")) } as unknown as HomeAssistantClient;
+    const out = (await handleHomeTool(ha, "car_find_nearby", { kind: "fuel" })) as { error: string };
+    expect(out.error).toMatch(/not set up/);
+  });
+});

@@ -73,6 +73,11 @@ from .const import (
     SERVICE_TRAFFIC,
     SERVICE_ROUTE,
     TRAFFIC_TILE_URL,
+    CONF_CAR_TRACKER,
+    CONF_CAR_DESTINATION,
+    SERVICE_CAR_GO,
+    SERVICE_CAR_NEARBY,
+    SERVICE_CAR_STOP,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -472,6 +477,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     _async_register_trip_map(hass)
     _async_register_traffic(hass)
     _async_register_route(hass)
+    _async_register_car(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await _async_setup_update_watch(hass, entry)
@@ -856,6 +862,9 @@ ROUTE_SCHEMA = vol.Schema(
         vol.Required("from"): vol.All(vol.ExactSequence([vol.Coerce(float), vol.Coerce(float)])),
         vol.Required("to"): vol.All(vol.ExactSequence([vol.Coerce(float), vol.Coerce(float)])),
         vol.Optional("heading"): vol.All(vol.Coerce(float), vol.Range(min=0, max=360)),
+        vol.Optional("via", default=[]): vol.All(
+            cv.ensure_list, vol.Length(max=3), [vol.ExactSequence([vol.Coerce(float), vol.Coerce(float)])]
+        ),
         vol.Optional("avoid", default=[]): vol.All(
             cv.ensure_list, vol.Length(max=10), [vol.ExactSequence([vol.Coerce(float)] * 4)]
         ),
@@ -880,14 +889,15 @@ def _async_register_route(hass: HomeAssistant) -> None:
         if not key:
             return {"enabled": False}
         a, b = call.data["from"], call.data["to"]
-        if not all(-85 <= p[0] <= 85 and -180 <= p[1] <= 180 for p in (a, b)):
+        via = [tuple(v) for v in call.data["via"]]
+        if not all(-85 <= p[0] <= 85 and -180 <= p[1] <= 180 for p in (a, b, *via)):
             return {"enabled": True, "ok": False, "error": "position invalide"}
         body = avoid_body(call.data["avoid"])
         session = async_get_clientsession(hass)
         try:
             async with session.request(
                 "POST" if body else "GET",
-                route_url(tuple(a), tuple(b)),
+                route_url(tuple(a), tuple(b), via),
                 params=route_params(key, call.data.get("heading")),
                 json=body or None,
                 timeout=aiohttp.ClientTimeout(total=15),
@@ -956,6 +966,205 @@ class TrafficTileView(HomeAssistantView):
                     self._tiles.pop(k, None)
             self._tiles[(zi, xi, yi)] = (now, body)
         return web.Response(body=body, content_type="image/png", headers={"Cache-Control": "private, max-age=60"})
+
+
+def _car_settings(hass: HomeAssistant) -> tuple[str | None, str | None]:
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        opts = {**entry.data, **entry.options}
+        if opts.get(CONF_CAR_TRACKER) or opts.get(CONF_CAR_DESTINATION):
+            return opts.get(CONF_CAR_TRACKER), opts.get(CONF_CAR_DESTINATION)
+    return None, None
+
+
+def _car_position(hass: HomeAssistant, entity_id: str | None) -> list[float] | None:
+    """[lon, lat] of the car's tracker (or a sensor with location: [lat, lon])."""
+    st = hass.states.get(entity_id) if entity_id else None
+    if st is None:
+        return None
+    a = st.attributes
+    lat, lon = a.get("latitude"), a.get("longitude")
+    if lat is None and isinstance(a.get("location"), (list, tuple)) and len(a["location"]) == 2:
+        lat, lon = a["location"]
+    try:
+        return [float(lon), float(lat)]
+    except (TypeError, ValueError):
+        return None
+
+
+CAR_GO_SCHEMA = vol.Schema(
+    {
+        vol.Optional("query"): vol.All(cv.string, vol.Length(max=200)),
+        vol.Optional("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
+        vol.Optional("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
+        vol.Optional("name"): vol.All(cv.string, vol.Length(max=80)),
+        vol.Optional("stop", default=False): cv.boolean,
+    }
+)
+CAR_NEARBY_SCHEMA = vol.Schema(
+    {
+        vol.Required("kind"): vol.All(cv.string, vol.Length(max=60)),
+        vol.Optional("count", default=3): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
+    }
+)
+CAR_STOP_SCHEMA = vol.Schema(
+    {
+        vol.Optional("choice"): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
+        vol.Optional("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
+        vol.Optional("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
+        vol.Optional("name", default="étape"): vol.All(cv.string, vol.Length(max=80)),
+    }
+)
+CAR_LAST_KEY = "nives_car_last"
+CAR_LAST_S = 1200
+
+
+@callback
+def _async_register_car(hass: HomeAssistant) -> None:
+    """`nives.car_go`, `nives.car_nearby`, `nives.car_stop`: Igor guides the
+    car (car.py), through the GPS card's destination input_text. The car is
+    set in Igor's options. Administrators only (it is where the car goes)."""
+    if hass.services.has_service(DOMAIN, SERVICE_CAR_GO):
+        return
+    from homeassistant.helpers.service import async_register_admin_service
+    from homeassistant.util import dt as dt_util
+
+    from .car import HOME_WORDS, KINDS, Car, fold, format_destination, kind_of, parse_destination
+
+    async def _fetch(method: str, url: str, params: dict | None, data):
+        session = async_get_clientsession(hass)
+        async with session.request(
+            method, url, params=params, data=data,
+            headers={"User-Agent": "Igor (Home Assistant)", "Accept": "application/json"},
+            timeout=aiohttp.ClientTimeout(total=25),
+        ) as r:
+            if r.status != 200:
+                raise RuntimeError(f"{url} answered {r.status}")
+            return await r.json(content_type=None)
+
+    car = Car(_fetch)
+
+    def _setup() -> tuple[str | None, str | None, dict | None]:
+        tracker, dest_entity = _car_settings(hass)
+        if not tracker or not dest_entity:
+            return None, None, {"ok": False, "error": "la voiture n'est pas réglée : choisir sa position et sa destination dans les options d'Igor"}
+        if hass.states.get(dest_entity) is None:
+            return None, None, {"ok": False, "error": f"{dest_entity} n'existe pas"}
+        return tracker, dest_entity, None
+
+    async def _write(dest_entity: str, value: str) -> None:
+        await hass.services.async_call("input_text", "set_value", {"entity_id": dest_entity, "value": value}, blocking=True)
+
+    def _zone(query: str) -> dict | None:
+        q = fold(query)
+        if q in HOME_WORDS or q.removeprefix("a ").removeprefix("la ") in HOME_WORDS:
+            st = hass.states.get("zone.home")
+            if st:
+                return {"lat": st.attributes["latitude"], "lon": st.attributes["longitude"], "name": "Maison"}
+        for st in hass.states.async_all("zone"):
+            name = str(st.attributes.get("friendly_name") or st.object_id)
+            if fold(name) == q or (len(q) > 3 and fold(name) in q):
+                return {"lat": st.attributes["latitude"], "lon": st.attributes["longitude"], "name": name}
+        return None
+
+    async def _go(call: ServiceCall) -> ServiceResponse:
+        tracker, dest_entity, err = _setup()
+        if err:
+            return err
+        if call.data["stop"]:
+            await _write(dest_entity, "")
+            return {"ok": True, "stopped": True}
+        here = _car_position(hass, tracker)
+        others: list[str] = []
+        if call.data.get("latitude") is not None and call.data.get("longitude") is not None:
+            dest = {"lat": call.data["latitude"], "lon": call.data["longitude"], "name": call.data.get("name") or "destination"}
+        else:
+            query = str(call.data.get("query") or "").strip()
+            if not query:
+                return {"ok": False, "error": "où aller ?"}
+            dest = _zone(query)
+            if dest is None:
+                try:
+                    found = await car.geocode(query, here)
+                except Exception:  # noqa: BLE001 - no internet, busy
+                    return {"ok": False, "error": "recherche de lieu impossible (pas d'internet ?)"}
+                if not found:
+                    return {"ok": False, "error": f"aucun lieu trouvé pour « {query} »"}
+                dest = found[0]
+                others = [f"{p['name']} ({p['address']})" for p in found[1:4]]
+        await _write(dest_entity, format_destination(dest))
+        out: dict = {"ok": True, "destination": {k: dest.get(k) for k in ("name", "address", "lat", "lon") if dest.get(k) is not None}}
+        if others:
+            out["other_matches"] = others
+        if here:
+            try:
+                r = await car.route([here, [dest["lon"], dest["lat"]]], steps=False)
+            except Exception:  # noqa: BLE001
+                r = None
+            if r:
+                out["distance_km"] = round(r["distance"] / 1000, 1)
+                out["minutes"] = round(r["duration"] / 60)
+                out["arrival"] = dt_util.as_local(dt_util.now() + timedelta(seconds=r["duration"])).strftime("%H:%M")
+        else:
+            out["note"] = "position de la voiture inconnue : le GPS calculera l'itinéraire dès qu'il l'aura"
+        return out
+
+    async def _nearby(call: ServiceCall) -> ServiceResponse:
+        tracker, dest_entity, err = _setup()
+        if err:
+            return err
+        kind = kind_of(call.data["kind"])
+        if not kind:
+            return {"ok": False, "error": "je ne sais pas chercher ça", "kinds": sorted(KINDS)}
+        here = _car_position(hass, tracker)
+        if not here:
+            return {"ok": False, "error": "position de la voiture inconnue"}
+        dest = parse_destination(hass.states.get(dest_entity).state)
+        try:
+            out = await car.nearby(kind, here, dest, call.data["count"])
+        except Exception:  # noqa: BLE001 - busy services
+            return {"ok": False, "error": "recherche impossible pour l'instant (service OpenStreetMap occupé ou pas d'internet)"}
+        # Kept 20 minutes, so « oui, la première » can become a stop (choice: 1).
+        for i, p in enumerate(out.get("places") or [], 1):
+            p["choice"] = i
+        hass.data[CAR_LAST_KEY] = (time.monotonic(), out.get("places") or [])
+        return out
+
+    async def _stop(call: ServiceCall) -> ServiceResponse:
+        tracker, dest_entity, err = _setup()
+        if err:
+            return err
+        if call.data.get("latitude") is not None and call.data.get("longitude") is not None:
+            stop = {"lat": call.data["latitude"], "lon": call.data["longitude"], "name": call.data["name"]}
+        else:
+            at, places = hass.data.get(CAR_LAST_KEY) or (0, [])
+            n = call.data.get("choice") or 1
+            if not places or time.monotonic() - at > CAR_LAST_S or n > len(places):
+                return {"ok": False, "error": "aucun lieu proposé récemment : chercher d'abord (car_nearby)"}
+            p = places[n - 1]
+            stop = {"lat": p["lat"], "lon": p["lon"], "name": p["name"]}
+        dest = parse_destination(hass.states.get(dest_entity).state)
+        if not dest:
+            await _write(dest_entity, format_destination(stop))
+            return {"ok": True, "guided_to": stop["name"], "note": "pas d'itinéraire en cours : c'est la destination"}
+        await _write(dest_entity, format_destination(dest, [stop]))
+        out = {"ok": True, "stop": stop["name"], "then": dest["name"]}
+        here = _car_position(hass, tracker)
+        if here:
+            try:
+                r = await car.route([here, [stop["lon"], stop["lat"]], [dest["lon"], dest["lat"]]], steps=False)
+            except Exception:  # noqa: BLE001
+                r = None
+            if r:
+                out["minutes_total"] = round(r["duration"] / 60)
+                out["arrival"] = dt_util.as_local(dt_util.now() + timedelta(seconds=r["duration"])).strftime("%H:%M")
+        return out
+
+    for name, handler, schema in (
+        (SERVICE_CAR_GO, _go, CAR_GO_SCHEMA),
+        (SERVICE_CAR_NEARBY, _nearby, CAR_NEARBY_SCHEMA),
+        (SERVICE_CAR_STOP, _stop, CAR_STOP_SCHEMA),
+    ):
+        async_register_admin_service(hass, DOMAIN, name, handler, schema=schema, supports_response=SupportsResponse.ONLY)
 
 
 NEWS_SCHEMA = vol.Schema(

@@ -354,6 +354,56 @@ export function connectorTool(connectors: string[]): ToolDefinition {
  */
 export const HOME_EXTRA_TOOLS: ToolDefinition[] = [
   {
+    name: "car_navigate",
+    description:
+      "The car's GPS (its dashboard screen): guide it somewhere, or stop the guidance. Use it for « emmène-moi à la maison », " +
+      "« mets-moi un trajet pour aller à … », « arrête le guidage ». Pass the place as heard (« maison », a zone's name, an address, " +
+      "a shop, a town); home and Home Assistant zones are found first, then the place nearest the car. Say where it goes, the " +
+      "distance and the arrival time it returns; if other_matches came back and the place may be wrong, say which one was taken.",
+    parameters: {
+      type: "object",
+      properties: {
+        destination: { type: "string", description: "Where to, as heard." },
+        stop: { type: "boolean", description: "true to stop the guidance." },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "car_find_nearby",
+    description:
+      "Find a place for the driver: fuel (« station-service »), charging, rest area, toilets, hospital, pharmacy, ATM, " +
+      "supermarket, restaurant, café, car wash, garage. While guided, the places come along the route in order, each with " +
+      "distance_km along the way, detour_min (minutes it adds), on_route (no real detour), motorway and service_area (in a " +
+      "motorway service area: say « sur l'autoroute, aire de … »), off_route_m. Not guided: the nearest by road, with minutes. " +
+      "Tell the best one simply (where, how far, on the route or a detour of N minutes, on the motorway or not), mention one " +
+      "other at most, then ASK whether to add it as a stop; only if the driver says yes, call car_add_stop with its lat, lon and name.",
+    parameters: {
+      type: "object",
+      properties: {
+        kind: { type: "string", description: "What to look for, in a word: fuel, charging, rest, toilets, hospital, pharmacy, atm, supermarket, restaurant, cafe, car_wash, car_repair, parking." },
+      },
+      required: ["kind"],
+    },
+  },
+  {
+    name: "car_add_stop",
+    description:
+      "Add a stop on the car's way, once the driver accepted a place car_find_nearby proposed: pass its choice (1 = the " +
+      "first place of the last answer, as listed). The GPS guides there first, then on to the destination; without a " +
+      "destination it becomes the destination. Say the new arrival time it returns.",
+    parameters: {
+      type: "object",
+      properties: {
+        choice: { type: "number", description: "The place's number in the last car_find_nearby answer (its `choice`)." },
+        latitude: { type: "number", description: "Instead of a choice: the place's latitude." },
+        longitude: { type: "number" },
+        name: { type: "string" },
+      },
+      required: [],
+    },
+  },
+  {
     name: "find_contact",
     description:
       "Find a person in the user's phone contacts and get their phone numbers: ALWAYS use this before calling or " +

@@ -166,6 +166,66 @@ route:
         number:
           min: 0
           max: 360
+    via:
+      selector:
+        object:
     avoid:
       selector:
         object:
+car_go:
+  fields:
+    query:
+      selector:
+        text:
+    latitude:
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: any
+    longitude:
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any
+    name:
+      selector:
+        text:
+    stop:
+      selector:
+        boolean:
+car_nearby:
+  fields:
+    kind:
+      required: true
+      selector:
+        text:
+    count:
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 5
+car_stop:
+  fields:
+    choice:
+      selector:
+        number:
+          min: 1
+          max: 5
+    latitude:
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: any
+    longitude:
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any
+    name:
+      selector:
+        text:

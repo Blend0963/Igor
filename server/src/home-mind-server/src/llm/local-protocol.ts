@@ -35,6 +35,7 @@ SORTIE : appels d'outils éventuels + une ligne :
 RÈGLES :
 - Toutes les entités sont pilotables et lisibles. Inconnue : search_entities, puis agis ou >rep.
 - Valeur demandée : get_state puis >rep. Prévisions : weather.get_forecasts.
+- Voiture : y aller → car_navigate puis >dire ; une station, des toilettes… → car_find_nearby puis >rep (la réponse propose une étape) ; « oui, la première » → car_add_stop puis >dire.
 - Numéro : find_contact puis >rep. Souvenir utile à la réponse : share_memory (copie exacte) puis >rep.
 - Suite (« vas-y », « oui », « et la cuisine ? ») : d'après l'échange précédent.
 - Micro ouvert : agis seulement sur ce qui t'est adressé. Transcription imparfaite : comprends l'intention.`;
@@ -104,6 +105,14 @@ export const LOCAL_TOOL_DEFS: OpenAI.ChatCompletionTool[] = [
     for_minutes: { type: "number" },
     text: { type: "string" },
   }, ["entity_id", "condition", "value", "text"]),
+  fn("car_navigate", "GPS de la voiture : y aller (« maison », une adresse, un lieu), ou stop: true pour arrêter le guidage.", {
+    destination: { type: "string" },
+    stop: { type: "boolean" },
+  }),
+  fn("car_find_nearby", "Trouver pour le conducteur : fuel, charging, rest, toilets, hospital, pharmacy, atm, supermarket, restaurant, cafe, parking.", {
+    kind: { type: "string" },
+  }, ["kind"]),
+  fn("car_add_stop", "Ajouter en étape un lieu proposé et accepté (choice = son numéro, 1 = le premier).", { choice: { type: "number" } }),
   fn("list_scheduled_tasks", "Lister les rappels programmés.", {}),
   fn("cancel_scheduled_task", "Annuler un rappel par son id.", { id: { type: "string" } }, ["id"]),
 ];
@@ -213,6 +222,13 @@ export function onlineBrief(tag: LocalTag, note: string | undefined, calls: Brie
       case "list_scheduled_tasks":
         other.push(`rappels : ${clip(JSON.stringify(r))}`);
         break;
+      case "car_navigate":
+      case "car_add_stop":
+        other.push(`gps : ${clip(JSON.stringify(r), 400)}`);
+        break;
+      case "car_find_nearby":
+        other.push(`lieux : ${clip(JSON.stringify(r), 1400)}`);
+        break;
       default:
         other.push(`${c.name} : ${clip(JSON.stringify(r))}`);
     }
@@ -236,6 +252,8 @@ export const ONLINE_BRIEF_INSTRUCTIONS =
   "demande = demande la précision ou la confirmation qui manque (pour un appel : « Jean Martin, sur son mobile au 06 …, je l'appelle ? » ; " +
   "pour un SMS : « J'envoie à Jean Martin, au 06 … : « texte court et naturel » ? », d'après le contact trouvé ; plusieurs contacts : demande lequel) ; " +
   "echec = dis simplement ce qui n'a pas marché.\n" +
+  "gps : où va la voiture, distance, arrivée (dis-les). lieux : le meilleur d'abord (où, à combien de km, sur la route ou détour de N min, " +
+  "sur l'autoroute : « aire de … »), un autre au plus, puis demande s'il faut l'ajouter en étape.\n" +
   "fait : entité=nouvel état. lu : entité (nom)=valeur. échec : appel et erreur. rappel, alerte, contact, rappels, souvenirs : " +
   "ce qu'il a programmé ou trouvé. dit : les mots exacts de la personne.\n" +
   "Tu ne peux rien faire dans la maison : pour elle, tu te fondes uniquement sur ces lignes et tu n'inventes rien. " +

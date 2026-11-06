@@ -153,9 +153,10 @@ def route_params(key: str, heading: float | None) -> dict[str, str]:
     return params
 
 
-def route_url(origin: tuple[float, float], dest: tuple[float, float]) -> str:
-    """origin and dest as (lat, lon)."""
-    return ROUTE_URL.format(a=f"{origin[0]:.6f},{origin[1]:.6f}", b=f"{dest[0]:.6f},{dest[1]:.6f}")
+def route_url(origin: tuple[float, float], dest: tuple[float, float], via: list | tuple = ()) -> str:
+    """origin, stops and dest as (lat, lon): TomTom's « a:stop:b »."""
+    a = ":".join(f"{p[0]:.6f},{p[1]:.6f}" for p in [origin, *via])
+    return ROUTE_URL.format(a=a, b=f"{dest[0]:.6f},{dest[1]:.6f}")
 
 
 def avoid_body(boxes: list[list[float]]) -> dict[str, Any]:
