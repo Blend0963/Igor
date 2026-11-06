@@ -5125,6 +5125,12 @@
   var GPS_DARK = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
   var GPS_DAY = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
   var GPS_R = 6378137, GPS_PREDICT_S = 4, GPS_MOVING = 0.8, GPS_TRAIL = 600;
+  // Speeds (m/s, from the car itself when it says, else the GPS):
+  // above GPS_FWD (15 km/h) a car only drives forward, so where it goes is
+  // where it faces; under GPS_SLOW (9 km/h) it may be manoeuvring or reversing,
+  // and the GPS's own course is noise.
+  var GPS_FWD = 4.2, GPS_SLOW = 2.5;
+  window.__igorGps = { step: function (st, fix) { return gpsHeadingStep(st, fix); } };
   function gpsMapLibre() {
     if (window.maplibregl) return Promise.resolve(window.maplibregl);
     if (!window.__igorMapLibre) {
@@ -5161,6 +5167,82 @@
   }
   function gpsTurn(a, b) { return Math.abs(((b - a + 540) % 360) - 180); }
   function gpsLerpAngle(a, b, t) { var d = ((b - a + 540) % 360) - 180; return (a + d * t + 360) % 360; }
+  function gpsMeanAngle(a, b, wa) {
+    wa = wa == null ? 1 : wa;
+    var x = wa * Math.cos(gpsRad(a)) + Math.cos(gpsRad(b)), y = wa * Math.sin(gpsRad(a)) + Math.sin(gpsRad(b));
+    return (gpsDeg(Math.atan2(y, x)) + 360) % 360;
+  }
+  // Where the car faces, from each new fix, as a navigator does: the car's
+  // own speed says what to believe.
+  //   st:  { heading, votes, hist: [{ p, t }] } (kept between fixes)
+  //   fix: { p: [lon, lat], t: ms, course, gpsSpeed (m/s), speed (m/s, the car's), accuracy (m) }
+  // Evidence of the direction of travel: the GPS's course (only fast enough
+  // for it to mean something) and the bearing of the real movement over the
+  // last metres (farther than the GPS may be off). Stopped: nothing changes.
+  // Slow: the car may be reversing or manoeuvring, the heading stays. Driving:
+  // close to the heading, it follows; opposite (a U-turn, or a heading wrong
+  // since a bad fix), it turns round on two concordant clues, at once when
+  // course and movement agree, or on three at middle speed.
+  function gpsHeadingStep(st, fix) {
+    var hist = (st.hist || []).filter(function (h) { return fix.t - h.t < 20000; });
+    hist.push({ p: fix.p, t: fix.t });
+    st.hist = hist.slice(-30);
+    // The real movement: a straight line fitted through the recent fixes
+    // (least squares over time), over as many seconds as it takes to cover
+    // 3 × that distance (4 to 15 s), so one noisy fix cannot turn it.
+    var acc = Math.max(5, Number(fix.accuracy) || 10);
+    var need = Math.max(20, Math.min(acc * 2.5, 60)), moved = null;
+    var vCar = Math.max(Number(fix.speed) || 0, 0.5);
+    var win = Math.max(4000, Math.min(15000, (need * 3 / vCar) * 1000));
+    var pts = st.hist.filter(function (h) { return fix.t - h.t <= win; });
+    if (pts.length >= 3) {
+      var kx = GPS_R * Math.cos(gpsRad(fix.p[1])) * Math.PI / 180, ky = GPS_R * Math.PI / 180;
+      var n = pts.length, mt = 0, mx = 0, my = 0;
+      pts.forEach(function (h) { mt += h.t; mx += (h.p[0] - fix.p[0]) * kx; my += (h.p[1] - fix.p[1]) * ky; });
+      mt /= n; mx /= n; my /= n;
+      var stt = 0, stx = 0, sty = 0;
+      pts.forEach(function (h) {
+        var dt = (h.t - mt) / 1000;
+        stt += dt * dt; stx += dt * ((h.p[0] - fix.p[0]) * kx - mx); sty += dt * ((h.p[1] - fix.p[1]) * ky - my);
+      });
+      if (stt > 0) {
+        var vx = stx / stt, vy = sty / stt, span = Math.hypot(vx, vy) * (pts[n - 1].t - pts[0].t) / 1000;
+        if (span >= need) moved = (gpsDeg(Math.atan2(vx, vy)) + 360) % 360;
+      }
+    }
+    var gs = fix.gpsSpeed || 0;
+    var course = typeof fix.course === "number" && isFinite(fix.course) && gs > GPS_SLOW ? ((fix.course % 360) + 360) % 360 : null;
+    var agree = course != null && moved != null && gpsTurn(course, moved) < 45;
+    // Both agreeing: their mean, the course weighing more when fast (it is
+    // then precise). Disagreeing: the real movement wins, as one clue only.
+    var cand = agree ? gpsMeanAngle(course, moved, gs > GPS_FWD ? 3 : 1) : moved != null ? moved : course;
+    var v = Number(fix.speed) || 0;
+    if (st.heading == null) {
+      if (cand != null) st.heading = cand;
+      st.votes = 0;
+      return st;
+    }
+    if (cand == null || v <= GPS_MOVING) return st;
+    if (gpsTurn(st.heading, cand) <= 100) {
+      // Ahead: follow, smoothly if only one clue (one noisy course must not swing it).
+      // Course and movement agreeing: taken. One clue only: followed by half
+      // when driving; slow (traffic), only a small correction, by a fifth, so
+      // noisy clues cannot slowly turn the arrow round.
+      if (agree) st.heading = cand;
+      else if (v > GPS_FWD) st.heading = gpsLerpAngle(st.heading, cand, 0.5);
+      else if (gpsTurn(st.heading, cand) <= 60) st.heading = gpsLerpAngle(st.heading, cand, 0.2);
+      st.votes = 0;
+    } else if (v < GPS_SLOW) {
+      st.votes = 0;   // slow and backwards: reversing, the car still faces the same way
+    } else if (moved == null || gpsTurn(st.heading, moved) <= 100) {
+      // Only the GPS's course says « backwards »: a course is not proof, the
+      // car has to have really moved the other way.
+    } else {
+      st.votes = (st.votes || 0) + (agree ? 2 : 1);
+      if (st.votes >= (v > GPS_FWD ? 2 : 3)) { st.heading = cand; st.votes = 0; st.turned = fix.t; }
+    }
+    return st;
+  }
   // The nearest point to p on a set of lines ([[lon, lat], …] each), in
   // metres on a local flat projection: { point, dist, bearing } of the
   // segment, or null without lines.
@@ -5486,20 +5568,9 @@
       }
     }
     onFix(p, course, gpsSpeed, updated) {
-      var prev = this.fix && this.fix.point;
-      var cand = null;
-      if (typeof course === "number" && course > 0 && (gpsSpeed || 0) > GPS_MOVING) cand = course;
-      else if (prev && gpsDist(prev, p) > 8) cand = gpsBearing(prev, p);
-      // A car does not turn back on its road while it drives: a heading
-      // reversed by one doubtful fix is ignored; three in a row (a real
-      // U-turn) are believed. Stopped, the heading stays as it was.
-      var rolling = this.speedMps() > 1.5;
-      if (cand != null && rolling) {
-        if (gpsTurn(this.heading, cand) > 110) {
-          this.reverseVotes = (this.reverseVotes || 0) + 1;
-          if (this.reverseVotes >= 3) { this.heading = cand; this.reverseVotes = 0; }
-        } else { this.heading = cand; this.reverseVotes = 0; }
-      } else if (cand != null && !this.fix) this.heading = cand;
+      this.hstate = this.hstate || { heading: this.fix ? this.heading : null };
+      gpsHeadingStep(this.hstate, { p: p, t: Date.now(), course: course, gpsSpeed: gpsSpeed, speed: this.speedMps(), accuracy: this.accuracy });
+      if (this.hstate.heading != null) this.heading = this.hstate.heading;
       this.fix = { point: p, time: performance.now(), gpsSpeed: isFinite(gpsSpeed) ? gpsSpeed : 0, updated: updated };
     }
     // The trail is drawn on the roads only: each point the arrow takes on a
@@ -5512,7 +5583,7 @@
       var piece = this.trail[this.trail.length - 1], last = piece && piece[piece.length - 1];
       if (last && !this.cut && gpsDist(last, p) < 5) return;
       // Driving, the trail does not come back on itself either.
-      if (last && !this.cut && this.speedMps() > 1.5 && gpsAhead(last, p, this.heading) < -2) return;
+      if (last && !this.cut && this.speedMps() > GPS_FWD && gpsAhead(last, p, this.heading) < -2) return;
       var path = null;
       if (last && onRoad && gpsDist(last, p) > 8) {
         var way = gpsRoadPath(this.roadLines(last, p, 40), last, p);
@@ -5651,9 +5722,12 @@
       this.raf = requestAnimationFrame(() => this.tick());
       if (!this.map || !this.fix) return;
       var now = performance.now(), speed = this.speedMps(), moving = speed > GPS_MOVING;
-      // Between two fixes: on along the heading, 4 s at most.
+      // Driving (not manoeuvring): the car goes where it faces, never back.
+      var forward = speed > GPS_FWD;
+      // Between two fixes: on along the heading, 4 s at most (not when slow:
+      // the car may be reversing).
       var elapsed = Math.min((now - this.fix.time) / 1000, GPS_PREDICT_S);
-      var target = moving ? gpsProject(this.fix.point, this.heading, speed * elapsed) : this.fix.point;
+      var target = speed > GPS_SLOW ? gpsProject(this.fix.point, this.heading, speed * elapsed) : this.fix.point;
       // Onto the road, a few times a second, moving or stopped, as a
       // navigator does: within `snap` metres, or what the GPS says it may be
       // off by when that is more (at most 150 m).
@@ -5669,12 +5743,13 @@
       }
       // Driving, the arrow never goes back along its road: a target behind
       // it (a late or noisy fix) holds it where it is.
-      if (moving && gpsAhead(this.pos, target, this.heading) < -0.5) target = this.pos;
+      if (forward && gpsAhead(this.pos, target, this.heading) < -0.5) target = this.pos;
       var s = this.snapped;
-      if (s && moving && gpsAhead(this.pos, s.point, this.heading) < -0.5) s = null;
+      if (s && forward && gpsAhead(this.pos, s.point, this.heading) < -0.5) s = null;
       if (s && gpsDist(s.point, target) <= (s.lock || snapM) * 1.5) {
         target = s.point;
-        if (moving) this.heading = gpsLerpAngle(this.heading, gpsAlong(s.bearing, this.heading), 0.2);
+        // On a road and rolling (not manoeuvring): the arrow takes the road's direction.
+        if (speed > GPS_SLOW) { this.heading = gpsLerpAngle(this.heading, gpsAlong(s.bearing, this.heading), 0.2); if (this.hstate) this.hstate.heading = this.heading; }
       }
       // A leap (a late fix): the arrow drives there along the roads, not across.
       var before = this.pos;
@@ -5684,7 +5759,7 @@
       if (s && !s.onRoute && !this.way && jump > 25 && jump < 400) {
         var way = gpsRoadPath(this.roadLines(this.pos, target, 40), this.pos, target);
         // Not a way that starts by turning back (a car does not).
-        var backwards = moving && way && way.length > 1 && gpsDist(way[0], way[1]) > 1 && gpsTurn(this.heading, gpsBearing(way[0], way[1])) > 110;
+        var backwards = forward && way && way.length > 1 && gpsDist(way[0], way[1]) > 1 && gpsTurn(this.heading, gpsBearing(way[0], way[1])) > 110;
         if (way && way.length > 2 && !backwards) { this.way = way.slice(1); this.wayFrom = now; this.wayLen = jump; }
       }
       if (this.way && this.way.length) {
@@ -5701,7 +5776,7 @@
         this.pos = [this.pos[0] + (target[0] - this.pos[0]) * k, this.pos[1] + (target[1] - this.pos[1]) * k];
       }
       // Last guard: driving, not a step back (a big jump, a real relocation, still goes).
-      if (moving && jump <= 400 && gpsAhead(before, this.pos, this.heading) < -0.2) this.pos = before;
+      if (forward && jump <= 400 && gpsAhead(before, this.pos, this.heading) < -0.2) this.pos = before;
       this.shown = gpsLerpAngle(this.shown, this.heading, 0.1);
       this.marker.setLngLat(this.pos).setRotation(this.shown);
       if (!this.trailAt || now - this.trailAt > 500) {
