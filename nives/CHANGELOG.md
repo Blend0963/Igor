@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.37.4 — Everything in view, the limit on time
+
+- `custom:igor-gps-card`, places: read square by square (about 3 km) over all the map shows around the car (6 km at most), the nearest first, one square a second, each kept for the drive: fuel stations, rest areas, hospitals, toilets, parkings fill the whole view, beside the road or not. Nothing is cut off any more (a city's hundreds of traffic lights could push the fuel stations out of the answer). Cameras and traffic lights show only on the car's way (ahead on its road, or on its route).
+- Overpass, the free service behind it, is often busy: the card now moves on to a mirror when it does not answer.
+- The limit sign follows the road at once: the roads ahead are read before the car gets there (a few hundred metres, more the faster), the road under the car is checked twice a second, and the card's own reading now comes before `speed_limit_entity` (a sensor polled every 15 s lagged behind at each change; it only fills in where the road says nothing).
+- `custom:igor-carmedia-card`: new `active:` (the car's OBD link, such as `binary_sensor.voiture_en_ligne`): car off, « Pas de musique »; car on, only a title that changed since it started — the head unit's sensors kept the last track of the previous drive.
+
 ## 0.37.3 — What is on the road
 
 - `custom:igor-gps-card` shows what is around the car, from OpenStreetMap (nothing to sign up for): traffic lights, fuel stations, rest areas by default; charging points, car parks, toilets and hospitals from the new layers button (kept by each screen; `pois:` sets the first choice). Asked again once the car has gone half the way to the edge, at most every 20 seconds.

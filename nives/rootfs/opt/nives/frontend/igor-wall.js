@@ -5030,6 +5030,7 @@
   //   notify: notify.mobile_app_mycar          # sends command_media to the head unit
   //   package: deezer.android.app              # the player app
   //   title: musique · deezer
+  //   active: binary_sensor.car_online         # the car on (OBD): off, no music; on, only a title heard since it started
   // Previous, play or pause, next as three large buttons; a tap on the title
   // opens the app.
   class IgorCarMediaCard extends IgorCard {
@@ -5089,10 +5090,28 @@
       if (title !== this.sessTitle) {
         // First seen: as old as can be when the notification has a title, so the notification wins.
         this.sessAt = this.sessTitle === undefined && fOk ? 0 : Date.now();
+        if (this.sessTitle !== undefined) this.sessChangedAt = Date.now();
         this.sessTitle = title;
       }
       if (fOk && (!title || fAt >= (this.sessAt || 0))) { title = f.state; artist = (f.attributes && f.attributes.artiste) || ""; }
       var playing = s && s.state === "Playing";
+      // The car on or off (`active`, the OBD link): off, there is no music; on,
+      // only what was heard since it started — the head unit's sensors keep
+      // the last title of the previous drive.
+      var act = this.config.active && hass.states[this.config.active];
+      if (act) {
+        if (act.state !== "on") {
+          this.ti.textContent = "Pas de musique";
+          this.ar.textContent = "voiture à l'arrêt";
+          if (this.playIcon) this.playIcon.setAttribute("icon", "mdi:play");
+          return;
+        }
+        var since = (Date.parse(act.last_changed) || 0) - 60000;
+        // A title is fresh when it changed since the start: the notification's
+        // title, or the session's seen changing here (not merely first seen).
+        var fresh = (fOk && fAt >= since) || (this.sessChangedAt || 0) >= since;
+        if (!fresh) { title = ""; artist = ""; playing = false; }
+      }
       this.ti.textContent = title || "Rien en lecture";
       this.ar.textContent = (artist ? artist + " · " : "") + (playing ? "en lecture" : "en pause");
       if (this.playIcon) this.playIcon.setAttribute("icon", playing ? "mdi:pause" : "mdi:play");
@@ -5529,13 +5548,49 @@
     if (kinds.indexOf("hospital") >= 0) parts.push("nwr" + at(radius * 3) + "[amenity=hospital];");
     return parts.length ? "[out:json][timeout:15];(" + parts.join("") + ");out center tags 600;" : "";
   }
+  // Overpass, the free service behind all of it, is often busy: the next
+  // mirror is tried after a failure (or the card's own `overpass:`, one or a list).
+  var GPS_OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
+  var gpsOverpassAt = 0;
+  function gpsOverpass(config, query) {
+    var list = config && config.overpass ? [].concat(config.overpass) : GPS_OVERPASS;
+    var url = String(list[gpsOverpassAt % list.length]);
+    return fetch(url, { method: "POST", body: "data=" + encodeURIComponent(query), headers: { "Content-Type": "application/x-www-form-urlencoded" } })
+      .then(function (r) { if (!r.ok) throw new Error("overpass " + r.status); return r.json(); })
+      .catch(function (e) { gpsOverpassAt++; throw e; });
+  }
+  // The map cut in squares (web tiles at zoom 13, about 3 km): the points are
+  // read once per square and kept, so the whole view fills and stays filled.
+  var GPS_TILE_Z = 13;
+  function gpsTileOf(p, z) {
+    var n = Math.pow(2, z), la = gpsRad(Math.max(-85, Math.min(85, p[1])));
+    return [Math.floor((p[0] + 180) / 360 * n), Math.floor((1 - Math.log(Math.tan(la) + 1 / Math.cos(la)) / Math.PI) / 2 * n)];
+  }
+  function gpsTileBox(x, y, z) {
+    var n = Math.pow(2, z), lat = function (yy) { return Math.atan(Math.sinh(Math.PI * (1 - 2 * yy / n))) * 180 / Math.PI; };
+    return { w: x / n * 360 - 180, e: (x + 1) / n * 360 - 180, n: lat(y), s: lat(y + 1) };
+  }
+  // The points' query for one square: every kind asked, nothing cut off.
+  function gpsPoiTileQuery(b, kinds) {
+    var parts = [], has = function (k) { return kinds.indexOf(k) >= 0; };
+    if (has("signals")) parts.push("node[highway=traffic_signals];");
+    if (has("camera")) parts.push("node[highway=speed_camera];");
+    if (has("fuel")) parts.push("nwr[amenity=fuel];");
+    if (has("charging")) parts.push("nwr[amenity=charging_station];");
+    if (has("parking")) parts.push('nwr[amenity=parking][access!~"^(private|no|customers)$"];');
+    if (has("rest")) parts.push('nwr[highway~"^(rest_area|services)$"];');
+    if (has("toilets")) parts.push("nwr[amenity=toilets];");
+    if (has("hospital")) parts.push("nwr[amenity=hospital];");
+    if (!parts.length) return "";
+    return "[out:json][timeout:25][bbox:" + [b.s, b.w, b.n, b.e].map(function (v) { return v.toFixed(5); }).join(",") + "];(" + parts.join("") + ");out center tags;";
+  }
   // Where a point lies from the car: metres ahead (negative: behind) and
   // metres to the side of the car's way.
   function gpsRelative(from, to, heading) {
     var d = gpsDist(from, to), ahead = gpsAhead(from, to, heading);
     return { d: d, ahead: ahead, side: Math.sqrt(Math.max(0, d * d - ahead * ahead)) };
   }
-  window.__igorGpsPoi = { parse: gpsPois, query: gpsPoiQuery, watches: gpsCameraWatches, zone: gpsZoneLength, direction: gpsTagDirection, shield: gpsShield, relative: gpsRelative };
+  window.__igorGpsPoi = { tileOf: gpsTileOf, tileBox: gpsTileBox, tileQuery: gpsPoiTileQuery, parse: gpsPois, query: gpsPoiQuery, watches: gpsCameraWatches, zone: gpsZoneLength, direction: gpsTagDirection, shield: gpsShield, relative: gpsRelative };
   // The points' icons, drawn once (no image to load, nothing to host).
   function gpsPoiIcons() {
     var S = 48, out = {};
@@ -5831,9 +5886,11 @@
     overlays() {
       var kmh = Math.round(this.speedMps() * 3.6);
       var le = this.config.speed_limit_entity && this._hass.states[this.config.speed_limit_entity];
-      var limit = le ? parseFloat(le.state) : NaN;
-      // The entity says nothing (no sensor, unknown): the limit read here from OpenStreetMap.
-      if (isNaN(limit) && this.config.speed_limits !== false && this.osmLimit) limit = this.osmLimit;
+      // The limit read here, every half second, from the road under the car
+      // (OpenStreetMap) first: a sensor polled now and then lags behind at
+      // each change; it only fills in where the road says nothing.
+      var limit = this.config.speed_limits !== false && this.osmLimit ? this.osmLimit : NaN;
+      if (isNaN(limit) && le) limit = parseFloat(le.state);
       var over = !isNaN(limit) && kmh > limit + 3;
       var sp = this.$("speed");
       sp.hidden = this.config.show_speed === false;
@@ -6019,9 +6076,9 @@
         this.addTrail(on ? s.point : this.pos, on);
       }
       if (this.route && (!this.navAt || now - this.navAt > 1000)) { this.navAt = now; this.navTick(now, moving); }
-      if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > 1000)) { this.limitAt = now; this.limitTick(now, moving); }
+      if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > 500)) { this.limitAt = now; this.limitTick(now, moving); }
       if (!this.alertAt || now - this.alertAt > 500) { this.alertAt = now; this.alertTick(now, speed); }
-      if (!this.poiTickAt || now - this.poiTickAt > 2000) { this.poiTickAt = now; this.poiTick(now, speed); this.trafficTick(now, moving); }
+      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.trafficTick(now, moving); }
       if (this.follow) {
         var h = this.$("map").clientHeight;
         var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } };
@@ -6083,27 +6140,42 @@
         o.w = w;
         if (!best || o.score < best.score) best = o;
       });
-      if (best && best.dist < 25) {
+      var onWay = best && best.dist < 25;
+      if (onWay) {
         // Forward when the car goes the way the way is drawn.
         var fwd = Math.abs(((best.bearing - this.heading + 540) % 360) - 180) < 90;
         var v = gpsWayLimit(best.w.tags, fwd);
         this.limitKnown = true;
         if (v !== this.osmLimit) { this.osmLimit = v; this.overlays(); }
         this.setRoadName(best.w.tags);
-        return;
       }
-      if (!moving || this.limitBusy || (this.limitAsked && now - this.limitAsked < 8000)) return;
+      // The roads ahead are read before the car gets there (a few hundred
+      // metres, more the faster), so a new limit shows the moment its section
+      // starts: again once the car is past the middle of what is known.
+      var speed = this.speedMps();
+      var ahead = moving ? Math.max(100, Math.min(500, speed * 12)) : 0, radius = Math.max(300, Math.min(900, speed * 22));
+      var areas = this.limitAreas || [];
+      var covered = areas.some((a) => gpsDist(a.c, p) < a.r * 0.5);
+      if (onWay && covered) return;
+      if (!moving && onWay) return;
+      if (this.limitBusy || (this.limitAsked && now - this.limitAsked < (onWay ? 2500 : 1500))) return;
       this.limitAsked = now;
       this.limitBusy = true;
-      var q = '[out:json][timeout:8];way(around:60,' + p[1].toFixed(6) + ',' + p[0].toFixed(6) + ')[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|road)(_link)?$"];out tags geom;';
-      fetch(String(this.config.overpass || "https://overpass-api.de/api/interpreter"), { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } })
-        .then((r) => r.json())
+      var c = gpsProject(p, this.heading, ahead);
+      var q = '[out:json][timeout:15];way(around:' + Math.round(radius) + ',' + c[1].toFixed(6) + ',' + c[0].toFixed(6) + ')[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|road)(_link)?$"];out tags geom;';
+      gpsOverpass(this.config, q)
         .then((j) => {
-          this.limitWays = (j.elements || []).filter((e) => e.type === "way" && Array.isArray(e.geometry) && e.geometry.length > 1)
-            .map((e) => ({ tags: e.tags || {}, geom: e.geometry.map((g) => [g.lon, g.lat]) }));
+          var known = this.limitById || (this.limitById = {});
+          (j.elements || []).forEach((e) => {
+            if (e.type === "way" && Array.isArray(e.geometry) && e.geometry.length > 1) known[e.id] = { tags: e.tags || {}, geom: e.geometry.map((g) => [g.lon, g.lat]), c: c };
+          });
+          // Kept: what lies within 3 km of the car.
+          Object.keys(known).forEach((id) => { if (gpsDist(known[id].c, p) > 3000) delete known[id]; });
+          this.limitWays = Object.keys(known).map((id) => known[id]);
+          this.limitAreas = areas.filter((a) => gpsDist(a.c, p) < 3000).concat([{ c: c, r: radius }]).slice(-8);
           if (!this.limitWays.length) { this.osmLimit = null; this.limitKnown = true; this.setRoadName(null); this.overlays(); }
         })
-        .catch(() => { /* no answer: the sign stays as it was */ })
+        .catch(() => { /* no answer: the sign stays as it was, asked again shortly */ })
         .then(() => { this.limitBusy = false; });
     },
     routeData() {
@@ -6441,44 +6513,79 @@
       map.addLayer({ id: "incidents-pt", type: "circle", source: "incidents", filter: ["==", ["get", "n"], 1],
         paint: { "circle-radius": 7, "circle-color": ["get", "color"], "circle-stroke-color": "#07080a", "circle-stroke-width": 2 } });
       map.addSource("pois", { type: "geojson", data: this.poiData() });
+      this.poiShown = null;
       var layout = { "icon-image": ["concat", "igor-", ["get", "kind"]], "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 0.7, 16, 1], "icon-allow-overlap": true,
         "symbol-sort-key": ["match", ["get", "kind"], "camera", 0, "signals", 2, 1] };
       if (font) Object.assign(layout, { "text-field": ["get", "label"], "text-font": font, "text-size": 12, "text-offset": [0, 1.5], "text-anchor": "top", "text-optional": true });
       var paint = font ? { "text-color": "#e9e4da", "text-halo-color": "#07080a", "text-halo-width": 1.5 } : {};
       map.addLayer({ id: "pois", type: "symbol", source: "pois", layout: layout, paint: paint });
-      // Lights only once close enough to see the streets.
-      map.addLayer({ id: "pois-sig", type: "symbol", source: "pois", minzoom: 14.5, layout: layout, paint: paint });
+      // The lights ahead, under the rest.
+      map.addLayer({ id: "pois-sig", type: "symbol", source: "pois", minzoom: 12, layout: layout, paint: paint });
       this.applyLayers();
+      this.refreshPois();
     },
-    poiData() {
-      return { type: "FeatureCollection", features: (this.pois || []).map((q) => ({ type: "Feature", geometry: { type: "Point", coordinates: q.p }, properties: { kind: q.kind, label: q.label || "" } })) };
-    },
-    // OpenStreetMap's points around the car: again once it has gone half the
-    // way to the edge, at most every 20 s (a free service, kindly used).
+    poiData() { return { type: "FeatureCollection", features: [] }; },
+    // OpenStreetMap's points, square by square (about 3 km), over all the map
+    // shows around the car (6 km at most): the nearest square first, one at a
+    // time, each read once and kept; a square that failed is asked again 15 s later.
     poiTick(now, speed) {
-      var p = this.pos;
-      var kinds = this.poiKinds();
-      if (!p || this.poiBusy || !kinds.length) return;
-      var radius = speed * 3.6 > 70 ? 4000 : 2000;
-      var moved = this.poiCenter ? gpsDist(this.poiCenter, p) : Infinity;
-      if (!this.poiDirty && moved < radius / 2) return;
-      if (this.poiAsked && now - this.poiAsked < (this.poiDirty ? 3000 : 20000)) return;
-      var q = gpsPoiQuery(p, radius, kinds);
+      var map = this.map, p = this.pos, kinds = this.poiKinds();
+      if (!map || !p || !kinds.length) return;
+      var key = kinds.slice().sort().join(",");
+      if (key !== this.poiKey) { this.poiKey = key; this.poiTiles = {}; this.pois = []; this.poiShown = null; }
+      if (this.poiBusy) return;
+      var want = [], seen = {}, z = GPS_TILE_Z;
+      var add = (x, y) => {
+        var k = x + "/" + y;
+        if (seen[k]) return;
+        seen[k] = true;
+        var b = gpsTileBox(x, y, z), d = gpsDist(p, [(b.w + b.e) / 2, (b.n + b.s) / 2]);
+        if (d < 6000) want.push({ k: k, b: b, d: d });
+      };
+      var me = gpsTileOf(p, z);
+      for (var dx = -1; dx <= 1; dx++) for (var dy = -1; dy <= 1; dy++) add(me[0] + dx, me[1] + dy);
+      try {
+        var bb = map.getBounds(), a = gpsTileOf([bb.getWest(), bb.getNorth()], z), c = gpsTileOf([bb.getEast(), bb.getSouth()], z);
+        for (var x = a[0]; x <= c[0] && x - a[0] < 12; x++) for (var y = a[1]; y <= c[1] && y - a[1] < 12; y++) add(x, y);
+      } catch (e) { /* no view yet */ }
+      want.sort((u, v) => u.d - v.d);
+      var T = this.poiTiles || (this.poiTiles = {});
+      var next = want.find((t) => !T[t.k] || (T[t.k].failed && now - T[t.k].at > 15000));
+      if (!next) return;
+      var q = gpsPoiTileQuery(next.b, kinds);
       if (!q) return;
-      this.poiAsked = now;
       this.poiBusy = true;
-      this.poiDirty = false;
-      var at = p.slice();
-      fetch(String(this.config.overpass || "https://overpass-api.de/api/interpreter"), { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } })
-        .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
-        .then((j) => {
-          this.pois = gpsPois(j.elements);
-          this.poiCenter = at;
-          var src = this.map && this.map.getSource("pois");
-          if (src) src.setData(this.poiData());
+      gpsOverpass(this.config, q)
+        .then((jj) => {
+          if (key !== this.poiKey) return;
+          T[next.k] = { at: now, items: gpsPois(jj.elements) };
+          // Squares far behind are let go (more than 20 km).
+          Object.keys(T).forEach((k) => {
+            var xy = k.split("/"), b = gpsTileBox(Number(xy[0]), Number(xy[1]), z);
+            if (gpsDist(p, [(b.w + b.e) / 2, (b.n + b.s) / 2]) > 20000) delete T[k];
+          });
+          var all = {}, list = [];
+          Object.keys(T).forEach((k) => (T[k].items || []).forEach((q2) => { if (!all[q2.id]) { all[q2.id] = true; list.push(q2); } }));
+          this.pois = list;
+          this.poiShown = null;
+          this.refreshPois();
         })
-        .catch(() => { /* busy or no internet: asked again later */ })
+        .catch(() => { T[next.k] = { at: now, failed: true }; })
         .then(() => { this.poiBusy = false; });
+    },
+    // What the map shows: every place in view; cameras and lights only on the
+    // car's way (ahead, on its road or its route), not the streets around.
+    refreshPois() {
+      var ids = [], shown = [];
+      (this.pois || []).forEach((q) => {
+        if (q.kind === "camera" || q.kind === "signals") { if (!this.onWay || !this.onWay[q.id]) return; }
+        ids.push(q.id); shown.push(q);
+      });
+      var sig = ids.join(",");
+      if (sig === this.poiShown) return;
+      this.poiShown = sig;
+      var src = this.map && this.map.getSource("pois");
+      if (src) src.setData({ type: "FeatureCollection", features: shown.map((q) => ({ type: "Feature", geometry: { type: "Point", coordinates: q.p }, properties: { kind: q.kind, label: q.label || "" } })) });
     },
     // The road where the car is (OpenStreetMap's way under it): name and numbers.
     setRoadName(tags) {
@@ -6533,18 +6640,24 @@
       this.closureTick();
       var kmh = speed * 3.6;
       this.signalAhead = null;
-      var cam = null, L = this.layers || {};
+      var cam = null, L = this.layers || {}, onWay = {};
       (this.pois || []).forEach((q) => {
+        if (q.kind !== "signals" && q.kind !== "camera") return;
+        if (gpsDist(this.pos, q.p) > 5000) return;
         if (q.kind === "signals") {
           var r = gpsRelative(this.pos, q.p, this.heading);
+          if (r.ahead > -20 && r.ahead < 1200 && r.side < 25) onWay[q.id] = true;
           if (r.ahead > 0 && r.side < 25 && (this.signalAhead == null || r.d < this.signalAhead)) this.signalAhead = r.d;
           return;
         }
-        if (q.kind !== "camera" || !L.cameras || L.cameras === "off" || speed < GPS_SLOW) return;
+        if (!L.cameras || L.cameras === "off") return;
         if (!gpsCameraWatches(q.tags, this.heading)) return;
         var d = this.meets(q.p, 40);
-        if (d != null && (!cam || d < cam.d)) cam = { q: q, d: d };
+        if (d != null) onWay[q.id] = true;
+        if (d != null && speed >= GPS_SLOW && (!cam || d < cam.d)) cam = { q: q, d: d };
       });
+      this.onWay = onWay;
+      this.refreshPois();
       var limitNow = this.lastLimit ? this.lastLimit.v : NaN;
       if (L.cameras === "zone") {
         // The zone: from 3/4 of its length before the camera to 1/4 after,
