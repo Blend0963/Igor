@@ -3,6 +3,7 @@
 ## 0.37.2 — A navigator that knows which way it faces
 
 - `custom:igor-gps-card`: where the car faces is worked out as a navigator does, from the car's own speed (`speed_entity`): stopped, nothing changes; under 9 km/h the car may be manoeuvring or reversing, the arrow keeps facing the same way and may move back; driving, it follows the real movement — a line fitted through the last fixes (least squares, 4 to 15 s), weighed with the GPS's course when fast — and turns round only when the car has really moved the other way (two concordant clues above 15 km/h, three below). A single reversed course, GPS noise in traffic or a wrong start no longer turn the arrow round, and a wrong arrow is no longer stuck (the « never backwards » guard now applies only above 15 km/h). A course of exactly north is no longer ignored.
+- `custom:igor-carmedia-card`: the title no longer sticks on an old track. The head unit's session sensor is updated for a play, a pause or the position while keeping an old title, so it always looked « newest »: now the source whose *title* changed last wins (the notification's from its last change, the session's from when it is seen changing).
 
 ## 0.37.1 — Intelligent Governance & Operations Relay
 

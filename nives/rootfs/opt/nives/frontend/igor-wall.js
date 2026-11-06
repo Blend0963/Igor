@@ -5078,12 +5078,20 @@
         if (!artist && k.indexOf("media_artist") === 0) artist = String(v);
       });
       // The title read in the player's notification (`fallback`) changes with
-      // each track; the session sensor, on a head unit, is sent rarely and can
-      // keep an old title: the one that changed last wins.
+      // each track; the session sensor, on a head unit, keeps an old title
+      // while it is updated for a play, a pause or the position. So it is not
+      // « which sensor was updated last » but « which TITLE changed last »: the
+      // notification's from its state's last change (its state is the title),
+      // the session's as seen here (it counts only once seen changing).
       var f = this.config.fallback && hass.states[this.config.fallback];
       var fOk = f && ["unknown", "unavailable", "Inconnu", ""].indexOf(f.state) < 0;
-      var when = (x) => (x ? Date.parse(x.last_updated || x.last_changed) || 0 : 0);
-      if (fOk && (!title || when(f) >= when(s))) { title = f.state; artist = (f.attributes && f.attributes.artiste) || ""; }
+      var fAt = fOk ? Date.parse(f.last_changed || f.last_updated) || 0 : 0;
+      if (title !== this.sessTitle) {
+        // First seen: as old as can be when the notification has a title, so the notification wins.
+        this.sessAt = this.sessTitle === undefined && fOk ? 0 : Date.now();
+        this.sessTitle = title;
+      }
+      if (fOk && (!title || fAt >= (this.sessAt || 0))) { title = f.state; artist = (f.attributes && f.attributes.artiste) || ""; }
       var playing = s && s.state === "Playing";
       this.ti.textContent = title || "Rien en lecture";
       this.ar.textContent = (artist ? artist + " · " : "") + (playing ? "en lecture" : "en pause");
