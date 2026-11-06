@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.37.3 — What is on the road
+
+- `custom:igor-gps-card` shows what is around the car, from OpenStreetMap (nothing to sign up for): traffic lights, fuel stations, rest areas by default; charging points, car parks, toilets and hospitals from the new layers button (kept by each screen; `pois:` sets the first choice). Asked again once the car has gone half the way to the edge, at most every 20 seconds.
+- Speed cameras, worldwide, as a setting (`cameras:` or the layers button): **danger zones** (the default — 300 m in town, 2 km on roads, 4 km on motorways, without showing where the camera is, as French law requires), **cameras** (each one on the map and announced at 500 m, 1 km on fast roads, with its limit), or off. Only cameras ahead of the car (or on its route) and watching its way; the warning turns green below the limit and is spoken once.
+- The limit sign never leaves: unknown here, a grey sign barred; where the map says nothing for a while, the last limit seen, greyed, for 2 km.
+- The road where the car is, with its number in the French colours (A and N red, D yellow, E green), at the bottom; in the arrival bar when guided (`street_names: false` to hide it).
+- Guidance reads the signs: « Prenez la sortie 12 », or « Prenez la sortie Porte Dauphine » when the exit has no number, with the roads' numbers and « direction Rouen, Caen » under the instruction, spoken too.
+- The zoom goes by stages, as a navigator: closer in town, wider on roads, wider still on motorways; it closes in 20 seconds before a turn (250 m to 1 km) and a little before traffic lights.
+- Live traffic, ready for a TomTom key: in Igor's options, a new « TomTom key » field (kept in Home Assistant only, never in a dashboard). With it, the card shows the traffic flow over the roads, closed roads (dashed red), roadworks, accidents and jams, and warns about a closed road 3 km ahead and other incidents 1.5 km ahead. New service `nives.traffic` (administrators only, answers `enabled: false` without a key) and a logged-in tile relay; answers are kept a minute to spare the free quota.
+
 ## 0.37.2 — A navigator that knows which way it faces
 
 - `custom:igor-gps-card`: where the car faces is worked out as a navigator does, from the car's own speed (`speed_entity`): stopped, nothing changes; under 9 km/h the car may be manoeuvring or reversing, the arrow keeps facing the same way and may move back; driving, it follows the real movement — a line fitted through the last fixes (least squares, 4 to 15 s), weighed with the GPS's course when fast — and turns round only when the car has really moved the other way (two concordant clues above 15 km/h, three below). A single reversed course, GPS noise in traffic or a wrong start no longer turn the arrow round, and a wrong arrow is no longer stuck (the « never backwards » guard now applies only above 15 km/h). A course of exactly north is no longer ignored.

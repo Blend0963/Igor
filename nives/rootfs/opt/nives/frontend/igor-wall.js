@@ -5120,6 +5120,11 @@
   //   voice: true                           # instructions spoken (the browser's voice), false: silent; the 🔊 button mutes
   //   speed_limits: true                    # the limit sign from OpenStreetMap when speed_limit_entity says nothing (false: off)
   //   auto_zoom: true                       # farther out the faster, closer before a turn (false: the zoom stays)
+  //   cameras: zone                         # zone (danger zones, as the law asks in France), radar (each camera, its distance), off
+  //   pois: [signals, fuel, rest]           # shown on the map at first (the layers button changes it on this screen):
+  //                                         #   signals, fuel, charging, parking, rest, toilets, hospital
+  //   street_names: true                    # the road where the car is, at the bottom (false: off)
+  //   traffic: true                         # live traffic and incidents once a TomTom key is set in Igor's options (false: never)
   //   overpass: https://overpass-api.de/api/interpreter
   //   router: https://router.project-osrm.org  # OSRM (the route); self-hosted possible
   //   geocoder: https://nominatim.openstreetmap.org  # the address search
@@ -5357,6 +5362,7 @@
   // The French speed limit sign (B14): kept as the real thing, readable at a glance.
   var GPS_SIGN = '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="49.5" fill="#fff" stroke="rgba(0,0,0,0.35)" stroke-width="1"/>' +
     '<circle cx="50" cy="50" r="42.5" fill="none" stroke="#c8102e" stroke-width="11"/>' +
+    '<line class="bar" x1="27" y1="73" x2="73" y2="27" stroke="#5a5f66" stroke-width="9" stroke-linecap="round"/>' +
     '<text x="50" y="53" text-anchor="middle" dominant-baseline="middle" fill="#1a1a1a" font-family="\'Barlow Condensed\', \'Roboto Condensed\', \'Arial Narrow\', sans-serif" font-weight="700" font-size="44" letter-spacing="-1"></text></svg>';
   // ----- guidance: OSRM's route, its steps in French -----
   var GPS_SIDE = { left: "à gauche", right: "à droite", "slight left": "légèrement à gauche", "slight right": "légèrement à droite",
@@ -5377,11 +5383,19 @@
     else if (mod === "uturn") { text = "Faites demi-tour" + on; }
     else if (type === "merge") { text = "Insérez-vous" + (side && mod !== "straight" ? " " + side : "") + on; ic = "mdi:call-merge"; }
     else if (type === "on ramp") { text = "Prenez la bretelle" + (mod !== "straight" ? " " + side : "") + on; }
-    else if (type === "off ramp") { text = "Prenez la sortie" + (mod !== "straight" ? " " + side : "") + (st.exits ? " " + st.exits : "") + (st.destinations ? " vers " + st.destinations : on); }
+    else if (type === "off ramp") {
+      // As the sign says: « Sortie 12 », or « Sortie Porte Dauphine » when it has no number.
+      var dx = gpsDirections(st), first = dx.to.split(", ")[0];
+      text = "Prenez la sortie" + (st.exits ? " " + String(st.exits).split(";")[0] : first ? " " + first : mod !== "straight" ? " " + side : "") + (st.exits || !first ? on : "");
+      ic = /left/.test(mod) ? "mdi:arrow-top-left" : "mdi:arrow-top-right";
+    }
     else if (type === "fork") { text = "Restez " + (/left/.test(mod) ? "à gauche" : /right/.test(mod) ? "à droite" : "tout droit") + on; ic = "mdi:call-split"; }
     else if (type === "continue" || type === "new name" || mod === "straight") { text = "Continuez" + (mod === "straight" ? " tout droit" : " " + side) + on; }
     else { text = "Tournez " + side + on; }
-    return { text: text, icon: ic, road: road, loc: m.location };
+    // The signs over the road: its numbers and « direction … ».
+    var x = gpsDirections(st);
+    if (type === "arrive" || type === "depart") x = { refs: [], to: "" };
+    return { text: text, icon: ic, road: road, loc: m.location, refs: x.refs, to: x.to, exit: st.exits ? String(st.exits).split(";")[0] : "" };
   }
   function gpsMetres(m) {
     if (m >= 1000) return (m >= 10000 ? Math.round(m / 1000) : (Math.round(m / 100) / 10).toString().replace(".", ",")) + " km";
@@ -5415,7 +5429,154 @@
     if (t.highway === "living_street") return 20;
     return null;
   }
-  window.__igorGpsNav = { step: gpsStep, metres: gpsMetres, parse: gpsParseDest, limit: gpsWayLimit };
+  window.__igorGpsNav = { step: gpsStep, metres: gpsMetres, parse: gpsParseDest, limit: gpsWayLimit, directions: gpsDirections, refs: gpsRefs };
+  // ----- what is around the car: OpenStreetMap's points (Overpass) -----
+  // Each kind: its colour on the map and in the layers' list, its name there.
+  var GPS_POI = {
+    signals: { color: "#e5323b", name: "Feux tricolores" },
+    camera: { color: "#e5323b", name: "Radars" },
+    fuel: { color: "#d9a441", name: "Stations-service" },
+    charging: { color: "#5cc28f", name: "Bornes de recharge" },
+    parking: { color: "#3b8cff", name: "Parkings" },
+    rest: { color: "#5cc28f", name: "Aires de repos" },
+    toilets: { color: "#9aa0a8", name: "Toilettes" },
+    hospital: { color: "#e9e4da", name: "Hôpitaux" }
+  };
+  var GPS_POI_DEFAULT = ["signals", "fuel", "rest"];
+  // A road number → its shield's colour (French signs: A and N red, D yellow, E green, M blue).
+  function gpsShield(ref) {
+    var c = String(ref || "").trim().charAt(0).toUpperCase();
+    return c === "A" ? "a" : c === "N" || c === "R" ? "n" : c === "D" ? "d" : c === "E" ? "e" : c === "M" ? "m" : "";
+  }
+  // « A 13;N 13 » or « A13, E5 » → ["A 13", "N 13"].
+  function gpsRefs(v) {
+    return String(v || "").split(/\s*[;,]\s*/).map(function (r) { return r.trim(); }).filter(Boolean).slice(0, 3);
+  }
+  // A step's signs: OSRM's destinations « A 13, A 14: Rouen, Caen » → the
+  // roads (shields) and where they go (« direction … »).
+  function gpsDirections(st) {
+    var d = String((st && st.destinations) || "").trim(), refs = [], to = d;
+    var i = d.indexOf(": ");
+    if (i >= 0) { refs = gpsRefs(d.slice(0, i)); to = d.slice(i + 2).trim(); }
+    if (!refs.length && st && st.ref && (st.maneuver || {}).type !== "arrive") refs = gpsRefs(st.ref);
+    return { refs: refs, to: to.replace(/\s*,\s*/g, ", ").slice(0, 80) };
+  }
+  // A camera's « direction » (degrees or N, NNE…), or null when unknown.
+  var GPS_CARDINAL = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+  function gpsTagDirection(v) {
+    var s = String(v == null ? "" : v).trim().toUpperCase().replace(/O/g, "W");
+    if (/^\d+(\.\d+)?$/.test(s)) return Number(s) % 360;
+    var k = GPS_CARDINAL.indexOf(s);
+    return k >= 0 ? k * 22.5 : null;
+  }
+  // Does the camera watch the car's way? OpenStreetMap is mapped both ways
+  // (the traffic watched, or where the camera looks: the opposite), so only a
+  // camera turned across the car's way is left out. Unknown: it does.
+  function gpsCameraWatches(tags, heading) {
+    var dir = gpsTagDirection(tags && (tags.direction || tags["camera:direction"]));
+    if (dir == null || heading == null) return true;
+    var t = gpsTurn(dir, heading);
+    return t <= 55 || t >= 125;
+  }
+  // The length of a danger zone, as France's navigators show them: 300 m in
+  // town, 2 km on other roads, 4 km on motorways.
+  function gpsZoneLength(limit) {
+    var v = Number(limit) || 0;
+    return v && v <= 50 ? 300 : v >= 110 ? 4000 : 2000;
+  }
+  // Overpass' elements → the points the card knows.
+  function gpsPois(elements) {
+    var out = [];
+    (elements || []).forEach(function (e) {
+      var t = e.tags || {}, lat = e.lat != null ? e.lat : e.center && e.center.lat, lon = e.lon != null ? e.lon : e.center && e.center.lon;
+      if (typeof lat !== "number" || typeof lon !== "number") return;
+      var kind = t.highway === "traffic_signals" ? "signals" : t.highway === "speed_camera" ? "camera"
+        : t.amenity === "fuel" ? "fuel" : t.amenity === "charging_station" ? "charging" : t.amenity === "parking" ? "parking"
+        : t.highway === "rest_area" || t.highway === "services" ? "rest" : t.amenity === "toilets" ? "toilets" : t.amenity === "hospital" ? "hospital" : null;
+      if (!kind) return;
+      var limit = kind === "camera" ? gpsLimitValue(t.maxspeed) : null;
+      var label = kind === "camera" ? (limit ? String(limit) : "") : kind === "fuel" ? String(t.brand || t.name || "").slice(0, 18) : "";
+      out.push({ id: e.type + e.id, kind: kind, p: [lon, lat], tags: t, limit: limit, label: label, name: String(t.name || t.brand || "") });
+    });
+    return out;
+  }
+  // The points' query: only the kinds shown or warned about, around a point.
+  function gpsPoiQuery(p, radius, kinds) {
+    var at = function (r) { return "(around:" + Math.round(r) + "," + p[1].toFixed(6) + "," + p[0].toFixed(6) + ")"; };
+    var parts = [];
+    if (kinds.indexOf("signals") >= 0) parts.push("node" + at(Math.min(radius, 2500)) + "[highway=traffic_signals];");
+    if (kinds.indexOf("camera") >= 0) parts.push("node" + at(Math.max(radius, 5000)) + "[highway=speed_camera];");
+    if (kinds.indexOf("fuel") >= 0) parts.push("nwr" + at(radius * 2) + "[amenity=fuel];");
+    if (kinds.indexOf("charging") >= 0) parts.push("nwr" + at(radius * 2) + "[amenity=charging_station];");
+    if (kinds.indexOf("parking") >= 0) parts.push("nwr" + at(Math.min(radius, 1500)) + '[amenity=parking][access!~"^(private|no|customers)$"];');
+    if (kinds.indexOf("rest") >= 0) parts.push("nwr" + at(radius * 3) + '[highway~"^(rest_area|services)$"];');
+    if (kinds.indexOf("toilets") >= 0) parts.push("nwr" + at(radius) + "[amenity=toilets];");
+    if (kinds.indexOf("hospital") >= 0) parts.push("nwr" + at(radius * 3) + "[amenity=hospital];");
+    return parts.length ? "[out:json][timeout:15];(" + parts.join("") + ");out center tags 600;" : "";
+  }
+  // Where a point lies from the car: metres ahead (negative: behind) and
+  // metres to the side of the car's way.
+  function gpsRelative(from, to, heading) {
+    var d = gpsDist(from, to), ahead = gpsAhead(from, to, heading);
+    return { d: d, ahead: ahead, side: Math.sqrt(Math.max(0, d * d - ahead * ahead)) };
+  }
+  window.__igorGpsPoi = { parse: gpsPois, query: gpsPoiQuery, watches: gpsCameraWatches, zone: gpsZoneLength, direction: gpsTagDirection, shield: gpsShield, relative: gpsRelative };
+  // The points' icons, drawn once (no image to load, nothing to host).
+  function gpsPoiIcons() {
+    var S = 48, out = {};
+    var draw = function (name, fn) {
+      var c = document.createElement("canvas"); c.width = S; c.height = S;
+      var g = c.getContext("2d");
+      g.lineJoin = "round"; g.lineCap = "round";
+      fn(g);
+      out[name] = g.getImageData(0, 0, S, S);
+    };
+    var disc = function (g, fill, ring) { g.beginPath(); g.arc(24, 24, 20, 0, Math.PI * 2); g.fillStyle = fill; g.fill(); g.lineWidth = 4; g.strokeStyle = ring || "#07080a"; g.stroke(); };
+    var letter = function (g, txt, color, size) { g.fillStyle = color; g.font = "700 " + (size || 24) + "px Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(txt, 24, 25); };
+    draw("signals", function (g) {
+      g.fillStyle = "#07080a"; g.strokeStyle = "#e9e4da"; g.lineWidth = 3;
+      g.beginPath(); g.roundRect ? g.roundRect(14, 3, 20, 42, 6) : g.rect(14, 3, 20, 42); g.fill(); g.stroke();
+      [["#e5323b", 12], ["#d9a441", 24], ["#5cc28f", 36]].forEach(function (l) { g.beginPath(); g.arc(24, l[1], 5, 0, Math.PI * 2); g.fillStyle = l[0]; g.fill(); });
+    });
+    draw("camera", function (g) {
+      disc(g, "#fff", "#e5323b");
+      g.fillStyle = "#1a1a1a"; g.fillRect(12, 18, 18, 13); g.beginPath(); g.moveTo(30, 21); g.lineTo(37, 17); g.lineTo(37, 32); g.lineTo(30, 28); g.closePath(); g.fill();
+      g.beginPath(); g.arc(21, 24.5, 3.5, 0, Math.PI * 2); g.fillStyle = "#fff"; g.fill();
+    });
+    draw("fuel", function (g) {
+      disc(g, "#d9a441");
+      g.fillStyle = "#07080a"; g.fillRect(14, 13, 13, 22); g.fillStyle = "#d9a441"; g.fillRect(17, 16, 7, 6);
+      g.strokeStyle = "#07080a"; g.lineWidth = 3; g.beginPath(); g.moveTo(27, 18); g.lineTo(33, 22); g.lineTo(33, 31); g.stroke();
+    });
+    draw("charging", function (g) {
+      disc(g, "#5cc28f");
+      g.fillStyle = "#07080a"; g.beginPath(); g.moveTo(27, 9); g.lineTo(15, 27); g.lineTo(23, 27); g.lineTo(20, 39); g.lineTo(33, 20); g.lineTo(25, 20); g.closePath(); g.fill();
+    });
+    draw("parking", function (g) {
+      g.fillStyle = "#2f6fd6"; g.strokeStyle = "#07080a"; g.lineWidth = 4;
+      g.beginPath(); g.roundRect ? g.roundRect(5, 5, 38, 38, 7) : g.rect(5, 5, 38, 38); g.fill(); g.stroke();
+      letter(g, "P", "#fff", 28);
+    });
+    draw("rest", function (g) {
+      disc(g, "#2f8a3e");
+      g.fillStyle = "#fff"; g.beginPath(); g.moveTo(24, 10); g.lineTo(34, 26); g.lineTo(14, 26); g.closePath(); g.fill(); g.fillRect(22, 26, 4, 10);
+    });
+    draw("toilets", function (g) { disc(g, "#5a5f66"); letter(g, "WC", "#fff", 17); });
+    draw("hospital", function (g) {
+      g.fillStyle = "#2f6fd6"; g.strokeStyle = "#07080a"; g.lineWidth = 4;
+      g.beginPath(); g.roundRect ? g.roundRect(5, 5, 38, 38, 7) : g.rect(5, 5, 38, 38); g.fill(); g.stroke();
+      letter(g, "H", "#fff", 28);
+    });
+    return out;
+  }
+  // The traffic's kinds: their colour and icon in the alert.
+  var GPS_INCIDENT = {
+    closed: { color: "#e5323b", icon: "mdi:road-variant" }, accident: { color: "#e5323b", icon: "mdi:car-emergency" },
+    danger: { color: "#d9a441", icon: "mdi:alert" }, lane: { color: "#d9a441", icon: "mdi:arrow-collapse-horizontal" },
+    works: { color: "#d9a441", icon: "mdi:account-hard-hat" }, jam: { color: "#e5823b", icon: "mdi:car-multiple" },
+    weather: { color: "#59d0e0", icon: "mdi:weather-pouring" }, breakdown: { color: "#d9a441", icon: "mdi:car-wrench" },
+    other: { color: "#d9a441", icon: "mdi:alert-circle-outline" }
+  };
 
   class IgorGpsCard extends HTMLElement {
     setConfig(config) {
@@ -5452,6 +5613,28 @@
         ".speed.over { color: #e5323b; border-color: #e5323b; } .speed[hidden] { display: none; }" +
         ".sign { width: 76px; height: 76px; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.5)); } .sign svg { width: 100%; height: 100%; display: block; } .sign[hidden] { display: none; }" +
         ".sign.over { animation: igor-over 1s ease-in-out infinite; } @keyframes igor-over { 50% { transform: scale(1.07); } }" +
+        // The sign never leaves: unknown here, a grey sign barred; the last one
+        // seen, greyed, for 2 km after it.
+        ".sign .bar { display: none; } .sign.unk .bar { display: inline; } .sign.unk text { display: none; }" +
+        ".sign.unk circle:nth-child(2), .sign.stale circle:nth-child(2) { stroke: #9aa0a8; } .sign.stale text { fill: #8a8f96; }" +
+        // Cameras, incidents: an alert under the instruction.
+        ".alert { position: absolute; z-index: 3; left: 64px; right: 100px; top: 10px; display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-radius: var(--igor-radius, 3px); background: rgba(40,10,12,0.94); border: 1px solid #e5323b; color: #e9e4da; font-family: " + MONO + "; font-size: 13px; animation: igor-alert 1.2s ease-in-out infinite; --mdc-icon-size: 28px; }" +
+        ".alert[hidden] { display: none; } .alert ha-icon { color: #e5323b; flex: none; } .alert b { font-family: 'Chakra Petch', " + MONO + "; font-size: 18px; font-weight: 500; }" +
+        ".alert .bar2 { flex: none; width: 70px; height: 5px; border-radius: 3px; background: rgba(229,50,59,0.2); overflow: hidden; } .alert .bar2 i { display: block; height: 100%; background: #e5323b; }" +
+        ".alert.ok { background: rgba(10,30,20,0.94); border-color: #5cc28f; animation: none; } .alert.ok ha-icon { color: #5cc28f; } .alert.ok .bar2 i { background: #5cc28f; }" +
+        ".alert.inc { background: rgba(40,28,8,0.94); border-color: #d9a441; animation: none; } .alert.inc ha-icon { color: #d9a441; } .alert.inc .bar2 i { background: #d9a441; }" +
+        ".withnav .alert { top: 96px; }" +
+        "@keyframes igor-alert { 50% { background: rgba(80,16,20,0.94); } }" +
+        // The road where the car is, at the bottom when not guided.
+        ".street { position: absolute; z-index: 2; bottom: 12px; left: 50%; transform: translateX(-50%); max-width: 55%; padding: 6px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.88); border: 1px solid #22262c; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }" +
+        ".street[hidden] { display: none; }" +
+        ".shield { display: inline-block; padding: 0 5px; margin-right: 6px; border-radius: 2px; font-weight: 700; font-size: 0.82em; line-height: 1.5; vertical-align: 1px; background: #c9a227; color: #111; }" +
+        ".shield.a, .shield.n { background: #d33; color: #fff; } .shield.e { background: #2f8a3e; color: #fff; } .shield.d { background: #f2c200; color: #111; } .shield.m { background: #2a9fd6; color: #fff; }" +
+        ".nav .x { font-size: 12px; color: #878c95; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .nav .x[hidden] { display: none; }" +
+        ".eta .st { flex: none; max-width: 40%; color: #e9e4da; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 1px solid #22262c; padding-left: 14px; display: block; -webkit-line-clamp: unset; }" +
+        // The layers' list.
+        ".lpanel .tg { justify-content: space-between; } .lpanel .tg .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }" +
+        ".lpanel .tg.off { opacity: 0.45; } .lpanel .seg { display: flex; gap: 8px; } .lpanel .seg button { flex: 1; justify-content: center; } .lpanel .seg button.on { border-color: #59d0e0; color: #59d0e0; }" +
         ".snap { position: absolute; right: 12px; bottom: 12px; z-index: 2; font-family: " + MONO + "; font-size: 10px; color: #3d454e; letter-spacing: 0.1em; text-transform: uppercase; }" +
         ".noattr .maplibregl-ctrl-attrib, .noattr .maplibregl-ctrl-bottom-right { display: none !important; }" +
         "@media (prefers-reduced-motion: reduce) { .sign.over { animation: none; } }" +
@@ -5482,8 +5665,12 @@
         '<div class="btns"><button id="recenter" title="Recentrer" hidden><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' +
         '<button id="orient" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button>' +
         '<button id="dest" title="Destination"><ha-icon icon="mdi:flag-checkered"></ha-icon></button>' +
-        '<button id="voice" title="Voix du guidage"><ha-icon icon="mdi:volume-high"></ha-icon></button></div>' +
-        '<div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div><div class="d" id="navD"></div><div class="t" id="navT"></div></div></div>' +
+        '<button id="voice" title="Voix du guidage"><ha-icon icon="mdi:volume-high"></ha-icon></button>' +
+        '<button id="layers" title="Sur la carte"><ha-icon icon="mdi:layers-outline"></ha-icon></button></div>' +
+        '<div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div style="min-width:0"><div class="d" id="navD"></div><div class="t" id="navT"></div><div class="x" id="navX" hidden></div></div></div>' +
+        '<div class="alert" id="alert" hidden><ha-icon id="alIcon" icon="mdi:cctv"></ha-icon><div style="flex:1;min-width:0"><b id="alT"></b><div id="alS"></div></div><div class="bar2"><i id="alBar"></i></div></div>' +
+        '<div class="street" id="street" hidden></div>' +
+        '<div class="panel lpanel" id="lpanel" hidden><div class="ph"><span>sur la carte</span><button id="lclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="llist"></div></div>' +
         '<div class="eta" id="eta" hidden></div>' +
         '<div class="panel" id="panel" hidden><div class="ph"><span>destination</span><button id="pclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
         '<form id="pform"><input id="pq" type="text" enterkeyhint="search" placeholder="Adresse, ville, lieu…" autocomplete="off"><button class="go" type="submit"><ha-icon icon="mdi:magnify"></ha-icon><span>Chercher</span></button></form>' +
@@ -5512,6 +5699,9 @@
         showVoice();
       });
       $("pclose").addEventListener("click", () => { $("panel").hidden = true; });
+      $("layers").addEventListener("click", () => this.openLayers());
+      $("lclose").addEventListener("click", () => { $("lpanel").hidden = true; });
+      this.loadLayers();
       $("pstop").addEventListener("click", () => { this.setDestination(null, true); $("panel").hidden = true; });
       $("pform").addEventListener("submit", (ev) => { ev.preventDefault(); this.search($("pq").value); });
       $("recenter").addEventListener("click", () => this.setFollow(true));
@@ -5626,13 +5816,19 @@
       sp.hidden = this.config.show_speed === false;
       sp.firstElementChild.textContent = kmh;
       sp.classList.toggle("over", over);
-      var sign = this.$("limit");
-      sign.hidden = isNaN(limit);
-      if (!isNaN(limit)) {
-        var t = sign.querySelector("text"), dg = String(Math.round(limit));
-        if (t.textContent !== dg) { t.textContent = dg; t.setAttribute("font-size", dg.length > 2 ? "39" : "46"); }
-        sign.classList.toggle("over", over);
-      }
+      var sign = this.$("limit"), here = this.pos || (this.fix && this.fix.point);
+      // Always there: the limit; the last one seen, greyed, for 2 km after
+      // it when the road says nothing; else a grey sign barred.
+      sign.hidden = this.config.speed_limits === false && !le;
+      var shown = limit, stale = false;
+      if (!isNaN(limit)) { if (here) this.lastLimit = { v: limit, at: here }; }
+      else if (this.lastLimit && here && gpsDist(here, this.lastLimit.at) < 2000) { shown = this.lastLimit.v; stale = true; }
+      sign.classList.toggle("unk", isNaN(shown));
+      sign.classList.toggle("stale", stale);
+      sign.title = isNaN(shown) ? "Limitation inconnue ici" : stale ? "Dernière limitation vue" : "Limitation";
+      var t = sign.querySelector("text"), dg = isNaN(shown) ? "" : String(Math.round(shown));
+      if (t.textContent !== dg) { t.textContent = dg; t.setAttribute("font-size", dg.length > 2 ? "39" : "46"); }
+      sign.classList.toggle("over", over);
     }
     trailData() { return { type: "Feature", geometry: { type: "MultiLineString", coordinates: this.trail.filter(function (x) { return x.length > 1; }) } }; }
     async init(p) {
@@ -5641,7 +5837,12 @@
       try { ml = await gpsMapLibre(); } catch (e) { this.message(e.message); this.loading = false; return; }
       var map = new ml.Map({
         container: this.$("map"), style: (this.styleNow = this.styleUrl()), center: p, zoom: this.config.zoom, pitch: this.config.pitch,
-        bearing: this.headingUp ? this.heading : 0, attributionControl: this.config.hide_attribution ? false : { compact: true }
+        bearing: this.headingUp ? this.heading : 0, attributionControl: this.config.hide_attribution ? false : { compact: true },
+        // Igor's own tiles (traffic) need the Home Assistant login, as every API call.
+        transformRequest: (url) => {
+          var tok = this._hass && this._hass.auth && this._hass.auth.data && this._hass.auth.data.access_token;
+          return tok && url.indexOf(window.location.origin + "/api/nives/") === 0 ? { url: url, headers: { Authorization: "Bearer " + tok } } : undefined;
+        }
       });
       this.map = map;
       var arrow = document.createElement("div");
@@ -5663,6 +5864,7 @@
           map.addLayer({ id: "trail", type: "line", source: "trail", layout: { "line-cap": "round", "line-join": "round" },
             paint: { "line-color": "#59d0e0", "line-width": 5, "line-opacity": 0.55 } });
         }
+        this.styleLayers();
         this.message("");
       });
       map.on("error", (e) => console.warn("igor-gps-card:", e && e.error));
@@ -5794,7 +5996,9 @@
         this.addTrail(on ? s.point : this.pos, on);
       }
       if (this.route && (!this.navAt || now - this.navAt > 1000)) { this.navAt = now; this.navTick(now, moving); }
-      if (this.config.speed_limits !== false && (!this.limitAt || now - this.limitAt > 1000)) { this.limitAt = now; this.limitTick(now, moving); }
+      if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > 1000)) { this.limitAt = now; this.limitTick(now, moving); }
+      if (!this.alertAt || now - this.alertAt > 500) { this.alertAt = now; this.alertTick(now, speed); }
+      if (!this.poiTickAt || now - this.poiTickAt > 2000) { this.poiTickAt = now; this.poiTick(now, speed); this.trafficTick(now, moving); }
       if (this.follow) {
         var h = this.$("map").clientHeight;
         var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } };
@@ -5802,8 +6006,18 @@
         // before a turn, back out after it; eased, never a jump.
         if (this.config.auto_zoom !== false) {
           var base = Number(this.config.zoom) || 16, kmh = speed * 3.6;
-          var tz = base - Math.max(0, Math.min(2.2, (kmh - 40) / 40));
-          if (this.route && this.nextDist != null && this.nextDist < 250) tz = Math.max(tz, base + 0.6);
+          // By stages, as a navigator: town, roads, fast roads, motorway
+          // (4 km/h either side of each step, so it does not hesitate).
+          var edges = [30, 55, 85, 115], zst = this.zStage || 0;
+          while (zst < 4 && kmh > edges[zst] + 4) zst++;
+          while (zst > 0 && kmh < edges[zst - 1] - 4) zst--;
+          this.zStage = zst;
+          var tz = base + [0.3, 0, -0.8, -1.6, -2.3][zst];
+          // Closer before a turn: 20 seconds ahead (250 m to 1 km); a crossing
+          // with lights just ahead, a little.
+          var near = Math.max(250, Math.min(1000, speed * 20));
+          if (this.route && this.nextDist != null && this.nextDist < near) tz = Math.max(tz, Math.min(base + 0.6, tz + 1.4));
+          else if (this.signalAhead != null && this.signalAhead < 150) tz = Math.min(base + 0.5, tz + 0.4);
           this.zoomNow = this.zoomNow == null ? tz : this.zoomNow + (tz - this.zoomNow) * 0.02;
           view.zoom = this.zoomNow;
         }
@@ -5837,8 +6051,6 @@
     limitTick(now, moving) {
       var p = this.pos;
       if (!p) return;
-      var le = this.config.speed_limit_entity && this._hass.states[this.config.speed_limit_entity];
-      if (le && !isNaN(parseFloat(le.state))) return;
       var ways = this.limitWays || [], best = null;
       ways.forEach((w) => {
         var o = gpsOnLine(p, w.geom);
@@ -5852,7 +6064,9 @@
         // Forward when the car goes the way the way is drawn.
         var fwd = Math.abs(((best.bearing - this.heading + 540) % 360) - 180) < 90;
         var v = gpsWayLimit(best.w.tags, fwd);
+        this.limitKnown = true;
         if (v !== this.osmLimit) { this.osmLimit = v; this.overlays(); }
+        this.setRoadName(best.w.tags);
         return;
       }
       if (!moving || this.limitBusy || (this.limitAsked && now - this.limitAsked < 8000)) return;
@@ -5864,7 +6078,7 @@
         .then((j) => {
           this.limitWays = (j.elements || []).filter((e) => e.type === "way" && Array.isArray(e.geometry) && e.geometry.length > 1)
             .map((e) => ({ tags: e.tags || {}, geom: e.geometry.map((g) => [g.lon, g.lat]) }));
-          if (!this.limitWays.length) { this.osmLimit = null; this.overlays(); }
+          if (!this.limitWays.length) { this.osmLimit = null; this.limitKnown = true; this.setRoadName(null); this.overlays(); }
         })
         .catch(() => { /* no answer: the sign stays as it was */ })
         .then(() => { this.limitBusy = false; });
@@ -5941,6 +6155,8 @@
       if (src) src.setData(this.routeData());
       this.$("nav").hidden = !d;
       this.$("eta").hidden = true;
+      this.$("card").classList.toggle("withnav", !!d);
+      this.showStreet();
       if (!d) return;
       this.banner("mdi:map-search", "", "Calcul de l'itinéraire vers " + d.name + "…", "wait");
       if (this.map && window.maplibregl) {
@@ -5977,17 +6193,28 @@
       }));
       this.route = { coords: coords, cum: cum, steps: steps, total: cum[cum.length - 1], duration: r.duration || 0 };
       this.seg = 1;
+      this.showStreet();
       var src = this.map && this.map.getSource("route");
       if (src) src.setData(this.routeData());
       this.navTick(performance.now(), false);
     },
-    banner(icon, dist, text, cls) {
+    banner(icon, dist, text, cls, step) {
       var $ = this.$;
       $("nav").hidden = false;
       $("nav").className = "nav" + (cls ? " " + cls : "");
       $("navIcon").setAttribute("icon", icon);
       $("navD").textContent = dist;
       $("navT").textContent = text;
+      // Under it, as the blue signs: the roads' numbers, « direction … ».
+      var x = $("navX");
+      x.innerHTML = "";
+      var refs = (step && step.refs) || [], to = (step && step.to) || "";
+      // Not again what the instruction already says.
+      if (to && text.indexOf(to.split(", ")[0]) >= 0 && !refs.length) to = to.split(", ").slice(1).join(", ");
+      refs.forEach(function (r) { var b = document.createElement("span"); b.className = "shield " + gpsShield(r); b.textContent = r; x.appendChild(b); });
+      if (to) x.appendChild(document.createTextNode("direction " + to));
+      x.hidden = !refs.length && !to;
+      this.$("card").classList.toggle("withnav", true);
     },
     say(text) {
       if (this.config.voice === false || this.muted || !window.speechSynthesis) return;
@@ -6043,13 +6270,14 @@
       this.nextDist = next ? next.at - along : null;
       if (next) {
         var dn = next.at - along;
-        this.banner(next.icon, gpsMetres(dn), next.text, "");
+        this.banner(next.icon, gpsMetres(dn), next.text, "", next);
         // Spoken at 1 km on fast roads, 400 m, 100 m, and at the turn.
         var key = next.at.toFixed(0), sp = this.spoken[key] || 0;
         var stage = dn < 40 ? 3 : dn < 130 ? 2 : dn < 450 ? 1 : 0;
         if (stage > sp) {
           this.spoken[key] = stage;
-          this.say(stage === 3 ? next.text : "Dans " + gpsMetres(dn).replace(" m", " mètres").replace(" km", " kilomètres") + ", " + next.text.charAt(0).toLowerCase() + next.text.slice(1));
+          var said = next.text + (next.to && next.text.indexOf(next.to.split(", ")[0]) < 0 ? ", direction " + next.to.split(", ")[0] : "");
+          this.say(stage === 3 ? said : "Dans " + gpsMetres(dn).replace(" m", " mètres").replace(" km", " kilomètres") + ", " + said.charAt(0).toLowerCase() + said.slice(1));
         }
       }
       // The rest of the way: kilometres, minutes, arrival time.
@@ -6071,6 +6299,310 @@
       var at = document.createElement("i"); at.textContent = "arrivée " + hhmm(eta); sp2.appendChild(at);
       if (d && d.name !== "destination") sp2.appendChild(document.createTextNode(d.name));
       e.appendChild(sp2);
+      // The road where the car is, at the end of the line.
+      if (this.roadName && this.config.street_names !== false) { var stn = document.createElement("div"); stn.className = "st"; this.fillRoad(stn); e.appendChild(stn); }
+    }
+  });
+
+  Object.assign(IgorGpsCard.prototype, {
+    // ----- what the card shows: kept by this screen -----
+    loadLayers() {
+      var c = this.config, saved = null;
+      try { saved = JSON.parse(window.localStorage.getItem("igor-gps-layers") || "null"); } catch (e) { saved = null; }
+      var pois = Array.isArray(c.pois) ? c.pois : GPS_POI_DEFAULT;
+      var cam = ["radar", "zone", "off"].indexOf(c.cameras) >= 0 ? c.cameras : c.cameras === false ? "off" : "zone";
+      this.layers = { cameras: cam, traffic: c.traffic !== false, incidents: c.traffic !== false };
+      Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") this.layers[k] = pois.indexOf(k) >= 0; });
+      if (saved && typeof saved === "object") Object.keys(this.layers).forEach((k) => { if (saved[k] !== undefined) this.layers[k] = saved[k]; });
+      if (c.traffic === false) { this.layers.traffic = false; this.layers.incidents = false; }
+      this.applyLayers();
+    },
+    saveLayers() {
+      try { window.localStorage.setItem("igor-gps-layers", JSON.stringify(this.layers)); } catch (e) { /* no storage */ }
+      this.poiDirty = true;
+      this.applyLayers();
+      this.openLayers();
+    },
+    // The kinds asked from OpenStreetMap: those shown, and the cameras when warned about.
+    poiKinds() {
+      var L = this.layers || {}, out = [];
+      Object.keys(GPS_POI).forEach((k) => { if (k === "camera" ? L.cameras && L.cameras !== "off" : L[k]) out.push(k); });
+      return out;
+    },
+    openLayers() {
+      var $ = this.$, L = this.layers, list = $("llist");
+      $("lpanel").hidden = false;
+      list.innerHTML = "";
+      var head = function (txt) { var h = document.createElement("div"); h.className = "note"; h.textContent = txt; list.appendChild(h); };
+      head("Contrôles de vitesse");
+      var seg = document.createElement("div"); seg.className = "seg";
+      [["zone", "Zones de danger"], ["radar", "Radars"], ["off", "Aucun"]].forEach((o) => {
+        var b = document.createElement("button"); b.type = "button"; b.textContent = o[1];
+        b.classList.toggle("on", L.cameras === o[0]);
+        b.addEventListener("click", () => { L.cameras = o[0]; this.camSpoken = {}; this.saveLayers(); });
+        seg.appendChild(b);
+      });
+      list.appendChild(seg);
+      head(L.cameras === "radar" ? "Chaque radar, à 500 m (1 km sur route rapide). En France, la loi n'autorise que les zones de danger." :
+        L.cameras === "zone" ? "Une zone de 300 m en ville, 2 km sur route, 4 km sur autoroute, sans montrer le radar." : "Aucune alerte de contrôle.");
+      var toggle = (key, name, color, note) => {
+        var b = document.createElement("button"); b.type = "button"; b.className = "tg" + (L[key] ? "" : " off");
+        var dot = document.createElement("span"); dot.className = "dot"; dot.style.background = color; b.appendChild(dot);
+        var txt = document.createElement("div"); txt.style.flex = "1"; txt.textContent = name;
+        if (note) { var sm = document.createElement("small"); sm.textContent = note; txt.appendChild(sm); }
+        b.appendChild(txt);
+        var ic = document.createElement("ha-icon"); ic.setAttribute("icon", L[key] ? "mdi:eye-outline" : "mdi:eye-off-outline"); b.appendChild(ic);
+        b.addEventListener("click", () => { L[key] = !L[key]; this.saveLayers(); });
+        list.appendChild(b);
+      };
+      head("Sur la carte");
+      Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") toggle(k, GPS_POI[k].name, GPS_POI[k].color); });
+      if (this.config.traffic !== false) {
+        head("Circulation en direct");
+        var why = !this.trafficOn() ? "Ajouter une clé TomTom dans les options d'Igor" : this.traffic.error || "";
+        toggle("traffic", "Trafic (fluide, ralenti, bouché)", "#e5823b", why);
+        toggle("incidents", "Routes fermées, travaux, accidents", "#e5323b", why);
+      }
+    },
+    applyLayers() {
+      var map = this.map;
+      if (!map || !map.getLayer || !map.getLayer("pois")) return;
+      var kinds = this.poiKinds().filter((k) => k !== "camera" || this.layers.cameras === "radar");
+      map.setFilter("pois", ["in", ["get", "kind"], ["literal", kinds.filter((k) => k !== "signals")]]);
+      map.setFilter("pois-sig", ["in", ["get", "kind"], ["literal", kinds.indexOf("signals") >= 0 ? ["signals"] : []]]);
+      if (map.getLayer("traffic")) map.setLayoutProperty("traffic", "visibility", this.layers.traffic ? "visible" : "none");
+      ["incidents", "incidents-closed", "incidents-pt"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", this.layers.incidents ? "visible" : "none"); });
+    },
+    // The card's layers on the base map (again after a change of style).
+    styleLayers() {
+      var map = this.map;
+      if (!map || map.getSource("pois")) return;
+      var icons = this.icons || (this.icons = gpsPoiIcons());
+      Object.keys(icons).forEach((k) => { if (!map.hasImage("igor-" + k)) map.addImage("igor-" + k, icons[k], { pixelRatio: 2 }); });
+      // A font the base map has (its labels'), for the cameras' limits.
+      var font = null;
+      (map.getStyle().layers || []).some((l) => { var f = l.layout && l.layout["text-font"]; if (Array.isArray(f) && typeof f[0] === "string") { font = f; return true; } return false; });
+      if (this.trafficOn()) this.addTrafficLayer();
+      map.addSource("incidents", { type: "geojson", data: this.incidentData() });
+      map.addLayer({ id: "incidents", type: "line", source: "incidents", filter: ["all", [">", ["get", "n"], 1], ["!", ["get", "closed"]]], layout: { "line-cap": "round" },
+        paint: { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.85 } }, "route-case");
+      // A closed road: dashed red, as a barrier.
+      map.addLayer({ id: "incidents-closed", type: "line", source: "incidents", filter: ["all", [">", ["get", "n"], 1], ["get", "closed"]],
+        paint: { "line-color": "#e5323b", "line-width": 6, "line-dasharray": [1, 1.2] } }, "route-case");
+      map.addLayer({ id: "incidents-pt", type: "circle", source: "incidents", filter: ["==", ["get", "n"], 1],
+        paint: { "circle-radius": 7, "circle-color": ["get", "color"], "circle-stroke-color": "#07080a", "circle-stroke-width": 2 } });
+      map.addSource("pois", { type: "geojson", data: this.poiData() });
+      var layout = { "icon-image": ["concat", "igor-", ["get", "kind"]], "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 0.7, 16, 1], "icon-allow-overlap": true,
+        "symbol-sort-key": ["match", ["get", "kind"], "camera", 0, "signals", 2, 1] };
+      if (font) Object.assign(layout, { "text-field": ["get", "label"], "text-font": font, "text-size": 12, "text-offset": [0, 1.5], "text-anchor": "top", "text-optional": true });
+      var paint = font ? { "text-color": "#e9e4da", "text-halo-color": "#07080a", "text-halo-width": 1.5 } : {};
+      map.addLayer({ id: "pois", type: "symbol", source: "pois", layout: layout, paint: paint });
+      // Lights only once close enough to see the streets.
+      map.addLayer({ id: "pois-sig", type: "symbol", source: "pois", minzoom: 14.5, layout: layout, paint: paint });
+      this.applyLayers();
+    },
+    poiData() {
+      return { type: "FeatureCollection", features: (this.pois || []).map((q) => ({ type: "Feature", geometry: { type: "Point", coordinates: q.p }, properties: { kind: q.kind, label: q.label || "" } })) };
+    },
+    // OpenStreetMap's points around the car: again once it has gone half the
+    // way to the edge, at most every 20 s (a free service, kindly used).
+    poiTick(now, speed) {
+      var p = this.pos;
+      var kinds = this.poiKinds();
+      if (!p || this.poiBusy || !kinds.length) return;
+      var radius = speed * 3.6 > 70 ? 4000 : 2000;
+      var moved = this.poiCenter ? gpsDist(this.poiCenter, p) : Infinity;
+      if (!this.poiDirty && moved < radius / 2) return;
+      if (this.poiAsked && now - this.poiAsked < (this.poiDirty ? 3000 : 20000)) return;
+      var q = gpsPoiQuery(p, radius, kinds);
+      if (!q) return;
+      this.poiAsked = now;
+      this.poiBusy = true;
+      this.poiDirty = false;
+      var at = p.slice();
+      fetch(String(this.config.overpass || "https://overpass-api.de/api/interpreter"), { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } })
+        .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then((j) => {
+          this.pois = gpsPois(j.elements);
+          this.poiCenter = at;
+          var src = this.map && this.map.getSource("pois");
+          if (src) src.setData(this.poiData());
+        })
+        .catch(() => { /* busy or no internet: asked again later */ })
+        .then(() => { this.poiBusy = false; });
+    },
+    // The road where the car is (OpenStreetMap's way under it): name and numbers.
+    setRoadName(tags) {
+      var t = tags || {}, refs = gpsRefs(t.ref), name = String(t.name || "").trim();
+      var r = name || refs.length ? { name: name, refs: refs } : null;
+      var key = r ? name + "|" + refs.join(",") : "";
+      if (key === this.roadKey) return;
+      this.roadKey = key;
+      this.roadName = r;
+      this.showStreet();
+    },
+    fillRoad(el) {
+      el.innerHTML = "";
+      var r = this.roadName;
+      if (!r) return;
+      r.refs.forEach(function (x) { var b = document.createElement("span"); b.className = "shield " + gpsShield(x); b.textContent = x; el.appendChild(b); });
+      if (r.name) el.appendChild(document.createTextNode(r.name));
+    },
+    showStreet() {
+      var el = this.$ && this.$("street");
+      if (!el) return;
+      var show = this.config.street_names !== false && !!this.roadName && !this.route;
+      el.hidden = !show;
+      if (show) this.fillRoad(el);
+    },
+    // ----- warnings: cameras, then the traffic ahead -----
+    // How far ahead along the route a point lies, when it is on it (else null).
+    routeAhead(q, within) {
+      var R = this.route;
+      if (!R || !this.seg) return null;
+      var from = Math.max(1, this.seg - 2), to = Math.min(R.coords.length, this.seg + 400), here = null, at = null;
+      var o0 = gpsOnLine(this.pos, [R.coords[this.seg - 1], R.coords[Math.min(this.seg, R.coords.length - 1)]]);
+      here = R.cum[this.seg - 1] + (o0 ? gpsDist(R.coords[this.seg - 1], o0.point) : 0);
+      for (var i = from; i < to; i++) {
+        var o = gpsOnLine(q, [R.coords[i - 1], R.coords[i]]);
+        if (o && o.dist <= within && (!at || o.dist < at.dist)) { at = o; at.i = i; }
+      }
+      if (!at) return null;
+      var along = R.cum[at.i - 1] + gpsDist(R.coords[at.i - 1], at.point) - here;
+      return along > -5 ? along : null;
+    },
+    // A point the car will meet: on the route, or ahead and within `side`
+    // metres of its way. Metres to it, or null.
+    meets(q, side) {
+      var onRoute = this.routeAhead(q, 30);
+      if (onRoute != null) return onRoute;
+      var r = gpsRelative(this.pos, q, this.heading);
+      return r.ahead > 0 && r.side < side ? r.d : null;
+    },
+    alertTick(now, speed) {
+      if (!this.pos) return;
+      var kmh = speed * 3.6;
+      this.signalAhead = null;
+      var cam = null, L = this.layers || {};
+      (this.pois || []).forEach((q) => {
+        if (q.kind === "signals") {
+          var r = gpsRelative(this.pos, q.p, this.heading);
+          if (r.ahead > 0 && r.side < 25 && (this.signalAhead == null || r.d < this.signalAhead)) this.signalAhead = r.d;
+          return;
+        }
+        if (q.kind !== "camera" || !L.cameras || L.cameras === "off" || speed < GPS_SLOW) return;
+        if (!gpsCameraWatches(q.tags, this.heading)) return;
+        var d = this.meets(q.p, 40);
+        if (d != null && (!cam || d < cam.d)) cam = { q: q, d: d };
+      });
+      var limitNow = this.lastLimit ? this.lastLimit.v : NaN;
+      if (L.cameras === "zone") {
+        // The zone: from 3/4 of its length before the camera to 1/4 after,
+        // so the camera's place is not told. Kept while the car is in it.
+        var z = this.zone;
+        if (cam) {
+          var len = gpsZoneLength(cam.q.limit || limitNow);
+          if (cam.d <= len * 0.75 && (!z || z.id !== cam.q.id)) z = this.zone = { id: cam.q.id, p: cam.q.p, len: len, limit: cam.q.limit };
+        }
+        if (z) {
+          var rz = gpsRelative(this.pos, z.p, this.heading), past = rz.ahead < 0 ? rz.d : 0;
+          var stillIn = rz.ahead >= 0 ? rz.d <= z.len * 0.75 + 50 : past <= z.len * 0.25;
+          if (!stillIn) { this.zone = z = null; }
+        }
+        if (z) {
+          var done = rz.ahead >= 0 ? z.len * 0.75 - rz.d : z.len * 0.75 + past;
+          var lim = z.limit || limitNow;
+          this.showAlert({ key: "zone" + z.id, icon: "mdi:alert", title: "Zone de danger", sub: "sur " + gpsMetres(z.len) + (lim ? " · limitée à " + lim : ""),
+            cls: lim && kmh <= lim + 2 ? "ok" : "", bar: Math.max(0, Math.min(1, done / z.len)),
+            voice: "Attention, zone de danger" + (lim ? ", limitée à " + lim : "") });
+          return;
+        }
+      } else if (L.cameras === "radar" && cam) {
+        var reach = kmh > 90 ? 1000 : 500;
+        if (cam.d <= reach) {
+          var cl = cam.q.limit || limitNow;
+          this.showAlert({ key: "cam" + cam.q.id, icon: "mdi:cctv", title: "Radar" + (cl ? " · " + cl : ""), sub: "à " + gpsMetres(cam.d),
+            cls: cl && kmh <= cl + 2 ? "ok" : "", bar: 1 - cam.d / reach,
+            voice: "Radar à " + gpsMetres(Math.max(50, cam.d)).replace(" m", " mètres").replace(" km", " kilomètres") + (cl ? ", limité à " + cl : "") });
+          return;
+        }
+      }
+      // The traffic: a closed road ahead (3 km), else the nearest incident (1.5 km).
+      if (L.incidents && this.traffic && this.traffic.incidents && speed > GPS_MOVING) {
+        var inc = null;
+        this.traffic.incidents.forEach((i) => {
+          var reach2 = i.closed ? 3000 : 1500, best = null;
+          // The incident's nearest point the car meets.
+          for (var k = 0; k < i.line.length; k += Math.max(1, Math.floor(i.line.length / 12))) {
+            var dd = this.meets(i.line[k], 40);
+            if (dd != null && (best == null || dd < best)) best = dd;
+          }
+          if (best != null && best <= reach2 && (!inc || (i.closed && !inc.i.closed) || (i.closed === inc.i.closed && best < inc.d))) inc = { i: i, d: best };
+        });
+        if (inc) {
+          var I = inc.i, look = GPS_INCIDENT[I.kind] || GPS_INCIDENT.other;
+          var title = I.label + (I.delay >= 60 ? " · +" + Math.round(I.delay / 60) + " min" : "");
+          var where = [I.text !== I.label ? I.text : "", I.from && I.to ? I.from + " → " + I.to : ""].filter(Boolean).join(" · ");
+          this.showAlert({ key: "inc" + I.id, icon: look.icon, title: title, sub: "à " + gpsMetres(inc.d) + (where ? " · " + where : ""),
+            cls: "inc", bar: 1 - inc.d / (I.closed ? 3000 : 1500),
+            voice: I.label + " dans " + gpsMetres(inc.d).replace(" m", " mètres").replace(" km", " kilomètres") });
+          return;
+        }
+      }
+      this.showAlert(null);
+    },
+    showAlert(a) {
+      var $ = this.$, el = $("alert");
+      $("card").classList.toggle("withnav", !$("nav").hidden);
+      if (!a) { el.hidden = true; this.alertKey = null; return; }
+      el.hidden = false;
+      el.className = "alert" + (a.cls ? " " + a.cls : "");
+      $("alIcon").setAttribute("icon", a.icon);
+      $("alT").textContent = a.title;
+      $("alS").textContent = a.sub;
+      $("alBar").style.width = Math.round(Math.max(0, Math.min(1, a.bar)) * 100) + "%";
+      // Said once per camera, zone or incident.
+      this.camSpoken = this.camSpoken || {};
+      if (a.voice && !this.camSpoken[a.key]) { this.camSpoken[a.key] = true; this.say(a.voice); }
+      this.alertKey = a.key;
+    },
+    // ----- live traffic: Igor asks TomTom when a key is set (nives.traffic) -----
+    trafficOn() { return this.config.traffic !== false && !!(this.traffic && this.traffic.enabled); },
+    trafficTick(now, moving) {
+      if (this.config.traffic === false || !this._hass || !this.pos || this.trafficBusy) return;
+      var T = this.traffic, moved = this.trafficCenter ? gpsDist(this.trafficCenter, this.pos) : Infinity;
+      // No key (or no such service yet): asked again every 10 minutes.
+      var wait = !T ? 0 : T.enabled ? (moved > 3000 ? 15000 : moving ? 120000 : 600000) : 600000;
+      if (this.trafficAsked && now - this.trafficAsked < wait) return;
+      this.trafficAsked = now;
+      this.trafficBusy = true;
+      var at = this.pos.slice();
+      this._hass.callWS({ type: "call_service", domain: "nives", service: "traffic", service_data: { latitude: at[1], longitude: at[0], radius_km: 10 }, return_response: true })
+        .then((res) => {
+          var r = (res && res.response) || {};
+          var was = this.trafficOn();
+          this.traffic = { enabled: !!r.enabled, incidents: Array.isArray(r.incidents) ? r.incidents : [], error: r.error || "" };
+          this.trafficCenter = at;
+          if (this.trafficOn() && !was) this.addTrafficLayer();
+          var src = this.map && this.map.getSource("incidents");
+          if (src) src.setData(this.incidentData());
+        })
+        .catch(() => { this.traffic = { enabled: false, incidents: [] }; })
+        .then(() => { this.trafficBusy = false; });
+    },
+    addTrafficLayer() {
+      var map = this.map;
+      if (!map || map.getSource("traffic") || !map.getLayer("route-case")) return;
+      map.addSource("traffic", { type: "raster", tileSize: 256, minzoom: 6, maxzoom: 18,
+        tiles: [window.location.origin + "/api/nives/traffic_tile/{z}/{x}/{y}"], attribution: "Trafic © TomTom" });
+      map.addLayer({ id: "traffic", type: "raster", source: "traffic", paint: { "raster-opacity": 0.85 } }, "route-case");
+      this.applyLayers();
+    },
+    incidentData() {
+      var inc = (this.traffic && this.traffic.incidents) || [];
+      return { type: "FeatureCollection", features: inc.map((i) => ({ type: "Feature",
+        geometry: i.line.length > 1 ? { type: "LineString", coordinates: i.line } : { type: "Point", coordinates: i.line[0] },
+        properties: { n: i.line.length, closed: !!i.closed, color: (GPS_INCIDENT[i.kind] || GPS_INCIDENT.other).color } })) };
     }
   });
 

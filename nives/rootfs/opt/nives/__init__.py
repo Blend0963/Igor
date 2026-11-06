@@ -14,8 +14,10 @@ from urllib.parse import quote
 
 import aiohttp
 import voluptuous as vol
+from aiohttp import web
 
 from homeassistant.components import persistent_notification
+from homeassistant.components.http import KEY_HASS, HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
@@ -67,6 +69,9 @@ from .const import (
     SERVICE_NOTIFICATIONS,
     NOTIFICATIONS_KEY,
     SERVICE_TRIP_MAP,
+    CONF_TRAFFIC_KEY,
+    SERVICE_TRAFFIC,
+    TRAFFIC_TILE_URL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -464,6 +469,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     _async_register_disarm(hass)
     await _async_register_notifications(hass)
     _async_register_trip_map(hass)
+    _async_register_traffic(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await _async_setup_update_watch(hass, entry)
@@ -767,6 +773,129 @@ def _async_register_trip_map(hass: HomeAssistant) -> None:
     async_register_admin_service(
         hass, DOMAIN, SERVICE_TRIP_MAP, _trip_map, schema=TRIP_MAP_SCHEMA, supports_response=SupportsResponse.ONLY
     )
+
+
+TRAFFIC_SCHEMA = vol.Schema(
+    {
+        vol.Required("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-85, max=85)),
+        vol.Required("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
+        vol.Optional("radius_km", default=10): vol.All(vol.Coerce(float), vol.Range(min=1, max=50)),
+    }
+)
+# Answers kept a minute per place (several screens, a card reloaded): the
+# free key's daily quota goes to new places, not to the same question again.
+TRAFFIC_CACHE_S = 60
+TILE_CACHE_S = 60
+TILE_CACHE_MAX = 400
+
+
+def _traffic_key(hass: HomeAssistant) -> str | None:
+    """The TomTom key set in Igor's options, or None."""
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        key = str({**entry.data, **entry.options}.get(CONF_TRAFFIC_KEY) or "").strip()
+        if key:
+            return key
+    return None
+
+
+@callback
+def _async_register_traffic(hass: HomeAssistant) -> None:
+    """`nives.traffic` and the flow tiles: live traffic for the GPS card
+    (traffic.py). Administrators only, as every service that reaches out.
+    Without a TomTom key: `{"enabled": false}` and no tiles."""
+    store = hass.data.setdefault(DOMAIN, {})
+    if not store.get("traffic_view"):
+        hass.http.register_view(TrafficTileView())
+        store["traffic_view"] = True
+    if hass.services.has_service(DOMAIN, SERVICE_TRAFFIC):
+        return
+    from homeassistant.helpers.service import async_register_admin_service
+
+    from .traffic import INCIDENTS_URL, incidents_params, parse_incidents
+
+    cache: dict[tuple, tuple[float, dict]] = {}
+
+    async def _traffic(call: ServiceCall) -> ServiceResponse:
+        key = _traffic_key(hass)
+        if not key:
+            return {"enabled": False, "incidents": []}
+        lat, lon, radius = call.data["latitude"], call.data["longitude"], call.data["radius_km"]
+        # Within about a kilometre, the same box.
+        where = (round(lat, 2), round(lon, 2), round(radius))
+        now = time.monotonic()
+        hit = cache.get(where)
+        if hit and now - hit[0] < TRAFFIC_CACHE_S:
+            return hit[1]
+        session = async_get_clientsession(hass)
+        try:
+            async with session.get(
+                INCIDENTS_URL, params=incidents_params(key, lat, lon, radius), timeout=aiohttp.ClientTimeout(total=10)
+            ) as r:
+                if r.status in (401, 403):
+                    return {"enabled": True, "incidents": [], "error": "clé TomTom refusée"}
+                if r.status != 200:
+                    return {"enabled": True, "incidents": [], "error": f"TomTom a répondu {r.status}"}
+                body = await r.json(content_type=None)
+        except (aiohttp.ClientError, TimeoutError, ValueError):
+            return {"enabled": True, "incidents": [], "error": "TomTom injoignable"}
+        out = {"enabled": True, "incidents": parse_incidents(body)}
+        for k in [k for k, v in cache.items() if now - v[0] >= TRAFFIC_CACHE_S]:
+            cache.pop(k, None)
+        cache[where] = (now, out)
+        return out
+
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_TRAFFIC, _traffic, schema=TRAFFIC_SCHEMA, supports_response=SupportsResponse.ONLY
+    )
+
+
+class TrafficTileView(HomeAssistantView):
+    """The traffic flow map, one tile at a time, for the GPS card: the key is
+    added here, so it never reaches a dashboard or a browser. Logged-in
+    administrators only (the card sends its Home Assistant token)."""
+
+    url = TRAFFIC_TILE_URL
+    name = "api:nives:traffic_tile"
+    requires_auth = True
+
+    def __init__(self) -> None:
+        self._tiles: dict[tuple[int, int, int], tuple[float, bytes]] = {}
+
+    async def get(self, request: web.Request, z: str, x: str, y: str) -> web.Response:
+        from .traffic import flow_tile_url, tile_ok
+
+        user = request.get("hass_user")
+        if user is None or not user.is_admin:
+            return web.Response(status=403)
+        try:
+            zi, xi, yi = int(z), int(x), int(str(y).removesuffix(".png"))
+        except ValueError:
+            return web.Response(status=400)
+        if not tile_ok(zi, xi, yi):
+            return web.Response(status=400)
+        hass: HomeAssistant = request.app[KEY_HASS]
+        key = _traffic_key(hass)
+        if not key:
+            return web.Response(status=404)
+        now = time.monotonic()
+        hit = self._tiles.get((zi, xi, yi))
+        if hit and now - hit[0] < TILE_CACHE_S:
+            body = hit[1]
+        else:
+            try:
+                async with async_get_clientsession(hass).get(
+                    flow_tile_url(zi, xi, yi), params={"key": key, "tileSize": "256"}, timeout=aiohttp.ClientTimeout(total=10)
+                ) as r:
+                    if r.status != 200:
+                        return web.Response(status=502)
+                    body = await r.read()
+            except (aiohttp.ClientError, TimeoutError):
+                return web.Response(status=504)
+            if len(self._tiles) >= TILE_CACHE_MAX:
+                for k in sorted(self._tiles, key=lambda k: self._tiles[k][0])[: TILE_CACHE_MAX // 4]:
+                    self._tiles.pop(k, None)
+            self._tiles[(zi, xi, yi)] = (now, body)
+        return web.Response(body=body, content_type="image/png", headers={"Cache-Control": "private, max-age=60"})
 
 
 NEWS_SCHEMA = vol.Schema(

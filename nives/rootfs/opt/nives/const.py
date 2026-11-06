@@ -181,3 +181,8 @@ SERVICE_NOTIFICATIONS = "notifications"
 NOTIFICATIONS_KEY = "nives_notifications"
 # A trip drawn on a map (tripmap.py), for the end-of-drive message.
 SERVICE_TRIP_MAP = "trip_map"
+# Live traffic on the GPS card (traffic.py): a TomTom key set in the options,
+# never in a dashboard. Without one, the card simply shows no traffic.
+CONF_TRAFFIC_KEY = "traffic_key"
+SERVICE_TRAFFIC = "traffic"
+TRAFFIC_TILE_URL = "/api/nives/traffic_tile/{z}/{x}/{y}"
