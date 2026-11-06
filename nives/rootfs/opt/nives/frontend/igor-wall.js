@@ -717,6 +717,50 @@
     ".band.below { padding-bottom: 10px; }"
   ].join("\n");
 
+  // The opening: Igor's eye opens over the page the first time a wall shows
+  // after the app starts (once per session; a touch skips it; `intro: false`
+  // on the wall: never). Home Assistant's own logo comes before; this follows.
+  var INTRO_CSS = [
+    ".igor-intro { position: fixed; inset: 0; z-index: 2147483000; background: #07080a; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4vh; transition: opacity .6s ease; cursor: pointer; }",
+    ".igor-intro.out { opacity: 0; pointer-events: none; }",
+    ".igor-intro svg { width: min(24vw, 34vh); height: auto; overflow: visible; }",
+    ".igor-intro .pillar { transform-origin: 128px 236px; transform: scaleY(0); animation: igor-in-grow .5s cubic-bezier(.2,.8,.2,1) .2s forwards; }",
+    ".igor-intro .ring { stroke-dasharray: 302; stroke-dashoffset: 302; animation: igor-in-draw .6s ease-out .55s forwards; }",
+    ".igor-intro .pupil { transform-origin: 128px 96px; transform: scale(0); animation: igor-in-pop .35s cubic-bezier(.3,1.6,.5,1) 1.05s forwards, igor-in-beat 1.2s ease-in-out 1.4s 2; }",
+    ".igor-intro .word { color: #e9e4da; font: 500 clamp(18px, 4vh, 34px)/1 'JetBrains Mono', ui-monospace, monospace; letter-spacing: 1.4em; padding-left: 0.5em; opacity: 0; animation: igor-in-track .7s ease-out 1.15s forwards; }",
+    "@keyframes igor-in-grow { to { transform: scaleY(1); } }",
+    "@keyframes igor-in-draw { to { stroke-dashoffset: 0; } }",
+    "@keyframes igor-in-pop { to { transform: scale(1); } }",
+    "@keyframes igor-in-beat { 50% { transform: scale(1.35); filter: drop-shadow(0 0 10px #e5323b); } }",
+    "@keyframes igor-in-track { to { opacity: 1; letter-spacing: 0.5em; } }",
+    "@media (prefers-reduced-motion: reduce) { .igor-intro * { animation-duration: .01s !important; animation-delay: 0s !important; } }"
+  ].join("\n");
+  function igorIntro() {
+    try {
+      if (window.sessionStorage.getItem("igor-intro")) return;
+      window.sessionStorage.setItem("igor-intro", "1");
+    } catch (e) { return; }  // no storage: no way to show it only once
+    if (document.querySelector(".igor-intro")) return;
+    var st = document.createElement("style");
+    st.textContent = INTRO_CSS;
+    document.head.appendChild(st);
+    var o = document.createElement("div");
+    o.className = "igor-intro";
+    o.innerHTML = '<svg viewBox="0 0 256 256" aria-hidden="true"><rect class="pillar" x="107" y="20" width="44" height="216" fill="#e9e4da"/>' +
+      '<circle class="ring" cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle class="pupil" cx="128" cy="96" r="16" fill="#e5323b"/></svg>' +
+      '<div class="word">IGOR</div>';
+    var done = false;
+    var end = function () {
+      if (done) return;
+      done = true;
+      o.classList.add("out");
+      setTimeout(function () { o.remove(); st.remove(); }, 700);
+    };
+    o.addEventListener("pointerdown", end);
+    document.body.appendChild(o);
+    setTimeout(end, 3000);
+  }
+
   class IgorWall extends HTMLElement {
     constructor() { super(); this.attachShadow({ mode: "open" }); this.children_ = []; }
     setConfig(config) {
@@ -737,6 +781,7 @@
         this._resize = () => this.fit();
         window.addEventListener("resize", this._resize);
       }
+      if (this.config && this.config.intro !== false) igorIntro();
       if (!this._built) { this._built = true; this.render(); }
       setTimeout(() => this.fit(), 50);
     }

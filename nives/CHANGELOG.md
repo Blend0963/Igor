@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.37.0 — Igor opens its eye
+
+- An opening, after Home Assistant's own logo: the first time an Igor wall shows after the app starts, Igor's eye opens over it — the pillar rises, the red ring draws itself, the pupil lights and beats twice, « IGOR » closes in below — and fades into the dashboard after 3 seconds. Once per session (a page reload does not replay it); a touch skips it; `intro: false` on a wall turns it off. Home Assistant's own start-up logo, in its app and while its interface loads, cannot be replaced.
+
 ## 0.36.9 — Read from the driver's seat
 
 - `igor-wall` takes `text: big` (×1.3), `huge` (×1.45) or a factor: every letter of every Igor card on the wall grows, the GPS card's too, and thin figures get a little bolder; made for a car's head unit read from the driver's seat.
