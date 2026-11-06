@@ -139,7 +139,7 @@
     }
     build() {}
     update() {}
-    style(extra) { el("style", "", this.shadowRoot, BASE + "\n" + (extra || "")); }
+    style(extra) { el("style", "", this.shadowRoot, scaled(BASE + "\n" + (extra || ""))); }
   }
 
   // ===== the status bar: every machine on one scrolling line =====
@@ -188,6 +188,14 @@
     // `below: 0`: red under that value (an account overdrawn).
     if (it.below != null && v < Number(it.below)) level = "bad";
     return { text: text, level: level, pct: pct };
+  }
+  // Every size of text follows --igor-text (1 by default): a wall with
+  // `text: big` (a car's head unit read from the driver's seat) has all its
+  // letters larger, and its thin figures less thin (--igor-light).
+  function scaled(css) {
+    return String(css)
+      .replace(/font-size:\s*(\d+(?:\.\d+)?)px/g, "font-size: calc($1px * var(--igor-text, 1))")
+      .replace(/font-weight:\s*300\b/g, "font-weight: var(--igor-light, 300)");
   }
   var BAR_CSS = [
     ".ticker { height: 30px; flex: none; display: flex; align-items: center; border-bottom: 1px solid var(--line); background: var(--bg); font-size: 12px; color: var(--dim);",
@@ -745,7 +753,11 @@
       root.innerHTML = "";
       if (this.bar) { this.bar.destroy(); this.bar = null; }
       this.children_ = [];
-      el("style", "", root, BASE + "\n" + BAR_CSS + "\n" + WALL_CSS);
+      el("style", "", root, scaled(BASE + "\n" + BAR_CSS + "\n" + WALL_CSS));
+      // `text: big` (or a factor, 1.3): every letter of the wall larger.
+      var tx = this.config.text, f = tx === "big" ? 1.3 : tx === "huge" ? 1.45 : Number(tx) || 1;
+      this.style.setProperty("--igor-text", String(f));
+      this.style.setProperty("--igor-light", f > 1 ? "400" : "300");
       var wall = el("div", "wall", root);
       this.wall = wall;
       if (this.config.bar) this.bar = new IgorBar(wall, this.config.bar);
@@ -4678,6 +4690,8 @@
   //   trip: { entity: sensor.car_trip, attribute: trajet }   # its distance_km and eco_score
   //   active: binary_sensor.trip_running # the trip line only while driving (else the last trip)
   //   consumption: sensor.car_l_100km
+  //   weather: weather.car_place          # outside, as in a car: the weather where the car is,
+  //   outside: sensor.car_outside_temp    # its temperature (else the weather's), the next hours
   class IgorCarCard extends IgorCard {
     setConfig(config) {
       if (!config || !config.speed) throw new Error("igor-car-card: speed est requis");
@@ -4701,6 +4715,17 @@
         ".mini div { border-top: 1px solid var(--line); padding-top: 6px; color: var(--dim); font-size: 11px; }",
         ".mini b { display: block; font-size: 22px; font-weight: 400; margin-top: 2px; font-variant-numeric: tabular-nums; color: var(--fg); }",
         ".mini b.cold, .trip b.cold { color: var(--acc); } .mini b.okc, .trip b.okc { color: var(--okc); } .mini b.warn, .trip b.warn { color: var(--wait); } .mini b.bad, .trip b.bad { color: var(--bad); }",
+        ".wx { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; align-items: center; flex: none; --mdc-icon-size: 38px; cursor: pointer; }",
+        ".wx[hidden] { display: none; }",
+        ".wx > ha-icon { color: var(--wait); grid-column: 1; grid-row: 1 / 3; }",
+        ".wx .t { grid-column: 2; grid-row: 1; font-size: 30px; font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; }",
+        ".wx .c { grid-column: 2; grid-row: 2; color: var(--dim); font-size: 12px; }",
+        ".wx .mm { grid-column: 3; grid-row: 1 / 3; text-align: right; color: var(--dim); font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums; }",
+        ".wx .mm b { color: var(--fg); font-weight: 400; }",
+        ".wx .hrs { grid-column: 1 / -1; grid-row: 3; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; text-align: center; margin-top: 4px; color: var(--dim); font-size: 11px; --mdc-icon-size: 20px; }",
+        ".wx .hrs ha-icon { display: block; margin: 3px auto; color: var(--wait); }",
+        ".wx .hrs b { color: var(--fg); font-weight: 400; font-size: 13px; }",
+        ".wx .hrs .rain { color: #6cc4f5; font-size: 10px; display: block; }",
         ".trip { margin-top: auto; border-top: 1px dashed var(--line); padding-top: 8px; display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; flex: none; }",
         ".trip b { display: block; font-size: 18px; font-weight: 400; font-variant-numeric: tabular-nums; }",
         ".trip span { color: var(--dim); font-size: 10px; }",
@@ -4721,10 +4746,66 @@
       var mini = el("div", "mini", card);
       var m1 = el("div", "", mini, "moteur"); this.coolEl = el("b", "", m1);
       var m2 = el("div", "", mini, "batterie"); this.battEl = el("b", "", m2);
+      // Outside: the weather where the car is.
+      this.wx = el("div", "wx", card);
+      this.wx.hidden = true;
+      this.wxIcon = icon(this.wx, "mdi:weather-partly-cloudy");
+      this.wxT = el("div", "t", this.wx);
+      this.wxMM = el("div", "mm", this.wx);
+      this.wxC = el("div", "c", this.wx);
+      this.wxH = el("div", "hrs", this.wx);
+      this.wx.addEventListener("click", () => { if (this.config.weather) moreInfo(this, this.config.weather); });
       this.tripEl = el("div", "trip", card);
+    }
+    subscribeWeather(hass) {
+      if (!this.config.weather || this.wxSubs || !hass.connection) return;
+      this.wxSubs = [];
+      this.forecast = this.forecast || {};
+      ["hourly", "daily"].forEach((type) => {
+        hass.connection.subscribeMessage((msg) => { this.forecast[type] = (msg && msg.forecast) || []; this.drawWeather(); },
+          { type: "weather/subscribe_forecast", forecast_type: type, entity_id: this.config.weather })
+          .then((u) => { if (this.wxSubs) this.wxSubs.push(u); else u(); })
+          .catch(() => { /* not offered */ });
+      });
+    }
+    disconnectedCallback() { (this.wxSubs || []).forEach(function (u) { try { u(); } catch (e) { /* gone */ } }); this.wxSubs = null; }
+    connectedCallback() { super.connectedCallback(); if (this._built && this._hass) this.subscribeWeather(this._hass); }
+    drawWeather() {
+      var hass = this._hass, c = this.config;
+      if (!hass || !c.weather) return;
+      var st = hass.states[c.weather], hourly = (this.forecast && this.forecast.hourly) || [], daily = (this.forecast && this.forecast.daily) || [];
+      var ok = st && ["unavailable", "unknown"].indexOf(st.state) < 0;
+      var first = hourly[0] || {};
+      var cond = ok ? st.state : first.condition;
+      if (!cond && !hourly.length) { this.wx.hidden = true; return; }
+      this.wx.hidden = false;
+      var w = WEATHER[cond] || ["mdi:weather-partly-cloudy", cond || "—"];
+      this.wxIcon.setAttribute("icon", w[0]);
+      var out = c.outside ? num(hass.states[c.outside]) : null;
+      var temp = out != null ? out : ok && st.attributes.temperature != null ? st.attributes.temperature : first.temperature;
+      this.wxT.textContent = temp == null ? "—" : fr(Number(temp), Math.abs(temp) < 10 && out != null ? 1 : 0) + "°";
+      this.wxC.textContent = w[1];
+      var today = daily[0];
+      this.wxMM.innerHTML = "";
+      if (today && today.temperature != null) {
+        el("div", "", this.wxMM).append("max ", Object.assign(document.createElement("b"), { textContent: Math.round(today.temperature) + "°" }));
+        if (today.templow != null) el("div", "", this.wxMM).append("min ", Object.assign(document.createElement("b"), { textContent: Math.round(today.templow) + "°" }));
+      }
+      var hrs = hourly.filter(function (h) { return Date.parse(h.datetime) > Date.now() - 1800000; }).slice(1, 5);
+      this.wxH.innerHTML = "";
+      this.wxH.hidden = !hrs.length;
+      hrs.forEach((h) => {
+        var cell = el("span", "", this.wxH, new Date(h.datetime).getHours() + " h");
+        icon(cell, (WEATHER[h.condition] || ["mdi:weather-partly-cloudy"])[0]);
+        el("b", "", cell, h.temperature == null ? "—" : Math.round(h.temperature) + "°");
+        var p = Number(h.precipitation_probability);
+        if (isFinite(p) && p >= 30) el("span", "rain", cell, p + " %");
+      });
     }
     update(hass) {
       var c = this.config, S = (id) => (id ? hass.states[id] : null);
+      this.subscribeWeather(hass);
+      this.drawWeather();
       var on = !c.online || (S(c.online) && S(c.online).state === "on");
       this.card.classList.toggle("off", !on);
       this.offEl.textContent = on ? "" : "hors ligne";
@@ -5088,7 +5169,7 @@
     disconnectedCallback() { cancelAnimationFrame(this.raf); this.raf = null; }
     build() {
       this.root = this.attachShadow({ mode: "open" });
-      this.root.innerHTML =
+      this.root.innerHTML = scaled(
         '<link rel="stylesheet" href="' + GPS_MAPLIBRE + '.css"><style>' +
         ":host { display: block; height: 100%; }" +
         "ha-card { display: block; position: relative; height: 100%; min-height: 240px; overflow: hidden; background: #07080a; border-radius: var(--igor-radius, 3px); }" +
@@ -5139,7 +5220,7 @@
         '<div class="list" id="plist"></div><div class="list" id="pfav"></div><button class="stop" id="pstop" hidden><ha-icon icon="mdi:close-octagon-outline"></ha-icon><span>Arrêter le guidage</span></button></div>' +
         '<div class="hud sp"><div class="speed" id="speed"><b>0</b><span>KM/H</span></div></div>' +
         '<div class="hud lim"><div class="sign" id="limit" hidden>' + GPS_SIGN + "</div></div>" +
-        '<div class="snap" id="snapEl"></div></ha-card>';
+        '<div class="snap" id="snapEl"></div></ha-card>');
       var $ = (id) => this.root.getElementById(id);
       this.$ = $;
       $("card").classList.toggle("noattr", !!this.config.hide_attribution);
