@@ -1030,10 +1030,10 @@ def _async_register_car(hass: HomeAssistant) -> None:
 
     from .car import HOME_WORDS, KINDS, Car, fold, format_destination, kind_of, parse_destination
 
-    async def _fetch(method: str, url: str, params: dict | None, data):
+    async def _fetch(method: str, url: str, params: dict | None, data, json_body=None):
         session = async_get_clientsession(hass)
         async with session.request(
-            method, url, params=params, data=data,
+            method, url, params=params, data=data, json=json_body,
             headers={"User-Agent": "Igor (Home Assistant)", "Accept": "application/json"},
             timeout=aiohttp.ClientTimeout(total=25),
         ) as r:
@@ -1041,7 +1041,7 @@ def _async_register_car(hass: HomeAssistant) -> None:
                 raise RuntimeError(f"{url} answered {r.status}")
             return await r.json(content_type=None)
 
-    car = Car(_fetch)
+    car = Car(_fetch, lambda: _traffic_key(hass))
 
     def _setup() -> tuple[str | None, str | None, dict | None]:
         tracker, dest_entity = _car_settings(hass)

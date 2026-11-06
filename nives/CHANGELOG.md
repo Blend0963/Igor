@@ -1,7 +1,8 @@
 # Changelog
 
-## 0.37.5 — A mirror that loads
+## 0.37.5 — TomTom finds the places
 
+- With the TomTom key, « où est la station-service la plus proche ? » asks TomTom: along the route, its places (brands, a richer map of France) with the detour TomTom works out itself, up to 15 minutes; not guided, its places around the car. Without a key, or when TomTom does not answer or finds nothing, OpenStreetMap as before. The GPS card's dots, cameras, lights and limits stay on OpenStreetMap (free and unlimited; TomTom's free quota would not last a drive).
 - `custom:igor-gps-card`: the third Overpass mirror (maps.mail.ru), whose certificate browsers refuse (« could not be loaded securely »), is replaced by overpass.kumi.systems.
 
 ## 0.37.4 — Igor drives the GPS

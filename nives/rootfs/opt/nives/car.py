@@ -26,6 +26,25 @@ OVERPASS = (
     "https://overpass.private.coffee/api/interpreter",
 )
 OSRM = "https://router.project-osrm.org/route/v1/driving/"
+TOMTOM_ALONG = "https://api.tomtom.com/search/2/searchAlongRoute/{q}.json"
+TOMTOM_NEARBY = "https://api.tomtom.com/search/2/categorySearch/{q}.json"
+# With the TomTom key: TomTom's places (brands, opening hours, the detour it
+# works out itself), the words it searches and its category ids where known.
+TOMTOM_KINDS: dict[str, tuple[str, str]] = {
+    "fuel": ("petrol station", "7311"),
+    "charging": ("electric vehicle station", "7309"),
+    "rest": ("rest area", "7395"),
+    "hospital": ("hospital", "7321"),
+    "pharmacy": ("pharmacy", "9565"),
+    "atm": ("cash dispenser", "7397"),
+    "restaurant": ("restaurant", "7315"),
+    "cafe": ("cafe", ""),
+    "supermarket": ("supermarket", ""),
+    "toilets": ("toilets", ""),
+    "parking": ("parking", ""),
+    "car_wash": ("car wash", ""),
+    "car_repair": ("car repair", ""),
+}
 MAX_TEXT = 120
 
 # What Igor can look for, as Overpass filters (each one or more statements).
@@ -234,6 +253,30 @@ def _matches(tags: dict, filters: list[str]) -> bool:
     return False
 
 
+def parse_tomtom(body: Any) -> list[dict]:
+    """TomTom's search answer → places (with TomTom's detour in seconds when along a route)."""
+    out = []
+    for r in (body or {}).get("results") or []:
+        pos = r.get("position") or {}
+        poi = r.get("poi") or {}
+        try:
+            lat, lon = float(pos["lat"]), float(pos["lon"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        brands = [b.get("name") for b in poi.get("brands") or [] if isinstance(b, dict) and b.get("name")]
+        hours = poi.get("openingHours") or {}
+        out.append({
+            "id": str(r.get("id") or f"{lat},{lon}"),
+            "name": str(poi.get("name") or (brands[0] if brands else "") or "")[:60],
+            "brand": str(brands[0] if brands else "")[:40],
+            "lat": lat, "lon": lon,
+            "opening_hours": str(hours.get("mode") or "")[:60] if isinstance(hours, dict) else "",
+            "city": str((r.get("address") or {}).get("municipality") or "")[:40],
+            "detour_s": r.get("detourTime"),
+        })
+    return out
+
+
 def in_area(p: dict, areas: list[dict]) -> dict | None:
     pad = 0.0015  # about 150 m around the area's box
     for a in areas:
@@ -244,10 +287,28 @@ def in_area(p: dict, areas: list[dict]) -> dict | None:
 
 
 class Car:
-    """The car's guidance through the OpenStreetMap services."""
+    """The car's guidance through the OpenStreetMap services (and TomTom's
+    places when a key is given)."""
 
-    def __init__(self, fetch: Fetch) -> None:
+    def __init__(self, fetch: Fetch, tomtom_key: Callable[[], str | None] | None = None) -> None:
         self.fetch = fetch
+        self.tomtom_key = tomtom_key or (lambda: None)
+
+    async def tomtom_along(self, kind: str, line: list, key: str) -> list[dict]:
+        """TomTom's places along the route (at most 15 minutes of detour)."""
+        q, cat = TOMTOM_KINDS[kind]
+        params = {"key": key, "maxDetourTime": "900", "limit": "15", "language": "fr-FR", "sortBy": "detourTime"}
+        if cat:
+            params["categorySet"] = cat
+        body = {"route": {"points": [{"lat": p[1], "lon": p[0]} for p in line]}}
+        return parse_tomtom(await self.fetch("POST", TOMTOM_ALONG.format(q=q.replace(" ", "%20")), params, None, body))
+
+    async def tomtom_near(self, kind: str, car: Sequence[float], key: str) -> list[dict]:
+        q, cat = TOMTOM_KINDS[kind]
+        params = {"key": key, "lat": f"{car[1]:.6f}", "lon": f"{car[0]:.6f}", "radius": "15000", "limit": "10", "language": "fr-FR"}
+        if cat:
+            params["categorySet"] = cat
+        return parse_tomtom(await self.fetch("GET", TOMTOM_NEARBY.format(q=q.replace(" ", "%20")), params, None))
 
     async def overpass(self, query: str) -> Any:
         last: Exception | None = None
@@ -294,9 +355,18 @@ class Car:
             if base:
                 coords, cum = route_points(base)
                 total = cum[-1] if cum else 0
-                body = await self.overpass(poi_query(kind, line=thin(coords, cum, min(total, 150000)), radius=1500))
-                places, areas = parse_places(body, kind)
+                line = thin(coords, cum, min(total, 150000))
                 spans = motorway_spans(base, coords, cum)
+                key = self.tomtom_key()
+                if key:
+                    try:
+                        tt = await self.tomtom_along(kind, line, key)
+                    except Exception:  # noqa: BLE001 - TomTom busy, refused: OpenStreetMap
+                        tt = None
+                    if tt:
+                        return self._tomtom_result(tt, kind, label, dest, coords, cum, spans, base, count)
+                body = await self.overpass(poi_query(kind, line=line, radius=1500))
+                places, areas = parse_places(body, kind)
                 cands = []
                 for p in places:
                     along, off = locate((p["lon"], p["lat"]), coords, cum)
@@ -314,8 +384,16 @@ class Car:
                 out.sort(key=lambda c: (c["detour_min"] is None, c["detour_min"] > 5 if c["detour_min"] is not None else True, c["distance_km"]))
                 return {"ok": True, "kind": label, "guided": True, "destination": dest["name"],
                         "places": out[:count], "note": _note(out[:count], label)}
-        # Not guided: around the car, nearest by road.
-        for radius in (5000, 15000, 40000):
+        # Not guided: around the car, nearest by road (TomTom's places first).
+        key = self.tomtom_key()
+        areas: list[dict] = []
+        places: list[dict] = []
+        if key:
+            try:
+                places = await self.tomtom_near(kind, car, key)
+            except Exception:  # noqa: BLE001
+                places = []
+        for radius in (5000, 15000, 40000) if not places else ():
             body = await self.overpass(poi_query(kind, center=car, radius=radius))
             places, areas = parse_places(body, kind)
             if places:
@@ -335,6 +413,22 @@ class Car:
         out.sort(key=lambda c: (c["minutes"] is None, c["minutes"] or 0, c["distance_km"]))
         return {"ok": True, "kind": label, "guided": False, "places": out[:count],
                 "note": f"aucun(e) {label} trouvé(e) à 40 km" if not out else ""}
+
+    def _tomtom_result(self, tt, kind, label, dest, coords, cum, spans, base, count) -> dict:
+        """TomTom's places along the route, in the order the car meets them,
+        those that cost little first (TomTom's own detour)."""
+        cands = []
+        for p in tt:
+            along, off = locate((p["lon"], p["lat"]), coords, cum)
+            if along < 200:
+                continue
+            detour = (p.get("detour_s") or 0) / 60 if p.get("detour_s") is not None else None
+            motorway = detour is not None and detour <= 1.5 and off < 300 and any(a - 300 <= along <= b + 300 for a, b in spans)
+            area = {"name": p["name"]} if motorway and fold(p["name"]).startswith("aire") else None
+            cands.append(self._place({**p, "along_m": along, "off_m": off, "area": area, "motorway": motorway}, detour, base))
+        cands.sort(key=lambda c: (c["detour_min"] is None, (c["detour_min"] or 0) > 5, c["distance_km"]))
+        return {"ok": True, "kind": label, "guided": True, "destination": dest["name"], "source": "tomtom",
+                "places": cands[:count], "note": _note(cands[:count], label)}
 
     @staticmethod
     def _place(c: dict, detour: float | None, base: dict) -> dict:
