@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.37.5 — TomTom finds the places
+
+- The car's services for the head unit's account without making it an administrator: Igor's options get « The car's screen (not administrators) »; the users chosen there may use the live traffic (incidents and the flow tiles), TomTom's routes and the guidance services (`nives.traffic`, `nives.route`, `nives.car_go`, `car_nearby`, `car_stop`); everything else stays for administrators. A screen whose account is refused says so in the layers list instead of « add a TomTom key ».
+- With the TomTom key, « où est la station-service la plus proche ? » asks TomTom: along the route, its places (brands, a richer map of France) with the detour TomTom works out itself, up to 15 minutes; not guided, its places around the car. Without a key, or when TomTom does not answer or finds nothing, OpenStreetMap as before. The GPS card's dots, cameras, lights and limits stay on OpenStreetMap (free and unlimited; TomTom's free quota would not last a drive).
+- `custom:igor-gps-card`: the third Overpass mirror (maps.mail.ru), whose certificate browsers refuse (« could not be loaded securely »), is replaced by overpass.kumi.systems.
+
 ## 0.37.4 — Igor drives the GPS
 
 - **Igor guides the car.** Tell it « emmène-moi à la maison », « mets-moi un trajet pour la gare d'Orléans », « arrête le guidage »: the car's GPS card guides there (home and Home Assistant zones first, then the place nearest the car), and Igor says the distance and the arrival time. Ask « où est la station-service la plus proche ? » (or charging, a rest area, toilets, a hospital, a pharmacy, an ATM, a supermarket, a restaurant…): while guided, Igor looks along the route ahead and says, for the best place, how far along the way it is, whether it is on the route or a detour of a few minutes, and whether it is on the motorway (« aire de … »); then it asks whether to stop there. « Oui » adds it as a stop: the card guides there first (an amber flag), says « vous êtes arrivé à l'étape », then goes on to the destination. Set the car once in Igor's options (its position and the GPS card's destination input_text). New services `nives.car_go`, `nives.car_nearby`, `nives.car_stop` (administrators only), the tools `car_navigate`, `car_find_nearby`, `car_add_stop` for Igor (the local model too); `nives.route` takes stops.

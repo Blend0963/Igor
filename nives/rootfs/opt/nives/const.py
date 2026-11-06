@@ -193,3 +193,5 @@ CONF_CAR_DESTINATION = "car_destination"
 SERVICE_CAR_GO = "car_go"
 SERVICE_CAR_NEARBY = "car_nearby"
 SERVICE_CAR_STOP = "car_stop"
+# Users (ids) who may use the car's services without being administrators.
+CONF_CAR_USERS = "car_users"
