@@ -151,3 +151,21 @@ traffic:
         number:
           min: 1
           max: 50
+route:
+  fields:
+    from:
+      required: true
+      selector:
+        object:
+    to:
+      required: true
+      selector:
+        object:
+    heading:
+      selector:
+        number:
+          min: 0
+          max: 360
+    avoid:
+      selector:
+        object:

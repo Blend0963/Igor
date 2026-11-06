@@ -5397,6 +5397,21 @@
     if (type === "arrive" || type === "depart") x = { refs: [], to: "" };
     return { text: text, icon: ic, road: road, loc: m.location, refs: x.refs, to: x.to, exit: st.exits ? String(st.exits).split(";")[0] : "" };
   }
+  // A TomTom instruction (nives.route) → the card's step: its own French
+  // sentence, an icon from its manoeuvre.
+  var GPS_TT_ICON = { TURN_LEFT: "mdi:arrow-left-top", TURN_RIGHT: "mdi:arrow-right-top", KEEP_LEFT: "mdi:arrow-top-left", KEEP_RIGHT: "mdi:arrow-top-right",
+    BEAR_LEFT: "mdi:arrow-top-left", BEAR_RIGHT: "mdi:arrow-top-right", SHARP_LEFT: "mdi:arrow-left-bottom", SHARP_RIGHT: "mdi:arrow-right-bottom",
+    MAKE_UTURN: "mdi:arrow-u-left-top", TRY_MAKE_UTURN: "mdi:arrow-u-left-top", STRAIGHT: "mdi:arrow-up", DEPART: "mdi:navigation-variant",
+    ARRIVE: "mdi:flag-checkered", ARRIVE_LEFT: "mdi:flag-checkered", ARRIVE_RIGHT: "mdi:flag-checkered", WAYPOINT_REACHED: "mdi:flag-checkered",
+    MOTORWAY_EXIT_LEFT: "mdi:arrow-top-left", MOTORWAY_EXIT_RIGHT: "mdi:arrow-top-right", TAKE_EXIT: "mdi:arrow-top-right",
+    SWITCH_PARALLEL_ROAD: "mdi:call-split", SWITCH_MAIN_ROAD: "mdi:call-split", ENTRANCE_RAMP: "mdi:call-merge", ENTER_MOTORWAY: "mdi:call-merge",
+    ENTER_FREEWAY: "mdi:call-merge", ENTER_HIGHWAY: "mdi:call-merge", TAKE_FERRY: "mdi:ferry" };
+  function gpsTomTomStep(x) {
+    var m = String(x.maneuver || "");
+    var ic = GPS_TT_ICON[m] || (/^ROUNDABOUT/.test(m) ? "mdi:rotate-left" : /LEFT/.test(m) ? "mdi:arrow-left-top" : /RIGHT/.test(m) ? "mdi:arrow-right-top" : "mdi:arrow-up");
+    var text = String(x.text || "").trim() || (/^ARRIVE/.test(m) ? "Arrivée à destination" : "Continuez");
+    return { text: text, icon: ic, road: x.road || "", refs: x.refs || [], to: x.to || "", exit: x.exit || "" };
+  }
   function gpsMetres(m) {
     if (m >= 1000) return (m >= 10000 ? Math.round(m / 1000) : (Math.round(m / 100) / 10).toString().replace(".", ",")) + " km";
     return (m >= 100 ? Math.round(m / 50) * 50 : Math.max(10, Math.round(m / 10) * 10)) + " m";
@@ -5429,7 +5444,7 @@
     if (t.highway === "living_street") return 20;
     return null;
   }
-  window.__igorGpsNav = { step: gpsStep, metres: gpsMetres, parse: gpsParseDest, limit: gpsWayLimit, directions: gpsDirections, refs: gpsRefs };
+  window.__igorGpsNav = { tomtom: gpsTomTomStep, step: gpsStep, metres: gpsMetres, parse: gpsParseDest, limit: gpsWayLimit, directions: gpsDirections, refs: gpsRefs };
   // ----- what is around the car: OpenStreetMap's points (Overpass) -----
   // Each kind: its colour on the map and in the layers' list, its name there.
   var GPS_POI = {
@@ -5624,6 +5639,11 @@
         ".alert.ok { background: rgba(10,30,20,0.94); border-color: #5cc28f; animation: none; } .alert.ok ha-icon { color: #5cc28f; } .alert.ok .bar2 i { background: #5cc28f; }" +
         ".alert.inc { background: rgba(40,28,8,0.94); border-color: #d9a441; animation: none; } .alert.inc ha-icon { color: #d9a441; } .alert.inc .bar2 i { background: #d9a441; }" +
         ".withnav .alert { top: 96px; }" +
+        // A closed road on the route: avoid it or not, a touch away.
+        ".ask { position: absolute; z-index: 5; left: 50%; bottom: 72px; transform: translateX(-50%); width: min(560px, calc(100% - 32px)); box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 14px 16px; border-radius: var(--igor-radius, 3px); background: rgba(30,8,10,0.96); border: 1px solid #e5323b; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; --mdc-icon-size: 34px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }" +
+        ".ask[hidden] { display: none; } .ask > ha-icon { color: #e5323b; flex: none; } .ask .q { flex: 1; min-width: 180px; } .ask b { display: block; font-family: 'Chakra Petch', " + MONO + "; font-size: 20px; font-weight: 500; } .ask .q div { color: #c9ccd1; margin-top: 3px; }" +
+        ".ask .bt { display: flex; gap: 10px; flex: none; } .ask button { font: inherit; font-size: 16px; min-height: 52px; padding: 0 20px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #e9e4da; cursor: pointer; }" +
+        ".ask button.yes { background: #e5323b; border-color: #e5323b; color: #fff; }" +
         "@keyframes igor-alert { 50% { background: rgba(80,16,20,0.94); } }" +
         // The road where the car is, at the bottom when not guided.
         ".street { position: absolute; z-index: 2; bottom: 12px; left: 50%; transform: translateX(-50%); max-width: 55%; padding: 6px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.88); border: 1px solid #22262c; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }" +
@@ -5670,6 +5690,7 @@
         '<div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div style="min-width:0"><div class="d" id="navD"></div><div class="t" id="navT"></div><div class="x" id="navX" hidden></div></div></div>' +
         '<div class="alert" id="alert" hidden><ha-icon id="alIcon" icon="mdi:cctv"></ha-icon><div style="flex:1;min-width:0"><b id="alT"></b><div id="alS"></div></div><div class="bar2"><i id="alBar"></i></div></div>' +
         '<div class="street" id="street" hidden></div>' +
+        '<div class="ask" id="ask" hidden><ha-icon icon="mdi:road-variant"></ha-icon><div class="q"><b>Route fermée sur votre itinéraire</b><div id="askS"></div></div><div class="bt"><button class="yes" id="askYes">Éviter</button><button id="askNo">Ignorer</button></div></div>' +
         '<div class="panel lpanel" id="lpanel" hidden><div class="ph"><span>sur la carte</span><button id="lclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="llist"></div></div>' +
         '<div class="eta" id="eta" hidden></div>' +
         '<div class="panel" id="panel" hidden><div class="ph"><span>destination</span><button id="pclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
@@ -5702,6 +5723,8 @@
       $("layers").addEventListener("click", () => this.openLayers());
       $("lclose").addEventListener("click", () => { $("lpanel").hidden = true; });
       this.loadLayers();
+      $("askYes").addEventListener("click", () => this.answerClosure(true));
+      $("askNo").addEventListener("click", () => this.answerClosure(false));
       $("pstop").addEventListener("click", () => { this.setDestination(null, true); $("panel").hidden = true; });
       $("pform").addEventListener("submit", (ev) => { ev.preventDefault(); this.search($("pq").value); });
       $("recenter").addEventListener("click", () => this.setFollow(true));
@@ -6145,6 +6168,9 @@
       this.route = null;
       this.spoken = {};
       this.offCount = 0;
+      this.avoid = [];
+      this.closureSeen = {};
+      if (this.$ && this.$("ask")) this.$("ask").hidden = true;
       if (write && this.config.destination && this._hass) {
         var v = d ? d.lat.toFixed(6) + "," + d.lon.toFixed(6) + ";" + String(d.name || "").slice(0, 60) : "";
         this.destState = v;
@@ -6171,6 +6197,25 @@
       if (!d) return;
       if (!from) { setTimeout(() => this.routeTo(), 2000); return; }
       this.routeAt = performance.now();
+      // With the traffic key: TomTom's route, which knows the jams and goes
+      // round closed roads (and the ones the driver chose to avoid); OSRM
+      // otherwise, or when TomTom does not answer.
+      if (this.trafficOn()) {
+        var tt = null;
+        try {
+          var res = await this._hass.callWS({ type: "call_service", domain: "nives", service: "route", return_response: true,
+            service_data: Object.assign({ from: [from[1], from[0]], to: [d.lat, d.lon], avoid: (this.avoid || []).slice(-10) },
+              this.speedMps() > 2 ? { heading: Math.round(this.heading) % 360 } : {}) });
+          tt = res && res.response;
+        } catch (e) { tt = null; }
+        if (this.dest !== d) return;
+        if (tt && tt.ok && tt.route) {
+          var R0 = tt.route;
+          this.useRoute(R0.coords, R0.steps.map((x) => Object.assign(gpsTomTomStep(x), { loc: x.loc })), R0.duration, "tomtom");
+          return;
+        }
+        if (this.avoid && this.avoid.length) this.banner("mdi:road-variant", "", "Impossible d'éviter la route fermée" + (tt && tt.error ? " (" + tt.error + ")" : ""), "wait");
+      }
       var url = String(this.config.router || "https://router.project-osrm.org").replace(/\/$/, "") + "/route/v1/driving/" +
         from[0].toFixed(6) + "," + from[1].toFixed(6) + ";" + d.lon.toFixed(6) + "," + d.lat.toFixed(6) +
         "?overview=full&geometries=geojson&steps=true" + (this.speedMps() > 2 ? "&bearings=" + Math.round(this.heading) + ",60;" : "");
@@ -6180,18 +6225,22 @@
       if (this.dest !== d) return;
       var r = body && body.routes && body.routes[0];
       if (!r || !r.geometry) { this.banner("mdi:map-marker-question", "", "Pas d'itinéraire vers " + d.name, "wait"); return; }
-      var coords = r.geometry.coordinates, cum = [0];
+      var raw = [];
+      (r.legs || []).forEach((leg) => (leg.steps || []).forEach((st) => raw.push(gpsStep(st))));
+      this.useRoute(r.geometry.coordinates, raw, r.duration || 0, "osrm");
+    },
+    useRoute(coords, raw, duration, source) {
+      var cum = [0];
       for (var i = 1; i < coords.length; i++) cum.push(cum[i - 1] + gpsDist(coords[i - 1], coords[i]));
       var steps = [];
-      (r.legs || []).forEach((leg) => (leg.steps || []).forEach((st) => {
-        var s = gpsStep(st);
+      raw.forEach((s) => {
         if (!s.loc) return;
         // Where the step's turn lies along the route.
         var o = gpsOnLine(s.loc, coords);
         s.at = o ? cum[o.seg - 1] + gpsDist(coords[o.seg - 1], o.point) : 0;
         steps.push(s);
-      }));
-      this.route = { coords: coords, cum: cum, steps: steps, total: cum[cum.length - 1], duration: r.duration || 0 };
+      });
+      this.route = { coords: coords, cum: cum, steps: steps, total: cum[cum.length - 1], duration: duration, source: source };
       this.seg = 1;
       this.showStreet();
       var src = this.map && this.map.getSource("route");
@@ -6481,6 +6530,7 @@
     },
     alertTick(now, speed) {
       if (!this.pos) return;
+      this.closureTick();
       var kmh = speed * 3.6;
       this.signalAhead = null;
       var cam = null, L = this.layers || {};
@@ -6551,6 +6601,42 @@
       }
       this.showAlert(null);
     },
+    // A closed road on the route ahead, not yet answered: ask whether to go round it.
+    closureTick() {
+      var ask = this.$("ask"), found = null;
+      if (this.route && this.traffic && this.traffic.incidents) {
+        this.closureSeen = this.closureSeen || {};
+        this.traffic.incidents.forEach((i) => {
+          if (!i.closed || this.closureSeen[i.id] || found) return;
+          var best = null;
+          for (var k = 0; k < i.line.length; k += Math.max(1, Math.floor(i.line.length / 12))) {
+            var dd = this.routeAhead(i.line[k], 30);
+            if (dd != null && (best == null || dd < best)) best = dd;
+          }
+          if (best != null) found = { i: i, d: best };
+        });
+      }
+      if (!found) { ask.hidden = true; this.closure = null; return; }
+      var I = found.i;
+      this.$("askS").textContent = "à " + gpsMetres(found.d) + (I.from && I.to ? " · " + I.from + " → " + I.to : I.text && I.text !== I.label ? " · " + I.text : "");
+      if (!this.closure || this.closure.i.id !== I.id) this.say("Route fermée sur votre itinéraire. Voulez-vous l'éviter ?");
+      this.closure = found;
+      ask.hidden = false;
+    },
+    answerClosure(avoid) {
+      var c = this.closure;
+      this.$("ask").hidden = true;
+      if (!c) return;
+      this.closureSeen[c.i.id] = true;
+      this.closure = null;
+      if (!avoid) return;
+      // The closed road's box, 80 m round it, avoided until the trip ends.
+      var lons = c.i.line.map((q) => q[0]), lats = c.i.line.map((q) => q[1]), pad = 0.0008;
+      this.avoid = (this.avoid || []).concat([[Math.min.apply(null, lons) - pad, Math.min.apply(null, lats) - pad, Math.max.apply(null, lons) + pad, Math.max.apply(null, lats) + pad]]);
+      this.banner("mdi:routes", "", "Itinéraire qui évite la route fermée…", "wait");
+      this.say("Je cherche un autre chemin");
+      this.routeTo();
+    },
     showAlert(a) {
       var $ = this.$, el = $("alert");
       $("card").classList.toggle("withnav", !$("nav").hidden);
@@ -6584,6 +6670,8 @@
           this.traffic = { enabled: !!r.enabled, incidents: Array.isArray(r.incidents) ? r.incidents : [], error: r.error || "" };
           this.trafficCenter = at;
           if (this.trafficOn() && !was) this.addTrafficLayer();
+          // A route drawn before the key was known: again, with the traffic.
+          if (this.trafficOn() && !was && this.route && this.route.source === "osrm" && this.dest) this.routeTo();
           var src = this.map && this.map.getSource("incidents");
           if (src) src.setData(this.incidentData());
         })

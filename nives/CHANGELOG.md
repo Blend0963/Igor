@@ -9,6 +9,8 @@
 - Guidance reads the signs: « Prenez la sortie 12 », or « Prenez la sortie Porte Dauphine » when the exit has no number, with the roads' numbers and « direction Rouen, Caen » under the instruction, spoken too.
 - The zoom goes by stages, as a navigator: closer in town, wider on roads, wider still on motorways; it closes in 20 seconds before a turn (250 m to 1 km) and a little before traffic lights.
 - Live traffic, ready for a TomTom key: in Igor's options, a new « TomTom key » field (kept in Home Assistant only, never in a dashboard). With it, the card shows the traffic flow over the roads, closed roads (dashed red), roadworks, accidents and jams, and warns about a closed road 3 km ahead and other incidents 1.5 km ahead. New service `nives.traffic` (administrators only, answers `enabled: false` without a key) and a logged-in tile relay; answers are kept a minute to spare the free quota.
+- With the key, guidance takes TomTom's route (`nives.route`), which knows the jams and goes round the closures it knows (OSRM stays the route without a key, or when TomTom does not answer). A closed road still on the route ahead brings up a question — « Route fermée sur votre itinéraire » with **Éviter** / **Ignorer**, said aloud too: Éviter asks for a new route around it.
+- The house lock: `allowed_users` now recognises a user by their login, their display name, their id or their person (name or `person.…`), not only the display name; Igor's options get a « Still answered while the key is away » list to pick users from (no name to type); and a refusal says who was refused (« « Autoradio » n'est pas dans les utilisateurs autorisés », or that the request came without a user).
 
 ## 0.37.2 — A navigator that knows which way it faces
 

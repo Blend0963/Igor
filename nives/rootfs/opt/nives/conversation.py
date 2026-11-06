@@ -120,16 +120,24 @@ class IgorConversationAgent(ConversationEntity):
         """Answer, streaming into the chat log where the Core supports it."""
         # The house is locked (the key is away): Igor does nothing at all.
         from .const import CONF_KEY_ENTITY
-        from .security import is_locked, security_event, settings, user_allowed
+        from .security import is_locked, security_event, settings, user_allowed, user_label
 
         sec = settings(self.hass)
         user_id = user_input.context.user_id if user_input.context else None
         if is_locked(self.hass, sec.get(CONF_KEY_ENTITY)) and not await user_allowed(
             self.hass, user_id, sec.get("allowed_users") or []
         ):
-            security_event(self.hass, "refused", reason="locked")
+            # Who was refused, so that the right name can be allowed.
+            who = await user_label(self.hass, user_id)
+            why = (
+                f" (« {who} » n'est pas dans les utilisateurs autorisés)"
+                if who
+                else " (demande sans utilisateur : satellite vocal ou automatisation)"
+            )
+            _LOGGER.warning("Igor locked: refused a request from %s", who or "no user")
+            security_event(self.hass, "refused", reason="locked", user=who)
             return self._error_result(
-                user_input, user_input.conversation_id, "Igor est verrouillé : la clé est absente."
+                user_input, user_input.conversation_id, "Igor est verrouillé : la clé est absente" + why + "."
             )
         # What speech-to-text (any engine) writes on silence is no request:
         # nothing is answered, said or done.

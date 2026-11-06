@@ -71,6 +71,7 @@ from .const import (
     SERVICE_TRIP_MAP,
     CONF_TRAFFIC_KEY,
     SERVICE_TRAFFIC,
+    SERVICE_ROUTE,
     TRAFFIC_TILE_URL,
 )
 
@@ -470,6 +471,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     await _async_register_notifications(hass)
     _async_register_trip_map(hass)
     _async_register_traffic(hass)
+    _async_register_route(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await _async_setup_update_watch(hass, entry)
@@ -846,6 +848,64 @@ def _async_register_traffic(hass: HomeAssistant) -> None:
 
     async_register_admin_service(
         hass, DOMAIN, SERVICE_TRAFFIC, _traffic, schema=TRAFFIC_SCHEMA, supports_response=SupportsResponse.ONLY
+    )
+
+
+ROUTE_SCHEMA = vol.Schema(
+    {
+        vol.Required("from"): vol.All(vol.ExactSequence([vol.Coerce(float), vol.Coerce(float)])),
+        vol.Required("to"): vol.All(vol.ExactSequence([vol.Coerce(float), vol.Coerce(float)])),
+        vol.Optional("heading"): vol.All(vol.Coerce(float), vol.Range(min=0, max=360)),
+        vol.Optional("avoid", default=[]): vol.All(
+            cv.ensure_list, vol.Length(max=10), [vol.ExactSequence([vol.Coerce(float)] * 4)]
+        ),
+    }
+)
+
+
+@callback
+def _async_register_route(hass: HomeAssistant) -> None:
+    """`nives.route`: a route that knows the traffic and goes round closed
+    roads (TomTom Routing, the traffic key), for the GPS card. `from` and `to`
+    are [lat, lon]; `avoid` boxes are [minLon, minLat, maxLon, maxLat].
+    Administrators only. Without a key: `{"enabled": false}`."""
+    if hass.services.has_service(DOMAIN, SERVICE_ROUTE):
+        return
+    from homeassistant.helpers.service import async_register_admin_service
+
+    from .traffic import avoid_body, parse_route, route_params, route_url
+
+    async def _route(call: ServiceCall) -> ServiceResponse:
+        key = _traffic_key(hass)
+        if not key:
+            return {"enabled": False}
+        a, b = call.data["from"], call.data["to"]
+        if not all(-85 <= p[0] <= 85 and -180 <= p[1] <= 180 for p in (a, b)):
+            return {"enabled": True, "ok": False, "error": "position invalide"}
+        body = avoid_body(call.data["avoid"])
+        session = async_get_clientsession(hass)
+        try:
+            async with session.request(
+                "POST" if body else "GET",
+                route_url(tuple(a), tuple(b)),
+                params=route_params(key, call.data.get("heading")),
+                json=body or None,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as r:
+                if r.status in (401, 403):
+                    return {"enabled": True, "ok": False, "error": "clé TomTom refusée"}
+                if r.status != 200:
+                    return {"enabled": True, "ok": False, "error": f"TomTom a répondu {r.status}"}
+                data = await r.json(content_type=None)
+        except (aiohttp.ClientError, TimeoutError, ValueError):
+            return {"enabled": True, "ok": False, "error": "TomTom injoignable"}
+        route = parse_route(data)
+        if not route:
+            return {"enabled": True, "ok": False, "error": "pas d'itinéraire"}
+        return {"enabled": True, "ok": True, "route": route}
+
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_ROUTE, _route, schema=ROUTE_SCHEMA, supports_response=SupportsResponse.ONLY
     )
 
 

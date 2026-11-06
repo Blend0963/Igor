@@ -131,3 +131,92 @@ def tile_ok(z: int, x: int, y: int) -> bool:
 
 def flow_tile_url(z: int, x: int, y: int) -> str:
     return FLOW_TILE_URL.format(z=z, x=x, y=y)
+
+
+# ----- a route that knows the traffic: TomTom Routing (same key) -----
+ROUTE_URL = "https://api.tomtom.com/routing/1/calculateRoute/{a}:{b}/json"
+MAX_AVOID = 10
+
+
+def route_params(key: str, heading: float | None) -> dict[str, str]:
+    params = {
+        "key": key,
+        "traffic": "true",
+        "travelMode": "car",
+        "routeType": "fastest",
+        "instructionsType": "text",
+        "language": "fr-FR",
+        "routeRepresentation": "polyline",
+    }
+    if heading is not None:
+        params["vehicleHeading"] = str(int(heading) % 360)
+    return params
+
+
+def route_url(origin: tuple[float, float], dest: tuple[float, float]) -> str:
+    """origin and dest as (lat, lon)."""
+    return ROUTE_URL.format(a=f"{origin[0]:.6f},{origin[1]:.6f}", b=f"{dest[0]:.6f},{dest[1]:.6f}")
+
+
+def avoid_body(boxes: list[list[float]]) -> dict[str, Any]:
+    """[[minLon, minLat, maxLon, maxLat], …] → TomTom's avoidAreas."""
+    rects = []
+    for b in boxes[:MAX_AVOID]:
+        rects.append(
+            {
+                "southWestCorner": {"latitude": b[1], "longitude": b[0]},
+                "northEastCorner": {"latitude": b[3], "longitude": b[2]},
+            }
+        )
+    return {"avoidAreas": {"rectangles": rects}} if rects else {}
+
+
+def parse_route(body: Any) -> dict[str, Any] | None:
+    """TomTom's first route → the card's: points [lon, lat], length, time, and
+    the instructions (where along the route, the French sentence, the kind of
+    manoeuvre, road numbers, exit, direction)."""
+    routes = body.get("routes") if isinstance(body, dict) else None
+    if not routes or not isinstance(routes[0], dict):
+        return None
+    r = routes[0]
+    coords: list[list[float]] = []
+    for leg in r.get("legs") or []:
+        for pt in (leg or {}).get("points") or []:
+            try:
+                q = [float(pt["longitude"]), float(pt["latitude"])]
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not coords or coords[-1] != q:
+                coords.append(q)
+    if len(coords) < 2:
+        return None
+    summary = r.get("summary") or {}
+    steps = []
+    for ins in ((r.get("guidance") or {}).get("instructions")) or []:
+        if not isinstance(ins, dict):
+            continue
+        pt = ins.get("point") or {}
+        try:
+            loc = [float(pt["longitude"]), float(pt["latitude"])]
+            at = float(ins.get("routeOffsetInMeters") or 0)
+        except (KeyError, TypeError, ValueError):
+            continue
+        steps.append(
+            {
+                "at": at,
+                "loc": loc,
+                "maneuver": str(ins.get("maneuver") or ""),
+                "text": str(ins.get("message") or "")[:160],
+                "road": str(ins.get("street") or "")[:80],
+                "refs": [str(x) for x in ins.get("roadNumbers") or [] if x][:3],
+                "exit": str(ins.get("exitNumber") or ins.get("roundaboutExitNumber") or ""),
+                "to": str(ins.get("signpostText") or "")[:80],
+            }
+        )
+    return {
+        "coords": coords,
+        "distance": float(summary.get("lengthInMeters") or 0),
+        "duration": float(summary.get("travelTimeInSeconds") or 0),
+        "delay": float(summary.get("trafficDelayInSeconds") or 0),
+        "steps": steps,
+    }

@@ -77,17 +77,46 @@ def is_locked(hass: HomeAssistant, key_entity: str | None) -> bool:
     return state is None or state.state != "on"
 
 
+async def user_names(hass: HomeAssistant, user_id: str | None) -> set[str]:
+    """Every way a Home Assistant user may be named in `allowed_users`, in
+    lower case: its id, its display name, its login (username), and the person
+    it belongs to (name and entity id, with or without « person. »)."""
+    if not user_id:
+        return set()
+    names = {user_id.lower()}
+    user = await hass.auth.async_get_user(user_id)
+    if user:
+        if user.name:
+            names.add(user.name.strip().lower())
+        for cred in user.credentials or []:
+            login = (cred.data or {}).get("username")
+            if login:
+                names.add(str(login).strip().lower())
+    for st in hass.states.async_all("person"):
+        if st.attributes.get("user_id") == user_id:
+            names.add(st.entity_id.lower())
+            names.add(st.entity_id.split(".", 1)[1].lower())
+            if st.attributes.get("friendly_name"):
+                names.add(str(st.attributes["friendly_name"]).strip().lower())
+    return {n for n in names if n}
+
+
+async def user_label(hass: HomeAssistant, user_id: str | None) -> str | None:
+    """The user's display name (for a message), or None without a user."""
+    if not user_id:
+        return None
+    user = await hass.auth.async_get_user(user_id)
+    return (user.name or user_id) if user else user_id
+
+
 async def user_allowed(hass: HomeAssistant, user_id: str | None, allowed: list[str]) -> bool:
     """Is this Home Assistant user one Igor still answers while locked?
-    Matched by id or by name (case-insensitive). A request without a user (a
-    voice satellite, an automation) never is."""
+    Matched by id, display name, login or person (case-insensitive). A
+    request without a user (a voice satellite, an automation) never is."""
     if not user_id or not allowed:
         return False
     wanted = {str(a).strip().lower() for a in allowed if str(a).strip()}
-    if user_id.lower() in wanted:
-        return True
-    user = await hass.auth.async_get_user(user_id)
-    return bool(user and user.name and user.name.strip().lower() in wanted)
+    return bool(wanted & await user_names(hass, user_id))
 
 
 class DisarmGuard:
