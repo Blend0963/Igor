@@ -733,6 +733,11 @@
     ".igor-intro .ring { stroke-dasharray: 302; stroke-dashoffset: 302; animation: igor-in-draw .6s ease-out .55s forwards; }",
     ".igor-intro .pupil { transform-origin: 128px 96px; transform: scale(0); animation: igor-in-pop .35s cubic-bezier(.3,1.6,.5,1) 1.05s forwards, igor-in-beat 1.2s ease-in-out 1.4s 2; }",
     ".igor-intro .word { color: #e9e4da; font: 500 clamp(18px, 4vh, 34px)/1 'JetBrains Mono', ui-monospace, monospace; letter-spacing: 1.4em; padding-left: 0.5em; opacity: 0; animation: igor-in-track .7s ease-out 1.15s forwards; }",
+    // What IGOR stands for, typed under the name, initials in red.
+    ".igor-intro .acr { margin-top: -2vh; min-height: 1.4em; color: #878c95; font: 400 min(clamp(9px, 1.6vh, 13px), 2.7vw)/1.4 'JetBrains Mono', ui-monospace, monospace; letter-spacing: .18em; white-space: nowrap; max-width: 94vw; overflow: hidden; }",
+    ".igor-intro .acr i { font-style: normal; color: #e5323b; }",
+    ".igor-intro .acr.typing::after { content: '\\25AE'; color: #e5323b; animation: igor-in-caret .5s steps(1) infinite; }",
+    "@keyframes igor-in-caret { 50% { opacity: 0; } }",
     "@keyframes igor-in-grow { to { transform: scaleY(1); } }",
     "@keyframes igor-in-draw { to { stroke-dashoffset: 0; } }",
     "@keyframes igor-in-pop { to { transform: scale(1); } }",
@@ -753,17 +758,32 @@
     o.className = "igor-intro";
     o.innerHTML = '<svg viewBox="0 0 256 256" aria-hidden="true"><rect class="pillar" x="107" y="20" width="44" height="216" fill="#e9e4da"/>' +
       '<circle class="ring" cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle class="pupil" cx="128" cy="96" r="16" fill="#e5323b"/></svg>' +
-      '<div class="word">IGOR</div>';
+      '<div class="word">IGOR</div><div class="acr"></div>';
+    // « Intelligent Governance & Operations Relay », typed once the name is in.
+    var acr = o.querySelector(".acr"), text = "INTELLIGENT GOVERNANCE & OPERATIONS RELAY", initials = [0, 12, 25, 36], n = 0, typer = null;
+    setTimeout(function () {
+      acr.classList.add("typing");
+      typer = setInterval(function () {
+        n++;
+        acr.innerHTML = "";
+        for (var k = 0; k < n; k++) {
+          if (initials.indexOf(k) >= 0) { var b = document.createElement("i"); b.textContent = text[k]; acr.appendChild(b); }
+          else acr.appendChild(document.createTextNode(text[k]));
+        }
+        if (n >= text.length) { clearInterval(typer); setTimeout(function () { acr.classList.remove("typing"); }, 500); }
+      }, 24);
+    }, 1750);
     var done = false;
     var end = function () {
       if (done) return;
       done = true;
       o.classList.add("out");
+      clearInterval(typer);
       setTimeout(function () { o.remove(); st.remove(); }, 700);
     };
     o.addEventListener("pointerdown", end);
     document.body.appendChild(o);
-    setTimeout(end, 3000);
+    setTimeout(end, 3600);
   }
 
   class IgorWall extends HTMLElement {
