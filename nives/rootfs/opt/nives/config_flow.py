@@ -30,6 +30,8 @@ from .const import (
     CONF_CODE_HASH,
     CONF_TRAFFIC_KEY,
     CONF_ALLOWED_USERS,
+    CONF_CAR_TRACKER,
+    CONF_CAR_DESTINATION,
     DEFAULT_API_URL,
     DEFAULT_SHARED_MEMORY,
     DEFAULT_USER_ID,
@@ -269,6 +271,14 @@ class OptionsFlow(config_entries.OptionsFlow):
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(options=choices, multiple=True, custom_value=True)
                     ),
+                    vol.Optional(
+                        CONF_CAR_TRACKER,
+                        description={"suggested_value": current.get(CONF_CAR_TRACKER)},
+                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain=["device_tracker", "sensor"])),
+                    vol.Optional(
+                        CONF_CAR_DESTINATION,
+                        description={"suggested_value": current.get(CONF_CAR_DESTINATION)},
+                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="input_text")),
                     vol.Optional(CONF_TRAFFIC_KEY, default=""): selector.TextSelector(
                         selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
                     ),

@@ -43,7 +43,9 @@
           "alarm_active_entity": "Alarm in progress",
           "new_disarm_code": "New disarm code",
           "traffic_key": "TomTom key (live traffic)",
-          "allowed_users": "Still answered while the key is away"
+          "allowed_users": "Still answered while the key is away",
+          "car_tracker": "The car's position",
+          "car_destination": "The car's GPS destination"
         },
         "data_description": {
           "shared_memory": "On (recommended): everyone shares one memory, so something you tell a voice satellite is also known in the app and on the dashboard, and the other way round. Off: each Home Assistant user gets a memory of their own, and voice satellites and automations use the memory named below.",
@@ -54,7 +56,9 @@
           "alarm_active_entity": "A binary sensor that is on while the alarm is going off: the screens show the alert.",
           "new_disarm_code": "Digits only, at least 4. Only a salted hash is kept, never the code. Leave empty to keep the current code.",
           "traffic_key": "Optional. Shows traffic, closed roads and incidents on the wall's GPS card (a free key from developer.tomtom.com). Kept in Home Assistant only, never sent to a dashboard. Leave empty to keep the current key; a single dash (-) removes it.",
-          "allowed_users": "Home Assistant users Igor still answers while the key is unplugged (the car's account, your phone). Never a voice satellite or an automation: they have no user."
+          "allowed_users": "Home Assistant users Igor still answers while the key is unplugged (the car's account, your phone). Never a voice satellite or an automation: they have no user.",
+          "car_tracker": "The car's device_tracker (the head unit's companion app or GPSLogger). With the destination below, Igor can guide the car (« emmène-moi à la maison »), find a fuel station on the way and add it as a stop.",
+          "car_destination": "The input_text the GPS card guides to (its `destination:`), such as input_text.voiture_destination, 120 characters."
         }
       }
     },
@@ -285,6 +289,72 @@
         "avoid": {
           "name": "Avoid",
           "description": "Boxes to go round: [min longitude, min latitude, max longitude, max latitude]."
+        },
+        "via": {
+          "name": "Stops",
+          "description": "[latitude, longitude] of stops on the way, in order."
+        }
+      }
+    },
+    "car_go": {
+      "name": "Car: go to",
+      "description": "Guide the car's GPS card somewhere: a place, an address, « maison » or a zone; or stop the guidance. Uses the car set in Igor's options. Administrators only. Returns where it goes, how far and how long.",
+      "fields": {
+        "query": {
+          "name": "Place",
+          "description": "Where to: « maison », a zone's name, an address, a place."
+        },
+        "latitude": {
+          "name": "Latitude",
+          "description": "Instead of a place."
+        },
+        "longitude": {
+          "name": "Longitude",
+          "description": "Instead of a place."
+        },
+        "name": {
+          "name": "Name",
+          "description": "The name shown, with a latitude and longitude."
+        },
+        "stop": {
+          "name": "Stop",
+          "description": "Stop the guidance."
+        }
+      }
+    },
+    "car_nearby": {
+      "name": "Car: nearby",
+      "description": "Places of a kind the car can reach (fuel, charging, rest areas, toilets, hospital, pharmacy, ATM, supermarket, restaurant…): along the route when guided, in order, with the minutes each adds and whether it is in a motorway service area; else the nearest by road. Administrators only.",
+      "fields": {
+        "kind": {
+          "name": "Kind",
+          "description": "What to look for, in a word (fuel, essence, recharge, aire, toilettes, hôpital…)."
+        },
+        "count": {
+          "name": "Count",
+          "description": "How many places."
+        }
+      }
+    },
+    "car_stop": {
+      "name": "Car: add a stop",
+      "description": "Add a stop on the car's way: a place of the last car_nearby answer (choice) or a position. The GPS card guides there first, then on to the destination. Administrators only.",
+      "fields": {
+        "latitude": {
+          "name": "Latitude",
+          "description": "The stop."
+        },
+        "longitude": {
+          "name": "Longitude",
+          "description": "The stop."
+        },
+        "name": {
+          "name": "Name",
+          "description": "The stop's name."
+        },
+        "choice": {
+          "name": "Choice",
+          "description": "Which place of the last car_nearby answer (1 = the first), instead of a latitude and longitude."
         }
       }
     }

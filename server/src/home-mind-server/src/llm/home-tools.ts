@@ -21,6 +21,9 @@ import {
 } from "../jobs/scheduler.js";
 
 export const HOME_TOOL_NAMES = new Set([
+  "car_navigate",
+  "car_find_nearby",
+  "car_add_stop",
   "find_contact",
   "look_at_camera",
   "get_statistics",
@@ -307,6 +310,36 @@ export async function handleHomeTool(
 
     case "read_config_file":
       return readConfigFile(configDir, str("path"));
+
+    // The car's GPS: Igor's integration does the work (nives.car_go, car_nearby, car_stop).
+    case "car_navigate":
+    case "car_find_nearby":
+    case "car_add_stop": {
+      const service = name === "car_navigate" ? "car_go" : name === "car_find_nearby" ? "car_nearby" : "car_stop";
+      const data: Record<string, unknown> = {};
+      if (name === "car_navigate") {
+        if (input.stop === true) data.stop = true;
+        else if (str("destination")) data.query = str("destination");
+        else return { error: "Where to? Pass destination, or stop: true." };
+      } else if (name === "car_find_nearby") {
+        data.kind = str("kind") || "fuel";
+      } else {
+        const lat = Number(input.latitude), lon = Number(input.longitude), choice = Number(input.choice);
+        if (input.latitude != null && input.longitude != null && Number.isFinite(lat) && Number.isFinite(lon)) {
+          data.latitude = lat;
+          data.longitude = lon;
+          if (str("name")) data.name = str("name");
+        } else data.choice = Number.isFinite(choice) && choice >= 1 ? Math.min(5, Math.round(choice)) : 1;
+      }
+      try {
+        const res = await ha.callService("nives", service, undefined, { ...data, return_response: true });
+        const response = (res as { service_response?: unknown }).service_response;
+        return response ?? res;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        return { error: /not found|404|400/i.test(msg) ? "The car is not set up: update Igor's integration and choose the car in its options." : msg };
+      }
+    }
 
     case "check_ha_config": {
       const res = await ha.checkConfig();

@@ -2558,17 +2558,21 @@
   //   title: pve · 24 h
   //   hours: 24
   //   entities: [ { entity: sensor.cpu, name: cpu, color: "#6cc4f5" }, … ]
+  //   scale: own                 # own (default): each line on its own scale, from its low to its high,
+  //                              # written under the title; shared: one scale for all (always for percentages)
   class IgorHistoryCard extends IgorCard {
     setConfig(config) {
       if (!config || !Array.isArray(config.entities) || !config.entities.length) throw new Error("igor-history-card: entities est requis");
       this.config = config;
     }
     build() {
-      this.style(".leg { display: flex; gap: 10px; font-size: 11px; flex: none; }\nsvg.chart { min-height: 50px; }");
+      this.style(".leg { display: flex; gap: 10px; font-size: 11px; flex: none; }\nsvg.chart { min-height: 50px; }\n" +
+        ".rng { display: flex; gap: 12px; flex-wrap: wrap; font-size: 10.5px; color: var(--dim); margin: -2px 0 4px; flex: none; } .rng:empty { display: none; } .rng b { font-weight: 500; }");
       var card = el("ha-card", "", this.shadowRoot);
       var top = el("div", "top", card);
       el("span", "t", top, this.config.title || "");
       this.leg = el("span", "leg", top);
+      this.rng = el("div", "rng", card);
       this.svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       this.svg.setAttribute("class", "chart");
       this.svg.setAttribute("viewBox", "0 0 100 100");
@@ -2596,20 +2600,48 @@
           span.style.color = s.color;
         });
       }
-      if (!this.timer) { this.fetch(); this.timer = setInterval(() => this.fetch(), 300000); }
+      // A short period is drawn again every half minute (it moves), a day every 5 minutes.
+      if (!this.timer) { this.fetch(); this.timer = setInterval(() => this.fetch(), (Number(this.config.hours) || 24) <= 3 ? 30000 : 300000); }
     }
     fetch() {
       var hass = this._hass, hours = Number(this.config.hours) || 24;
       if (!hass) return;
       loadHistory(hass, this.series.map(function (s) { return s.entity; }), hours).then((data) => {
-        var allPct = this.series.every(function (s) { var st = hass.states[s.entity]; return st && st.attributes.unit_of_measurement === "%"; });
-        var lines = this.series.map(function (s) { return resample(data[s.entity] || [], hours, 96); });
-        var max = allPct ? 100 : Math.max.apply(null, [].concat.apply([1], lines)) * 1.1;
+        var unit = function (s) { var st = hass.states[s.entity]; return (st && st.attributes.unit_of_measurement) || ""; };
+        var allPct = this.series.every(function (s) { return unit(s) === "%"; });
+        var lines = this.series.map(function (s) { return resample(data[s.entity] || [], hours, 120); });
+        // Each line on its own scale (a speed and an engine speed, a turbo and
+        // a rail pressure do not share one), unless asked; percentages: 0 to 100.
+        var shared = allPct || this.config.scale === "shared";
+        var span = function (vals) {
+          if (!vals.length) return [0, 1];
+          var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+          // From zero when the line goes down near it (a speed), else around its own values (a voltage).
+          if (lo >= 0 && lo <= hi * 0.35) lo = 0;
+          var pad = (hi - lo) * 0.08 || Math.max(Math.abs(hi) * 0.02, 0.5);
+          return [lo === 0 ? 0 : lo - pad, hi + pad];
+        };
+        var all = [].concat.apply([], lines);
+        var common = allPct ? [0, 100] : span(all);
+        var ranges = lines.map(function (pts) { return shared ? common : span(pts); });
         var html = "";
+        this.rng.innerHTML = "";
         lines.forEach((pts, i) => {
-          var c = this.series[i].color, d = areaPath(pts, max, 100);
-          if (!d) return;
-          html += '<path d="' + d + ' L100 100 L0 100 Z" fill="' + c + '" fill-opacity="0.10"/><path d="' + d + '" fill="none" stroke="' + c + '" stroke-width="1.3" vector-effect="non-scaling-stroke"/>';
+          if (!pts.length) return;
+          var c = this.series[i].color, lo = ranges[i][0], hi = ranges[i][1], d = "";
+          pts.forEach(function (v, k) {
+            var x = pts.length === 1 ? 100 : (k / (pts.length - 1)) * 100, y = 98 - ((v - lo) / ((hi - lo) || 1)) * 94;
+            d += (k ? " L" : "M") + x.toFixed(2) + " " + Math.max(0, Math.min(100, y)).toFixed(2);
+          });
+          html += '<path d="' + d + ' L100 100 L0 100 Z" fill="' + c + '" fill-opacity="0.10"/><path d="' + d + '" fill="none" stroke="' + c + '" stroke-width="2" vector-effect="non-scaling-stroke"/>';
+          // The scale of each line, in its colour: its low and high over the period.
+          if (!shared || i === 0) {
+            var u = unit(this.series[i]), mn = Math.min.apply(null, pts), mx = Math.max.apply(null, pts);
+            var f = function (v) { return fr(v, mx - mn < 20 && Math.abs(v) < 100 ? 1 : 0); };
+            var b = el("span", "", this.rng);
+            b.style.color = c;
+            el("b", "", b, (shared ? "" : (this.series[i].name || "") + " ") + f(mn) + " → " + f(mx) + (u ? " " + u : ""));
+          }
         });
         this.svg.innerHTML = html;
       }).catch(function () { /* the legend still shows */ });
@@ -5435,13 +5467,27 @@
     if (m >= 1000) return (m >= 10000 ? Math.round(m / 1000) : (Math.round(m / 100) / 10).toString().replace(".", ",")) + " km";
     return (m >= 100 ? Math.round(m / 50) * 50 : Math.max(10, Math.round(m / 10) * 10)) + " m";
   }
-  // « 48.85,2.35;Maison » (or « 48.85,2.35 ») → { lat, lon, name }.
-  function gpsParseDest(v) {
+  // « 48.85,2.35;Maison » (or « 48.85,2.35 ») → { lat, lon, name }; with a
+  // stop on the way (Igor's car_stop), « …;Maison|47.90,1.90;Total » → via: [stop].
+  function gpsParsePoint(v) {
     var s = String(v || "").trim(), m = s.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)(?:\s*;\s*(.*))?$/);
     if (!m) return null;
     var lat = Number(m[1]), lon = Number(m[2]);
     if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
     return { lat: lat, lon: lon, name: (m[3] || "").trim() || "destination" };
+  }
+  function gpsParseDest(v) {
+    var parts = String(v || "").split("|").filter(function (x) { return x.trim(); });
+    var d = parts.length ? gpsParsePoint(parts[0]) : null;
+    if (!d) return null;
+    d.via = parts.slice(1).map(gpsParsePoint).filter(Boolean);
+    return d;
+  }
+  // Back to the input_text (120 characters: the names are shortened to fit).
+  function gpsFormatDest(d) {
+    var pts = [d].concat(d.via || []), coords = pts.map(function (p) { return p.lat.toFixed(6) + "," + p.lon.toFixed(6); });
+    var room = 120 - coords.reduce(function (a, c) { return a + c.length + 1; }, 0) - (pts.length - 1), each = Math.max(0, Math.floor(room / pts.length));
+    return pts.map(function (p, i) { var n = String(p.name || "").replace(/[|;]/g, " ").slice(0, each).trim(); return n ? coords[i] + ";" + n : coords[i]; }).join("|").slice(0, 120);
   }
   // An OpenStreetMap way's limit (km/h) in the car's direction, or null.
   var GPS_ZONES = { "FR:urban": 50, "FR:rural": 80, "FR:motorway": 130, "FR:zone30": 30, "FR:zone20": 20, "FR:walk": 20, "FR:living_street": 20, "FR:trunk": 110, "FR:expressway": 110 };
@@ -5463,7 +5509,7 @@
     if (t.highway === "living_street") return 20;
     return null;
   }
-  window.__igorGpsNav = { tomtom: gpsTomTomStep, step: gpsStep, metres: gpsMetres, parse: gpsParseDest, limit: gpsWayLimit, directions: gpsDirections, refs: gpsRefs };
+  window.__igorGpsNav = { tomtom: gpsTomTomStep, step: gpsStep, metres: gpsMetres, parse: gpsParseDest, format: gpsFormatDest, limit: gpsWayLimit, directions: gpsDirections, refs: gpsRefs };
   // ----- what is around the car: OpenStreetMap's points (Overpass) -----
   // Each kind: its colour on the map and in the layers' list, its name there.
   var GPS_POI = {
@@ -5703,14 +5749,14 @@
         // The road where the car is, at the bottom when not guided.
         ".street { position: absolute; z-index: 2; bottom: 12px; left: 50%; transform: translateX(-50%); max-width: 55%; padding: 6px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.88); border: 1px solid #22262c; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }" +
         ".street[hidden] { display: none; }" +
-        ".shield { display: inline-block; padding: 0 5px; margin-right: 6px; border-radius: 2px; font-weight: 700; font-size: 0.82em; line-height: 1.5; vertical-align: 1px; background: #c9a227; color: #111; }" +
+        ".shield { display: inline-block; padding: 1px 6px; margin-right: 8px; border-radius: 3px; font-family: 'Barlow Condensed', 'Roboto Condensed', 'Arial Narrow', sans-serif; font-weight: 700; font-size: 0.86em; line-height: 1.25; letter-spacing: 0.02em; vertical-align: 1px; white-space: nowrap; background: #e9e4da; color: #111; box-shadow: inset 0 0 0 1.5px currentColor; }" +
         ".shield.a, .shield.n { background: #d33; color: #fff; } .shield.e { background: #2f8a3e; color: #fff; } .shield.d { background: #f2c200; color: #111; } .shield.m { background: #2a9fd6; color: #fff; }" +
         ".nav .x { font-size: 12px; color: #878c95; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .nav .x[hidden] { display: none; }" +
         ".eta .st { flex: none; max-width: 40%; color: #e9e4da; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 1px solid #22262c; padding-left: 14px; display: block; -webkit-line-clamp: unset; }" +
         // The layers' list.
         ".lpanel .tg { justify-content: space-between; } .lpanel .tg .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }" +
         ".lpanel .tg.off { opacity: 0.45; } .lpanel .seg { display: flex; gap: 8px; } .lpanel .seg button { flex: 1; justify-content: center; } .lpanel .seg button.on { border-color: #59d0e0; color: #59d0e0; }" +
-        ".snap { position: absolute; right: 12px; bottom: 12px; z-index: 2; font-family: " + MONO + "; font-size: 10px; color: #3d454e; letter-spacing: 0.1em; text-transform: uppercase; }" +
+        ".snap { position: absolute; right: 12px; top: 96px; z-index: 2; font-family: " + MONO + "; font-size: 10px; color: #3d454e; letter-spacing: 0.1em; text-transform: uppercase; }" +
         ".noattr .maplibregl-ctrl-attrib, .noattr .maplibregl-ctrl-bottom-right { display: none !important; }" +
         "@media (prefers-reduced-motion: reduce) { .sign.over { animation: none; } }" +
         // guidance: the next turn on top, the rest of the way at the bottom, the destination panel
@@ -5726,6 +5772,9 @@
         ".eta b small { font-size: 13px; font-weight: 400; color: #878c95; margin-left: 3px; }" +
         ".eta span { flex: 1; min-width: 0; color: #878c95; font-size: 12px; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; border-left: 1px solid #22262c; padding-left: 14px; }" +
         ".eta span i { font-style: normal; color: #e9e4da; font-size: 15px; display: block; }" +
+        // A road's shield in the bar: its own small size, never stretched like the bar's spans.
+        ".eta .st .shield { flex: none; display: inline-block; min-width: 0; max-width: none; border-left: 0; padding: 1px 6px; overflow: visible; -webkit-line-clamp: unset; font-size: 13px; line-height: 1.25; }" +
+        ".eta .st .shield.a, .eta .st .shield.n, .eta .st .shield.e, .eta .st .shield.m { color: #fff; } .eta .st .shield.d { color: #111; }" +
         ".panel { position: absolute; inset: 0; z-index: 4; background: rgba(7,8,10,0.96); color: #e9e4da; font-family: " + MONO + "; display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; overflow-y: auto; }" +
         ".panel .ph { display: flex; justify-content: space-between; align-items: center; color: #878c95; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; }" +
         ".panel form { display: flex; gap: 8px; } .panel input { flex: 1; min-width: 0; font: inherit; font-size: 17px; padding: 12px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #0d1014; color: #e9e4da; }" +
@@ -5835,7 +5884,7 @@
         this.destState = de.state;
         var dd = gpsParseDest(de.state);
         if (!dd && this.dest) this.setDestination(null, false);
-        else if (dd && (!this.dest || gpsDist([dd.lon, dd.lat], [this.dest.lon, this.dest.lat]) > 5)) this.setDestination(dd, false);
+        else if (dd && (!this.dest || gpsDist([dd.lon, dd.lat], [this.dest.lon, this.dest.lat]) > 5 || gpsFormatDest(dd) !== gpsFormatDest(this.dest))) this.setDestination(dd, false);
       }
       if (!this.loading) this.init(p);
       else if (this.map && this.styleNow !== this.styleUrl()) {
@@ -6244,11 +6293,13 @@
       this.closureSeen = {};
       if (this.$ && this.$("ask")) this.$("ask").hidden = true;
       if (write && this.config.destination && this._hass) {
-        var v = d ? d.lat.toFixed(6) + "," + d.lon.toFixed(6) + ";" + String(d.name || "").slice(0, 60) : "";
+        var v = d ? gpsFormatDest(d) : "";
         this.destState = v;
         this._hass.callService("input_text", "set_value", { entity_id: this.config.destination, value: v }).catch(() => {});
       }
       if (this.destMarker) { this.destMarker.remove(); this.destMarker = null; }
+      (this.viaMarkers || []).forEach((m) => m.remove());
+      this.viaMarkers = [];
       var src = this.map && this.map.getSource("route");
       if (src) src.setData(this.routeData());
       this.$("nav").hidden = !d;
@@ -6261,6 +6312,12 @@
         var flag = document.createElement("div");
         flag.innerHTML = '<svg viewBox="0 0 24 24" width="34" height="34"><path d="M5 21V4h11l-1.5 3.5L16 11H7v10z" fill="#e5323b" stroke="#07080a" stroke-width="1.2"/></svg>';
         this.destMarker = new window.maplibregl.Marker({ element: flag, anchor: "bottom-left" }).setLngLat([d.lon, d.lat]).addTo(this.map);
+        // A stop on the way: an amber flag.
+        (d.via || []).forEach((v) => {
+          var f2 = document.createElement("div");
+          f2.innerHTML = '<svg viewBox="0 0 24 24" width="30" height="30"><path d="M5 21V4h11l-1.5 3.5L16 11H7v10z" fill="#d9a441" stroke="#07080a" stroke-width="1.2"/></svg>';
+          this.viaMarkers.push(new window.maplibregl.Marker({ element: f2, anchor: "bottom-left" }).setLngLat([v.lon, v.lat]).addTo(this.map));
+        });
       }
       this.routeTo();
     },
@@ -6276,7 +6333,7 @@
         var tt = null;
         try {
           var res = await this._hass.callWS({ type: "call_service", domain: "nives", service: "route", return_response: true,
-            service_data: Object.assign({ from: [from[1], from[0]], to: [d.lat, d.lon], avoid: (this.avoid || []).slice(-10) },
+            service_data: Object.assign({ from: [from[1], from[0]], to: [d.lat, d.lon], via: (d.via || []).map((v) => [v.lat, v.lon]), avoid: (this.avoid || []).slice(-10) },
               this.speedMps() > 2 ? { heading: Math.round(this.heading) % 360 } : {}) });
           tt = res && res.response;
         } catch (e) { tt = null; }
@@ -6288,17 +6345,24 @@
         }
         if (this.avoid && this.avoid.length) this.banner("mdi:road-variant", "", "Impossible d'éviter la route fermée" + (tt && tt.error ? " (" + tt.error + ")" : ""), "wait");
       }
+      // Through the stop(s) first, then to the destination.
+      var pts = [from].concat((d.via || []).map((v) => [v.lon, v.lat]), [[d.lon, d.lat]]);
       var url = String(this.config.router || "https://router.project-osrm.org").replace(/\/$/, "") + "/route/v1/driving/" +
-        from[0].toFixed(6) + "," + from[1].toFixed(6) + ";" + d.lon.toFixed(6) + "," + d.lat.toFixed(6) +
-        "?overview=full&geometries=geojson&steps=true" + (this.speedMps() > 2 ? "&bearings=" + Math.round(this.heading) + ",60;" : "");
+        pts.map((q) => q[0].toFixed(6) + "," + q[1].toFixed(6)).join(";") +
+        "?overview=full&geometries=geojson&steps=true" + (this.speedMps() > 2 ? "&bearings=" + Math.round(this.heading) + ",60" + ";".repeat(pts.length - 1) : "");
       var body;
       try { body = await (await fetch(url)).json(); }
       catch (e) { this.banner("mdi:wifi-off", "", "Itinéraire indisponible (pas d'internet ?)", "wait"); return; }
       if (this.dest !== d) return;
       var r = body && body.routes && body.routes[0];
       if (!r || !r.geometry) { this.banner("mdi:map-marker-question", "", "Pas d'itinéraire vers " + d.name, "wait"); return; }
-      var raw = [];
-      (r.legs || []).forEach((leg) => (leg.steps || []).forEach((st) => raw.push(gpsStep(st))));
+      var raw = [], legs = r.legs || [];
+      legs.forEach((leg, li) => (leg.steps || []).forEach((st) => {
+        var x = gpsStep(st);
+        // The end of a leg before the last: the stop, not the destination.
+        if (li < legs.length - 1 && (st.maneuver || {}).type === "arrive") { var v = (d.via || [])[li]; x.text = "Étape" + (v ? " : " + v.name : ""); x.icon = "mdi:flag-variant"; }
+        raw.push(x);
+      }));
       this.useRoute(r.geometry.coordinates, raw, r.duration || 0, "osrm");
     },
     useRoute(coords, raw, duration, source) {
@@ -6375,6 +6439,14 @@
         return;
       }
       var d = this.dest;
+      // The stop reached: said once, then the way goes on to the destination
+      // (the stop leaves the destination, so a new route does not go back).
+      if (d && d.via && d.via.length && gpsDist(p, [d.via[0].lon, d.via[0].lat]) < 50) {
+        var reached = d.via[0];
+        this.say("Vous êtes arrivé à l'étape" + (reached.name && reached.name !== "destination" ? " : " + reached.name : ""));
+        this.setDestination(Object.assign({}, d, { via: d.via.slice(1) }), true);
+        return;
+      }
       if (left < 30 || (d && gpsDist(p, [d.lon, d.lat]) < 30)) {
         if (!this.arrived) {
           this.arrived = true;
@@ -6418,7 +6490,7 @@
       else fig(String(Math.max(1, Math.round(secs / 60))), "min");
       var sp2 = document.createElement("span");
       var at = document.createElement("i"); at.textContent = "arrivée " + hhmm(eta); sp2.appendChild(at);
-      if (d && d.name !== "destination") sp2.appendChild(document.createTextNode(d.name));
+      if (d && d.name !== "destination") sp2.appendChild(document.createTextNode(d.name + (d.via && d.via.length ? " · étape " + d.via[0].name : "")));
       e.appendChild(sp2);
       // The road where the car is, at the end of the line.
       if (this.roadName && this.config.street_names !== false) { var stn = document.createElement("div"); stn.className = "st"; this.fillRoad(stn); e.appendChild(stn); }
