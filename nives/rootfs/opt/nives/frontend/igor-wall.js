@@ -5974,7 +5974,11 @@
       // (OpenStreetMap) first: a sensor polled now and then lags behind at
       // each change; it only fills in where the road says nothing.
       var limit = this.config.speed_limits !== false && this.osmLimit ? this.osmLimit : NaN;
-      if (isNaN(limit) && le) limit = parseFloat(le.state);
+      // The sensor only where the card knows no road under the car at all (it
+      // reads any road within 20 m, every 15 s: a motorway beside a town).
+      var leFresh = le && Date.now() - (Date.parse(le.last_updated) || 0) < 45000;
+      if (isNaN(limit) && leFresh && !this.wayCls && !this.osmGuess) limit = parseFloat(le.state);
+      var guess = isNaN(limit) && this.osmGuess ? this.osmGuess : NaN;
       var over = !isNaN(limit) && kmh > limit + 3;
       var sp = this.$("speed");
       sp.hidden = this.config.show_speed === false;
@@ -5985,11 +5989,14 @@
       // it when the road says nothing; else a grey sign barred.
       sign.hidden = this.config.speed_limits === false && !le;
       var shown = limit, stale = false;
-      if (!isNaN(limit)) { if (here) this.lastLimit = { v: limit, at: here }; }
-      else if (this.lastLimit && here && gpsDist(here, this.lastLimit.at) < 2000) { shown = this.lastLimit.v; stale = true; }
+      if (!isNaN(limit)) { if (here) this.lastLimit = { v: limit, at: here, cls: this.wayCls || null }; }
+      else if (!isNaN(guess)) { shown = guess; stale = true; }
+      // The last limit seen, greyed, for 2 km, only on the same kind of road
+      // (never the motorway's 130 carried into a town); a road not known: barred.
+      else if (this.lastLimit && here && gpsDist(here, this.lastLimit.at) < 2000 && this.wayCls && this.wayCls === this.lastLimit.cls) { shown = this.lastLimit.v; stale = true; }
       sign.classList.toggle("unk", isNaN(shown));
       sign.classList.toggle("stale", stale);
-      sign.title = isNaN(shown) ? "Limitation inconnue ici" : stale ? "Dernière limitation vue" : "Limitation";
+      sign.title = isNaN(shown) ? "Limitation inconnue ici" : !isNaN(guess) ? "Limitation probable" : stale ? "Dernière limitation vue" : "Limitation";
       var t = sign.querySelector("text"), dg = isNaN(shown) ? "" : String(Math.round(shown));
       if (t.textContent !== dg) { t.textContent = dg; t.setAttribute("font-size", dg.length > 2 ? "39" : "46"); }
       sign.classList.toggle("over", over);
@@ -6284,10 +6291,20 @@
       if (onWay) {
         // Forward when the car goes the way the way is drawn.
         var fwd = Math.abs(((best.bearing - this.heading + 540) % 360) - 180) < 90;
-        var v = gpsWayLimit(best.w.tags, fwd);
+        var v = gpsWayLimit(best.w.tags, fwd), cls = String(best.w.tags.highway || "").replace(/_link$/, "");
+        // A street with no sign in the map: what such a street is in France
+        // (a living street 20, a residential street 50), shown as probable.
+        var guess = v ? null : cls === "living_street" ? 20 : cls === "residential" ? 50 : null;
         this.limitKnown = true;
-        if (v !== this.osmLimit) { this.osmLimit = v; this.overlays(); }
+        this.wayCls = cls;
+        this.osmAt = p.slice();
+        if (v !== this.osmLimit || guess !== this.osmGuess) { this.osmLimit = v; this.osmGuess = guess; this.overlays(); }
         this.setRoadName(best.w.tags);
+      } else if ((this.osmLimit || this.osmGuess || this.wayCls) && (!this.osmAt || gpsDist(p, this.osmAt) > 40)) {
+        // Off the roads read (a street not loaded yet, OpenStreetMap busy):
+        // the last road's limit is not this road's.
+        this.osmLimit = null; this.osmGuess = null; this.wayCls = null;
+        this.overlays();
       }
       // The roads ahead are read before the car gets there (a few hundred
       // metres, more the faster), so a new limit shows the moment its section
@@ -6536,7 +6553,9 @@
       this.offCount = best.dist > off && moving ? (this.offCount || 0) + 1 : 0;
       if (this.offCount >= 5 && now - (this.routeAt || 0) > 8000) {
         this.offCount = 0;
-        this.banner("mdi:routes", "", "Nouvel itinéraire…", "wait");
+        // Said and shown long enough to be read: 10 s before the next instruction takes its place.
+        this.bannerHold = now + 10000;
+        this.banner("mdi:routes", "", "Route déviée · nouvel itinéraire", "wait");
         this.say("Nouvel itinéraire");
         this.routeTo();
         return;
@@ -6576,7 +6595,7 @@
         // places (« direction Fleury-les-Aubrais ») only when the turn comes
         // (about 25 s ahead: 250 m in town, up to 1.5 km on a motorway).
         var soon = dn < Math.max(250, Math.min(1500, this.speedMps() * 25));
-        this.banner(next.icon, gpsMetres(dn), soon ? next.text : next.short || next.text, "", soon ? next : null);
+        if (!(this.bannerHold > now)) this.banner(next.icon, gpsMetres(dn), soon ? next.text : next.short || next.text, "", soon ? next : null);
         // Spoken at 1 km on fast roads, 400 m, 100 m, and at the turn.
         var key = next.at.toFixed(0), sp = this.spoken[key] || 0;
         var stage = dn < 40 ? 3 : dn < 130 ? 2 : dn < 450 ? 1 : 0;
@@ -6778,6 +6797,8 @@
     // The road where the car is (OpenStreetMap's way under it): name and numbers.
     setRoadName(tags) {
       var t = tags || {}, refs = gpsRefs(t.ref), name = String(t.name || "").trim();
+      // A motorway named after its number: the shield alone.
+      if (refs.some((r) => r.replace(/\s/g, "") === name.replace(/\s/g, ""))) name = "";
       var r = name || refs.length ? { name: name, refs: refs } : null;
       var key = r ? name + "|" + refs.join(",") : "";
       if (key === this.roadKey) return;
