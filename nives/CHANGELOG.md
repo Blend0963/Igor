@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.37.5 — A mirror that loads
+
+- `custom:igor-gps-card`: the third Overpass mirror (maps.mail.ru), whose certificate browsers refuse (« could not be loaded securely »), is replaced by overpass.kumi.systems.
+
 ## 0.37.4 — Igor drives the GPS
 
 - **Igor guides the car.** Tell it « emmène-moi à la maison », « mets-moi un trajet pour la gare d'Orléans », « arrête le guidage »: the car's GPS card guides there (home and Home Assistant zones first, then the place nearest the car), and Igor says the distance and the arrival time. Ask « où est la station-service la plus proche ? » (or charging, a rest area, toilets, a hospital, a pharmacy, an ATM, a supermarket, a restaurant…): while guided, Igor looks along the route ahead and says, for the best place, how far along the way it is, whether it is on the route or a detour of a few minutes, and whether it is on the motorway (« aire de … »); then it asks whether to stop there. « Oui » adds it as a stop: the card guides there first (an amber flag), says « vous êtes arrivé à l'étape », then goes on to the destination. Set the car once in Igor's options (its position and the GPS card's destination input_text). New services `nives.car_go`, `nives.car_nearby`, `nives.car_stop` (administrators only), the tools `car_navigate`, `car_find_nearby`, `car_add_stop` for Igor (the local model too); `nives.route` takes stops.

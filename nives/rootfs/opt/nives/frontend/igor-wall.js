@@ -5607,7 +5607,7 @@
   }
   // Overpass, the free service behind all of it, is often busy: the next
   // mirror is tried after a failure (or the card's own `overpass:`, one or a list).
-  var GPS_OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
+  var GPS_OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
   var gpsOverpassAt = 0;
   function gpsOverpass(config, query) {
     var list = config && config.overpass ? [].concat(config.overpass) : GPS_OVERPASS;
