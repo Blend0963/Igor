@@ -321,10 +321,9 @@
       for (var c = 0; c < copies; c++) this.buildCopy(c);
       if (this.auto) {
         this.copy2 = Array.prototype.slice.call(this.run.children, this.segs.length);
-        this.run.addEventListener("animationend", () => {
-          this.run.style.animation = "none";
-          this.autoTimer = setTimeout(() => this.autoTurn(), (Number(this.config.pause) || 10) * 1000);
-        });
+        // The turn's end only puts the line back; the next turn is timed by
+        // autoTurn itself (an animation ends unseen while its page is away).
+        this.run.addEventListener("animationend", () => { this.run.style.animation = "none"; });
         this.autoTimer = setTimeout(() => this.autoTurn(), 3000);
       } else if (!this.paged) {
         this.run.classList.add("roll");
@@ -474,7 +473,11 @@
     // Pages: as many machines as the line holds, the next ones 8 s later.
     // One turn if the line is longer than its lane (at about 40 px a second).
     autoTurn() {
-      if (!this.root.isConnected) return;
+      clearTimeout(this.autoTimer);
+      if (this.dead) return;
+      // Another page shows (Home Assistant keeps this one aside): the turns
+      // go on as soon as it is back, never stop for good.
+      if (!this.root.isConnected || !this.lane.clientWidth) { this.autoTimer = setTimeout(() => this.autoTurn(), 2000); return; }
       var wide = this.segs.reduce((w, sg) => w + sg.offsetWidth, 0);
       var over = wide > this.lane.clientWidth + 2;
       this.copy2.forEach((sg) => { sg.hidden = !over; });
@@ -482,7 +485,9 @@
       if (!over || still) { this.autoTimer = setTimeout(() => this.autoTurn(), 5000); return; }
       this.run.style.animation = "none";
       void this.run.offsetWidth;
-      this.run.style.animation = "roll " + Math.max(6, wide / 40).toFixed(1) + "s linear 1";
+      var secs = Math.max(6, wide / 40);
+      this.run.style.animation = "roll " + secs.toFixed(1) + "s linear 1";
+      this.autoTimer = setTimeout(() => { this.run.style.animation = "none"; this.autoTurn(); }, (secs + (Number(this.config.pause) || 10)) * 1000);
     }
     nextPage(first) {
       if (!this.segs.length) return;
@@ -682,7 +687,7 @@
       this.tabInSight();
       this.bellEl.title = (n ? n + " à traiter" : "") + (n && fresh ? " · " : "") + (fresh ? "nouvelle notification" : "");
     }
-    destroy() { if (this.unbell) { this.unbell(); this.unbell = null; } clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); clearTimeout(this.autoTimer); }
+    destroy() { this.dead = true; if (this.unbell) { this.unbell(); this.unbell = null; } clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); clearTimeout(this.autoTimer); }
   }
 
   // ===== igor-wall: the whole screen =====
@@ -717,6 +722,50 @@
     ".band.below { padding-bottom: 10px; }"
   ].join("\n");
 
+  // The opening: Igor's eye opens over the page the first time a wall shows
+  // after the app starts (once per session; a touch skips it; `intro: false`
+  // on the wall: never). Home Assistant's own logo comes before; this follows.
+  var INTRO_CSS = [
+    ".igor-intro { position: fixed; inset: 0; z-index: 2147483000; background: #07080a; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4vh; transition: opacity .6s ease; cursor: pointer; }",
+    ".igor-intro.out { opacity: 0; pointer-events: none; }",
+    ".igor-intro svg { width: min(24vw, 34vh); height: auto; overflow: visible; }",
+    ".igor-intro .pillar { transform-origin: 128px 236px; transform: scaleY(0); animation: igor-in-grow .5s cubic-bezier(.2,.8,.2,1) .2s forwards; }",
+    ".igor-intro .ring { stroke-dasharray: 302; stroke-dashoffset: 302; animation: igor-in-draw .6s ease-out .55s forwards; }",
+    ".igor-intro .pupil { transform-origin: 128px 96px; transform: scale(0); animation: igor-in-pop .35s cubic-bezier(.3,1.6,.5,1) 1.05s forwards, igor-in-beat 1.2s ease-in-out 1.4s 2; }",
+    ".igor-intro .word { color: #e9e4da; font: 500 clamp(18px, 4vh, 34px)/1 'JetBrains Mono', ui-monospace, monospace; letter-spacing: 1.4em; padding-left: 0.5em; opacity: 0; animation: igor-in-track .7s ease-out 1.15s forwards; }",
+    "@keyframes igor-in-grow { to { transform: scaleY(1); } }",
+    "@keyframes igor-in-draw { to { stroke-dashoffset: 0; } }",
+    "@keyframes igor-in-pop { to { transform: scale(1); } }",
+    "@keyframes igor-in-beat { 50% { transform: scale(1.35); filter: drop-shadow(0 0 10px #e5323b); } }",
+    "@keyframes igor-in-track { to { opacity: 1; letter-spacing: 0.5em; } }",
+    "@media (prefers-reduced-motion: reduce) { .igor-intro * { animation-duration: .01s !important; animation-delay: 0s !important; } }"
+  ].join("\n");
+  function igorIntro() {
+    try {
+      if (window.sessionStorage.getItem("igor-intro")) return;
+      window.sessionStorage.setItem("igor-intro", "1");
+    } catch (e) { return; }  // no storage: no way to show it only once
+    if (document.querySelector(".igor-intro")) return;
+    var st = document.createElement("style");
+    st.textContent = INTRO_CSS;
+    document.head.appendChild(st);
+    var o = document.createElement("div");
+    o.className = "igor-intro";
+    o.innerHTML = '<svg viewBox="0 0 256 256" aria-hidden="true"><rect class="pillar" x="107" y="20" width="44" height="216" fill="#e9e4da"/>' +
+      '<circle class="ring" cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle class="pupil" cx="128" cy="96" r="16" fill="#e5323b"/></svg>' +
+      '<div class="word">IGOR</div>';
+    var done = false;
+    var end = function () {
+      if (done) return;
+      done = true;
+      o.classList.add("out");
+      setTimeout(function () { o.remove(); st.remove(); }, 700);
+    };
+    o.addEventListener("pointerdown", end);
+    document.body.appendChild(o);
+    setTimeout(end, 3000);
+  }
+
   class IgorWall extends HTMLElement {
     constructor() { super(); this.attachShadow({ mode: "open" }); this.children_ = []; }
     setConfig(config) {
@@ -737,6 +786,7 @@
         this._resize = () => this.fit();
         window.addEventListener("resize", this._resize);
       }
+      if (this.config && this.config.intro !== false) igorIntro();
       if (!this._built) { this._built = true; this.render(); }
       setTimeout(() => this.fit(), 50);
     }
@@ -4720,7 +4770,8 @@
         ".wx > ha-icon { color: var(--wait); grid-column: 1; grid-row: 1 / 3; }",
         ".wx .t { grid-column: 2; grid-row: 1; font-size: 30px; font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; }",
         ".wx .c { grid-column: 2; grid-row: 2; color: var(--dim); font-size: 12px; }",
-        ".wx .mm { grid-column: 3; grid-row: 1 / 3; text-align: right; color: var(--dim); font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums; }",
+        ".wx .mm { grid-column: 3; grid-row: 1 / 3; display: grid; grid-template-columns: auto 3.2ch; column-gap: 8px; align-items: baseline; color: var(--dim); font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums; }",
+        ".wx .mm div { display: contents; } .wx .mm b { text-align: right; }",
         ".wx .mm b { color: var(--fg); font-weight: 400; }",
         ".wx .hrs { grid-column: 1 / -1; grid-row: 3; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; text-align: center; margin-top: 4px; color: var(--dim); font-size: 11px; --mdc-icon-size: 20px; }",
         ".wx .hrs ha-icon { display: block; margin: 3px auto; color: var(--wait); }",
@@ -4845,6 +4896,110 @@
         el("b", x[2], d, x[0]);
         el("span", "", d, x[1]);
       });
+    }
+  }
+
+  // ----- igor-trips-card: a car's log, readable at a glance -----
+  //   type: custom:igor-trips-card
+  //   history: sensor.car_trip_history        # attribute `trajets`: the trips, oldest first
+  //   current: { entity: sensor.car_trip, attribute: trajet }   # the running or last trip
+  //   active: binary_sensor.trip_running
+  //   records: sensor.car_records             # optional: 0-100, 80-120, top speed, longest, best eco
+  //   correction: input_text.car_fuel_factor  # optional: litres × this factor
+  //   price: input_number.fuel_price          # optional: € per litre for the running trip
+  //   rows: 6
+  // The trip on top in large figures, the last ones in clean rows (empty ones
+  // left out), the records at the bottom.
+  class IgorTripsCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !config.history) throw new Error("igor-trips-card: history est requis");
+      this.config = config;
+    }
+    getCardSize() { return 6; }
+    build() {
+      this.style(CARD_CSS + "\n" + [
+        "ha-card { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }",
+        ".h { color: var(--dim); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; display: flex; align-items: center; gap: 7px; }",
+        ".h::before { content: ''; width: 6px; height: 6px; background: var(--igor-signal, #e5323b); }",
+        ".top { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; text-align: center; padding: 10px 0 12px; border-bottom: 1px solid var(--line); }",
+        ".top b { display: block; font-size: 21px; font-weight: 300; font-variant-numeric: tabular-nums; color: var(--fg); }",
+        ".top span { color: var(--dim); font-size: 11px; }",
+        ".rows { margin-top: 6px; }",
+        ".r { display: grid; grid-template-columns: minmax(max-content, 1.6fr) 1fr 0.9fr 1fr 1fr 0.8fr; gap: 6px; align-items: baseline; padding: 7px 0; border-bottom: 1px dashed var(--line); font-variant-numeric: tabular-nums; font-size: 14px; }",
+        ".r > * { text-align: right; white-space: nowrap; } .r > :first-child { text-align: left; color: var(--dim); font-size: 12.5px; }",
+        ".r.hd { color: var(--faint); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; padding: 4px 0; border-bottom: 1px solid var(--line); }",
+        ".r.hd > :first-child { color: var(--faint); font-size: 10.5px; }",
+        ".okc { color: var(--okc); } .warn { color: var(--wait); } .bad { color: var(--bad); }",
+        ".none { color: var(--dim); padding: 14px 0; }",
+        ".rec { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; text-align: center; }",
+        ".rec[hidden] { display: none; }",
+        ".rec b { display: block; font-size: 15px; font-weight: 400; font-variant-numeric: tabular-nums; }",
+        ".rec span { color: var(--faint); font-size: 10px; letter-spacing: 0.06em; white-space: nowrap; }",
+        ".rec > div { min-width: 0; }", ".rec span.t { grid-column: 1 / -1; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var h = el("div", "h", card);
+      this.titleEl = el("span", "", h, "dernier trajet");
+      this.top = el("div", "top", card);
+      this.rows = el("div", "rows", card);
+      this.rec = el("div", "rec", card);
+    }
+    update(hass, prev) {
+      var c = this.config, S = (id) => (id ? hass.states[id] : null);
+      if (prev && !changed(prev, hass, [c.history, c.current && (c.current.entity || c.current), c.active, c.records, c.correction, c.price])) return;
+      var factor = c.correction ? (num(S(c.correction)) || 1) : 1;
+      var price = c.price ? num(S(c.price)) : null;
+      var ecoCls = function (e) { return !isFinite(e) ? "" : e >= 80 ? "okc" : e >= 60 ? "warn" : "bad"; };
+      var l100Cls = function (v) { return v == null ? "" : v < 6 ? "okc" : v < 9 ? "warn" : "bad"; };
+      var fmt = function (v, d) { return v == null || !isFinite(v) ? "—" : fr(v, d); };
+      // The trip on top
+      var cur = c.current ? (typeof c.current === "string" ? { entity: c.current } : c.current) : null;
+      var st = cur && S(cur.entity), t = st ? (cur.attribute ? st.attributes[cur.attribute] : st.attributes) : null;
+      var running = c.active && S(c.active) && S(c.active).state === "on";
+      this.titleEl.textContent = running ? "trajet en cours" : "dernier trajet";
+      this.top.innerHTML = "";
+      if (t && typeof t === "object") {
+        var litres = Number(t.fuel_l) * factor;
+        var l100 = Number(t.l100) > 0 ? Number(t.l100) * factor : null;
+        var cost = t.cout != null ? Number(t.cout) : price && litres > 0 ? litres * price : null;
+        var mins = t.duree_min != null ? Number(t.duree_min) : t.debut ? (Date.now() - Date.parse(t.debut)) / 60000 : null;
+        [[fmt(Number(t.distance_km), 1), "km", ""], [mins == null || !isFinite(mins) ? "—" : String(Math.round(mins)), "min", ""],
+         [fmt(l100, 1), "L/100", l100Cls(l100)], [cost == null || !isFinite(cost) ? "—" : fr(cost, 2), "€", ""],
+         [isFinite(Number(t.eco_score)) ? String(Math.round(t.eco_score)) : "—", "éco", ecoCls(Number(t.eco_score))]].forEach((x) => {
+          var d = el("div", "", this.top); el("b", x[2], d, x[0]); el("span", "", d, x[1]);
+        });
+      } else this.top.hidden = true;
+      // The last trips, newest first; an empty one (no start, nothing driven) is left out.
+      var hs = S(c.history), list = hs && Array.isArray(hs.attributes.trajets) ? hs.attributes.trajets.slice() : [];
+      list = list.filter(function (x) { return x && typeof x === "object" && x.debut && Number(x.distance_km) > 0.05; }).reverse().slice(0, Number(c.rows) || 6);
+      this.rows.innerHTML = "";
+      if (!list.length) { el("div", "none", this.rows, "Aucun trajet enregistré pour l'instant."); }
+      else {
+        var hd = el("div", "r hd", this.rows);
+        ["quand", "km", "min", "L/100", "€", "éco"].forEach(function (x) { el("span", "", hd, x); });
+        list.forEach((x) => {
+          var r = el("div", "r", this.rows), at = new Date(x.debut);
+          var day = isNaN(at) ? "—" : (at.toDateString() === new Date().toDateString() ? "" : pad(at.getDate()) + "/" + pad(at.getMonth() + 1) + " ") + hhmm(at);
+          var l = Number(x.l100) > 0 ? Number(x.l100) : null;
+          el("span", "", r, day);
+          el("span", "", r, fmt(Number(x.distance_km), 1));
+          el("span", "", r, x.duree_min != null ? String(Math.round(Number(x.duree_min))) : "—");
+          el("span", l100Cls(l), r, fmt(l, 1));
+          el("span", "", r, x.cout != null && isFinite(Number(x.cout)) ? fr(Number(x.cout), 2) : "—");
+          el("span", ecoCls(Number(x.eco_score)), r, isFinite(Number(x.eco_score)) && x.eco_score != null ? String(Math.round(x.eco_score)) : "—");
+        });
+      }
+      // The records
+      var rs = c.records && S(c.records), a = rs ? rs.attributes : null;
+      this.rec.hidden = !a;
+      this.rec.innerHTML = "";
+      if (a) {
+        [[a.zero_cent ? fr(Number(a.zero_cent), 1) : "—", "0-100 s"], [a.quatre_vingt_cent_vingt ? fr(Number(a.quatre_vingt_cent_vingt), 1) : "—", "80-120 s"],
+         [a.vitesse_max ? String(Math.round(a.vitesse_max)) : "—", "km/h max"], [a.plus_long_trajet ? fr(Number(a.plus_long_trajet), 1) : "—", "km max"],
+         [a.meilleur_score_eco ? String(a.meilleur_score_eco) : "—", "éco max"]].forEach((x) => {
+          var d = el("div", "", this.rec); el("b", "", d, x[0]); el("span", "", d, x[1]);
+        });
+      }
     }
   }
 
@@ -5197,7 +5352,12 @@
         ".nav.arrived { border-left-color: #5cc28f; } .nav.arrived ha-icon { color: #5cc28f; } .nav.wait { border-left-color: #d9a441; }" +
         ".eta { position: absolute; z-index: 2; bottom: 12px; left: 12px; right: 12px; display: flex; gap: 14px; align-items: baseline; justify-content: space-around; padding: 8px 12px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.88); border: 1px solid #22262c; color: #e9e4da; font-family: " + MONO + "; font-size: 15px; pointer-events: none; }" +
         ".withspeed .eta { left: 104px; } .withattr .eta { right: 52px; }" +
-        ".eta b { font-family: 'Chakra Petch', " + MONO + "; font-size: 22px; font-weight: 500; } .eta span { color: #878c95; font-size: 12px; }" +
+        ".eta { align-items: center; justify-content: flex-start; gap: 18px; }" +
+        // Each figure on one line with its unit; the arrival takes what is left.
+        ".eta b { font-family: 'Chakra Petch', " + MONO + "; font-size: 22px; font-weight: 500; white-space: nowrap; flex: none; }" +
+        ".eta b small { font-size: 13px; font-weight: 400; color: #878c95; margin-left: 3px; }" +
+        ".eta span { flex: 1; min-width: 0; color: #878c95; font-size: 12px; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; border-left: 1px solid #22262c; padding-left: 14px; }" +
+        ".eta span i { font-style: normal; color: #e9e4da; font-size: 15px; display: block; }" +
         ".panel { position: absolute; inset: 0; z-index: 4; background: rgba(7,8,10,0.96); color: #e9e4da; font-family: " + MONO + "; display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; overflow-y: auto; }" +
         ".panel .ph { display: flex; justify-content: space-between; align-items: center; color: #878c95; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; }" +
         ".panel form { display: flex; gap: 8px; } .panel input { flex: 1; min-width: 0; font: inherit; font-size: 17px; padding: 12px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #0d1014; color: #e9e4da; }" +
@@ -5795,9 +5955,19 @@
       var e = this.$("eta");
       e.hidden = false;
       e.innerHTML = "";
-      var b1 = document.createElement("b"); b1.textContent = gpsMetres(left); e.appendChild(b1);
-      var b2 = document.createElement("b"); b2.textContent = secs >= 3600 ? Math.floor(secs / 3600) + " h " + String(Math.round((secs % 3600) / 60)).padStart(2, "0") : Math.max(1, Math.round(secs / 60)) + " min"; e.appendChild(b2);
-      var sp2 = document.createElement("span"); sp2.textContent = "arrivée " + hhmm(eta) + (d && d.name !== "destination" ? " · " + d.name : ""); e.appendChild(sp2);
+      // « 450 m · 1 min », each with its unit, never split; then the arrival.
+      var fig = function (v, unit) {
+        var b = document.createElement("b"); b.textContent = v;
+        var u = document.createElement("small"); u.textContent = unit; b.appendChild(u); e.appendChild(b);
+      };
+      var dist = gpsMetres(left).split(" ");
+      fig(dist[0], dist[1] || "");
+      if (secs >= 3600) fig(Math.floor(secs / 3600) + " h " + String(Math.round((secs % 3600) / 60)).padStart(2, "0"), "");
+      else fig(String(Math.max(1, Math.round(secs / 60))), "min");
+      var sp2 = document.createElement("span");
+      var at = document.createElement("i"); at.textContent = "arrivée " + hhmm(eta); sp2.appendChild(at);
+      if (d && d.name !== "destination") sp2.appendChild(document.createTextNode(d.name));
+      e.appendChild(sp2);
     }
   });
 
@@ -6547,6 +6717,7 @@
   define("igor-assist-card", IgorAssistCard, "Igor · Igor", "Igor : son état, parler (appui), l'activer ou non (appui long).");
   define("igor-buttons-card", IgorButtonsCard, "Igor · boutons", "Une rangée de boutons qui appellent un service ou ouvrent une page (size: big pour un téléphone).");
   define("igor-weather-card", IgorWeatherCard, "Igor · météo", "Maintenant, heure par heure, et les jours en barres de températures.");
+  define("igor-trips-card", IgorTripsCard, "Igor · trajets", "Le carnet d'une voiture : le trajet en grand, les derniers trajets, les records.");
   define("igor-alarm-card", IgorAlarmCard, "Igor · réveil", "Un réveil (intégration Alarm Clocks) en une ligne.");
   define("igor-docker-manage-card", IgorDockerManageCard, "Igor · Docker (gestion)", "Les conteneurs de Portainer, leurs totaux et leurs boutons.");
   define("igor-proxmox-card", IgorProxmoxCard, "Igor · Proxmox", "L'hôte Proxmox, ses machines et son stockage.");
