@@ -5175,6 +5175,7 @@
   //   pois: [signals, fuel, rest]           # shown on the map at first (the layers button changes it on this screen):
   //                                         #   signals, fuel, charging, parking, rest, toilets, hospital
   //   street_names: true                    # the road where the car is, at the bottom (false: off)
+  //   dead_reckoning: true                  # in a tunnel, on at the OBD speed (speed_entity) for 3 min (false: off)
   //   traffic: true                         # live traffic and incidents once a TomTom key is set in Igor's options (false: never)
   //   overpass: https://overpass-api.de/api/interpreter
   //   router: https://router.project-osrm.org  # OSRM (the route); self-hosted possible
@@ -5194,6 +5195,16 @@
   // where it faces; under GPS_SLOW (9 km/h) it may be manoeuvring or reversing,
   // and the GPS's own course is noise.
   var GPS_FWD = 4.2, GPS_SLOW = 2.5;
+  // How far from a road the GPS may put the car while it is on it: twice what
+  // the GPS says it may be off, plus a little, within [floor, cap]. A precise
+  // fix (5 m) is believed: 15 m from the motorway is the service area, not
+  // the motorway; a vague one (300 m) is held to the road. No accuracy: `fallback`.
+  function gpsTrust(accuracy, floor, cap, fallback) {
+    var a = Number(accuracy) || 0;
+    return a > 0 ? Math.max(floor, Math.min(cap, a * 2 + 5)) : fallback;
+  }
+  // Without fixes (a tunnel), the car goes on at the OBD speed for 3 minutes at most.
+  var GPS_DR_MAX_S = 180;
   window.__igorGps = { step: function (st, fix) { return gpsHeadingStep(st, fix); } };
   function gpsMapLibre() {
     if (window.maplibregl) return Promise.resolve(window.maplibregl);
@@ -5756,7 +5767,7 @@
         // The layers' list.
         ".lpanel .tg { justify-content: space-between; } .lpanel .tg .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }" +
         ".lpanel .tg.off { opacity: 0.45; } .lpanel .seg { display: flex; gap: 8px; } .lpanel .seg button { flex: 1; justify-content: center; } .lpanel .seg button.on { border-color: #59d0e0; color: #59d0e0; }" +
-        ".snap { position: absolute; right: 12px; top: 96px; z-index: 2; font-family: " + MONO + "; font-size: 10px; color: #3d454e; letter-spacing: 0.1em; text-transform: uppercase; }" +
+        ".snap.dr { color: #d9a441; } .snap { position: absolute; right: 12px; top: 96px; z-index: 2; font-family: " + MONO + "; font-size: 10px; color: #3d454e; letter-spacing: 0.1em; text-transform: uppercase; }" +
         ".noattr .maplibregl-ctrl-attrib, .noattr .maplibregl-ctrl-bottom-right { display: none !important; }" +
         "@media (prefers-reduced-motion: reduce) { .sign.over { animation: none; } }" +
         // guidance: the next turn on top, the rest of the way at the bottom, the destination panel
@@ -5893,6 +5904,9 @@
       }
     }
     onFix(p, course, gpsSpeed, updated) {
+      // While estimating (a tunnel): a vague position (the phone's network
+      // fix) that agrees with the estimate is no real fix; the estimate goes on.
+      if (this.drPos && (this.accuracy || 0) > 100 && gpsDist(p, this.drPos) < this.accuracy) { if (this.fix) this.fix.updated = updated; return; }
       this.hstate = this.hstate || { heading: this.fix ? this.heading : null };
       gpsHeadingStep(this.hstate, { p: p, t: Date.now(), course: course, gpsSpeed: gpsSpeed, speed: this.speedMps(), accuracy: this.accuracy });
       if (this.hstate.heading != null) this.heading = this.hstate.heading;
@@ -6067,18 +6081,26 @@
       // the car may be reversing).
       var elapsed = Math.min((now - this.fix.time) / 1000, GPS_PREDICT_S);
       var target = speed > GPS_SLOW ? gpsProject(this.fix.point, this.heading, speed * elapsed) : this.fix.point;
+      // No fix for a while (a tunnel, a lost signal) while the car's own speed
+      // (OBD) says it drives: the arrow goes on at that speed, along the route
+      // when guided, else along the road it is on, for 3 minutes at most.
+      var lost = (now - this.fix.time) / 1000;
+      if (this.config.dead_reckoning !== false && this.obdSpeed() && speed > GPS_SLOW && lost > GPS_PREDICT_S && lost < GPS_DR_MAX_S) {
+        target = this.deadReckon(now, speed);
+      } else { this.drPos = null; this.drAt = 0; }
       // Onto the road, a few times a second, moving or stopped, as a
       // navigator does: within `snap` metres, or what the GPS says it may be
       // off by when that is more (at most 150 m).
       var snapM = Number(this.config.snap) || 0;
-      if (snapM > 0) snapM = Math.max(snapM, Math.min(this.accuracy || 0, 150));
+      if (snapM > 0) snapM = gpsTrust(this.accuracy, 10, Math.max(snapM, Math.min(this.accuracy || 0, 150)), snapM);
       if (snapM > 0 && (!this.snapAt || now - this.snapAt > 200)) {
         this.snapAt = now;
         // Guided: the car is on its route as long as it is near enough (a GPS
         // off by a few tens of metres, a parallel street), never on another road.
         this.snapped = this.routeSnap(target, moving) || this.road(target, snapM, moving ? this.heading : null, now);
         if (this.snapped) this.lastRoad = this.snapped.point;
-        this.$("snapEl").textContent = this.snapped ? "sur la route" : "";
+        this.$("snapEl").textContent = this.drPos ? "gps perdu · position estimée" : this.snapped ? "sur la route" : "";
+        this.$("snapEl").classList.toggle("dr", !!this.drPos);
       }
       // Driving, the arrow never goes back along its road: a target behind
       // it (a late or noisy fix) holds it where it is.
@@ -6156,12 +6178,54 @@
   }
 
   Object.assign(IgorGpsCard.prototype, {
+    // The car's own speed (speed_entity, the OBD) is there: m/s, else null.
+    obdSpeed() {
+      var e = this.config.speed_entity && this._hass && this._hass.states[this.config.speed_entity];
+      var v = e ? parseFloat(e.state) : NaN;
+      return isNaN(v) ? null : v / 3.6;
+    },
+    // One step of the estimate: on along the route (its shape, its bends)
+    // when the car is on it, else straight on along the heading, which the
+    // road snapping then bends along the road.
+    deadReckon(now, speed) {
+      var dt = this.drAt ? Math.min(0.5, (now - this.drAt) / 1000) : 0;
+      this.drAt = now;
+      var from = this.drPos || this.pos, step = speed * dt, R = this.route;
+      if (R && this.seg) {
+        var best = null, a = Math.max(1, this.seg - 3), b = Math.min(R.coords.length, this.seg + 60);
+        for (var i = a; i < b; i++) {
+          var o = gpsOnLine(from, [R.coords[i - 1], R.coords[i]]);
+          if (o && (!best || o.dist < best.dist)) { best = o; best.i = i; }
+        }
+        if (best && best.dist < 60) {
+          var along = R.cum[best.i - 1] + gpsDist(R.coords[best.i - 1], best.point) + step, k = best.i;
+          while (k < R.coords.length - 1 && R.cum[k] < along) k++;
+          var seg0 = R.coords[k - 1], seg1 = R.coords[k], len = R.cum[k] - R.cum[k - 1] || 1, f = Math.max(0, Math.min(1, (along - R.cum[k - 1]) / len));
+          this.drPos = [seg0[0] + (seg1[0] - seg0[0]) * f, seg0[1] + (seg1[1] - seg0[1]) * f];
+          this.heading = gpsLerpAngle(this.heading, gpsBearing(seg0, seg1), 0.3);
+          if (this.hstate) this.hstate.heading = this.heading;
+          return this.drPos;
+        }
+      }
+      this.drPos = gpsProject(from, this.heading, step);
+      // Kept on the road, a few times a second: it bends with it.
+      if (!this.drSnapAt || now - this.drSnapAt > 200) {
+        this.drSnapAt = now;
+        var r = this.road(this.drPos, 40, this.heading, now);
+        if (r) {
+          this.drPos = r.point;
+          this.heading = gpsLerpAngle(this.heading, gpsAlong(r.bearing, this.heading), 0.3);
+          if (this.hstate) this.hstate.heading = this.heading;
+        }
+      }
+      return this.drPos;
+    },
     // On the route: its nearest point around where the car was last on it,
     // within what the GPS may be off (45 to 120 m), going the route's way.
     routeSnap(p, moving) {
       var R = this.route;
       if (!R || !p) return null;
-      var lock = Math.max(45, Math.min((this.accuracy || 0) * 2, 120));
+      var lock = gpsTrust(this.accuracy, 12, 120, 45);
       var best = null, from = Math.max(1, (this.seg || 1) - 20), to = Math.min(R.coords.length, (this.seg || 1) + 300);
       for (var i = from; i < to; i++) {
         var o = gpsOnLine(p, [R.coords[i - 1], R.coords[i]]);
@@ -6429,7 +6493,7 @@
       // Off the route for a few seconds, driving: a new one from here.
       // Off the route only after 5 seconds farther than the GPS may be off,
       // driving: a parallel street seen for a moment is not a new route.
-      var off = Math.max(45, Math.min((this.accuracy || 0) * 2, 120));
+      var off = gpsTrust(this.accuracy, 25, 120, 45);
       this.offCount = best.dist > off && moving ? (this.offCount || 0) + 1 : 0;
       if (this.offCount >= 5 && now - (this.routeAt || 0) > 8000) {
         this.offCount = 0;
