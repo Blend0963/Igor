@@ -797,20 +797,13 @@ TILE_CACHE_S = 60
 TILE_CACHE_MAX = 400
 
 
-def _yaml_block(hass: HomeAssistant) -> dict:
-    """The `nives:` block of configuration.yaml (what async_setup kept)."""
-    from .security import YAML_KEY
-
-    return hass.data.get(YAML_KEY) or {}
-
-
 def _traffic_key(hass: HomeAssistant) -> str | None:
-    """The TomTom key set in Igor's options, else in the `nives:` block, or None."""
+    """The TomTom key set in Igor's options, or None."""
     for entry in hass.config_entries.async_entries(DOMAIN):
         key = str({**entry.data, **entry.options}.get(CONF_TRAFFIC_KEY) or "").strip()
         if key:
             return key
-    return str(_yaml_block(hass).get(CONF_TRAFFIC_KEY) or "").strip() or None
+    return None
 
 
 @callback
@@ -976,14 +969,11 @@ class TrafficTileView(HomeAssistantView):
 
 
 def _car_settings(hass: HomeAssistant) -> tuple[str | None, str | None]:
-    """The car's tracker and destination: Igor's options, else the `nives:` block."""
-    yaml = _yaml_block(hass)
-    tracker, dest = yaml.get(CONF_CAR_TRACKER), yaml.get(CONF_CAR_DESTINATION)
     for entry in hass.config_entries.async_entries(DOMAIN):
         opts = {**entry.data, **entry.options}
-        tracker = opts.get(CONF_CAR_TRACKER) or tracker
-        dest = opts.get(CONF_CAR_DESTINATION) or dest
-    return tracker, dest
+        if opts.get(CONF_CAR_TRACKER) or opts.get(CONF_CAR_DESTINATION):
+            return opts.get(CONF_CAR_TRACKER), opts.get(CONF_CAR_DESTINATION)
+    return None, None
 
 
 def _car_position(hass: HomeAssistant, entity_id: str | None) -> list[float] | None:
@@ -1683,9 +1673,6 @@ def _async_register_wifi_scan(hass: HomeAssistant) -> None:
 #     alarm_active_entity: binary_sensor.alarm_triggered
 #     disarm_code: !secret igor_disarm_code
 #     allowed_users: [Jean]     # still answered while the key is away
-#     traffic_key: !secret tomtom_key           # live traffic on the GPS card (TomTom)
-#     car_tracker: device_tracker.car           # the car Igor guides…
-#     car_destination: input_text.car_destination  # …and its GPS card's destination
 #     openwrt:                  # Wi-Fi access points read for the Wi-Fi card
 #       - url: http://192.168.1.2
 #         username: igor        # a read-only rpcd login (DOCS.md)
@@ -1721,10 +1708,6 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Optional("alarm_active_entity"): cv.entity_id,
                 vol.Optional("disarm_code"): vol.All(cv.string, vol.Match(r"^\d{4,12}$", msg="4 to 12 digits")),
                 vol.Optional("allowed_users", default=[]): vol.All(cv.ensure_list, [cv.string]),
-                # Live traffic (TomTom) and the car Igor guides; the options win when set.
-                vol.Optional("traffic_key"): cv.string,
-                vol.Optional("car_tracker"): cv.entity_id,
-                vol.Optional("car_destination"): cv.entity_id,
                 vol.Optional("openwrt", default=[]): vol.All(cv.ensure_list, [OPENWRT_SCHEMA]),
                 vol.Optional("opnsense"): OPNSENSE_SCHEMA,
                 # Names for the network cards, by MAC or IP: { "AA:BB:…": TV }
