@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.36.9 — Read from the driver's seat
+
+- `igor-wall` takes `text: big` (×1.3), `huge` (×1.45) or a factor: every letter of every Igor card on the wall grows, the GPS card's too, and thin figures get a little bolder; made for a car's head unit read from the driver's seat.
+- `custom:igor-car-card` takes `weather:` (and `outside:`, a temperature sensor): outside, as in a car — the weather where the car is, its temperature, today's high and low, and the next four hours with the chance of rain, in the space under the engine and battery figures.
+
 ## 0.36.8 — The wall's button hears the room
 
 - The wall's « parler » button (the Igor panel of the bar, `igor-assist-card`) goes through the ear in the room when igor-ear runs (0.4.1 or later): it says « Je vous écoute » and takes the next sentence with the microphone that already hears the room, instead of the satellite's own, which could hear nothing. New service `nives.listen` (any user) fires `igor_ear_listen`; igor-ear says it is there with `sensor.igor_ear`. Without it, the satellite listens as before.
