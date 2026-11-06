@@ -6616,7 +6616,8 @@
       Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") toggle(k, GPS_POI[k].name, GPS_POI[k].color); });
       if (this.config.traffic !== false) {
         head("Circulation en direct");
-        var why = !this.trafficOn() ? "Ajouter une clé TomTom dans les options d'Igor" : this.traffic.error || "";
+        var why = this.traffic && this.traffic.denied ? "Ce compte n'y a pas accès : le choisir dans les options d'Igor (« The car's screen »)"
+          : !this.trafficOn() ? "Ajouter une clé TomTom dans les options d'Igor" : this.traffic.error || "";
         toggle("traffic", "Trafic (fluide, ralenti, bouché)", "#e5823b", why);
         toggle("incidents", "Routes fermées, travaux, accidents", "#e5323b", why);
       }
@@ -6924,7 +6925,8 @@
           var src = this.map && this.map.getSource("incidents");
           if (src) src.setData(this.incidentData());
         })
-        .catch(() => { this.traffic = { enabled: false, incidents: [] }; })
+        // Refused: this screen's account is not one the car's services are open to.
+        .catch((e) => { this.traffic = { enabled: false, incidents: [], denied: /unauthori[sz]ed|not allowed|admin/i.test(String((e && (e.code || e.message)) || "")) }; })
         .then(() => { this.trafficBusy = false; });
     },
     addTrafficLayer() {

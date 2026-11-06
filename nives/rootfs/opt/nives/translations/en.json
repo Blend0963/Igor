@@ -45,7 +45,8 @@
           "traffic_key": "TomTom key (live traffic)",
           "allowed_users": "Still answered while the key is away",
           "car_tracker": "The car's position",
-          "car_destination": "The car's GPS destination"
+          "car_destination": "The car's GPS destination",
+          "car_users": "The car's screen (not administrators)"
         },
         "data_description": {
           "shared_memory": "On (recommended): everyone shares one memory, so something you tell a voice satellite is also known in the app and on the dashboard, and the other way round. Off: each Home Assistant user gets a memory of their own, and voice satellites and automations use the memory named below.",
@@ -58,7 +59,8 @@
           "traffic_key": "Optional. Shows traffic, closed roads and incidents on the wall's GPS card (a free key from developer.tomtom.com). Kept in Home Assistant only, never sent to a dashboard. Leave empty to keep the current key; a single dash (-) removes it.",
           "allowed_users": "Home Assistant users Igor still answers while the key is unplugged (the car's account, your phone). Never a voice satellite or an automation: they have no user.",
           "car_tracker": "The car's device_tracker (the head unit's companion app or GPSLogger). With the destination below, Igor can guide the car (« emmène-moi à la maison »), find a fuel station on the way and add it as a stop.",
-          "car_destination": "The input_text the GPS card guides to (its `destination:`), such as input_text.voiture_destination, 120 characters."
+          "car_destination": "The input_text the GPS card guides to (its `destination:`), such as input_text.voiture_destination, 120 characters.",
+          "car_users": "Users who may use the car's services without being administrators: live traffic, routes, the GPS guidance Igor drives. Pick the head unit's account. Everything else stays for administrators."
         }
       }
     },

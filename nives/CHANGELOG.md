@@ -2,6 +2,7 @@
 
 ## 0.37.5 — TomTom finds the places
 
+- The car's services for the head unit's account without making it an administrator: Igor's options get « The car's screen (not administrators) »; the users chosen there may use the live traffic (incidents and the flow tiles), TomTom's routes and the guidance services (`nives.traffic`, `nives.route`, `nives.car_go`, `car_nearby`, `car_stop`); everything else stays for administrators. A screen whose account is refused says so in the layers list instead of « add a TomTom key ».
 - With the TomTom key, « où est la station-service la plus proche ? » asks TomTom: along the route, its places (brands, a richer map of France) with the detour TomTom works out itself, up to 15 minutes; not guided, its places around the car. Without a key, or when TomTom does not answer or finds nothing, OpenStreetMap as before. The GPS card's dots, cameras, lights and limits stay on OpenStreetMap (free and unlimited; TomTom's free quota would not last a drive).
 - `custom:igor-gps-card`: the third Overpass mirror (maps.mail.ru), whose certificate browsers refuse (« could not be loaded securely »), is replaced by overpass.kumi.systems.
 

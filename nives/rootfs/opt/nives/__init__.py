@@ -78,6 +78,7 @@ from .const import (
     SERVICE_CAR_GO,
     SERVICE_CAR_NEARBY,
     SERVICE_CAR_STOP,
+    CONF_CAR_USERS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -797,6 +798,32 @@ TILE_CACHE_S = 60
 TILE_CACHE_MAX = 400
 
 
+def _car_users(hass: HomeAssistant) -> set[str]:
+    """Users who may use the car's services (traffic, routes, guidance)
+    without being administrators: the head unit's account."""
+    out: set[str] = set()
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        out |= {str(u) for u in {**entry.data, **entry.options}.get(CONF_CAR_USERS) or []}
+    return out
+
+
+def _async_register_car_service(hass: HomeAssistant, name: str, handler, schema) -> None:
+    """Like an administrators' service, but also for the car's users."""
+    from homeassistant.exceptions import Unauthorized, UnknownUser
+
+    async def _checked(call: ServiceCall) -> ServiceResponse:
+        uid = call.context.user_id
+        if uid:  # no user: an automation or Home Assistant itself, as for admin services
+            user = await hass.auth.async_get_user(uid)
+            if user is None:
+                raise UnknownUser(context=call.context, permission="admin", user_id=uid)
+            if not user.is_admin and user.id not in _car_users(hass):
+                raise Unauthorized(context=call.context, permission="admin")
+        return await handler(call)
+
+    hass.services.async_register(DOMAIN, name, _checked, schema=schema, supports_response=SupportsResponse.ONLY)
+
+
 def _traffic_key(hass: HomeAssistant) -> str | None:
     """The TomTom key set in Igor's options, or None."""
     for entry in hass.config_entries.async_entries(DOMAIN):
@@ -817,7 +844,6 @@ def _async_register_traffic(hass: HomeAssistant) -> None:
         store["traffic_view"] = True
     if hass.services.has_service(DOMAIN, SERVICE_TRAFFIC):
         return
-    from homeassistant.helpers.service import async_register_admin_service
 
     from .traffic import INCIDENTS_URL, incidents_params, parse_incidents
 
@@ -852,9 +878,7 @@ def _async_register_traffic(hass: HomeAssistant) -> None:
         cache[where] = (now, out)
         return out
 
-    async_register_admin_service(
-        hass, DOMAIN, SERVICE_TRAFFIC, _traffic, schema=TRAFFIC_SCHEMA, supports_response=SupportsResponse.ONLY
-    )
+    _async_register_car_service(hass, SERVICE_TRAFFIC, _traffic, TRAFFIC_SCHEMA)
 
 
 ROUTE_SCHEMA = vol.Schema(
@@ -880,7 +904,6 @@ def _async_register_route(hass: HomeAssistant) -> None:
     Administrators only. Without a key: `{"enabled": false}`."""
     if hass.services.has_service(DOMAIN, SERVICE_ROUTE):
         return
-    from homeassistant.helpers.service import async_register_admin_service
 
     from .traffic import avoid_body, parse_route, route_params, route_url
 
@@ -914,9 +937,7 @@ def _async_register_route(hass: HomeAssistant) -> None:
             return {"enabled": True, "ok": False, "error": "pas d'itinéraire"}
         return {"enabled": True, "ok": True, "route": route}
 
-    async_register_admin_service(
-        hass, DOMAIN, SERVICE_ROUTE, _route, schema=ROUTE_SCHEMA, supports_response=SupportsResponse.ONLY
-    )
+    _async_register_car_service(hass, SERVICE_ROUTE, _route, ROUTE_SCHEMA)
 
 
 class TrafficTileView(HomeAssistantView):
@@ -935,7 +956,7 @@ class TrafficTileView(HomeAssistantView):
         from .traffic import flow_tile_url, tile_ok
 
         user = request.get("hass_user")
-        if user is None or not user.is_admin:
+        if user is None or not (user.is_admin or user.id in _car_users(request.app[KEY_HASS])):
             return web.Response(status=403)
         try:
             zi, xi, yi = int(z), int(x), int(str(y).removesuffix(".png"))
@@ -1025,7 +1046,6 @@ def _async_register_car(hass: HomeAssistant) -> None:
     set in Igor's options. Administrators only (it is where the car goes)."""
     if hass.services.has_service(DOMAIN, SERVICE_CAR_GO):
         return
-    from homeassistant.helpers.service import async_register_admin_service
     from homeassistant.util import dt as dt_util
 
     from .car import HOME_WORDS, KINDS, Car, fold, format_destination, kind_of, parse_destination
@@ -1164,7 +1184,7 @@ def _async_register_car(hass: HomeAssistant) -> None:
         (SERVICE_CAR_NEARBY, _nearby, CAR_NEARBY_SCHEMA),
         (SERVICE_CAR_STOP, _stop, CAR_STOP_SCHEMA),
     ):
-        async_register_admin_service(hass, DOMAIN, name, handler, schema=schema, supports_response=SupportsResponse.ONLY)
+        _async_register_car_service(hass, name, handler, schema)
 
 
 NEWS_SCHEMA = vol.Schema(
