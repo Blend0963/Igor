@@ -4,6 +4,9 @@
 
 - An opening, after Home Assistant's own logo: the first time an Igor wall shows after the app starts, Igor's eye opens over it — the pillar rises, the red ring draws itself, the pupil lights and beats twice, « IGOR » closes in below — and fades into the dashboard after 3 seconds. Once per session (a page reload does not replay it); a touch skips it; `intro: false` on a wall turns it off. Home Assistant's own start-up logo, in its app and while its interface loads, cannot be replaced.
 - The bar's line with `speed: auto` no longer freezes on a page that was left during its pause (Home Assistant keeps a page aside, and its next turn was dropped for good): turns go on as soon as the page is back, on every page.
+- `custom:igor-gps-card`: the bottom bar keeps each figure on one line with its unit (« 450 m », « 1 min »), then the arrival time and the place on two lines at most; it no longer breaks apart with large text.
+- `custom:igor-car-card`: today's high and low line up.
+- New `custom:igor-trips-card`: a car's log readable at a glance — the running or last trip in large figures (km, minutes, L/100, €, eco), the last trips in clean rows (empty ones left out, coloured consumption and eco), the records at the bottom.
 
 ## 0.36.9 — Read from the driver's seat
 

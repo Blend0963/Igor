@@ -4770,7 +4770,8 @@
         ".wx > ha-icon { color: var(--wait); grid-column: 1; grid-row: 1 / 3; }",
         ".wx .t { grid-column: 2; grid-row: 1; font-size: 30px; font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; }",
         ".wx .c { grid-column: 2; grid-row: 2; color: var(--dim); font-size: 12px; }",
-        ".wx .mm { grid-column: 3; grid-row: 1 / 3; text-align: right; color: var(--dim); font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums; }",
+        ".wx .mm { grid-column: 3; grid-row: 1 / 3; display: grid; grid-template-columns: auto 3.2ch; column-gap: 8px; align-items: baseline; color: var(--dim); font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums; }",
+        ".wx .mm div { display: contents; } .wx .mm b { text-align: right; }",
         ".wx .mm b { color: var(--fg); font-weight: 400; }",
         ".wx .hrs { grid-column: 1 / -1; grid-row: 3; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; text-align: center; margin-top: 4px; color: var(--dim); font-size: 11px; --mdc-icon-size: 20px; }",
         ".wx .hrs ha-icon { display: block; margin: 3px auto; color: var(--wait); }",
@@ -4895,6 +4896,110 @@
         el("b", x[2], d, x[0]);
         el("span", "", d, x[1]);
       });
+    }
+  }
+
+  // ----- igor-trips-card: a car's log, readable at a glance -----
+  //   type: custom:igor-trips-card
+  //   history: sensor.car_trip_history        # attribute `trajets`: the trips, oldest first
+  //   current: { entity: sensor.car_trip, attribute: trajet }   # the running or last trip
+  //   active: binary_sensor.trip_running
+  //   records: sensor.car_records             # optional: 0-100, 80-120, top speed, longest, best eco
+  //   correction: input_text.car_fuel_factor  # optional: litres × this factor
+  //   price: input_number.fuel_price          # optional: € per litre for the running trip
+  //   rows: 6
+  // The trip on top in large figures, the last ones in clean rows (empty ones
+  // left out), the records at the bottom.
+  class IgorTripsCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !config.history) throw new Error("igor-trips-card: history est requis");
+      this.config = config;
+    }
+    getCardSize() { return 6; }
+    build() {
+      this.style(CARD_CSS + "\n" + [
+        "ha-card { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }",
+        ".h { color: var(--dim); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; display: flex; align-items: center; gap: 7px; }",
+        ".h::before { content: ''; width: 6px; height: 6px; background: var(--igor-signal, #e5323b); }",
+        ".top { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; text-align: center; padding: 10px 0 12px; border-bottom: 1px solid var(--line); }",
+        ".top b { display: block; font-size: 21px; font-weight: 300; font-variant-numeric: tabular-nums; color: var(--fg); }",
+        ".top span { color: var(--dim); font-size: 11px; }",
+        ".rows { margin-top: 6px; }",
+        ".r { display: grid; grid-template-columns: minmax(max-content, 1.6fr) 1fr 0.9fr 1fr 1fr 0.8fr; gap: 6px; align-items: baseline; padding: 7px 0; border-bottom: 1px dashed var(--line); font-variant-numeric: tabular-nums; font-size: 14px; }",
+        ".r > * { text-align: right; white-space: nowrap; } .r > :first-child { text-align: left; color: var(--dim); font-size: 12.5px; }",
+        ".r.hd { color: var(--faint); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; padding: 4px 0; border-bottom: 1px solid var(--line); }",
+        ".r.hd > :first-child { color: var(--faint); font-size: 10.5px; }",
+        ".okc { color: var(--okc); } .warn { color: var(--wait); } .bad { color: var(--bad); }",
+        ".none { color: var(--dim); padding: 14px 0; }",
+        ".rec { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; text-align: center; }",
+        ".rec[hidden] { display: none; }",
+        ".rec b { display: block; font-size: 15px; font-weight: 400; font-variant-numeric: tabular-nums; }",
+        ".rec span { color: var(--faint); font-size: 10px; letter-spacing: 0.06em; white-space: nowrap; }",
+        ".rec > div { min-width: 0; }", ".rec span.t { grid-column: 1 / -1; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var h = el("div", "h", card);
+      this.titleEl = el("span", "", h, "dernier trajet");
+      this.top = el("div", "top", card);
+      this.rows = el("div", "rows", card);
+      this.rec = el("div", "rec", card);
+    }
+    update(hass, prev) {
+      var c = this.config, S = (id) => (id ? hass.states[id] : null);
+      if (prev && !changed(prev, hass, [c.history, c.current && (c.current.entity || c.current), c.active, c.records, c.correction, c.price])) return;
+      var factor = c.correction ? (num(S(c.correction)) || 1) : 1;
+      var price = c.price ? num(S(c.price)) : null;
+      var ecoCls = function (e) { return !isFinite(e) ? "" : e >= 80 ? "okc" : e >= 60 ? "warn" : "bad"; };
+      var l100Cls = function (v) { return v == null ? "" : v < 6 ? "okc" : v < 9 ? "warn" : "bad"; };
+      var fmt = function (v, d) { return v == null || !isFinite(v) ? "—" : fr(v, d); };
+      // The trip on top
+      var cur = c.current ? (typeof c.current === "string" ? { entity: c.current } : c.current) : null;
+      var st = cur && S(cur.entity), t = st ? (cur.attribute ? st.attributes[cur.attribute] : st.attributes) : null;
+      var running = c.active && S(c.active) && S(c.active).state === "on";
+      this.titleEl.textContent = running ? "trajet en cours" : "dernier trajet";
+      this.top.innerHTML = "";
+      if (t && typeof t === "object") {
+        var litres = Number(t.fuel_l) * factor;
+        var l100 = Number(t.l100) > 0 ? Number(t.l100) * factor : null;
+        var cost = t.cout != null ? Number(t.cout) : price && litres > 0 ? litres * price : null;
+        var mins = t.duree_min != null ? Number(t.duree_min) : t.debut ? (Date.now() - Date.parse(t.debut)) / 60000 : null;
+        [[fmt(Number(t.distance_km), 1), "km", ""], [mins == null || !isFinite(mins) ? "—" : String(Math.round(mins)), "min", ""],
+         [fmt(l100, 1), "L/100", l100Cls(l100)], [cost == null || !isFinite(cost) ? "—" : fr(cost, 2), "€", ""],
+         [isFinite(Number(t.eco_score)) ? String(Math.round(t.eco_score)) : "—", "éco", ecoCls(Number(t.eco_score))]].forEach((x) => {
+          var d = el("div", "", this.top); el("b", x[2], d, x[0]); el("span", "", d, x[1]);
+        });
+      } else this.top.hidden = true;
+      // The last trips, newest first; an empty one (no start, nothing driven) is left out.
+      var hs = S(c.history), list = hs && Array.isArray(hs.attributes.trajets) ? hs.attributes.trajets.slice() : [];
+      list = list.filter(function (x) { return x && typeof x === "object" && x.debut && Number(x.distance_km) > 0.05; }).reverse().slice(0, Number(c.rows) || 6);
+      this.rows.innerHTML = "";
+      if (!list.length) { el("div", "none", this.rows, "Aucun trajet enregistré pour l'instant."); }
+      else {
+        var hd = el("div", "r hd", this.rows);
+        ["quand", "km", "min", "L/100", "€", "éco"].forEach(function (x) { el("span", "", hd, x); });
+        list.forEach((x) => {
+          var r = el("div", "r", this.rows), at = new Date(x.debut);
+          var day = isNaN(at) ? "—" : (at.toDateString() === new Date().toDateString() ? "" : pad(at.getDate()) + "/" + pad(at.getMonth() + 1) + " ") + hhmm(at);
+          var l = Number(x.l100) > 0 ? Number(x.l100) : null;
+          el("span", "", r, day);
+          el("span", "", r, fmt(Number(x.distance_km), 1));
+          el("span", "", r, x.duree_min != null ? String(Math.round(Number(x.duree_min))) : "—");
+          el("span", l100Cls(l), r, fmt(l, 1));
+          el("span", "", r, x.cout != null && isFinite(Number(x.cout)) ? fr(Number(x.cout), 2) : "—");
+          el("span", ecoCls(Number(x.eco_score)), r, isFinite(Number(x.eco_score)) && x.eco_score != null ? String(Math.round(x.eco_score)) : "—");
+        });
+      }
+      // The records
+      var rs = c.records && S(c.records), a = rs ? rs.attributes : null;
+      this.rec.hidden = !a;
+      this.rec.innerHTML = "";
+      if (a) {
+        [[a.zero_cent ? fr(Number(a.zero_cent), 1) : "—", "0-100 s"], [a.quatre_vingt_cent_vingt ? fr(Number(a.quatre_vingt_cent_vingt), 1) : "—", "80-120 s"],
+         [a.vitesse_max ? String(Math.round(a.vitesse_max)) : "—", "km/h max"], [a.plus_long_trajet ? fr(Number(a.plus_long_trajet), 1) : "—", "km max"],
+         [a.meilleur_score_eco ? String(a.meilleur_score_eco) : "—", "éco max"]].forEach((x) => {
+          var d = el("div", "", this.rec); el("b", "", d, x[0]); el("span", "", d, x[1]);
+        });
+      }
     }
   }
 
@@ -5247,7 +5352,12 @@
         ".nav.arrived { border-left-color: #5cc28f; } .nav.arrived ha-icon { color: #5cc28f; } .nav.wait { border-left-color: #d9a441; }" +
         ".eta { position: absolute; z-index: 2; bottom: 12px; left: 12px; right: 12px; display: flex; gap: 14px; align-items: baseline; justify-content: space-around; padding: 8px 12px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.88); border: 1px solid #22262c; color: #e9e4da; font-family: " + MONO + "; font-size: 15px; pointer-events: none; }" +
         ".withspeed .eta { left: 104px; } .withattr .eta { right: 52px; }" +
-        ".eta b { font-family: 'Chakra Petch', " + MONO + "; font-size: 22px; font-weight: 500; } .eta span { color: #878c95; font-size: 12px; }" +
+        ".eta { align-items: center; justify-content: flex-start; gap: 18px; }" +
+        // Each figure on one line with its unit; the arrival takes what is left.
+        ".eta b { font-family: 'Chakra Petch', " + MONO + "; font-size: 22px; font-weight: 500; white-space: nowrap; flex: none; }" +
+        ".eta b small { font-size: 13px; font-weight: 400; color: #878c95; margin-left: 3px; }" +
+        ".eta span { flex: 1; min-width: 0; color: #878c95; font-size: 12px; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; border-left: 1px solid #22262c; padding-left: 14px; }" +
+        ".eta span i { font-style: normal; color: #e9e4da; font-size: 15px; display: block; }" +
         ".panel { position: absolute; inset: 0; z-index: 4; background: rgba(7,8,10,0.96); color: #e9e4da; font-family: " + MONO + "; display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; overflow-y: auto; }" +
         ".panel .ph { display: flex; justify-content: space-between; align-items: center; color: #878c95; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; }" +
         ".panel form { display: flex; gap: 8px; } .panel input { flex: 1; min-width: 0; font: inherit; font-size: 17px; padding: 12px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #0d1014; color: #e9e4da; }" +
@@ -5845,9 +5955,19 @@
       var e = this.$("eta");
       e.hidden = false;
       e.innerHTML = "";
-      var b1 = document.createElement("b"); b1.textContent = gpsMetres(left); e.appendChild(b1);
-      var b2 = document.createElement("b"); b2.textContent = secs >= 3600 ? Math.floor(secs / 3600) + " h " + String(Math.round((secs % 3600) / 60)).padStart(2, "0") : Math.max(1, Math.round(secs / 60)) + " min"; e.appendChild(b2);
-      var sp2 = document.createElement("span"); sp2.textContent = "arrivée " + hhmm(eta) + (d && d.name !== "destination" ? " · " + d.name : ""); e.appendChild(sp2);
+      // « 450 m · 1 min », each with its unit, never split; then the arrival.
+      var fig = function (v, unit) {
+        var b = document.createElement("b"); b.textContent = v;
+        var u = document.createElement("small"); u.textContent = unit; b.appendChild(u); e.appendChild(b);
+      };
+      var dist = gpsMetres(left).split(" ");
+      fig(dist[0], dist[1] || "");
+      if (secs >= 3600) fig(Math.floor(secs / 3600) + " h " + String(Math.round((secs % 3600) / 60)).padStart(2, "0"), "");
+      else fig(String(Math.max(1, Math.round(secs / 60))), "min");
+      var sp2 = document.createElement("span");
+      var at = document.createElement("i"); at.textContent = "arrivée " + hhmm(eta); sp2.appendChild(at);
+      if (d && d.name !== "destination") sp2.appendChild(document.createTextNode(d.name));
+      e.appendChild(sp2);
     }
   });
 
@@ -6597,6 +6717,7 @@
   define("igor-assist-card", IgorAssistCard, "Igor · Igor", "Igor : son état, parler (appui), l'activer ou non (appui long).");
   define("igor-buttons-card", IgorButtonsCard, "Igor · boutons", "Une rangée de boutons qui appellent un service ou ouvrent une page (size: big pour un téléphone).");
   define("igor-weather-card", IgorWeatherCard, "Igor · météo", "Maintenant, heure par heure, et les jours en barres de températures.");
+  define("igor-trips-card", IgorTripsCard, "Igor · trajets", "Le carnet d'une voiture : le trajet en grand, les derniers trajets, les records.");
   define("igor-alarm-card", IgorAlarmCard, "Igor · réveil", "Un réveil (intégration Alarm Clocks) en une ligne.");
   define("igor-docker-manage-card", IgorDockerManageCard, "Igor · Docker (gestion)", "Les conteneurs de Portainer, leurs totaux et leurs boutons.");
   define("igor-proxmox-card", IgorProxmoxCard, "Igor · Proxmox", "L'hôte Proxmox, ses machines et son stockage.");
