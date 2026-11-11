@@ -899,6 +899,9 @@ ROUTE_SCHEMA = vol.Schema(
         vol.Optional("avoid", default=[]): vol.All(
             cv.ensure_list, vol.Length(max=10), [vol.ExactSequence([vol.Coerce(float)] * 4)]
         ),
+        # « éviter » : motorways, tollRoads, ferries, unpavedRoads
+        vol.Optional("avoid_types", default=[]): vol.All(cv.ensure_list, vol.Length(max=4), [cv.string]),
+        vol.Optional("alternatives", default=0): vol.All(vol.Coerce(int), vol.Range(min=0, max=2)),
     }
 )
 
@@ -912,7 +915,7 @@ def _async_register_route(hass: HomeAssistant) -> None:
     if hass.services.has_service(DOMAIN, SERVICE_ROUTE):
         return
 
-    from .traffic import avoid_body, parse_route, route_params, route_url
+    from .traffic import avoid_body, parse_routes, route_params, route_url
 
     async def _route(call: ServiceCall) -> ServiceResponse:
         key = _traffic_key(hass)
@@ -928,7 +931,7 @@ def _async_register_route(hass: HomeAssistant) -> None:
             async with session.request(
                 "POST" if body else "GET",
                 route_url(tuple(a), tuple(b), via),
-                params=route_params(key, call.data.get("heading")),
+                params=route_params(key, call.data.get("heading"), call.data["avoid_types"], call.data["alternatives"]),
                 json=body or None,
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as r:
@@ -939,10 +942,10 @@ def _async_register_route(hass: HomeAssistant) -> None:
                 data = await r.json(content_type=None)
         except (aiohttp.ClientError, TimeoutError, ValueError):
             return {"enabled": True, "ok": False, "error": "TomTom injoignable"}
-        route = parse_route(data)
-        if not route:
+        routes = parse_routes(data)
+        if not routes:
             return {"enabled": True, "ok": False, "error": "pas d'itinéraire"}
-        return {"enabled": True, "ok": True, "route": route}
+        return {"enabled": True, "ok": True, "route": routes[0], "routes": routes}
 
     _async_register_car_service(hass, SERVICE_ROUTE, _route, ROUTE_SCHEMA)
 

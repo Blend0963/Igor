@@ -138,20 +138,32 @@ ROUTE_URL = "https://api.tomtom.com/routing/1/calculateRoute/{a}:{b}/json"
 MAX_AVOID = 10
 
 
-def route_params(key: str, heading: float | None) -> dict[str, str]:
-    params = {
-        "key": key,
-        "traffic": "true",
-        "travelMode": "car",
-        "routeType": "fastest",
-        "instructionsType": "text",
-        "language": "fr-FR",
-        "routeRepresentation": "polyline",
-        # Where on the way the traffic is slow: coloured on the card's route.
-        "sectionType": "traffic",
-    }
+# What a route can be asked to keep off (the card's « éviter » choices).
+AVOIDABLE = {"motorways", "tollRoads", "ferries", "unpavedRoads"}
+# The stretches TomTom marks along a route: the traffic, the limits, the lanes
+# to take, and what lies on the way (tolls, tunnels, ferries, motorways).
+SECTION_TYPES = ("traffic", "speedLimit", "lanes", "tollRoad", "tunnel", "ferry", "motorway")
+
+
+def route_params(
+    key: str, heading: float | None, avoid: list[str] | tuple = (), alternatives: int = 0
+) -> list[tuple[str, str]]:
+    """The query as pairs (sectionType and avoid repeat)."""
+    params = [
+        ("key", key),
+        ("traffic", "true"),
+        ("travelMode", "car"),
+        ("routeType", "fastest"),
+        ("instructionsType", "text"),
+        ("language", "fr-FR"),
+        ("routeRepresentation", "polyline"),
+    ]
+    params += [("sectionType", t) for t in SECTION_TYPES]
+    params += [("avoid", a) for a in avoid if a in AVOIDABLE]
+    if alternatives > 0:
+        params.append(("maxAlternatives", str(min(2, int(alternatives)))))
     if heading is not None:
-        params["vehicleHeading"] = str(int(heading) % 360)
+        params.append(("vehicleHeading", str(int(heading) % 360)))
     return params
 
 
@@ -175,13 +187,27 @@ def avoid_body(boxes: list[list[float]]) -> dict[str, Any]:
 
 
 def parse_route(body: Any) -> dict[str, Any] | None:
-    """TomTom's first route → the card's: points [lon, lat], length, time, and
-    the instructions (where along the route, the French sentence, the kind of
-    manoeuvre, road numbers, exit, direction)."""
+    """TomTom's first route (see parse_routes)."""
+    found = parse_routes(body)
+    return found[0] if found else None
+
+
+def parse_routes(body: Any) -> list[dict[str, Any]]:
+    """Every route of the answer (the best, then the alternatives)."""
     routes = body.get("routes") if isinstance(body, dict) else None
-    if not routes or not isinstance(routes[0], dict):
-        return None
-    r = routes[0]
+    out = []
+    for r in routes or []:
+        one = _parse_one(r) if isinstance(r, dict) else None
+        if one:
+            out.append(one)
+    return out
+
+
+def _parse_one(r: dict) -> dict[str, Any] | None:
+    """A TomTom route → the card's: points [lon, lat], length, time, the
+    instructions (where along the route, the French sentence, the kind of
+    manoeuvre, road numbers, exit, direction) and its stretches: jams, limits,
+    lanes, tolls, tunnels, ferries, motorways (as point indexes)."""
     coords: list[list[float]] = []
     # TomTom's point index (over all legs) → the index in `coords` (repeats dropped).
     index: list[int] = []
@@ -220,25 +246,56 @@ def parse_route(body: Any) -> dict[str, Any] | None:
                 "to": str(ins.get("signpostText") or "")[:80],
             }
         )
-    jams = []
+    jams, limits, lanes = [], [], []
+    spans: dict[str, list] = {"toll": [], "tunnel": [], "ferry": [], "motorway": []}
     for sec in r.get("sections") or []:
-        if not isinstance(sec, dict) or str(sec.get("sectionType") or "").upper() != "TRAFFIC":
+        if not isinstance(sec, dict):
             continue
+        kind = str(sec.get("sectionType") or "").upper()
         try:
             a, b = int(sec["startPointIndex"]), int(sec["endPointIndex"])
         except (KeyError, TypeError, ValueError):
             continue
         if not index or a >= len(index):
             continue
+        start, end = index[a], index[min(b, len(index) - 1)]
+        if kind == "SPEED_LIMIT":
+            try:
+                v = int(round(float(sec.get("maxSpeedLimitInKmh") or 0)))
+            except (TypeError, ValueError):
+                v = 0
+            if 5 <= v <= 200:
+                limits.append({"start": start, "end": end, "v": v})
+            continue
+        if kind == "LANES":
+            row = []
+            for ln in sec.get("lanes") or []:
+                if isinstance(ln, dict):
+                    row.append({"dirs": [str(d) for d in ln.get("directions") or []][:4], "follow": str(ln.get("follow") or "")})
+            if row:
+                lanes.append({"start": start, "end": end, "lanes": row[:8]})
+            continue
+        name = {"TOLL_ROAD": "toll", "TOLL": "toll", "TUNNEL": "tunnel", "FERRY": "ferry", "MOTORWAY": "motorway"}.get(kind)
+        if name:
+            spans[name].append([start, end])
+            continue
+        if kind != "TRAFFIC":
+            continue
         cat = str(sec.get("simpleCategory") or "").upper()
         magnitude = int(sec.get("magnitudeOfDelay") or 0) if str(sec.get("magnitudeOfDelay") or "0").isdigit() else 0
         # Slow (orange) or very slow (red): TomTom's magnitude, 3 and up, or a closed road, is red.
         level = 2 if magnitude >= 3 or cat == "ROAD_CLOSURE" else 1
-        jams.append({"start": index[a], "end": index[min(b, len(index) - 1)], "level": level,
+        jams.append({"start": start, "end": end, "level": level,
                      "delay": int(sec.get("delayInSeconds") or 0), "kind": cat.lower()})
     return {
         "coords": coords,
         "jams": jams,
+        "limits": limits,
+        "lanes": lanes[:200],
+        "tolls": spans["toll"],
+        "tunnels": spans["tunnel"],
+        "ferries": spans["ferry"],
+        "motorways": spans["motorway"],
         "distance": float(summary.get("lengthInMeters") or 0),
         "duration": float(summary.get("travelTimeInSeconds") or 0),
         "delay": float(summary.get("trafficDelayInSeconds") or 0),
