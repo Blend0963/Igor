@@ -296,3 +296,4 @@ car_limit:
         number:
           min: 0
           max: 360
+car_status:

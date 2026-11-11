@@ -337,6 +337,14 @@
         "stop": {
           "name": "Stop",
           "description": "Stop the guidance."
+        },
+        "avoid": {
+          "name": "Avoid",
+          "description": "What to keep off: motorways, tolls, ferries."
+        },
+        "reroute": {
+          "name": "Reroute",
+          "description": "Recalculate the trip under way (with avoid)."
         }
       }
     },
@@ -433,6 +441,10 @@
           "description": "Where the car faces, in degrees."
         }
       }
+    },
+    "car_status": {
+      "name": "Car: trip status",
+      "description": "The trip under way on the car's GPS: destination, time and distance left, arrival, jams and the next toll, tunnel or ferry (TomTom with a key, else OpenStreetMap's time and distance). Administrators and the car's users."
     }
   }
 }

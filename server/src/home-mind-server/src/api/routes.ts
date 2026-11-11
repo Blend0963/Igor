@@ -100,6 +100,8 @@ export const ChatRequestSchema = z.object({
   // Assist pipeline's language. A tie-breaker hint only: the language of the
   // user's actual words always wins.
   language: z.string().max(35).optional(),
+  // Where the person is (the integration: « in the car », with the trip). Added to the prompt.
+  situation: z.string().max(1500).optional(),
   // Optional images for vision-capable models. Each is a data URL
   // ("data:image/jpeg;base64,…") or a plain https URL. Forwarded to the model
   // as image content; ignored by text-only models.

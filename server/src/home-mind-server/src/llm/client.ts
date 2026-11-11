@@ -144,6 +144,11 @@ export class LLMClient implements IChatEngine {
       }
     }
 
+    if (request.situation) {
+      const now = `## Right now\n${request.situation}`;
+      systemPrompt = Array.isArray(systemPrompt) ? [...systemPrompt, { type: "text", text: now }] : `${systemPrompt}\n\n${now}`;
+    }
+
     // 3. Load conversation history if we have a conversationId
     const messages: Anthropic.MessageParam[] = [];
 

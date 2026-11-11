@@ -81,6 +81,7 @@ from .const import (
     SERVICE_CAR_SEARCH,
     SERVICE_CAR_CAMERAS,
     SERVICE_CAR_LIMIT,
+    SERVICE_CAR_STATUS,
     CONF_CAR_USERS,
 )
 
@@ -899,6 +900,9 @@ ROUTE_SCHEMA = vol.Schema(
         vol.Optional("avoid", default=[]): vol.All(
             cv.ensure_list, vol.Length(max=10), [vol.ExactSequence([vol.Coerce(float)] * 4)]
         ),
+        # « éviter » : motorways, tollRoads, ferries, unpavedRoads
+        vol.Optional("avoid_types", default=[]): vol.All(cv.ensure_list, vol.Length(max=4), [cv.string]),
+        vol.Optional("alternatives", default=0): vol.All(vol.Coerce(int), vol.Range(min=0, max=2)),
     }
 )
 
@@ -912,7 +916,7 @@ def _async_register_route(hass: HomeAssistant) -> None:
     if hass.services.has_service(DOMAIN, SERVICE_ROUTE):
         return
 
-    from .traffic import avoid_body, parse_route, route_params, route_url
+    from .traffic import avoid_body, parse_routes, route_params, route_url
 
     async def _route(call: ServiceCall) -> ServiceResponse:
         key = _traffic_key(hass)
@@ -928,7 +932,7 @@ def _async_register_route(hass: HomeAssistant) -> None:
             async with session.request(
                 "POST" if body else "GET",
                 route_url(tuple(a), tuple(b), via),
-                params=route_params(key, call.data.get("heading")),
+                params=route_params(key, call.data.get("heading"), call.data["avoid_types"], call.data["alternatives"]),
                 json=body or None,
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as r:
@@ -939,10 +943,10 @@ def _async_register_route(hass: HomeAssistant) -> None:
                 data = await r.json(content_type=None)
         except (aiohttp.ClientError, TimeoutError, ValueError):
             return {"enabled": True, "ok": False, "error": "TomTom injoignable"}
-        route = parse_route(data)
-        if not route:
+        routes = parse_routes(data)
+        if not routes:
             return {"enabled": True, "ok": False, "error": "pas d'itinéraire"}
-        return {"enabled": True, "ok": True, "route": route}
+        return {"enabled": True, "ok": True, "route": routes[0], "routes": routes}
 
     _async_register_car_service(hass, SERVICE_ROUTE, _route, ROUTE_SCHEMA)
 
@@ -1026,6 +1030,10 @@ CAR_GO_SCHEMA = vol.Schema(
         vol.Optional("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
         vol.Optional("name"): vol.All(cv.string, vol.Length(max=80)),
         vol.Optional("stop", default=False): cv.boolean,
+        # « sans autoroute », « sans péage » : motorways, tolls, ferries
+        vol.Optional("avoid", default=[]): vol.All(cv.ensure_list, [vol.In(["motorways", "tolls", "ferries"])]),
+        # The trip under way again, with `avoid`.
+        vol.Optional("reroute", default=False): cv.boolean,
     }
 )
 CAR_NEARBY_SCHEMA = vol.Schema(
@@ -1128,6 +1136,15 @@ def _async_register_car(hass: HomeAssistant) -> None:
             return {"ok": True, "stopped": True}
         here = _car_position(hass, tracker)
         others: list[str] = []
+        avoid = call.data["avoid"]
+        if call.data["reroute"] and not call.data.get("query"):
+            now_dest = parse_destination(hass.states.get(dest_entity).state)
+            if not now_dest:
+                return {"ok": False, "error": "pas de trajet en cours"}
+            await _write(dest_entity, format_destination(now_dest, now_dest.get("via") or [], avoid))
+            out = {"ok": True, "rerouted": True, "destination": now_dest["name"], "avoiding": avoid}
+            out.update(await _trip(here, now_dest, avoid))
+            return out
         if call.data.get("latitude") is not None and call.data.get("longitude") is not None:
             dest = {"lat": call.data["latitude"], "lon": call.data["longitude"], "name": call.data.get("name") or "destination"}
         else:
@@ -1144,8 +1161,10 @@ def _async_register_car(hass: HomeAssistant) -> None:
                     return {"ok": False, "error": f"aucun lieu trouvé pour « {query} »"}
                 dest = found[0]
                 others = [f"{p['name']} ({p['address']})" for p in found[1:4]]
-        await _write(dest_entity, format_destination(dest))
+        await _write(dest_entity, format_destination(dest, (), avoid))
         out: dict = {"ok": True, "destination": {k: dest.get(k) for k in ("name", "address", "lat", "lon") if dest.get(k) is not None}}
+        if avoid:
+            out["avoiding"] = avoid
         if others:
             out["other_matches"] = others
         if here:
@@ -1210,6 +1229,65 @@ def _async_register_car(hass: HomeAssistant) -> None:
             if r:
                 out["minutes_total"] = round(r["duration"] / 60)
                 out["arrival"] = dt_util.as_local(dt_util.now() + timedelta(seconds=r["duration"])).strftime("%H:%M")
+        return out
+
+    async def _trip(here, dest: dict, avoid) -> dict:
+        """What is left of the way: TomTom's route with its traffic (a key), else OSRM's."""
+        if not here:
+            return {"note": "position de la voiture inconnue"}
+        from .traffic import parse_routes, route_params, route_url
+
+        key = _traffic_key(hass)
+        via = [(v["lat"], v["lon"]) for v in dest.get("via") or []]
+        types = [{"motorways": "motorways", "tolls": "tollRoads", "tollRoads": "tollRoads", "ferries": "ferries"}[a] for a in avoid if a in ("motorways", "tolls", "tollRoads", "ferries")]
+        r = None
+        if key:
+            try:
+                session = async_get_clientsession(hass)
+                async with session.get(
+                    route_url((here[1], here[0]), (dest["lat"], dest["lon"]), via),
+                    params=route_params(key, None, types), timeout=aiohttp.ClientTimeout(total=15),
+                ) as resp:
+                    found = parse_routes(await resp.json(content_type=None)) if resp.status == 200 else []
+                    r = found[0] if found else None
+            except Exception:  # noqa: BLE001
+                r = None
+        if r:
+            # Metres from the car to each point of the way.
+            cum = [0.0]
+            for i in range(1, len(r["coords"])):
+                cum.append(cum[-1] + car_haversine(r["coords"][i - 1], r["coords"][i]))
+            ahead = lambda idx: round(cum[min(idx, len(cum) - 1)] / 1000, 1)  # noqa: E731
+            out = {
+                "distance_km": round(r["distance"] / 1000, 1),
+                "minutes": round(r["duration"] / 60),
+                "arrival": dt_util.as_local(dt_util.now() + timedelta(seconds=r["duration"])).strftime("%H:%M"),
+                "traffic_delay_min": round(r["delay"] / 60),
+                "jams": [{"in_km": ahead(j["start"]), "length_km": round((cum[min(j["end"], len(cum) - 1)] - cum[min(j["start"], len(cum) - 1)]) / 1000, 1), "delay_min": round(j["delay"] / 60)} for j in r["jams"][:4]],
+                "next_toll_km": ahead(r["tolls"][0][0]) if r["tolls"] else None,
+                "next_tunnel_km": ahead(r["tunnels"][0][0]) if r["tunnels"] else None,
+                "next_ferry_km": ahead(r["ferries"][0][0]) if r["ferries"] else None,
+                "source": "tomtom",
+            }
+            return {k: v for k, v in out.items() if v is not None}
+        try:
+            o = await car.route([here, *[[v[1], v[0]] for v in via], [dest["lon"], dest["lat"]]], steps=False)
+        except Exception:  # noqa: BLE001
+            o = None
+        if not o:
+            return {}
+        return {"distance_km": round(o["distance"] / 1000, 1), "minutes": round(o["duration"] / 60),
+                "arrival": dt_util.as_local(dt_util.now() + timedelta(seconds=o["duration"])).strftime("%H:%M"), "source": "osrm"}
+
+    async def _status(call: ServiceCall) -> ServiceResponse:
+        tracker, dest_entity, err = _setup()
+        if err:
+            return err
+        dest = parse_destination(hass.states.get(dest_entity).state)
+        if not dest:
+            return {"ok": True, "guided": False, "note": "aucun trajet en cours"}
+        out = {"ok": True, "guided": True, "destination": dest["name"], "stops": [v["name"] for v in dest.get("via") or []], "avoiding": dest.get("avoid") or []}
+        out.update(await _trip(_car_position(hass, tracker), dest, dest.get("avoid") or []))
         return out
 
     async def _search(call: ServiceCall) -> ServiceResponse:
@@ -1289,6 +1367,7 @@ def _async_register_car(hass: HomeAssistant) -> None:
         (SERVICE_CAR_CAMERAS, _cameras, CAR_CAMERAS_SCHEMA),
         (SERVICE_CAR_LIMIT, _limit, CAR_LIMIT_SCHEMA),
         (SERVICE_CAR_GO, _go, CAR_GO_SCHEMA),
+        (SERVICE_CAR_STATUS, _status, vol.Schema({})),
         (SERVICE_CAR_NEARBY, _nearby, CAR_NEARBY_SCHEMA),
         (SERVICE_CAR_STOP, _stop, CAR_STOP_SCHEMA),
     ):
