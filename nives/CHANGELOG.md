@@ -1,9 +1,12 @@
 # Changelog
 
+## 0.38.3 — Alternates that read like Waze
+
+- The alternates' bubbles sit on their grey route, where the driver reads them: away from the car while following (where the other route leaves, never over the car), at the middle of its route when the whole trip is on the screen. And the other choice never disappears: after taking the road without tolls, the one with tolls (or with motorways) stays greyed and comes back by itself when the alternates are rebuilt. A paying route says so with a small amber « € » — in the bubbles and in the choice of routes.
+
 ## 0.38.2 — Two base maps, and buildings that stand up
 
 - The layers' panel keeps two base maps only — Igor (CARTO) and « Route » (TomTom Orbis) — and gains a « Bâtiments en 3D » switch: on the Orbis map the buildings stand up, their heights coming with the tiles already fetched (no extra request, but heavier to draw; off by default). A base map chosen before the others existed falls back on Route.
-- The alternates' bubbles sit on their grey route, where the driver reads them: away from the car while following (where the other route leaves, never over the car), at the middle of its route when the whole trip is on the screen. And the other choice never disappears: after taking the road without tolls, the one with tolls (or with motorways) stays greyed and comes back by itself when the alternates are rebuilt. A paying route says so with a small amber « € » — in the bubbles and in the choice of routes.
 
 ## 0.38.1 — Places that stay on the map
 
