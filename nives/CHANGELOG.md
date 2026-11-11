@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.6 — One base map
+
+- The TomTom Orbis map (« Route ») is the only base map: the layers' panel no longer chooses between it and the theme's CARTO one, and a screen that had picked another falls back on Orbis. The places (stations, parkings, toilets, hospitals, charging stations, rest areas) are no longer fetched from OpenStreetMap — the Orbis map draws its own — so Overpass is asked for the lights and the cameras only, and the old places kept on the screen are dropped. The lights' toggle stays; the radars, the danger zones, the live traffic and the 3D buildings too. A screen set with « traffic: false » (no TomTom key at all) keeps the theme's CARTO map.
+
 ## 0.38.5 — The place said, not the town
 
 - A place said with its town (« Porte d'Orléans à Paris ») is no longer swallowed by the town: when the search answers with the town first while the query names a place, the named place wins (its name is the one said). A town asked alone (« va à Paris ») still goes to the town at once, and a numbered address still keeps its street result.
