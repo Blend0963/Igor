@@ -5708,9 +5708,14 @@
   function gpsOverpass(config, query) {
     var list = config && config.overpass ? [].concat(config.overpass) : GPS_OVERPASS;
     var url = String(list[gpsOverpassAt % list.length]);
-    return fetch(url, { method: "POST", body: "data=" + encodeURIComponent(query), headers: { "Content-Type": "application/x-www-form-urlencoded" } })
-      .then(function (r) { if (!r.ok) throw new Error("overpass " + r.status); return r.json(); })
-      .catch(function (e) { gpsOverpassAt++; throw e; });
+    // A hanging request must not hold the queue for ever: 20 s, then it is a
+    // failure like another (the next mirror is tried).
+    var ctl = typeof AbortController == "function" ? new AbortController() : null;
+    var timer = ctl ? setTimeout(function () { ctl.abort(); }, 20000) : null;
+    var stop = function () { if (timer) clearTimeout(timer); };
+    return fetch(url, { method: "POST", body: "data=" + encodeURIComponent(query), headers: { "Content-Type": "application/x-www-form-urlencoded" }, signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { stop(); if (!r.ok) throw new Error("overpass " + r.status); return r.json(); })
+      .catch(function (e) { stop(); gpsOverpassAt++; throw e; });
   }
   // The map cut in squares (web tiles at zoom 13, about 3 km): the points are
   // read once per square and kept, so the whole view fills and stays filled.
@@ -7396,6 +7401,7 @@
         list.appendChild(b);
       };
       head("Sur la carte");
+      if (this.poiDown) { var down = document.createElement("div"); down.className = "note"; down.textContent = "OpenStreetMap (Overpass) ne répond pas : les lieux manquants reviendront d'eux-mêmes."; list.appendChild(down); }
       Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") toggle(k, GPS_POI[k].name, GPS_POI[k].color); });
       if (this.config.traffic !== false) {
         head("Circulation en direct");
@@ -7455,14 +7461,18 @@
     },
     poiData() { return { type: "FeatureCollection", features: [] }; },
     // OpenStreetMap's points, square by square (about 3 km), over all the map
-    // shows around the car (6 km at most): the nearest square first, one at a
-    // time, each read once and kept; a square that failed is asked again 15 s later.
+    // shows around the car (6 km at most): two squares asked at once, the
+    // ones the car drives towards first, each read once and kept — on the
+    // screen for 30 days (IndexedDB, like the roads), so a usual trip shows
+    // its places at once and without network. Overpass being a free and busy
+    // service, a failure waits longer and longer (15 s to 4 min) instead of
+    // hammering it; what was read stays on the map.
     poiTick(now, speed) {
       var map = this.map, p = this.pos, kinds = this.poiKinds();
       if (!map || !p || !kinds.length) return;
       var key = kinds.slice().sort().join(",");
       if (key !== this.poiKey) { this.poiKey = key; this.poiTiles = {}; this.rebuildPois(); }
-      if (this.poiBusy) return;
+      if (now < (this.poiNextTry || 0)) return;
       var want = [], seen = {}, z = GPS_TILE_Z;
       var add = (x, y) => {
         var k = x + "/" + y;
@@ -7477,26 +7487,54 @@
         var bb = map.getBounds(), a = gpsTileOf([bb.getWest(), bb.getNorth()], z), c = gpsTileOf([bb.getEast(), bb.getSouth()], z);
         for (var x = a[0]; x <= c[0] && x - a[0] < 12; x++) for (var y = a[1]; y <= c[1] && y - a[1] < 12; y++) add(x, y);
       } catch (e) { /* no view yet */ }
+      // Ahead counts half: the squares on the way are filled before those beside.
+      want.forEach((t) => {
+        var r = gpsRelative(p, [(t.b.w + t.b.e) / 2, (t.b.n + t.b.s) / 2], this.heading);
+        t.d = r.d - Math.max(0, r.ahead) * 0.5;
+      });
       want.sort((u, v) => u.d - v.d);
       var T = this.poiTiles || (this.poiTiles = {});
-      var next = want.find((t) => !T[t.k] || (T[t.k].failed && now - T[t.k].at > 15000));
-      if (!next) return;
-      var q = gpsPoiTileQuery(next.b, kinds);
-      if (!q) return;
-      this.poiBusy = true;
-      gpsOverpass(this.config, q)
-        .then((jj) => {
+      var busy = this.poiBusy || (this.poiBusy = {});
+      for (var n = 0; n < 2; n++) {
+        var next = want.find((t) => (!T[t.k] || (T[t.k].failed && now - T[t.k].at > 15000)) && !busy[t.k]);
+        if (!next) break;
+        busy[next.k] = true;
+        this.askPoi(next, key, now);
+      }
+    },
+    askPoi(t, key, now) {
+      var busy = this.poiBusy, done = () => { delete busy[t.k]; };
+      gpsStoreGet("poi/" + t.k).then((saved) => {
+        if (key !== this.poiKey) return;
+        if (saved && Array.isArray(saved.items) && Date.now() - saved.at < GPS_KEEP_MS) {
+          this.poiTiles[t.k] = { at: now, items: saved.items };
+          this.rebuildPois();
+          return;
+        }
+        var q = gpsPoiTileQuery(t.b, this.poiKinds());
+        if (!q) return;
+        return gpsOverpass(this.config, q).then((jj) => {
           if (key !== this.poiKey) return;
-          T[next.k] = { at: now, items: gpsPois(jj.elements) };
+          var items = gpsPois(jj.elements);
+          this.poiTiles[t.k] = { at: now, items: items };
+          gpsStorePut("poi/" + t.k, { at: Date.now(), items: items });
+          this.poiFails = 0;
+          this.poiNextTry = 0;
+          this.poiDown = false;
           // Squares far behind are let go (more than 12 km).
+          var p = this.pos, z = GPS_TILE_Z, T = this.poiTiles;
           Object.keys(T).forEach((k) => {
             var xy = k.split("/"), b = gpsTileBox(Number(xy[0]), Number(xy[1]), z);
             if (gpsDist(p, [(b.w + b.e) / 2, (b.n + b.s) / 2]) > 12000) delete T[k];
           });
           this.rebuildPois();
-        })
-        .catch(() => { T[next.k] = { at: now, failed: true }; })
-        .then(() => { this.poiBusy = false; });
+        });
+      }).catch(() => {
+        this.poiFails = (this.poiFails || 0) + 1;
+        this.poiNextTry = now + Math.min(240000, 15000 * Math.pow(2, Math.min(this.poiFails, 4)));
+        this.poiTiles[t.k] = { at: now, failed: true };
+        if (this.poiFails >= 2) this.poiDown = true;
+      }).then(done);
     },
     // Every place known: the squares read from OpenStreetMap and, in France,
     // the Ministry of the Interior's own list of cameras; a camera known from
@@ -7541,7 +7579,7 @@
     refreshPois() {
       var ids = [], shown = [];
       (this.pois || []).forEach((q) => {
-        if (q.kind === "camera" || q.kind === "signals") { if (!this.onWay || !this.onWay[q.id]) return; }
+        if (q.kind === "camera" || q.kind === "signals") { if (!this.onMap || !this.onMap[q.id]) return; }
         ids.push(q.id); shown.push(q);
       });
       var sig = ids.join(",");
@@ -7606,6 +7644,30 @@
       var kmh = speed * 3.6;
       this.signalAhead = null;
       var cam = null, L = this.layers || {}, onWay = {};
+      // What is drawn: the lights and cameras near the way or on the route —
+      // a wider corridor than the warnings' (a radar beside the road, a light
+      // of the cross street one turns into), and a radar drawn whatever its
+      // OSM direction says (the tag is often wrong or absent). The warnings
+      // keep the strict rules; only the icons are generous.
+      var onMap = {}, far = [];
+      (this.pois || []).forEach((q) => {
+        if (q.kind !== "signals" && q.kind !== "camera") return;
+        if (gpsDist(this.pos, q.p) > 5000) return;
+        var r = gpsRelative(this.pos, q.p, this.heading);
+        if (q.kind === "signals") {
+          if (r.ahead > -50 && r.ahead < 1500 && r.side < 60) onMap[q.id] = true;
+          else if (this.route) far.push(q);
+        } else if (L.cameras && L.cameras !== "off") {
+          if (r.ahead > -50 && r.ahead < 3000 && r.side < 80) onMap[q.id] = true;
+          else if (this.route) far.push(q);
+        }
+      });
+      // On the route but out of the cone: the nearest forty only (the route
+      // is searched segment by segment; a city has hundreds of lights).
+      far.sort((u, v) => gpsDist(this.pos, u.p) - gpsDist(this.pos, v.p)).slice(0, 40).forEach((q) => {
+        if (this.routeAhead(q.p, q.kind === "camera" ? 30 : 25) != null) onMap[q.id] = true;
+      });
+      this.onMap = onMap;
       (this.pois || []).forEach((q) => {
         if (q.kind !== "signals" && q.kind !== "camera") return;
         if (gpsDist(this.pos, q.p) > 5000) return;
@@ -7622,8 +7684,8 @@
         if (d != null && speed >= GPS_SLOW && (!cam || d < cam.d)) cam = { q: q, d: d };
       });
       this.onWay = onWay;
-      // Drawn again only when the lights and cameras on the way changed.
-      var wkey = Object.keys(onWay).sort().join(",");
+      // Drawn again only when the lights and cameras shown changed.
+      var wkey = Object.keys(onMap).sort().join(",");
       if (wkey !== this.onWayKey || this.poiShown == null) { this.onWayKey = wkey; this.refreshPois(); }
       var limitNow = this.lastLimit ? this.lastLimit.v : NaN;
       if (L.cameras === "zone") {
