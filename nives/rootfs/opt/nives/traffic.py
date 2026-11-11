@@ -139,10 +139,11 @@ MAX_AVOID = 10
 
 
 # What a route can be asked to keep off (the card's « éviter » choices).
-AVOIDABLE = {"motorways", "tollRoads", "ferries", "unpavedRoads"}
+AVOIDABLE = {"motorways", "tollRoads", "ferries", "unpavedRoads", "lowEmissionZones"}
 # The stretches TomTom marks along a route: the traffic, the limits, the lanes
-# to take, and what lies on the way (tolls, tunnels, ferries, motorways).
-SECTION_TYPES = ("traffic", "speedLimit", "lanes", "tollRoad", "tunnel", "ferry", "motorway")
+# to take, and what lies on the way (tolls, tunnels, ferries, motorways, the
+# low-emission zones — the ZFE a vignette may not enter).
+SECTION_TYPES = ("traffic", "speedLimit", "lanes", "tollRoad", "tunnel", "ferry", "motorway", "lowEmissionZone")
 
 
 def route_params(
@@ -247,7 +248,7 @@ def _parse_one(r: dict) -> dict[str, Any] | None:
             }
         )
     jams, limits, lanes = [], [], []
-    spans: dict[str, list] = {"toll": [], "tunnel": [], "ferry": [], "motorway": []}
+    spans: dict[str, list] = {"toll": [], "tunnel": [], "ferry": [], "motorway": [], "lez": []}
     for sec in r.get("sections") or []:
         if not isinstance(sec, dict):
             continue
@@ -275,7 +276,7 @@ def _parse_one(r: dict) -> dict[str, Any] | None:
             if row:
                 lanes.append({"start": start, "end": end, "lanes": row[:8]})
             continue
-        name = {"TOLL_ROAD": "toll", "TOLL": "toll", "TUNNEL": "tunnel", "FERRY": "ferry", "MOTORWAY": "motorway"}.get(kind)
+        name = {"TOLL_ROAD": "toll", "TOLL": "toll", "TUNNEL": "tunnel", "FERRY": "ferry", "MOTORWAY": "motorway", "LOW_EMISSION_ZONE": "lez"}.get(kind)
         if name:
             spans[name].append([start, end])
             continue
@@ -296,6 +297,7 @@ def _parse_one(r: dict) -> dict[str, Any] | None:
         "tunnels": spans["tunnel"],
         "ferries": spans["ferry"],
         "motorways": spans["motorway"],
+        "lez": spans["lez"],
         "distance": float(summary.get("lengthInMeters") or 0),
         "duration": float(summary.get("travelTimeInSeconds") or 0),
         "delay": float(summary.get("trafficDelayInSeconds") or 0),

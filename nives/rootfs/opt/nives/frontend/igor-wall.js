@@ -5219,7 +5219,7 @@
   //   dead_reckoning: true                  # in a tunnel, on at the OBD speed (speed_entity) for 3 min (false: off)
   //   traffic: true                         # live traffic and incidents once a TomTom key is set in Igor's options (false: never)
   //   closure_ask: false                    # a closed road on the route (TomTom): round it at once (true: ask first)
-  //   The flag's search then offers up to three routes (fastest, without motorways, without tolls) and what to keep off.
+  //   The flag's search then offers up to four routes (fastest, without motorways, without tolls, without low-emission zones) and what to keep off.
   //   traffic_map: false                    # the traffic over the whole map too (default: only the route, orange where it slows, red where it is jammed)
   //   overpass: https://overpass-api.de/api/interpreter
   //   router: https://router.project-osrm.org  # OSRM (the route); self-hosted possible
@@ -5960,6 +5960,7 @@
         ".alttag { padding: 3px 9px; border-radius: 12px; background: rgba(7,8,10,0.92); border: 1px solid #3d454e; color: #878c95; font-family: " + MONO + "; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }" +
         ".alttag.win { color: #5cc28f; border-color: #5cc28f; } .alttag.lose { color: #f08c1a; border-color: #f08c1a; }" +
         ".eur { color: #e0a33a; font-weight: 700; margin-right: 6px; }" +
+        ".lez { color: #e5323b; border: 1px solid #e5323b; border-radius: 3px; font-size: 11px; font-weight: 700; padding: 0 3px; margin-right: 6px; }" +
         ".mappick { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.96); border: 1px solid #22262c; font-family: " + MONO + "; }" +
         ".mappick .mp-name { color: #878c95; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 4px 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
         ".mappick button { font: inherit; font-size: 14px; padding: 10px 12px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #e9e4da; cursor: pointer; display: flex; align-items: center; gap: 10px; --mdc-icon-size: 20px; white-space: nowrap; } .mappick button ha-icon { color: #59d0e0; flex: none; }" +
@@ -6925,7 +6926,7 @@
         box.hidden = !ln;
       }
       // A toll, a ferry within 2 km: a word, once.
-      [["tolls", "Péage"], ["ferries", "Ferry"]].forEach((k) => (R[k[0]] || []).forEach((sp) => {
+      [["tolls", "Péage"], ["ferries", "Ferry"], ["lez", "Zone à faibles émissions"]].forEach((k) => (R[k[0]] || []).forEach((sp) => {
         var a = R.cum[Math.min(sp[0], R.cum.length - 1)] - along, id = k[0] + sp[0];
         if (a > 0 && a < 2000 && !this.spoken[id]) { this.spoken[id] = 9; this.toast(k[1] + " · dans " + gpsMetres(a), 6000); this.say(k[1] + " dans " + gpsMetres(a).replace(" m", " mètres").replace(" km", " kilomètres")); }
       }));
@@ -7008,6 +7009,7 @@
         var dmin = Math.round((R0.duration - (R ? R.duration : R0.duration)) / 60);
         var el = document.createElement("div");
         el.className = "alttag" + (dmin < 0 ? " win" : dmin > 0 ? " lose" : "");
+        if (R0.lez && R0.lez.length) { var z = document.createElement("span"); z.className = "lez"; z.textContent = "ZFE"; el.appendChild(z); }
         if (R0.tolls && R0.tolls.length) { var e = document.createElement("span"); e.className = "eur"; e.textContent = "€"; el.appendChild(e); }
         el.appendChild(document.createTextNode(dmin === 0 ? "≈ 0 min" : (dmin > 0 ? "+" : "−") + Math.abs(dmin) + " min"));
         var band = this.altBand(R0);
@@ -7152,11 +7154,11 @@
       if (R && R.source === "tomtom" && R.coords && R.coords.length > 1) {
         this.alts = this.alts.concat([{ label: "En cours", types: (this.tripAvoid || this.avoidTypes()).slice(), parsed: true,
           route: { coords: R.coords, steps: R.steps, duration: R.duration, jams: R.jams || [], delay: R.delay || 0,
-            limits: R.limits || [], lanes: R.lanes || [], tolls: R.tolls || [], ferries: R.ferries || [] } }]);
+            limits: R.limits || [], lanes: R.lanes || [], tolls: R.tolls || [], ferries: R.ferries || [], lez: R.lez || [] } }]);
       }
       this.tripAvoid = a.types && a.types.length ? a.types : null;
       this.routeAt = performance.now();
-      this.toast("Itinéraire changé", 3000);
+      this.toast(a.route.lez && a.route.lez.length ? "Itinéraire changé · zone à faibles émissions sur le trajet" : "Itinéraire changé", 3000);
       if (a.parsed) {
         var r0 = a.route;
         this.useRoute(r0.coords, r0.steps, r0.duration, "tomtom",
@@ -7190,16 +7192,18 @@
     },
     useTomTom(R0) {
       this.useRoute(R0.coords, R0.steps.map((x) => Object.assign(gpsTomTomStep(x), { loc: x.loc })), R0.duration, "tomtom",
-        { jams: R0.jams || [], delay: R0.delay || 0, limits: R0.limits || [], lanes: R0.lanes || [], tolls: R0.tolls || [], tunnels: R0.tunnels || [], ferries: R0.ferries || [] });
+        { jams: R0.jams || [], delay: R0.delay || 0, limits: R0.limits || [], lanes: R0.lanes || [], tolls: R0.tolls || [], tunnels: R0.tunnels || [], ferries: R0.ferries || [], lez: R0.lez || [] });
     },
-    // Up to three routes to choose from: the fastest (with what the driver
-    // keeps off), without motorways, without tolls; those that are the same
-    // way are shown once. Not touched for 12 s: the first one starts.
+    // Up to four routes to choose from: the fastest (with what the driver
+    // keeps off), without motorways, without tolls, without the low-emission
+    // zones (the ZFE a vignette may not enter); those that are the same way
+    // are shown once. Not touched for 12 s: the first one starts.
     async chooseRoute(d, from) {
       var mine = this.avoidTypes(), has = (t) => mine.indexOf(t) >= 0;
       var asks = [{ label: "Le plus rapide", types: mine }];
       if (!has("motorways")) asks.push({ label: "Sans autoroute", types: mine.concat(["motorways"]) });
       if (!has("tollRoads")) asks.push({ label: "Sans péage", types: mine.concat(["tollRoads"]) });
+      if (!has("lowEmissionZones")) asks.push({ label: "Sans ZFE", types: mine.concat(["lowEmissionZones"]) });
       this.banner("mdi:map-search", "", "Calcul des itinéraires vers " + d.name + "…", "wait");
       var got = await Promise.all(asks.map((a) => this.askRoute(d, from, a.types)));
       if (this.dest !== d) return true;
@@ -7219,6 +7223,7 @@
         this.routeAt = performance.now();
         this.useTomTom(o.route);
         this.drawAlts();
+        if (o.route.lez && o.route.lez.length) this.toast("Zone à faibles émissions · vignette requise", 9000);
       };
       if (opts.length === 1) { pick(opts[0]); return true; }
       var $ = this.$, list = $("rlist");
@@ -7230,6 +7235,7 @@
         b.type = "button"; b.className = "ropt" + (i ? "" : " sel");
         var dot = document.createElement("span"); dot.className = "dot"; dot.style.background = COL[i]; b.appendChild(dot);
         var mid = document.createElement("div"), mins = Math.round(R0.duration / 60);
+        if (R0.lez && R0.lez.length) { var z = document.createElement("span"); z.className = "lez"; z.textContent = "ZFE"; mid.appendChild(z); }
         if (R0.tolls && R0.tolls.length) { var e = document.createElement("span"); e.className = "eur"; e.textContent = "€"; mid.appendChild(e); }
         var t = document.createElement("b"); t.textContent = mins >= 60 ? Math.floor(mins / 60) + " h " + String(mins % 60).padStart(2, "0") : mins + " min"; mid.appendChild(t);
         var sm = document.createElement("small"); sm.textContent = o.label + (R0.ferries && R0.ferries.length ? " · ferry" : ""); mid.appendChild(sm);
@@ -7244,7 +7250,7 @@
       // What to keep off, for this trip and the next ones.
       var chips = $("rchips");
       chips.innerHTML = "";
-      [["motorways", "Éviter autoroutes"], ["tollRoads", "Éviter péages"], ["ferries", "Éviter ferries"]].forEach((c) => {
+      [["motorways", "Éviter autoroutes"], ["tollRoads", "Éviter péages"], ["ferries", "Éviter ferries"], ["lowEmissionZones", "Éviter ZFE"]].forEach((c) => {
         var b = document.createElement("button"); b.type = "button"; b.textContent = c[1]; b.className = has(c[0]) ? "on" : "";
         b.addEventListener("click", () => {
           var cur = this.avoidTypes(), k = cur.indexOf(c[0]);
@@ -7272,7 +7278,7 @@
         steps.push(s);
       });
       this.route = { coords: coords, cum: cum, steps: steps, total: cum[cum.length - 1], duration: duration, source: source, jams: extra && extra.jams || [], delay: extra && extra.delay || 0,
-        limits: extra && extra.limits || [], lanes: extra && extra.lanes || [], tolls: extra && extra.tolls || [], ferries: extra && extra.ferries || [] };
+        limits: extra && extra.limits || [], lanes: extra && extra.lanes || [], tolls: extra && extra.tolls || [], ferries: extra && extra.ferries || [], lez: extra && extra.lez || [] };
       this.$("overview").hidden = false;
       this.seg = 1;
       this.showStreet();
