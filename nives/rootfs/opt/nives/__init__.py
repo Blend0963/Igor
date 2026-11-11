@@ -1011,10 +1011,7 @@ class TrafficTileView(HomeAssistantView):
 ORBIS_ORIGIN = "https://api.tomtom.com"
 ORBIS_STYLE_URL = ORBIS_ORIGIN + "/maps/orbis/assets/styles/0.*/style"
 ORBIS_MAPS = (
-    "basic_mono-dark",
     "basic_street-dark-driving",
-    "basic_street-light",
-    "basic_street-satellite",
 )
 BASEMAP_CACHE_S = 300
 

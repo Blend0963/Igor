@@ -5201,7 +5201,7 @@
   //   hide_attribution: false
   //   style: <a MapLibre style URL>         # another base map (the layers' button's choice wins when it is a TomTom one)
   //                                         # the layers' button also chooses the base map: Igor (CARTO, the theme's)
-  //                                         # or TomTom Orbis (mono sombre, conduite, clair, satellite; a TomTom key needed)
+  //                                         # or TomTom Orbis conduite (a TomTom key needed), its buildings standing up on ask
   //   destination: input_text.car_destination  # « lat,lon;Nom »: guidance there (set it from a phone, or the card's flag)
   //   favorites:                            # the flag's quick places
   //     - { name: Maison, zone: zone.home }
@@ -5234,10 +5234,10 @@
   var GPS_MAPLIBRE = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl";
   var GPS_DARK = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
   var GPS_DAY = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
-  // TomTom Orbis base maps, chosen in the layers' panel: the style and its
-  // tiles come from Home Assistant (the key stays on the server), a TomTom
-  // key in Igor's options is needed.
-  var GPS_ORBIS = { mono: "basic_mono-dark", dark: "basic_street-dark-driving", light: "basic_street-light", satellite: "basic_street-satellite" };
+  // The TomTom Orbis base map kept in the layers' panel (the « Route » one):
+  // the style and its tiles come from Home Assistant (the key stays on the
+  // server), a TomTom key in Igor's options is needed.
+  var GPS_ORBIS = { dark: "basic_street-dark-driving" };
   var GPS_R = 6378137, GPS_PREDICT_S = 4, GPS_MOVING = 0.8, GPS_TRAIL = 600;
   // Speeds (m/s, from the car itself when it says, else the GPS):
   // above GPS_FWD (15 km/h) a car only drives forward, so where it goes is
@@ -6315,6 +6315,7 @@
         if (this.config.buildings === false) (map.getStyle().layers || []).forEach((l) => {
           if (/building/i.test(l.id + " " + (l["source-layer"] || ""))) map.setLayoutProperty(l.id, "visibility", "none");
         });
+        this.applyBuildings3D();
         this.styleLayers();
         this.message("");
       });
@@ -7365,9 +7366,11 @@
       try { saved = JSON.parse(window.localStorage.getItem("igor-gps-layers") || "null"); } catch (e) { saved = null; }
       var pois = Array.isArray(c.pois) ? c.pois : GPS_POI_DEFAULT;
       var cam = ["radar", "zone", "off"].indexOf(c.cameras) >= 0 ? c.cameras : c.cameras === false ? "off" : "zone";
-      this.layers = { basemap: "igor", cameras: cam, trafficMap: c.traffic_map === true, incidents: c.traffic !== false };
+      this.layers = { basemap: "igor", bld3d: false, cameras: cam, trafficMap: c.traffic_map === true, incidents: c.traffic !== false };
       Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") this.layers[k] = pois.indexOf(k) >= 0; });
       if (saved && typeof saved === "object") Object.keys(this.layers).forEach((k) => { if (saved[k] !== undefined) this.layers[k] = saved[k]; });
+      // A base map removed since (an old "mono", "light", "satellite") falls back on Route.
+      if (this.layers.basemap && this.layers.basemap !== "igor" && !GPS_ORBIS[this.layers.basemap]) this.layers.basemap = "dark";
       if (c.traffic === false) { this.layers.trafficMap = false; this.layers.incidents = false; }
       this.applyLayers();
     },
@@ -7390,7 +7393,7 @@
       var head = function (txt) { var h = document.createElement("div"); h.className = "note"; h.textContent = txt; list.appendChild(h); };
       head("Fond de carte");
       var bmseg = document.createElement("div"); bmseg.className = "seg";
-      [["igor", "Igor"], ["mono", "Mono"], ["dark", "Route"], ["light", "Clair"], ["satellite", "Sat."]].forEach((o) => {
+      [["igor", "Igor"], ["dark", "Route"]].forEach((o) => {
         var b = document.createElement("button"); b.type = "button"; b.textContent = o[1];
         b.classList.toggle("on", (L.basemap || "igor") === o[0]);
         b.addEventListener("click", () => {
@@ -7405,6 +7408,18 @@
       bmnote.textContent = L.basemap && L.basemap !== "igor" ? "Fond TomTom Orbis, servi par Home Assistant (la clé reste sur le serveur)"
         : "Le fond du thème Igor (CARTO). Les fonds TomTom demandent une clé TomTom dans les options d'Igor.";
       list.appendChild(bmnote);
+      head("Bâtiments en 3D");
+      var d3seg = document.createElement("div"); d3seg.className = "seg";
+      [[false, "Non"], [true, "Oui"]].forEach((o) => {
+        var b = document.createElement("button"); b.type = "button"; b.textContent = o[1];
+        b.classList.toggle("on", !!L.bld3d === o[0]);
+        b.addEventListener("click", () => { L.bld3d = o[0]; this.saveLayers(); this.applyBuildings3D(); });
+        d3seg.appendChild(b);
+      });
+      list.appendChild(d3seg);
+      var d3note = document.createElement("div"); d3note.className = "note";
+      d3note.textContent = "Sur le fond Route (TomTom Orbis) : les immeubles se dressent. Plus lourd à dessiner sur un autoradio.";
+      list.appendChild(d3note);
       head("Contrôles de vitesse");
       var seg = document.createElement("div"); seg.className = "seg";
       [["zone", "Zones de danger"], ["radar", "Radars"], ["off", "Aucun"]].forEach((o) => {
@@ -7445,6 +7460,29 @@
       if (this.styleNow === url) return;
       this.styleNow = url;
       this.map.setStyle(url, { diff: false });
+    },
+    // The buildings standing up (fill-extrusion) on the Orbis base map: their
+    // heights are in the tiles already fetched, so no extra request, only
+    // more to draw. Off by default, a head unit has better to do.
+    applyBuildings3D() {
+      var map = this.map;
+      if (!map || !map.getStyle) return;
+      if (map.getLayer("igor-3d")) map.removeLayer("igor-3d");
+      if (!this.layers.bld3d || !(this.layers.basemap && GPS_ORBIS[this.layers.basemap])) return;
+      var src = null, firstSym = null;
+      (map.getStyle().layers || []).forEach((l) => {
+        if (!firstSym && l.type === "symbol" && l.layout && l.layout["text-field"]) firstSym = l.id;
+        if (!src && /^building/i.test(String(l["source-layer"] || ""))) src = l.source;
+      });
+      if (!src) {
+        var vec = Object.keys(map.getStyle().sources || {}).filter((n) => map.getStyle().sources[n] && map.getStyle().sources[n].type === "vector");
+        if (vec.length === 1) src = vec[0];
+      }
+      if (!src) return;
+      map.addLayer({ id: "igor-3d", type: "fill-extrusion", source: src, "source-layer": "buildings", minzoom: 14,
+        paint: { "fill-extrusion-color": "#22262e", "fill-extrusion-opacity": 0.92,
+          "fill-extrusion-height": ["coalesce", ["get", "building_height"], ["get", "height"], ["get", "render_height"], 12],
+          "fill-extrusion-base": ["coalesce", ["get", "building_ground_height"], ["get", "min_height"], ["get", "render_min_height"], 0] } }, firstSym);
     },
     applyLayers() {
       var map = this.map;
