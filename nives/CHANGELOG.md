@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.38.1 — Places that stay on the map
+
+- The GPS card's places (fuel stations, parkings, toilets, hospitals, charging stations, rest areas, traffic lights) and the cameras no longer come and go. Overpass (OpenStreetMap's free service, often busy) is asked with a 20 s timeout — a hanging request used to stop every place from loading until the screen was reloaded —, two squares at once instead of one, the squares the car drives towards first, and a failure waits longer and longer (15 s to 4 min) instead of hammering the service.
+- The squares read are kept on the screen for 30 days (IndexedDB), like the roads already were: a usual trip shows its places at once, without network, and a restart of the head unit no longer starts from an empty map.
+- Cameras and traffic lights are drawn along the way or the route with a wider corridor (a radar beside the road, a light of the cross street one turns into), and a radar is drawn whatever its OpenStreetMap direction says — the tag is often wrong or absent, and valid cameras were left out. The warnings keep their strict rules; only the icons are generous.
+- When Overpass does not answer, the layers' panel says so instead of leaving empty map.
+
 ## 0.38.0 — A navigator you can read and hear
 
 - **Igor's own voice** in `custom:igor-gps-card`: guidance is spoken by Igor's text-to-speech (made by the server, played on the screen, each sentence kept), with the browser's voice as a fallback. The voice button has three settings — everything (each turn), warnings only (cameras, jams, detours), nothing — kept by Home Assistant for the user, so it survives a restart of the screen. The first touch anywhere opens the sound (a browser rule); `tts_entity:` chooses another voice.
