@@ -363,11 +363,24 @@ export const HOME_EXTRA_TOOLS: ToolDefinition[] = [
     parameters: {
       type: "object",
       properties: {
-        destination: { type: "string", description: "Where to, as heard." },
+        destination: { type: "string", description: "Where to, as heard (« 15 rue du Saucisson à Orléans », « la maison », « le Leclerc »)." },
         stop: { type: "boolean", description: "true to stop the guidance." },
+        avoid: {
+          type: "array",
+          items: { type: "string", enum: ["motorways", "tolls", "ferries"] },
+          description: "What to keep off, when asked (« sans autoroute », « sans péage »). With no destination: the current trip is recalculated that way.",
+        },
       },
       required: [],
     },
+  },
+  {
+    name: "car_trip_status",
+    description:
+      "The trip under way on the car's GPS: destination, minutes and kilometres left, arrival time, jams ahead and their delay, " +
+      "the next toll, tunnel or ferry and how far it is. Use it for « on arrive quand ? », « il y a des bouchons ? », « c'est quand le " +
+      "prochain péage ? », « il reste combien ? ». Answer in one or two short sentences.",
+    parameters: { type: "object", properties: {}, required: [] },
   },
   {
     name: "car_find_nearby",

@@ -5187,6 +5187,7 @@
   // ----- igor-gps-card: the car on its map, as a navigator shows it -----
   //   type: custom:igor-gps-card
   //   entity: device_tracker.car            # the position (companion app), or a sensor with location: [lat, lon]
+  //   fallback_entity: device_tracker.phone # a second position (a phone in the car): used while the first one is late or less precise
   //   speed_entity: sensor.car_speed        # km/h from the car (OBD), better than the GPS's
   //   speed_limit_entity: sensor.speed_limit  # the limit sign, top right
   //   show_speed: true                      # false: no speed box on the map
@@ -5550,17 +5551,21 @@
     return { lat: lat, lon: lon, name: (m[3] || "").trim() || "destination" };
   }
   function gpsParseDest(v) {
-    var parts = String(v || "").split("|").filter(function (x) { return x.trim(); });
+    var cut = String(v || "").split("#"), parts = cut[0].split("|").filter(function (x) { return x.trim(); });
     var d = parts.length ? gpsParsePoint(parts[0]) : null;
     if (!d) return null;
     d.via = parts.slice(1).map(gpsParsePoint).filter(Boolean);
+    // What to keep off, asked by voice (Igor): m motorways, t tolls, f ferries.
+    var F = { m: "motorways", t: "tollRoads", f: "ferries" };
+    d.avoid = String(cut[1] || "").split("").map(function (c) { return F[c]; }).filter(Boolean);
     return d;
   }
   // Back to the input_text (120 characters: the names are shortened to fit).
   function gpsFormatDest(d) {
     var pts = [d].concat(d.via || []), coords = pts.map(function (p) { return p.lat.toFixed(6) + "," + p.lon.toFixed(6); });
     var room = 120 - coords.reduce(function (a, c) { return a + c.length + 1; }, 0) - (pts.length - 1), each = Math.max(0, Math.floor(room / pts.length));
-    return pts.map(function (p, i) { var n = String(p.name || "").replace(/[|;]/g, " ").slice(0, each).trim(); return n ? coords[i] + ";" + n : coords[i]; }).join("|").slice(0, 120);
+    var FL = { motorways: "m", tollRoads: "t", ferries: "f" }, flags = (d.avoid || []).map(function (a) { return FL[a] || ""; }).join("");
+    return pts.map(function (p, i) { var n = String(p.name || "").replace(/[|;#]/g, " ").slice(0, Math.max(0, each - 2)).trim(); return n ? coords[i] + ";" + n : coords[i]; }).join("|").slice(0, 116) + (flags ? "#" + flags : "");
   }
   // An OpenStreetMap way's limit (km/h) in the car's direction, or null.
   var GPS_ZONES = { "FR:urban": 50, "FR:rural": 80, "FR:motorway": 130, "FR:zone30": 30, "FR:zone20": 20, "FR:walk": 20, "FR:living_street": 20, "FR:trunk": 110, "FR:expressway": 110 };
@@ -5873,7 +5878,7 @@
       this._hass = hass;
       if (!this.root) this.build();
       // Only when what the card shows changed (not at every change in the house).
-      if (prev && this.loading && [c.entity, c.speed_entity, c.speed_limit_entity, c.destination, "sun.sun"].every(function (id) { return !id || prev.states[id] === hass.states[id]; })) return;
+      if (prev && this.loading && [c.entity, c.fallback_entity, c.speed_entity, c.speed_limit_entity, c.destination, "sun.sun"].every(function (id) { return !id || prev.states[id] === hass.states[id]; })) return;
       this.read();
     }
     connectedCallback() { if (this.map && !this.raf) this.raf = requestAnimationFrame(() => this.tick()); }
@@ -6086,8 +6091,30 @@
       return GPS_DARK;
     }
     message(text) { this.$("msg").textContent = text; this.$("msg").hidden = !text; }
+    // The position to believe: the head unit's (`entity`) or the phone's
+    // (`fallback_entity`), whichever is recent and says it is the more
+    // precise. The head unit keeps the lead while it is fresh (4 s) and good
+    // (within 30 m, or as good as the phone); the phone takes over while the
+    // head unit looks for its satellites or loses them.
+    pickSource() {
+      var main = this._hass.states[this.config.entity], fb = this.config.fallback_entity && this._hass.states[this.config.fallback_entity];
+      if (!fb || fb.attributes.latitude == null) return main;
+      if (!main || main.attributes.latitude == null) return fb;
+      var age = function (s) { return (Date.now() - (Date.parse(s.last_updated) || 0)) / 1000; };
+      var acc = function (s) { var a = Number(s.attributes.gps_accuracy != null ? s.attributes.gps_accuracy : s.attributes.accuracy); return a > 0 ? a : 50; };
+      var mainOk = age(main) < 4 && (acc(main) <= 30 || acc(main) <= acc(fb) * 1.5), fbOk = age(fb) < 6;
+      // Not back and forth: the source in use is left only when it is clearly the worse.
+      var use = mainOk || !fbOk ? "main" : "phone";
+      if (this.srcNow === "phone" && use === "main" && !(age(main) < 2.5 && acc(main) <= Math.max(20, acc(fb)))) use = "phone";
+      if (use !== this.srcNow) {
+        this.srcNow = use;
+        if (this.srcSeen) this.toast(use === "phone" ? "Position · téléphone" : "Position · autoradio", 3000);
+        this.srcSeen = true;
+      }
+      return use === "phone" ? fb : main;
+    }
     read() {
-      var st = this._hass.states[this.config.entity];
+      var st = this.pickSource();
       if (!st) { this.message("Entité introuvable : " + this.config.entity); return; }
       var a = st.attributes, n = (v) => (v === undefined || v === null || v === "" ? undefined : Number(v));
       var course = n(a.course != null ? a.course : a.direction != null ? a.direction : a.bearing != null ? a.bearing : a.heading);
@@ -6111,7 +6138,15 @@
         this.destState = de.state;
         var dd = gpsParseDest(de.state);
         if (!dd && this.dest) this.setDestination(null, false);
-        else if (dd && (!this.dest || gpsDist([dd.lon, dd.lat], [this.dest.lon, this.dest.lat]) > 5 || gpsFormatDest(dd) !== gpsFormatDest(this.dest))) this.setDestination(dd, false);
+        else if (dd && (!this.dest || gpsDist([dd.lon, dd.lat], [this.dest.lon, this.dest.lat]) > 5 || gpsFormatDest(dd) !== gpsFormatDest(this.dest))) {
+          // A new place asked by voice: the same choice of routes as by hand
+          // (the first one starts by itself); with « sans autoroute », that route at once.
+          var fresh = !this.dest || gpsDist([dd.lon, dd.lat], [this.dest.lon, this.dest.lat]) > 5;
+          this.chooseNext = fresh && !dd.avoid.length && !(dd.via && dd.via.length) && this.destState0;
+          this.setDestination(dd, false);
+          if (dd.avoid.length) this.tripAvoid = dd.avoid;
+        }
+        this.destState0 = true;
       }
       if (!this.voiceAsked && this._hass.callWS) {
         this.voiceAsked = true;
@@ -6721,7 +6756,7 @@
       this.route = null;
       this.spoken = {};
       this.offCount = 0;
-      this.tripAvoid = null;
+      this.tripAvoid = d && d.avoid && d.avoid.length ? d.avoid : null;
       this.routeLimit = null;
       clearTimeout(this.pickTimer);
       if (this.$) { this.$("rpanel").hidden = true; this.$("overview").hidden = true; this.$("tbar").hidden = true; this.$("navL").hidden = true; }

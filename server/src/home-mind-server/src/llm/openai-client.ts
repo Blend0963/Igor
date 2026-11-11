@@ -247,7 +247,7 @@ export class OpenAIChatEngine implements IChatEngine {
     request: ChatRequest,
     streamArg?: StreamCallback | ChatStreamEvents
   ): Promise<ChatResponse> {
-    const local = this.local && !request.prewarm && !isThreadId(request.conversationId) && !request.images?.length;
+    const local = this.local && !request.prewarm && !isThreadId(request.conversationId) && !request.images?.length && !request.situation;
     if (!local) return this.runChat(request, streamArg);
     this.localInFlight++;
     // The card serves one request at a time: a prewarm under way would make
@@ -317,7 +317,8 @@ export class OpenAIChatEngine implements IChatEngine {
 
     // Assist on the house's own model, when there is one (llm/local-llm.ts).
     // Images need a model that sees; none of the local ones does yet.
-    const local = this.local && !scope.isThread && !request.images?.length ? this.local : undefined;
+    // In the car (request.situation), the online model: it reads any wording of a destination.
+    const local = this.local && !scope.isThread && !request.images?.length && !request.situation ? this.local : undefined;
 
     // 0. A spoken sentence that names Igor after its opening may only talk
     // about it ("c'est Igor qui a éteint"): a small call decides, alongside
@@ -400,7 +401,8 @@ export class OpenAIChatEngine implements IChatEngine {
       : undefined;
     const systemPrompt = localPrompt
       ? ""
-      : buildSystemPromptText(factContents, scope.isThread ? "thread" : isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender, scope.facts);
+      : buildSystemPromptText(factContents, scope.isThread ? "thread" : isVoice, customPrompt, deviceCheatSheet, homeLayout, language, this.config.ttsVoiceGender, scope.facts) +
+        (request.situation ? `\n\n## Right now\n${request.situation}` : "");
 
     // Split the system prompt for prefix caching (#66 follow-up).
     //

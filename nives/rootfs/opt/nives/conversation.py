@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import logging
 from typing import Literal
 
@@ -47,6 +48,8 @@ from .const import (
 from .stream import DeltaBuilder, SseParser
 
 _LOGGER = logging.getLogger(__name__)
+# Where the person is (the car), for the request being answered.
+_SITUATION: contextvars.ContextVar[str | None] = contextvars.ContextVar("igor_situation", default=None)
 
 
 def _out_of_credit_speech(language: str | None) -> str:
@@ -116,6 +119,35 @@ class IgorConversationAgent(ConversationEntity):
             return str(user_input.context.user_id)
         return data.user_id
 
+    def _car_situation(self, user_id: str | None) -> str | None:
+        """Said to Igor when the request comes from the car's screen (one of
+        « The car's screen » users of the options): where it is, where it
+        goes, and that any wish to go somewhere is for the car's GPS."""
+        from .const import CONF_CAR_DESTINATION, CONF_CAR_TRACKER, CONF_CAR_USERS
+
+        entry = getattr(self, "entry", None)
+        if entry is None:
+            return None
+        opts = {**entry.data, **entry.options}
+        if not user_id or user_id not in (opts.get(CONF_CAR_USERS) or []):
+            return None
+        lines = [
+            "The person is DRIVING and speaks to you through the car's screen. Answer in one short spoken sentence.",
+            "Any wish to go somewhere, however it is said (« on va à… », « emmène-moi… », « direction… », an address or a place "
+            "alone, « finalement on va… »), is for the car's GPS: call car_navigate with the place as heard, then confirm "
+            "« OK, on va à <the place found> », with the distance and the arrival time. « Sans autoroute », « sans péage », "
+            "« recalcule », « un autre chemin »: car_navigate with avoid (no destination: the trip under way). "
+            "« On arrive quand ? », bouchons, prochain péage: car_trip_status. A fuel station, toilets, food…: car_find_nearby. "
+            "« Arrête le guidage »: car_navigate with stop.",
+        ]
+        tracker = self.hass.states.get(opts.get(CONF_CAR_TRACKER) or "")
+        if tracker and tracker.attributes.get("latitude") is not None:
+            lines.append(f"The car is at {tracker.attributes['latitude']:.4f}, {tracker.attributes['longitude']:.4f}.")
+        dest = self.hass.states.get(opts.get(CONF_CAR_DESTINATION) or "")
+        name = dest.state.split("|")[0].partition(";")[2].partition("#")[0].strip() if dest and dest.state not in ("", "unknown", "unavailable") else ""
+        lines.append(f"The GPS is guiding to: {name}." if name else "The GPS is not guiding anywhere now.")
+        return "\n".join(lines)
+
     async def async_process(self, user_input: ConversationInput) -> ConversationResult:
         """Answer, streaming into the chat log where the Core supports it."""
         # The house is locked (the key is away): Igor does nothing at all.
@@ -124,6 +156,7 @@ class IgorConversationAgent(ConversationEntity):
 
         sec = settings(self.hass)
         user_id = user_input.context.user_id if user_input.context else None
+        _SITUATION.set(self._car_situation(user_id))
         if is_locked(self.hass, sec.get(CONF_KEY_ENTITY)) and not await user_allowed(
             self.hass, user_id, sec.get("allowed_users") or []
         ):
@@ -348,6 +381,8 @@ class IgorConversationAgent(ConversationEntity):
             "isVoice": is_voice,
             "conversationId": conversation_id,
         }
+        if _SITUATION.get():
+            payload["situation"] = _SITUATION.get()
         if language:
             payload["language"] = language
         headers: dict = {"Accept": "text/event-stream"}
@@ -589,6 +624,8 @@ class IgorConversationAgent(ConversationEntity):
         # on the wire, which request validation rejects (#63).
         if conversation_id:
             payload["conversationId"] = conversation_id
+        if _SITUATION.get():
+            payload["situation"] = _SITUATION.get()
         # The Assist pipeline's language (e.g. "sl", "en"). Without it the model
         # has no anchor at all and infers the language from context that is
         # soaked in native-language entity names — which is how an English

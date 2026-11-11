@@ -109,6 +109,10 @@ describe("car tools", () => {
     expect(callService).toHaveBeenLastCalledWith("nives", "car_go", undefined, { query: "la maison", return_response: true });
     await handleHomeTool(ha, "car_navigate", { stop: true });
     expect(callService).toHaveBeenLastCalledWith("nives", "car_go", undefined, { stop: true, return_response: true });
+    await handleHomeTool(ha, "car_navigate", { avoid: ["motorways", "x"] });
+    expect(callService).toHaveBeenLastCalledWith("nives", "car_go", undefined, { avoid: ["motorways"], reroute: true, return_response: true });
+    await handleHomeTool(ha, "car_trip_status", {});
+    expect(callService).toHaveBeenLastCalledWith("nives", "car_status", undefined, { return_response: true });
     await handleHomeTool(ha, "car_find_nearby", { kind: "fuel" });
     expect(callService).toHaveBeenLastCalledWith("nives", "car_nearby", undefined, { kind: "fuel", return_response: true });
     await handleHomeTool(ha, "car_add_stop", { choice: 2 });

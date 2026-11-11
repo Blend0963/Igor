@@ -22,6 +22,7 @@ import {
 
 export const HOME_TOOL_NAMES = new Set([
   "car_navigate",
+  "car_trip_status",
   "car_find_nearby",
   "car_add_stop",
   "find_contact",
@@ -312,15 +313,21 @@ export async function handleHomeTool(
       return readConfigFile(configDir, str("path"));
 
     // The car's GPS: Igor's integration does the work (nives.car_go, car_nearby, car_stop).
+    case "car_trip_status":
     case "car_navigate":
     case "car_find_nearby":
     case "car_add_stop": {
-      const service = name === "car_navigate" ? "car_go" : name === "car_find_nearby" ? "car_nearby" : "car_stop";
+      const service = name === "car_trip_status" ? "car_status" : name === "car_navigate" ? "car_go" : name === "car_find_nearby" ? "car_nearby" : "car_stop";
       const data: Record<string, unknown> = {};
       if (name === "car_navigate") {
+        const avoid = (Array.isArray(input.avoid) ? input.avoid : []).filter((a): a is string => ["motorways", "tolls", "ferries"].includes(a as string));
+        if (avoid.length) data.avoid = avoid;
         if (input.stop === true) data.stop = true;
         else if (str("destination")) data.query = str("destination");
-        else return { error: "Where to? Pass destination, or stop: true." };
+        else if (!avoid.length && !Array.isArray(input.avoid)) return { error: "Where to? Pass destination, or stop: true." };
+        else data.reroute = true;
+      } else if (name === "car_trip_status") {
+        // nothing to pass: the car and its trip are the integration's
       } else if (name === "car_find_nearby") {
         data.kind = str("kind") || "fuel";
       } else {

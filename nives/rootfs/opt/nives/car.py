@@ -135,24 +135,33 @@ def parse_point(text: str) -> dict | None:
 
 def parse_destination(text: str) -> dict | None:
     """{lat, lon, name, via: [points]} or None."""
-    parts = [p for p in str(text or "").split("|") if p.strip()]
+    body, _, flags = str(text or "").partition("#")
+    parts = [p for p in body.split("|") if p.strip()]
     if not parts:
         return None
     dest = parse_point(parts[0])
     if not dest:
         return None
     dest["via"] = [v for v in (parse_point(p) for p in parts[1:]) if v]
+    # What to keep off, asked by voice: « …#mt » (m motorways, t tolls, f ferries).
+    dest["avoid"] = [AVOID_FLAGS[c] for c in flags if c in AVOID_FLAGS]
     return dest
 
 
-def format_destination(dest: dict, via: Sequence[dict] = ()) -> str:
+AVOID_FLAGS = {"m": "motorways", "t": "tollRoads", "f": "ferries"}
+AVOID_WORDS = {"motorways": "m", "tolls": "t", "tollRoads": "t", "ferries": "f"}
+
+
+def format_destination(dest: dict, via: Sequence[dict] = (), avoid: Sequence[str] = ()) -> str:
     """The input_text's value, names shortened to fit 120 characters."""
     points = [dest, *via]
     coords = [f"{p['lat']:.6f},{p['lon']:.6f}" for p in points]
-    room = MAX_TEXT - sum(len(c) + 1 for c in coords) - (len(points) - 1)
+    flags = "".join(sorted({AVOID_WORDS[a] for a in avoid if a in AVOID_WORDS}))
+    suffix = f"#{flags}" if flags else ""
+    room = MAX_TEXT - len(suffix) - sum(len(c) + 1 for c in coords) - (len(points) - 1)
     each = max(0, room // len(points))
     names = [re.sub(r"[|;]", " ", str(p.get("name") or ""))[:each].strip() for p in points]
-    return "|".join(f"{c};{n}" if n else c for c, n in zip(coords, names))[:MAX_TEXT]
+    return "|".join(f"{c};{n}" if n else c for c, n in zip(coords, names))[: MAX_TEXT - len(suffix)] + suffix
 
 
 # ----- the route -----

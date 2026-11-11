@@ -21,6 +21,8 @@ export interface ChatRequest {
    * in the system prompt when the user's own words don't indicate a language.
    */
   language?: string;
+  /** Where the person is right now (« in the car »): added to the prompt; the request goes to the online model. */
+  situation?: string;
   /** The panel's model picker: overrides the main model and the fast-model routing. */
   model?: string;
   /** The panel's thinking picker: overrides the configured reasoning effort. */
