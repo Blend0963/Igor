@@ -1235,7 +1235,7 @@ def _async_register_car(hass: HomeAssistant) -> None:
     from homeassistant.util import dt as dt_util
 
     from .car import (
-        HOME_WORDS, KINDS, RADARS_URL, Car, fold, format_destination, kind_of, parse_destination, parse_radars, pick_place, radars_near,
+        HOME_WORDS, KINDS, RADARS_URL, SMALL_WORDS, Car, fold, format_destination, kind_of, parse_destination, parse_radars, pick_place, radars_near,
     )
     from .car import haversine_m as car_haversine
 
@@ -1269,9 +1269,18 @@ def _async_register_car(hass: HomeAssistant) -> None:
             st = hass.states.get("zone.home")
             if st:
                 return {"lat": st.attributes["latitude"], "lon": st.attributes["longitude"], "name": "Maison"}
+        # A zone wins when the query IS the zone, the small words apart (« à
+        # Orléans », « vers la maison ») — never when the query only contains
+        # it (« 19 rue de Pathé à Orléans », « porte d'Orléans à Paris »): the
+        # place said must reach the search, the town never swallows it here.
+        said = {w for w in q.split() if w not in SMALL_WORDS}
+        if not said:
+            return None
         for st in hass.states.async_all("zone"):
             name = str(st.attributes.get("friendly_name") or st.object_id)
-            if fold(name) == q or (len(q) > 3 and fold(name) in q):
+            nw = {w for w in fold(name).split() if w not in SMALL_WORDS}
+            if nw and nw == said:
+                _LOGGER.info("car: la zone « %s » répond à « %s »", name, query)
                 return {"lat": st.attributes["latitude"], "lon": st.attributes["longitude"], "name": name}
         return None
 
@@ -1313,6 +1322,7 @@ def _async_register_car(hass: HomeAssistant) -> None:
                 if not found:
                     return {"ok": False, "error": f"aucun lieu trouvé pour « {query} »"}
                 dest, ask = pick_place(query, found)
+                _LOGGER.info("car_go « %s » → %s (%s)", query, dest.get("name"), dest.get("address") or "")
                 # Several places of the same name (two « rue du Saucisson »),
                 # or a street named in several towns: the driver chooses
                 # (choice: n). A town, a single match: goes at once, no question.
