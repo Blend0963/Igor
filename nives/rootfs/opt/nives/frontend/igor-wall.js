@@ -6000,6 +6000,7 @@
         ".trow .del { flex: none; width: 36px; height: 36px; min-height: 0; padding: 0; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #878c95; cursor: pointer; display: grid; place-items: center; --mdc-icon-size: 20px; }" +
         ".alttag { padding: 3px 9px; border-radius: 12px; background: rgba(7,8,10,0.92); border: 1px solid #3d454e; color: #878c95; font-family: " + MONO + "; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }" +
         ".alttag.win { color: #5cc28f; border-color: #5cc28f; } .alttag.lose { color: #f08c1a; border-color: #f08c1a; }" +
+        ".eur { color: #e0a33a; font-weight: 700; margin-right: 6px; }" +
         '</style><ha-card id="card"><div id="map"></div><div class="msg" id="msg">Chargement de la carte…</div>' +
         '<div class="btns"><button id="recenter" title="Recentrer" hidden><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' +
         '<button id="orient" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button>' +
@@ -7012,7 +7013,8 @@
         var dmin = Math.round((R0.duration - (R ? R.duration : R0.duration)) / 60);
         var el = document.createElement("div");
         el.className = "alttag" + (dmin < 0 ? " win" : dmin > 0 ? " lose" : "");
-        el.textContent = dmin === 0 ? "≈ 0 min" : (dmin > 0 ? "+" : "−") + Math.abs(dmin) + " min";
+        if (R0.tolls && R0.tolls.length) { var e = document.createElement("span"); e.className = "eur"; e.textContent = "€"; el.appendChild(e); }
+        el.appendChild(document.createTextNode(dmin === 0 ? "≈ 0 min" : (dmin > 0 ? "+" : "−") + Math.abs(dmin) + " min"));
         var mk = new window.maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(R0.coords[Math.floor(R0.coords.length / 2)]).addTo(map);
         mk._igorAlt = a;
         this.altMarkers.push(mk);
@@ -7159,8 +7161,9 @@
         b.type = "button"; b.className = "ropt" + (i ? "" : " sel");
         var dot = document.createElement("span"); dot.className = "dot"; dot.style.background = COL[i]; b.appendChild(dot);
         var mid = document.createElement("div"), mins = Math.round(R0.duration / 60);
+        if (R0.tolls && R0.tolls.length) { var e = document.createElement("span"); e.className = "eur"; e.textContent = "€"; mid.appendChild(e); }
         var t = document.createElement("b"); t.textContent = mins >= 60 ? Math.floor(mins / 60) + " h " + String(mins % 60).padStart(2, "0") : mins + " min"; mid.appendChild(t);
-        var sm = document.createElement("small"); sm.textContent = o.label + (R0.tolls && R0.tolls.length ? " · péage" : "") + (R0.ferries && R0.ferries.length ? " · ferry" : ""); mid.appendChild(sm);
+        var sm = document.createElement("small"); sm.textContent = o.label + (R0.ferries && R0.ferries.length ? " · ferry" : ""); mid.appendChild(sm);
         b.appendChild(mid);
         var r = document.createElement("div"); r.className = "r";
         r.appendChild(document.createTextNode(gpsMetres(R0.distance)));
