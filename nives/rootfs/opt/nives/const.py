@@ -195,3 +195,8 @@ SERVICE_CAR_NEARBY = "car_nearby"
 SERVICE_CAR_STOP = "car_stop"
 # Users (ids) who may use the car's services without being administrators.
 CONF_CAR_USERS = "car_users"
+# The thread panel locks with the key too (off unless set: it is behind a login).
+CONF_LOCK_THREADS = "lock_threads"
+SERVICE_CAR_SEARCH = "car_search"
+SERVICE_CAR_CAMERAS = "car_cameras"
+SERVICE_CAR_LIMIT = "car_limit"

@@ -33,6 +33,7 @@ from .const import (
     CONF_CAR_TRACKER,
     CONF_CAR_DESTINATION,
     CONF_CAR_USERS,
+    CONF_LOCK_THREADS,
     DEFAULT_API_URL,
     DEFAULT_SHARED_MEMORY,
     DEFAULT_USER_ID,
@@ -272,6 +273,10 @@ class OptionsFlow(config_entries.OptionsFlow):
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(options=choices, multiple=True, custom_value=True)
                     ),
+                    vol.Required(
+                        CONF_LOCK_THREADS,
+                        default=bool(current.get(CONF_LOCK_THREADS, False)),
+                    ): bool,
                     vol.Optional(
                         CONF_CAR_TRACKER,
                         description={"suggested_value": current.get(CONF_CAR_TRACKER)},

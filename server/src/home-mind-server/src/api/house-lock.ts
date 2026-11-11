@@ -19,12 +19,18 @@ import { isIngressRequest } from "./auth.js";
  *
  * Locked unless the key entity reads « on », as in security.py; a key that
  * cannot be read locks too.
+ *
+ * The threads are locked only when the owner asks for it (`lock_threads`,
+ * off unless set): the key locks the house's voice and screens, and the
+ * thread panel is already behind a Home Assistant login.
  */
 export const LOCKED_MESSAGE = "Igor est verrouillé : la clé est absente.";
 
 export interface LockSettings {
   keyEntity?: string;
   allowedUsers: string[];
+  /** The thread panel locks with the key too. Off unless set. */
+  lockThreads?: boolean;
 }
 
 const USER_HEADERS = ["x-remote-user-id", "x-remote-user-name", "x-remote-user-display-name"] as const;
@@ -51,6 +57,7 @@ export class HouseLock {
     return {
       keyEntity: /^[a-z_]+\.[a-z0-9_]+$/.test(key) ? key : undefined,
       allowedUsers: users.map((u) => String(u).trim()).filter((u) => u && u.length <= 100).slice(0, 50),
+      ...(o.lockThreads === true || o.lock_threads === true ? { lockThreads: true } : {}),
     };
   }
 
@@ -84,7 +91,7 @@ export class HouseLock {
   async refusal(req: Request, ingressProxies?: readonly string[]): Promise<string | null> {
     if (!isIngressRequest(req, ingressProxies)) return null;
     const key = this.current.keyEntity;
-    if (!key) return null;
+    if (!key || !this.current.lockThreads) return null;
     let state: string | undefined;
     try {
       state = await this.readKey(key);

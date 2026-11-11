@@ -28,7 +28,7 @@ describe("HouseLock", () => {
 
   it("refuses a panel request while the key is away, unknown or unreadable", async () => {
     const lock = new HouseLock(undefined, read);
-    lock.set({ key_entity: "binary_sensor.cle", allowed_users: ["Moi"] });
+    lock.set({ key_entity: "binary_sensor.cle", allowed_users: ["Moi"], lock_threads: true });
     for (const k of ["off", "unavailable", "unknown", undefined]) {
       key = k;
       expect(await lock.refusal(panel())).toBe(LOCKED_MESSAGE);
@@ -39,18 +39,28 @@ describe("HouseLock", () => {
 
   it("answers again once the key is back", async () => {
     const lock = new HouseLock(undefined, read);
-    lock.set({ key_entity: "binary_sensor.cle" });
+    lock.set({ key_entity: "binary_sensor.cle", lock_threads: true });
     key = "on";
     expect(await lock.refusal(panel())).toBeNull();
   });
 
   it("still answers the allowed users, by id, name or display name, whatever the case", async () => {
     const lock = new HouseLock(undefined, read);
-    lock.set({ key_entity: "binary_sensor.cle", allowed_users: ["moi", "abc123"] });
+    lock.set({ key_entity: "binary_sensor.cle", allowed_users: ["moi", "abc123"], lock_threads: true });
     expect(await lock.refusal(panel({ "x-remote-user-id": "x", "x-remote-user-name": "Moi" }))).toBeNull();
     expect(await lock.refusal(panel({ "x-remote-user-id": "ABC123" }))).toBeNull();
     expect(await lock.refusal(panel({ "x-remote-user-id": "x", "x-remote-user-display-name": "MOI" }))).toBeNull();
     expect(await lock.refusal(panel({ "x-remote-user-id": "x", "x-remote-user-name": "mur" }))).toBe(LOCKED_MESSAGE);
+  });
+
+  it("leaves the threads open while the key is away unless asked to lock them", async () => {
+    const lock = new HouseLock(undefined, read);
+    lock.set({ key_entity: "binary_sensor.cle" });
+    expect(await lock.refusal(panel())).toBeNull();
+    lock.set({ key_entity: "binary_sensor.cle", lock_threads: false });
+    expect(await lock.refusal(panel())).toBeNull();
+    lock.set({ key_entity: "binary_sensor.cle", lock_threads: true });
+    expect(await lock.refusal(panel())).toBe(LOCKED_MESSAGE);
   });
 
   it("does not judge token requests (the integration checked; the app holds the token)", async () => {

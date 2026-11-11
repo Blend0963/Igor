@@ -693,6 +693,7 @@
   // ===== igor-wall: the whole screen =====
   //   type: custom:igor-wall
   //   bar: { ... }                       # the status bar, above
+  //   refresh: 250           # the cards follow the house at most every 250 ms (a car sends dozens of changes a second); 0: every change
   //   columns:
   //     - width: 1                       # share of the width (default 1)
   //       cards:
@@ -812,9 +813,22 @@
     }
     disconnectedCallback() {
       if (this._resize) { window.removeEventListener("resize", this._resize); this._resize = null; }
+      clearTimeout(this._pushTimer); this._pushTimer = null;
     }
+    // Home Assistant hands a new state of the house at every change of any
+    // entity: dozens a second with a car's sensors. The cards get the newest
+    // one at most every `refresh` ms (250 by default, 0: every one), which a
+    // small screen (a head unit) can keep up with for hours.
     set hass(hass) {
       this._hass = hass;
+      var every = this.config && this.config.refresh != null ? Number(this.config.refresh) : 250;
+      var now = performance.now();
+      if (!(every > 0) || !this._pushed || now - this._pushed >= every) { this.push(); return; }
+      if (!this._pushTimer) this._pushTimer = setTimeout(() => { this._pushTimer = null; this.push(); }, every - (now - this._pushed));
+    }
+    push() {
+      var hass = this._hass;
+      this._pushed = performance.now();
       if (this.bar) this.bar.hass = hass;
       this.children_.forEach((c) => { c.hass = hass; });
     }
@@ -4905,24 +4919,35 @@
         if (isFinite(p) && p >= 30) el("span", "rain", cell, p + " %");
       });
     }
-    update(hass) {
+    update(hass, prev) {
       var c = this.config, S = (id) => (id ? hass.states[id] : null);
       this.subscribeWeather(hass);
-      this.drawWeather();
+      // Each part only when its own entities changed: a car changes dozens of
+      // values a second, and the weather's icons are not rebuilt for each.
+      var tr0 = c.trip ? (typeof c.trip === "string" ? { entity: c.trip } : c.trip) : null;
+      var now = Date.now();
+      if (changed(prev, hass, [c.weather, c.outside].filter(Boolean)) || now - (this.wxAt || 0) > 300000) { this.wxAt = now; this.drawWeather(); }
+      var gauges = changed(prev, hass, [c.online, c.speed, c.rpm, c.coolant, c.battery].filter(Boolean));
+      var trip = changed(prev, hass, [c.online, tr0 && tr0.entity, c.active, c.consumption].filter(Boolean));
+      if (!gauges && !trip) return;
       var on = !c.online || (S(c.online) && S(c.online).state === "on");
       this.card.classList.toggle("off", !on);
       this.offEl.textContent = on ? "" : "hors ligne";
-      var v = on ? num(S(c.speed)) : null;
-      this.sp.innerHTML = "";
-      this.sp.appendChild(document.createTextNode(v == null ? "—" : String(Math.round(v))));
-      el("small", "", this.sp, "km/h");
+      var v = on ? num(S(c.speed)) : null, vt = v == null ? "—" : String(Math.round(v));
+      if (vt !== this.spText) {
+        this.spText = vt;
+        this.sp.innerHTML = "";
+        this.sp.appendChild(document.createTextNode(vt));
+        el("small", "", this.sp, "km/h");
+      }
       var rpm = on ? num(S(c.rpm)) : null;
       var max = Number(c.rpm_max) || 5000, warn = Number(c.rpm_warn) || max * 0.7, bad = Number(c.rpm_bad) || max * 0.86;
       var lit = rpm == null ? 0 : Math.round((Math.min(rpm, max) / max) * this.segs.length);
       this.segs.forEach((sg, i) => {
         var at = ((i + 1) / this.segs.length) * max;
         var zone = at > bad ? "r" : at > warn ? "y" : "on";
-        sg.className = i < lit ? zone : zone === "on" ? "" : zone + "s";
+        var cn = i < lit ? zone : zone === "on" ? "" : zone + "s";
+        if (sg.className !== cn) sg.className = cn;
       });
       this.rpmEl.textContent = rpm == null ? "—" : fr(Math.round(rpm), 0) + " tr/min";
       var t = on ? num(S(c.coolant)) : null;
@@ -4932,7 +4957,8 @@
       this.battEl.textContent = b == null ? "—" : fr(b, 1) + " V";
       this.battEl.className = b == null ? "" : b < 11.8 || b > 15 ? "bad" : b < 12.4 ? "warn" : "okc";
       // The trip: distance, consumption, eco score.
-      var tr = c.trip ? (typeof c.trip === "string" ? { entity: c.trip } : c.trip) : null;
+      if (!trip) return;
+      var tr = tr0;
       var st = tr && S(tr.entity), data = st ? (tr.attribute ? st.attributes[tr.attribute] : st.attributes) : null;
       this.tripEl.innerHTML = "";
       if (!data || typeof data !== "object") { this.tripEl.hidden = true; return; }
@@ -5062,7 +5088,8 @@
   //   notify: notify.mobile_app_mycar          # sends command_media to the head unit
   //   package: deezer.android.app              # the player app
   //   title: musique · deezer
-  //   active: binary_sensor.car_online         # the car on (OBD): off, no music; on, only a title heard since it started
+  //   active: binary_sensor.car_online         # the car on (one entity or a list, any of them on): off for 3 minutes,
+  //                                            # no music; on, no title older than the 20 minutes before it started
   // Previous, play or pause, next as three large buttons; a tap on the title
   // opens the app.
   class IgorCarMediaCard extends IgorCard {
@@ -5127,22 +5154,29 @@
       }
       if (fOk && (!title || fAt >= (this.sessAt || 0))) { title = f.state; artist = (f.attributes && f.attributes.artiste) || ""; }
       var playing = s && s.state === "Playing";
-      // The car on or off (`active`, the OBD link): off, there is no music; on,
-      // only what was heard since it started — the head unit's sensors keep
-      // the last title of the previous drive.
-      var act = this.config.active && hass.states[this.config.active];
-      if (act) {
-        if (act.state !== "on") {
-          this.ti.textContent = "Pas de musique";
-          this.ar.textContent = "voiture à l'arrêt";
-          if (this.playIcon) this.playIcon.setAttribute("icon", "mdi:play");
-          return;
+      // The car on or off (`active`: the OBD link, the head unit; any of them
+      // on is on). Off for more than 3 minutes (not a lost Bluetooth link):
+      // no music. On: a title is shown unless it is older than the 20 minutes
+      // before the car started (the head unit's sensors keep the last title
+      // of the previous drive) — a short stop keeps what was playing.
+      var acts = [].concat(this.config.active || []).map(function (id) { return hass.states[id]; }).filter(Boolean);
+      if (acts.length) {
+        var onNow = acts.filter(function (a) { return a.state === "on"; }), nowMs = Date.now();
+        if (!onNow.length) {
+          var offAt = Math.max.apply(null, acts.map(function (a) { return Date.parse(a.last_changed) || 0; }));
+          if (nowMs - offAt > 180000) {
+            this.ti.textContent = "Pas de musique";
+            this.ar.textContent = "voiture à l'arrêt";
+            if (this.playIcon) this.playIcon.setAttribute("icon", "mdi:play");
+            return;
+          }
+        } else {
+          // Started: the earliest of those on. A music change: the notification's
+          // title, the session's title seen changing, or the session updated (play, pause).
+          var since = Math.min.apply(null, onNow.map(function (a) { return Date.parse(a.last_changed) || nowMs; }));
+          var last = Math.max(fOk ? fAt : 0, this.sessChangedAt || 0, s ? Date.parse(s.last_updated) || 0 : 0);
+          if (last < since - 1200000) { title = ""; artist = ""; playing = false; }
         }
-        var since = (Date.parse(act.last_changed) || 0) - 60000;
-        // A title is fresh when it changed since the start: the notification's
-        // title, or the session's seen changing here (not merely first seen).
-        var fresh = (fOk && fAt >= since) || (this.sessChangedAt || 0) >= since;
-        if (!fresh) { title = ""; artist = ""; playing = false; }
       }
       this.ti.textContent = title || "Rien en lecture";
       this.ar.textContent = (artist ? artist + " · " : "") + (playing ? "en lecture" : "en pause");
@@ -5171,10 +5205,14 @@
   //   voice: true                           # instructions spoken (the browser's voice), false: silent; the 🔊 button mutes
   //   speed_limits: true                    # the limit sign from OpenStreetMap when speed_limit_entity says nothing (false: off)
   //   auto_zoom: true                       # farther out the faster, closer before a turn (false: the zoom stays)
+  //   cameras_official: true                # in France, the Ministry of the Interior's list of cameras too (false: OpenStreetMap only)
   //   cameras: zone                         # zone (danger zones, as the law asks in France), radar (each camera, its distance), off
   //   pois: [signals, fuel, rest]           # shown on the map at first (the layers button changes it on this screen):
   //                                         #   signals, fuel, charging, parking, rest, toilets, hospital
   //   street_names: true                    # the road where the car is, at the bottom (false: off)
+  //   fps: 20                               # the map drawn that many times a second while moving (lower: lighter)
+  //   buildings: true                       # false: the map without its buildings (lighter on a head unit)
+  //   pixel_ratio: 2                        # at most that many device pixels per pixel (1: lighter)
   //   dead_reckoning: true                  # in a tunnel, on at the OBD speed (speed_entity) for 3 min (false: off)
   //   traffic: true                         # live traffic and incidents once a TomTom key is set in Igor's options (false: never)
   //   closure_ask: false                    # a closed road on the route (TomTom): round it at once (true: ask first)
@@ -5539,6 +5577,7 @@
     if (v) return v;
     // Without a sign in the map: only what the road's kind says for sure.
     if (t.highway === "motorway") return 130;
+    if (t.highway === "trunk" && t.motorroad === "yes") return 110;
     if (t.highway === "living_street") return 20;
     return null;
   }
@@ -5609,7 +5648,29 @@
       if (!kind) return;
       var limit = kind === "camera" ? gpsLimitValue(t.maxspeed) : null;
       var label = kind === "camera" ? (limit ? String(limit) : "") : kind === "fuel" ? String(t.brand || t.name || "").slice(0, 18) : "";
-      out.push({ id: e.type + e.id, kind: kind, p: [lon, lat], tags: t, limit: limit, label: label, name: String(t.name || t.brand || "") });
+      // Only what is used is kept (thousands of lights over a drive).
+      out.push(kind === "camera" ? { id: e.type + e.id, kind: kind, p: [lon, lat], tags: { direction: t.direction, "camera:direction": t["camera:direction"] }, limit: limit, label: label }
+        : { id: e.type + e.id, kind: kind, p: [lon, lat], label: label });
+    });
+    // The enforcement relations' devices: a camera each (or more known about one already there).
+    var nodes = {}, byId = {};
+    (elements || []).forEach(function (e) { if (e.type === "node" && typeof e.lat === "number") nodes[e.id] = e; });
+    out.forEach(function (q) { if (q.kind === "camera") byId[q.id] = q; });
+    (elements || []).forEach(function (e) {
+      var t = e.tags || {};
+      if (e.type !== "relation" || t.type !== "enforcement") return;
+      var what = t.enforcement === "average_speed" ? "Radar tronçon" : t.enforcement === "traffic_signals" ? "Radar feu rouge" : t.enforcement === "maxspeed" ? "" : null;
+      if (what == null) return;
+      var limit = gpsLimitValue(t.maxspeed);
+      (e.members || []).forEach(function (m) {
+        var n = m.type === "node" && m.role === "device" ? nodes[m.ref] : null;
+        if (!n) return;
+        var q = byId["node" + m.ref];
+        if (!q) { q = byId["node" + m.ref] = { id: "node" + m.ref, kind: "camera", p: [n.lon, n.lat], tags: {}, limit: null, label: "" }; out.push(q); }
+        if (!q.limit && limit) { q.limit = limit; q.label = String(limit); }
+        if (what && !q.what) q.what = what;
+        if (t.enforcement === "traffic_signals") q.noSpeed = true;
+      });
     });
     return out;
   }
@@ -5661,8 +5722,76 @@
     if (has("toilets")) parts.push("nwr[amenity=toilets];");
     if (has("hospital")) parts.push("nwr[amenity=hospital];");
     if (!parts.length) return "";
-    return "[out:json][timeout:25][bbox:" + [b.s, b.w, b.n, b.e].map(function (v) { return v.toFixed(5); }).join(",") + "];(" + parts.join("") + ");out center tags;";
+    // Many cameras are only mapped as an « enforcement » relation (speed,
+    // average speed, red light) whose device is a plain point: read too.
+    var enf = has("camera") ? 'rel[type=enforcement][enforcement~"^(maxspeed|average_speed|traffic_signals)$"];out body;node(r:"device");out skel;' : "";
+    return "[out:json][timeout:25][bbox:" + [b.s, b.w, b.n, b.e].map(function (v) { return v.toFixed(5); }).join(",") + "];(" + parts.join("") + ");out center tags;" + enf;
   }
+  // ----- the roads and their limits: OpenStreetMap's ways, square by square -----
+  // Two grids: the big roads (motorways, trunks, primaries) in squares of
+  // about 7 km, read far ahead; every road in squares of about 800 m, read
+  // around the car and ahead of it. Each square is read once, kept for the
+  // drive and stored on the screen for 30 days: a usual trip needs no network.
+  var GPS_WAYS_MAJOR = "^(motorway|trunk|primary)(_link)?$";
+  var GPS_WAYS_ALL = "^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|road)(_link)?$";
+  var GPS_WAY_Z = { major: 12, minor: 15 }, GPS_WAY_TAGS = ["highway", "maxspeed", "maxspeed:forward", "maxspeed:backward", "zone:maxspeed", "maxspeed:type", "source:maxspeed", "name", "ref", "motorroad"];
+  function gpsWayQuery(b, major) {
+    return "[out:json][timeout:25][bbox:" + [b.s, b.w, b.n, b.e].map(function (v) { return v.toFixed(5); }).join(",") + '];way[highway~"' + (major ? GPS_WAYS_MAJOR : GPS_WAYS_ALL) + '"];out tags geom;';
+  }
+  // A way with the box around it (30 m of margin), for a quick « not this one ».
+  function gpsWayBox(w) {
+    var x0 = 180, y0 = 90, x1 = -180, y1 = -90;
+    w.geom.forEach(function (q) { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; });
+    w.box = [x0 - 0.0005, y0 - 0.00035, x1 + 0.0005, y1 + 0.00035];
+    return w;
+  }
+  function gpsWays(elements) {
+    var out = [];
+    (elements || []).forEach(function (e) {
+      if (e.type !== "way" || !Array.isArray(e.geometry)) return;
+      var t = e.tags || {}, tags = {}, piece = [];
+      GPS_WAY_TAGS.forEach(function (k) { if (t[k] != null) tags[k] = t[k]; });
+      var flush = function () { if (piece.length > 1) out.push(gpsWayBox({ id: e.id, tags: tags, geom: piece })); piece = []; };
+      e.geometry.forEach(function (q) { if (!q || typeof q.lat !== "number") { flush(); return; } piece.push([Math.round(q.lon * 1e6) / 1e6, Math.round(q.lat * 1e6) / 1e6]); });
+      flush();
+    });
+    return out;
+  }
+  // The screen's own store (IndexedDB): the squares read, for 30 days.
+  var gpsDb = null, GPS_KEEP_MS = 30 * 86400000;
+  function gpsStore() {
+    if (gpsDb) return gpsDb;
+    gpsDb = new Promise(function (resolve) {
+      try {
+        var rq = window.indexedDB.open("igor-gps", 1);
+        rq.onupgradeneeded = function () { rq.result.createObjectStore("ways"); };
+        rq.onsuccess = function () {
+          var db = rq.result;
+          // Old squares go, once per page.
+          try {
+            var cur = db.transaction("ways", "readwrite").objectStore("ways").openCursor();
+            cur.onsuccess = function () { var c = cur.result; if (!c) return; if (!c.value || Date.now() - c.value.at > GPS_KEEP_MS) c.delete(); c.continue(); };
+          } catch (e) { /* kept */ }
+          resolve(db);
+        };
+        rq.onerror = rq.onblocked = function () { resolve(null); };
+      } catch (e) { resolve(null); }
+    });
+    return gpsDb;
+  }
+  function gpsStoreGet(key) {
+    return gpsStore().then(function (db) {
+      if (!db) return null;
+      return new Promise(function (resolve) {
+        try { var rq = db.transaction("ways").objectStore("ways").get(key); rq.onsuccess = function () { resolve(rq.result || null); }; rq.onerror = function () { resolve(null); }; }
+        catch (e) { resolve(null); }
+      });
+    });
+  }
+  function gpsStorePut(key, value) {
+    gpsStore().then(function (db) { try { if (db) db.transaction("ways", "readwrite").objectStore("ways").put(value, key); } catch (e) { /* full, private mode */ } });
+  }
+  window.__igorGpsWays = { parse: gpsWays, query: gpsWayQuery, get: gpsStoreGet };
   // Where a point lies from the car: metres ahead (negative: behind) and
   // metres to the side of the car's way.
   function gpsRelative(from, to, heading) {
@@ -5736,8 +5865,11 @@
     getCardSize() { return 6; }
     getGridOptions() { return { columns: 12, rows: 4, min_rows: 3 }; }
     set hass(hass) {
+      var prev = this._hass, c = this.config;
       this._hass = hass;
       if (!this.root) this.build();
+      // Only when what the card shows changed (not at every change in the house).
+      if (prev && this.loading && [c.entity, c.speed_entity, c.speed_limit_entity, c.destination, "sun.sun"].every(function (id) { return !id || prev.states[id] === hass.states[id]; })) return;
       this.read();
     }
     connectedCallback() { if (this.map && !this.raf) this.raf = requestAnimationFrame(() => this.tick()); }
@@ -5863,7 +5995,14 @@
       $("askYes").addEventListener("click", () => this.answerClosure(true));
       $("askNo").addEventListener("click", () => this.answerClosure(false));
       $("pstop").addEventListener("click", () => { this.setDestination(null, true); $("panel").hidden = true; });
-      $("pform").addEventListener("submit", (ev) => { ev.preventDefault(); this.search($("pq").value); });
+      $("pform").addEventListener("submit", (ev) => { ev.preventDefault(); clearTimeout(this.typeTimer); this.search($("pq").value); });
+      // With TomTom's search (a key in Igor's options): results as one types,
+      // once the typing pauses (OpenStreetMap's free search forbids that).
+      $("pq").addEventListener("input", () => {
+        clearTimeout(this.typeTimer);
+        var v = $("pq").value.trim();
+        if ((this.searchLive || this.trafficOn()) && v.length >= 3) this.typeTimer = setTimeout(() => this.search(v, true), 600);
+      });
       $("recenter").addEventListener("click", () => this.setFollow(true));
       $("orient").addEventListener("click", () => {
         this.headingUp = !this.headingUp;
@@ -5878,6 +6017,7 @@
     }
     setFollow(on) {
       this.follow = on;
+      this.viewKey = null;
       clearTimeout(this.resume);
       this.$("recenter").hidden = on;
       if (!on && this.config.follow_pause > 0) this.resume = setTimeout(() => this.setFollow(true), this.config.follow_pause * 1000);
@@ -5946,7 +6086,7 @@
       // Driving, the trail does not come back on itself either.
       if (last && !this.cut && this.speedMps() > GPS_FWD && gpsAhead(last, p, this.heading) < -2) return;
       var path = null;
-      if (last && onRoad && gpsDist(last, p) > 8) {
+      if (last && onRoad && gpsDist(last, p) > 40) {
         var way = gpsRoadPath(this.roadLines(last, p, 40), last, p);
         if (way) path = way.slice(1, -1);
       }
@@ -5958,7 +6098,11 @@
       if (!piece || this.cut || (!path && gpsDist(last, p) > 25)) { this.trail.push([p]); this.cut = false; }
       else piece.push.apply(piece, (path || []).concat([p]));
       var n = this.trail.reduce(function (a, x) { return a + x.length; }, 0);
-      while (n > GPS_TRAIL && this.trail.length) { n -= this.trail[0].length; this.trail.shift(); }
+      // The oldest points go, one at a time (not the whole piece at once).
+      while (n > GPS_TRAIL && this.trail.length) {
+        var first = this.trail[0], cut = Math.min(first.length, n - GPS_TRAIL);
+        if (cut >= first.length - 1) { n -= first.length; this.trail.shift(); } else { first.splice(0, cut); n -= cut; }
+      }
       var src = this.map && this.map.getSource("trail");
       if (src) src.setData(this.trailData());
     }
@@ -6010,6 +6154,9 @@
       var map = new ml.Map({
         container: this.$("map"), style: (this.styleNow = this.styleUrl()), center: p, zoom: this.config.zoom, pitch: this.config.pitch,
         bearing: this.headingUp ? this.heading : 0, attributionControl: this.config.hide_attribution ? false : { compact: true },
+        // Light on a small screen: no label fade (it redraws for 300 ms at
+        // each label), at most 2 device pixels per pixel.
+        fadeDuration: 0, pixelRatio: Math.min(window.devicePixelRatio || 1, Number(this.config.pixel_ratio) || 2),
         // Igor's own tiles (traffic) need the Home Assistant login, as every API call.
         transformRequest: (url) => {
           var tok = this._hass && this._hass.auth && this._hass.auth.data && this._hass.auth.data.access_token;
@@ -6042,6 +6189,10 @@
           map.addLayer({ id: "trail", type: "line", source: "trail", layout: { "line-cap": "round", "line-join": "round" },
             paint: { "line-color": "#59d0e0", "line-width": 5, "line-opacity": 0.55 } });
         }
+        // `buildings: false`: the map without its buildings (less to draw).
+        if (this.config.buildings === false) (map.getStyle().layers || []).forEach((l) => {
+          if (/building/i.test(l.id + " " + (l["source-layer"] || ""))) map.setLayoutProperty(l.id, "visibility", "none");
+        });
         this.styleLayers();
         this.message("");
       });
@@ -6110,6 +6261,27 @@
       this.raf = requestAnimationFrame(() => this.tick());
       if (!this.map || !this.fix) return;
       var now = performance.now(), speed = this.speedMps(), moving = speed > GPS_MOVING;
+      // The map is drawn `fps` times a second while the car moves (20 by
+      // default: smooth, and half the work of drawing at every screen frame),
+      // 3 when it stands still. A screen that cannot keep up (its own frames
+      // come late) is drawn less often, down to 6, and more again when it can.
+      var gap = this.rafAt ? now - this.rafAt : 16;
+      this.rafAt = now;
+      this.rafAvg = this.rafAvg == null ? gap : this.rafAvg + (Math.min(gap, 500) - this.rafAvg) * 0.05;
+      var want = Math.max(5, Math.min(60, Number(this.config.fps) || 20));
+      if (!this.fpsNow || this.fpsNow > want) this.fpsNow = want;
+      if (!this.paceAt) this.paceAt = now;
+      if (now - this.paceAt > 5000) {
+        this.paceAt = now;
+        if (this.rafAvg > 40) this.fpsNow = Math.max(6, Math.round(this.fpsNow * 0.7));
+        else if (this.rafAvg < 25) this.fpsNow = Math.min(want, Math.round(this.fpsNow * 1.25) + 1);
+      }
+      var rate = moving || this.way || this.drPos ? this.fpsNow : 3;
+      if (this.frameAt && now - this.frameAt < 1000 / rate - 3) return;
+      // Eased by the time gone by, so the movement is the same at any rate.
+      var fr = this.frameAt ? Math.max(0.25, Math.min(12, (now - this.frameAt) / 16.67)) : 1;
+      this.frameAt = now;
+      var ease = function (k) { return 1 - Math.pow(1 - k, fr); };
       // Driving (not manoeuvring): the car goes where it faces, never back.
       var forward = speed > GPS_FWD;
       // Between two fixes: on along the heading, 4 s at most (not when slow:
@@ -6145,7 +6317,7 @@
       if (s && gpsDist(s.point, target) <= (s.lock || snapM) * 1.5) {
         target = s.point;
         // On a road and rolling (not manoeuvring): the arrow takes the road's direction.
-        if (speed > GPS_SLOW) { this.heading = gpsLerpAngle(this.heading, gpsAlong(s.bearing, this.heading), 0.2); if (this.hstate) this.hstate.heading = this.heading; }
+        if (speed > GPS_SLOW) { this.heading = gpsLerpAngle(this.heading, gpsAlong(s.bearing, this.heading), ease(0.2)); if (this.hstate) this.hstate.heading = this.heading; }
       }
       // A leap (a late fix): the arrow drives there along the roads, not across.
       var before = this.pos;
@@ -6160,7 +6332,7 @@
       }
       if (this.way && this.way.length) {
         // About a second for the whole way, at least the car's speed.
-        var step = Math.max(this.wayLen * 0.06, speed * 0.016 * 1.2), left = step;
+        var step = Math.max(this.wayLen * 0.06, speed * 0.016 * 1.2) * fr, left = step;
         while (left > 0 && this.way.length) {
           var nx = this.way[0], d = gpsDist(this.pos, nx);
           if (d <= left) { this.pos = nx; this.way.shift(); left -= d; }
@@ -6168,14 +6340,14 @@
         }
         if (!this.way.length || now - this.wayFrom > 2500) this.way = null;
       } else {
-        var k = jump > 400 ? 1 : 0.15;
+        var k = jump > 400 ? 1 : ease(0.15);
         this.pos = [this.pos[0] + (target[0] - this.pos[0]) * k, this.pos[1] + (target[1] - this.pos[1]) * k];
       }
       // Last guard: driving, not a step back (a big jump, a real relocation, still goes).
       if (forward && jump <= 400 && gpsAhead(before, this.pos, this.heading) < -0.2) this.pos = before;
-      this.shown = gpsLerpAngle(this.shown, this.heading, 0.1);
+      this.shown = gpsLerpAngle(this.shown, this.heading, ease(0.1));
       this.marker.setLngLat(this.pos).setRotation(this.shown);
-      if (!this.trailAt || now - this.trailAt > 500) {
+      if (!this.trailAt || now - this.trailAt > 1000) {
         this.trailAt = now;
         // On the road only once the arrow has reached it (not while gliding across).
         var on = s && gpsDist(this.pos, s.point) < 3 ? s : null;
@@ -6184,7 +6356,7 @@
       if (this.route && (!this.navAt || now - this.navAt > 1000)) { this.navAt = now; this.navTick(now, moving); }
       if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > 500)) { this.limitAt = now; this.limitTick(now, moving); }
       if (!this.alertAt || now - this.alertAt > 500) { this.alertAt = now; this.alertTick(now, speed); }
-      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.trafficTick(now, moving); }
+      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.trafficTick(now, moving); }
       if (this.follow) {
         var h = this.$("map").clientHeight;
         var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } };
@@ -6204,10 +6376,12 @@
           var near = Math.max(250, Math.min(1000, speed * 20));
           if (this.route && this.nextDist != null && this.nextDist < near) tz = Math.max(tz, Math.min(base + 0.6, tz + 1.4));
           else if (this.signalAhead != null && this.signalAhead < 150) tz = Math.min(base + 0.5, tz + 0.4);
-          this.zoomNow = this.zoomNow == null ? tz : this.zoomNow + (tz - this.zoomNow) * 0.02;
+          this.zoomNow = this.zoomNow == null ? tz : this.zoomNow + (tz - this.zoomNow) * ease(0.02);
           view.zoom = this.zoomNow;
         }
-        this.map.jumpTo(view);
+        // Nothing moved (the car parked): nothing is drawn.
+        var vkey = this.pos[0].toFixed(7) + "," + this.pos[1].toFixed(7) + "," + view.bearing.toFixed(1) + "," + (view.zoom == null ? "" : view.zoom.toFixed(3)) + "," + h;
+        if (vkey !== this.viewKey) { this.viewKey = vkey; this.map.jumpTo(view); }
       }
     }
   }
@@ -6273,26 +6447,59 @@
       best.onRoute = true;
       return best;
     },
-    // The limit of the road the car is on: OpenStreetMap's ways around (Overpass),
-    // asked again only when the car leaves the ways already known, at most every 8 s,
-    // and only while it drives (a free service, not asked for a parked car).
+    // The limit of the road the car is on, from OpenStreetMap's ways read by
+    // squares (see gpsWays): the squares around the car and ahead of it, so
+    // the road is known before the car is on it; TomTom's limit where the
+    // map has none (a key in Igor's options).
     limitTick(now, moving) {
       var p = this.pos;
       if (!p) return;
+      var speed = this.speedMps(), W = this.wayTiles || (this.wayTiles = {});
+      // On a motorway at speed, the big roads are enough.
+      var fast = (this.wayCls === "motorway" || this.wayCls === "trunk") && speed > 20;
+      var want = [], add = (kind, q) => {
+        var z = GPS_WAY_Z[kind], t = gpsTileOf(q, z), k = kind + "/" + t[0] + "/" + t[1];
+        if (!want.some((w) => w.k === k)) want.push({ k: k, kind: kind, z: z, x: t[0], y: t[1] });
+      };
+      if (!fast) add("minor", p);
+      add("major", p);
+      if (moving) {
+        if (!fast) add("minor", gpsProject(p, this.heading, Math.max(200, Math.min(900, speed * 20))));
+        add("major", gpsProject(p, this.heading, Math.max(1500, speed * 90)));
+      }
+      // The ways to look at: those of the squares wanted and of the squares
+      // next to the car's (the one it just left), once read.
+      var me = gpsTileOf(p, GPS_WAY_Z.minor), loaded = Object.keys(W).filter((k) => W[k].ways).sort().join(",");
+      var key = me[0] + "/" + me[1] + "|" + want.map((w) => w.k).join(",") + "|" + loaded;
+      if (key !== this.wayKey) {
+        this.wayKey = key;
+        var list = [];
+        Object.keys(W).forEach((k) => {
+          var T = W[k];
+          if (!T.ways) return;
+          var near = T.kind === "major" || (Math.abs(T.x - me[0]) <= 1 && Math.abs(T.y - me[1]) <= 1) || want.some((w) => w.k === k);
+          if (near) list = list.concat(T.ways);
+        });
+        this.limitWays = list;
+      }
       var ways = this.limitWays || [], best = null;
-      ways.forEach((w) => {
+      for (var i = 0; i < ways.length; i++) {
+        var w = ways[i], b = w.box;
+        if (b && (p[0] < b[0] || p[0] > b[2] || p[1] < b[1] || p[1] > b[3])) continue;
         var o = gpsOnLine(p, w.geom);
-        if (!o) return;
+        if (!o) continue;
         var along = gpsAlong(o.bearing, this.heading), off = Math.abs(((along - this.heading + 540) % 360) - 180);
         o.score = o.dist + (moving && off > 50 ? 40 : 0);
         o.w = w;
         if (!best || o.score < best.score) best = o;
-      });
+      }
       var onWay = best && best.dist < 25;
       if (onWay) {
         // Forward when the car goes the way the way is drawn.
         var fwd = Math.abs(((best.bearing - this.heading + 540) % 360) - 180) < 90;
         var v = gpsWayLimit(best.w.tags, fwd), cls = String(best.w.tags.highway || "").replace(/_link$/, "");
+        // No limit in the map: TomTom's for this road (asked once per road).
+        if (!v) v = this.tomtomLimit(best.w, now, p);
         // A street with no sign in the map: what such a street is in France
         // (a living street 20, a residential street 50), shown as probable.
         var guess = v ? null : cls === "living_street" ? 20 : cls === "residential" ? 50 : null;
@@ -6302,39 +6509,56 @@
         if (v !== this.osmLimit || guess !== this.osmGuess) { this.osmLimit = v; this.osmGuess = guess; this.overlays(); }
         this.setRoadName(best.w.tags);
       } else if ((this.osmLimit || this.osmGuess || this.wayCls) && (!this.osmAt || gpsDist(p, this.osmAt) > 40)) {
-        // Off the roads read (a street not loaded yet, OpenStreetMap busy):
-        // the last road's limit is not this road's.
+        // Off the roads read (a car park, a square not read yet): the last
+        // road's limit is not this place's.
         this.osmLimit = null; this.osmGuess = null; this.wayCls = null;
+        this.setRoadName(null);
         this.overlays();
       }
-      // The roads ahead are read before the car gets there (a few hundred
-      // metres, more the faster), so a new limit shows the moment its section
-      // starts: again once the car is past the middle of what is known.
-      var speed = this.speedMps();
-      var ahead = moving ? Math.max(100, Math.min(500, speed * 12)) : 0, radius = Math.max(300, Math.min(900, speed * 22));
-      var areas = this.limitAreas || [];
-      var covered = areas.some((a) => gpsDist(a.c, p) < a.r * 0.5);
-      if (onWay && covered) return;
-      if (!moving && onWay) return;
-      if (this.limitBusy || (this.limitAsked && now - this.limitAsked < (onWay ? 2500 : 1500))) return;
-      this.limitAsked = now;
+      // The next square to read: the screen's store first, else OpenStreetMap
+      // (one at a time; a square that failed is asked again 4 s later, from a mirror).
+      if (this.limitBusy) return;
+      var next = want.find((t) => !W[t.k] || (W[t.k].failed && now - W[t.k].at > 4000));
+      if (!next) return;
       this.limitBusy = true;
-      var c = gpsProject(p, this.heading, ahead);
-      var q = '[out:json][timeout:15];way(around:' + Math.round(radius) + ',' + c[1].toFixed(6) + ',' + c[0].toFixed(6) + ')[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|road)(_link)?$"];out tags geom;';
-      gpsOverpass(this.config, q)
-        .then((j) => {
-          var known = this.limitById || (this.limitById = {});
-          (j.elements || []).forEach((e) => {
-            if (e.type === "way" && Array.isArray(e.geometry) && e.geometry.length > 1) known[e.id] = { tags: e.tags || {}, geom: e.geometry.map((g) => [g.lon, g.lat]), c: c };
-          });
-          // Kept: what lies within 3 km of the car.
-          Object.keys(known).forEach((id) => { if (gpsDist(known[id].c, p) > 3000) delete known[id]; });
-          this.limitWays = Object.keys(known).map((id) => known[id]);
-          this.limitAreas = areas.filter((a) => gpsDist(a.c, p) < 3000).concat([{ c: c, r: radius }]).slice(-8);
-          if (!this.limitWays.length) { this.osmLimit = null; this.limitKnown = true; this.setRoadName(null); this.overlays(); }
+      W[next.k] = { loading: true, at: now, kind: next.kind, x: next.x, y: next.y };
+      var done = (found, fresh) => {
+        W[next.k] = { ways: found, at: now, kind: next.kind, x: next.x, y: next.y };
+        if (fresh) gpsStorePut(next.k, { at: Date.now(), ways: found });
+        // Squares far behind are let go (5 km for the streets, 40 km for the big roads).
+        Object.keys(W).forEach((k) => {
+          var T = W[k], bx = gpsTileBox(T.x, T.y, GPS_WAY_Z[T.kind]);
+          if (gpsDist(p, [(bx.w + bx.e) / 2, (bx.n + bx.s) / 2]) > (T.kind === "major" ? 40000 : 5000)) delete W[k];
+        });
+      };
+      gpsStoreGet(next.k)
+        .then((saved) => {
+          if (saved && Array.isArray(saved.ways) && Date.now() - saved.at < GPS_KEEP_MS) { done(saved.ways, false); return null; }
+          return gpsOverpass(this.config, gpsWayQuery(gpsTileBox(next.x, next.y, next.z), next.kind === "major")).then((j) => done(gpsWays(j.elements), true));
         })
-        .catch(() => { /* no answer: the sign stays as it was, asked again shortly */ })
+        .catch(() => { W[next.k] = { failed: true, at: performance.now(), kind: next.kind, x: next.x, y: next.y }; })
         .then(() => { this.limitBusy = false; });
+    },
+    // TomTom's limit for a road the map has none for (nives.car_limit): asked
+    // once per road (its name, number and kind, within 1.5 km), at most every
+    // 10 s and 300 times a drive; kept on the way once known.
+    tomtomLimit(w, now, p) {
+      if (w.tt !== undefined) return w.tt || null;
+      if (!this.trafficOn() || this.config.speed_limits === false) return null;
+      var key = [w.tags.highway, w.tags.ref || "", w.tags.name || ""].join("|"), memo = this.ttRoads || (this.ttRoads = {});
+      var m = memo[key];
+      if (m && gpsDist(m.at, p) < 1500) { w.tt = m.v; return m.v || null; }
+      if (this.ttBusy || (this.ttAt && now - this.ttAt < 10000) || (this.ttCount || 0) >= 300) return null;
+      this.ttAt = now;
+      this.ttBusy = true;
+      this.ttCount = (this.ttCount || 0) + 1;
+      var at = p.slice();
+      this._hass.callWS({ type: "call_service", domain: "nives", service: "car_limit", return_response: true,
+        service_data: { latitude: at[1], longitude: at[0], heading: Math.round(this.heading) % 360 } })
+        .then((res) => { var r = (res && res.response) || {}; var v = Number(r.limit) || 0; w.tt = v; memo[key] = { v: v, at: at }; })
+        .catch(() => { /* asked again on another road */ })
+        .then(() => { this.ttBusy = false; });
+      return null;
     },
     routeJamData() {
       var R = this.route, feats = [];
@@ -6372,34 +6596,59 @@
       setTimeout(() => $("pq").focus(), 50);
     },
     // OpenStreetMap's search (Nominatim): on « Chercher » only, never as one types.
-    async search(q) {
+    // The search goes through Igor (nives.car_search): TomTom's when a key is
+    // set (addresses with their numbers, shops), else OpenStreetMap's, near
+    // the car first either way. An older integration: OpenStreetMap from here.
+    async search(q, live) {
       var list = this.$("plist");
       q = String(q || "").trim();
+      var seq = this.searchSeq = (this.searchSeq || 0) + 1;
+      if (!q) { list.innerHTML = ""; return; }
+      var note = document.createElement("div"); note.className = "note"; note.textContent = "Recherche…";
+      if (!live) { list.innerHTML = ""; list.appendChild(note); }
+      var here = this.pos || (this.fix && this.fix.point), rows = null;
+      try {
+        var res = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_search", return_response: true,
+          service_data: Object.assign({ query: q, limit: 6 }, here ? { latitude: here[1], longitude: here[0] } : {}) });
+        var r = res && res.response;
+        if (r && r.ok) { rows = r.results || []; this.searchLive = r.source === "tomtom"; }
+      } catch (e) { rows = null; }
+      if (rows == null) rows = await this.searchOsm(q, here);
+      if (seq !== this.searchSeq) return;
       list.innerHTML = "";
-      if (!q) return;
-      var note = document.createElement("div"); note.className = "note"; note.textContent = "Recherche…"; list.appendChild(note);
-      var here = this.pos || (this.fix && this.fix.point);
-      var url = String(this.config.geocoder || "https://nominatim.openstreetmap.org").replace(/\/$/, "") + "/search?format=jsonv2&limit=6&accept-language=fr&q=" + encodeURIComponent(q) +
-        (here ? "&viewbox=" + [here[0] - 1, here[1] + 1, here[0] + 1, here[1] - 1].map((x) => x.toFixed(4)).join(",") : "");
-      var rows;
-      try { rows = await (await fetch(url, { headers: { Accept: "application/json" } })).json(); }
-      catch (e) { note.textContent = "Recherche impossible (pas d'internet ?)"; return; }
-      list.innerHTML = "";
-      if (!Array.isArray(rows) || !rows.length) { note.textContent = "Rien trouvé."; list.appendChild(note); return; }
+      if (rows == null) { note.textContent = "Recherche impossible (pas d'internet ?)"; list.appendChild(note); return; }
+      if (!rows.length) { note.textContent = "Rien trouvé."; list.appendChild(note); return; }
       rows.forEach((r) => {
         var lat = Number(r.lat), lon = Number(r.lon);
         if (isNaN(lat) || isNaN(lon)) return;
         var b = document.createElement("button");
         b.type = "button";
-        var parts = String(r.display_name || "").split(", ");
         var ri = document.createElement("ha-icon"); ri.setAttribute("icon", "mdi:map-marker-outline"); b.appendChild(ri);
-        var rt = document.createElement("div"); rt.textContent = r.name || parts[0]; b.appendChild(rt);
+        var rt = document.createElement("div"); rt.textContent = r.name || "lieu"; b.appendChild(rt);
         var sm = document.createElement("small");
-        sm.textContent = parts.slice(r.name ? 0 : 1, 4).join(", ") + (here ? " · " + gpsMetres(gpsDist(here, [lon, lat])) : "");
+        sm.textContent = [r.address && r.address !== r.name ? r.address : "", here ? gpsMetres(gpsDist(here, [lon, lat])) : ""].filter(Boolean).join(" · ");
         rt.appendChild(sm);
-        b.addEventListener("click", () => { this.setDestination({ lat: lat, lon: lon, name: r.name || parts[0] }, true); this.$("panel").hidden = true; });
+        b.addEventListener("click", () => { this.setDestination({ lat: lat, lon: lon, name: r.name || "destination" }, true); this.$("panel").hidden = true; });
         list.appendChild(b);
       });
+    },
+    // OpenStreetMap's search (Nominatim) from this screen: within about 60 km
+    // of the car first, then anywhere. On « Chercher » only, never as one types.
+    async searchOsm(q, here) {
+      var base = String(this.config.geocoder || "https://nominatim.openstreetmap.org").replace(/\/$/, "") + "/search?format=jsonv2&limit=6&accept-language=fr&q=" + encodeURIComponent(q);
+      var ask = async (extra) => {
+        var rows = await (await fetch(base + extra, { headers: { Accept: "application/json" } })).json();
+        return (Array.isArray(rows) ? rows : []).map((r) => { var parts = String(r.display_name || "").split(", "); return { lat: Number(r.lat), lon: Number(r.lon), name: r.name || parts[0], address: parts.slice(0, 4).join(", ") }; });
+      };
+      var local = [], world = [];
+      try {
+        if (here) local = await ask("&bounded=1&viewbox=" + [here[0] - 0.8, here[1] + 0.55, here[0] + 0.8, here[1] - 0.55].map((x) => x.toFixed(4)).join(","));
+        world = await ask("");
+      } catch (e) { if (!local.length) return null; }
+      if (here) local.sort((a, b) => gpsDist(here, [a.lon, a.lat]) - gpsDist(here, [b.lon, b.lat]));
+      var out = [];
+      local.concat(world).forEach((p) => { if (!out.some((o) => gpsDist([o.lon, o.lat], [p.lon, p.lat]) < 30)) out.push(p); });
+      return out.slice(0, 6);
     },
     setDestination(d, write) {
       this.dest = d;
@@ -6740,7 +6989,7 @@
       var map = this.map, p = this.pos, kinds = this.poiKinds();
       if (!map || !p || !kinds.length) return;
       var key = kinds.slice().sort().join(",");
-      if (key !== this.poiKey) { this.poiKey = key; this.poiTiles = {}; this.pois = []; this.poiShown = null; }
+      if (key !== this.poiKey) { this.poiKey = key; this.poiTiles = {}; this.rebuildPois(); }
       if (this.poiBusy) return;
       var want = [], seen = {}, z = GPS_TILE_Z;
       var add = (x, y) => {
@@ -6767,19 +7016,53 @@
         .then((jj) => {
           if (key !== this.poiKey) return;
           T[next.k] = { at: now, items: gpsPois(jj.elements) };
-          // Squares far behind are let go (more than 20 km).
+          // Squares far behind are let go (more than 12 km).
           Object.keys(T).forEach((k) => {
             var xy = k.split("/"), b = gpsTileBox(Number(xy[0]), Number(xy[1]), z);
-            if (gpsDist(p, [(b.w + b.e) / 2, (b.n + b.s) / 2]) > 20000) delete T[k];
+            if (gpsDist(p, [(b.w + b.e) / 2, (b.n + b.s) / 2]) > 12000) delete T[k];
           });
-          var all = {}, list = [];
-          Object.keys(T).forEach((k) => (T[k].items || []).forEach((q2) => { if (!all[q2.id]) { all[q2.id] = true; list.push(q2); } }));
-          this.pois = list;
-          this.poiShown = null;
-          this.refreshPois();
+          this.rebuildPois();
         })
         .catch(() => { T[next.k] = { at: now, failed: true }; })
         .then(() => { this.poiBusy = false; });
+    },
+    // Every place known: the squares read from OpenStreetMap and, in France,
+    // the Ministry of the Interior's own list of cameras; a camera known from
+    // both (within 60 m) is one camera, with what each says about it.
+    rebuildPois() {
+      var T = this.poiTiles || {}, all = {}, list = [], cams = [];
+      Object.keys(T).forEach((k) => (T[k].items || []).forEach((q) => { if (all[q.id]) return; all[q.id] = true; (q.kind === "camera" ? cams : list).push(q); }));
+      var L = this.layers || {};
+      if (L.cameras && L.cameras !== "off") (this.frCams || []).forEach((c) => {
+        var same = null;
+        for (var i = 0; i < cams.length && !same; i++) if (Math.abs(cams[i].p[1] - c.p[1]) < 0.001 && gpsDist(cams[i].p, c.p) < 60) same = cams[i];
+        if (same) { if (!same.what) same.what = c.what; if (c.noSpeed) same.noSpeed = true; return; }
+        cams.push(c);
+      });
+      this.pois = list.concat(cams);
+      this.poiShown = null;
+      this.refreshPois();
+    },
+    // France's cameras around the car (Igor's integration keeps the official
+    // list): asked again every 6 km. Elsewhere it answers nothing, at no cost.
+    camTick(now) {
+      var L = this.layers || {}, p = this.pos;
+      if (!p || !this._hass || this.config.cameras_official === false || !L.cameras || L.cameras === "off" || this.frBusy) return;
+      if (this.frCenter && gpsDist(this.frCenter, p) < 6000) return;
+      if (this.frAsked && now - this.frAsked < (this.frFailed ? 300000 : 10000)) return;
+      this.frAsked = now;
+      this.frBusy = true;
+      var at = p.slice();
+      this._hass.callWS({ type: "call_service", domain: "nives", service: "car_cameras", return_response: true, service_data: { latitude: at[1], longitude: at[0], radius_km: 15 } })
+        .then((res) => {
+          var r = (res && res.response) || {};
+          this.frCams = (r.cameras || []).map((c) => ({ id: c.id, kind: "camera", p: [c.lon, c.lat], tags: {}, limit: null, label: "", what: c.what, noSpeed: c.kind === "feux" || c.kind === "niveaux" }));
+          this.frCenter = at;
+          this.frFailed = false;
+          this.rebuildPois();
+        })
+        .catch(() => { this.frFailed = true; })
+        .then(() => { this.frBusy = false; });
     },
     // What the map shows: every place in view; cameras and lights only on the
     // car's way (ahead, on its road or its route), not the streets around.
@@ -6867,7 +7150,9 @@
         if (d != null && speed >= GPS_SLOW && (!cam || d < cam.d)) cam = { q: q, d: d };
       });
       this.onWay = onWay;
-      this.refreshPois();
+      // Drawn again only when the lights and cameras on the way changed.
+      var wkey = Object.keys(onWay).sort().join(",");
+      if (wkey !== this.onWayKey || this.poiShown == null) { this.onWayKey = wkey; this.refreshPois(); }
       var limitNow = this.lastLimit ? this.lastLimit.v : NaN;
       if (L.cameras === "zone") {
         // The zone: from 3/4 of its length before the camera to 1/4 after,
@@ -6875,7 +7160,7 @@
         var z = this.zone;
         if (cam) {
           var len = gpsZoneLength(cam.q.limit || limitNow);
-          if (cam.d <= len * 0.75 && (!z || z.id !== cam.q.id)) z = this.zone = { id: cam.q.id, p: cam.q.p, len: len, limit: cam.q.limit };
+          if (cam.d <= len * 0.75 && (!z || z.id !== cam.q.id)) z = this.zone = { id: cam.q.id, p: cam.q.p, len: len, limit: cam.q.noSpeed ? null : cam.q.limit };
         }
         if (z) {
           var rz = gpsRelative(this.pos, z.p, this.heading), past = rz.ahead < 0 ? rz.d : 0;
@@ -6893,10 +7178,12 @@
       } else if (L.cameras === "radar" && cam) {
         var reach = kmh > 90 ? 1000 : 500;
         if (cam.d <= reach) {
-          var cl = cam.q.limit || limitNow;
-          this.showAlert({ key: "cam" + cam.q.id, icon: "mdi:cctv", title: "Radar" + (cl ? " · " + cl : ""), sub: "à " + gpsMetres(cam.d),
-            cls: cl && kmh <= cl + 2 ? "ok" : "", bar: 1 - cam.d / reach,
-            voice: "Radar à " + gpsMetres(Math.max(50, cam.d)).replace(" m", " mètres").replace(" km", " kilomètres") + (cl ? ", limité à " + cl : "") });
+          // Its kind when known (red light, average speed…); a red light or a
+          // level crossing camera has no speed to keep under.
+          var what = cam.q.what || "Radar", cl = cam.q.noSpeed ? null : cam.q.limit || limitNow;
+          this.showAlert({ key: "cam" + cam.q.id, icon: cam.q.noSpeed ? "mdi:traffic-light" : "mdi:cctv", title: what + (cl ? " · " + cl : ""), sub: "à " + gpsMetres(cam.d),
+            cls: cam.q.noSpeed ? "inc" : cl && kmh <= cl + 2 ? "ok" : "", bar: 1 - cam.d / reach,
+            voice: what + " à " + gpsMetres(Math.max(50, cam.d)).replace(" m", " mètres").replace(" km", " kilomètres") + (cl ? ", limité à " + cl : "") });
           return;
         }
       }
