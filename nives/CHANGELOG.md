@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.38.0 — A navigator you can read and hear
+
+- **Igor's own voice** in `custom:igor-gps-card`: guidance is spoken by Igor's text-to-speech (made by the server, played on the screen, each sentence kept), with the browser's voice as a fallback. The voice button has three settings — everything (each turn), warnings only (cameras, jams, detours), nothing — kept by Home Assistant for the user, so it survives a restart of the screen. The first touch anywhere opens the sound (a browser rule); `tts_entity:` chooses another voice.
+- **Warnings that leave the map in view**: a camera, a danger zone or an incident is a small tile under the limit sign, its distance in large figures; for a camera above the limit the card's frame flashes red, and turns green under it. No more banner across the map.
+- **The way left as a bar** on the right when traffic slows ahead: the car at the bottom, the arrival at the top, orange and red where it slows, « bouchon · 6 min »; in a jam, the jam alone and « fin dans 4 min · 1,8 km ».
+- **A closed road** is avoided with a word for a few seconds (« Déviation · route fermée », with « Annuler »), no alarm.
+- **A choice of routes** after picking a destination by hand (with a TomTom key): the fastest, without motorways, without tolls — time, distance, jams, tolls and ferries — and what to keep off (motorways, tolls, ferries), kept for the next trips. Not touched for 12 seconds, the first one starts.
+- From TomTom's route, at no extra request: the **limit of every stretch** of the way (shown at once, before OpenStreetMap), the **lanes to take** before a turn, and a word before a **toll** or a **ferry**. `nives.route` takes `avoid_types` and returns limits, lanes, tolls, tunnels, ferries.
+- **Icons twice as large** on the map, cameras larger still, drawn sharp.
+- **The finger moves the map**: every touch holds it and restarts the wait before it follows the car again (`follow_pause`, 15 s); a new button shows the whole route for 20 seconds.
+- Incidents are asked from TomTom every 5 minutes while driving (2,500 requests a month on the free plan).
+
 ## 0.37.8 — A head unit that keeps up for hours
 
 - A wall follows the house at most every 250 ms (`refresh:`, 0 for every change): a car's sensors change dozens of times a second, and every change redrew every card. A small screen (a car's head unit) fell behind after a while, showing the speed and the position late.
