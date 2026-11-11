@@ -5237,7 +5237,7 @@
   // TomTom Orbis base maps, chosen in the layers' panel: the style and its
   // tiles come from Home Assistant (the key stays on the server), a TomTom
   // key in Igor's options is needed.
-  var GPS_ORBIS = { mono: "basic_mono-dark", dark: "basic_street-dark_driving", light: "basic_street-light", satellite: "basic_street-satellite" };
+  var GPS_ORBIS = { mono: "basic_mono-dark", dark: "basic_street-dark-driving", light: "basic_street-light", satellite: "basic_street-satellite" };
   var GPS_R = 6378137, GPS_PREDICT_S = 4, GPS_MOVING = 0.8, GPS_TRAIL = 600;
   // Speeds (m/s, from the car itself when it says, else the GPS):
   // above GPS_FWD (15 km/h) a car only drives forward, so where it goes is
@@ -5936,11 +5936,10 @@
         // The way left as a bar: the car at the bottom, the arrival at the
         // top, orange and red where the traffic is slow; in a jam, the jam
         // alone and when it ends.
-        ".tbar { flex: 1; min-height: 0; align-self: flex-end; width: 58px; display: flex; flex-direction: column; align-items: center; padding: 6px 0; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.9); border: 1px solid #22262c; color: #878c95; font-family: " + MONO + "; font-size: 11px; }" +
-        ".tbar[hidden] { display: none; } .tbar.in { border-color: #e5323b; } .tbar .tk { position: relative; flex: 1; width: 14px; margin: 6px 0 12px; border-radius: 7px; background: #3b8cff; }" +
+        ".tbar { flex: 1; min-height: 0; align-self: flex-end; width: 62px; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 6px 0; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.9); border: 1px solid #22262c; color: #878c95; font-family: " + MONO + "; font-size: 11px; }" +
+        ".tbar[hidden] { display: none; } .tbar.in { border-color: #e5323b; } .tbar .top { white-space: nowrap; } .tbar .tk { position: relative; flex: 1; width: 14px; margin: 6px 0 12px; border-radius: 7px; background: #3b8cff; }" +
         ".tbar .tk i { position: absolute; left: 0; width: 14px; border-radius: 7px; } .tbar .tk u { position: absolute; left: -7px; bottom: -10px; width: 28px; height: 28px; border-radius: 50%; background: #59d0e0; border: 3px solid #07080a; box-sizing: border-box; }" +
-        ".tbar .tg { position: absolute; right: 20px; white-space: nowrap; padding: 2px 7px; border-radius: 2px; background: #e5323b; color: #fff; font-size: 13px; font-weight: 600; }" +
-        ".tbar .tg.amb { background: #f08c1a; color: #111; } .tbar b { color: #e9e4da; font-size: 14px; font-weight: 600; } .tbar.in .top { color: #e5323b; }" +
+        ".tbar b { font-family: 'Chakra Petch', " + MONO + "; color: #e9e4da; font-size: 15px; font-weight: 600; white-space: nowrap; } .tbar > span { white-space: nowrap; } .tbar.in .top { color: #e5323b; }" +
         // A closed road on the route: avoid it or not, a touch away.
         ".ask { position: absolute; z-index: 5; left: 50%; bottom: 96px; transform: translateX(-50%); width: min(560px, calc(100% - 32px)); box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 14px 16px; border-radius: var(--igor-radius, 3px); background: rgba(30,8,10,0.96); border: 1px solid #e5323b; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; --mdc-icon-size: 34px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }" +
         ".ask[hidden] { display: none; } .ask > ha-icon { color: #e5323b; flex: none; } .ask .q { flex: 1; min-width: 180px; } .ask b { display: block; font-family: 'Chakra Petch', " + MONO + "; font-size: 20px; font-weight: 500; } .ask .q div { color: #c9ccd1; margin-top: 3px; }" +
@@ -5995,10 +5994,10 @@
         ".panel button.go { background: #59d0e0; color: #07080a; border-color: #59d0e0; text-align: center; } .panel button.stop { border-color: #e5323b; color: #e5323b; text-align: center; }" +
         ".panel .list { display: grid; gap: 8px; } .panel .list small { display: block; color: #878c95; font-size: 12px; margin-top: 3px; } .panel .note { color: #878c95; font-size: 13px; }" +
         ".trow { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #22262c; border-radius: var(--igor-radius, 3px); background: rgba(18,23,28,0.8); }" +
-        ".trow > ha-icon { color: #e5323b; flex: none; --mdc-icon-size: 24px; } .trow .via > ha-icon { color: #d9a441; }" +
+        ".trow > ha-icon { color: #e5323b; flex: none; --mdc-icon-size: 24px; } .trow.via > ha-icon { color: #d9a441; }" +
         ".trow .tt { flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
         ".trow .tt small { display: block; color: #878c95; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }" +
-        ".trow .del { flex: none; width: 36px; height: 36px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #878c95; cursor: pointer; display: grid; place-items: center; }" +
+        ".trow .del { flex: none; width: 36px; height: 36px; min-height: 0; padding: 0; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #878c95; cursor: pointer; display: grid; place-items: center; --mdc-icon-size: 20px; }" +
         ".alttag { padding: 3px 9px; border-radius: 12px; background: rgba(7,8,10,0.92); border: 1px solid #3d454e; color: #878c95; font-family: " + MONO + "; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }" +
         ".alttag.win { color: #5cc28f; border-color: #5cc28f; } .alttag.lose { color: #f08c1a; border-color: #f08c1a; }" +
         '</style><ha-card id="card"><div id="map"></div><div class="msg" id="msg">Chargement de la carte…</div>' +
@@ -6933,36 +6932,31 @@
         var a = R.cum[Math.min(sp[0], R.cum.length - 1)] - along, id = k[0] + sp[0];
         if (a > 0 && a < 2000 && !this.spoken[id]) { this.spoken[id] = 9; this.toast(k[1] + " · dans " + gpsMetres(a), 6000); this.say(k[1] + " dans " + gpsMetres(a).replace(" m", " mètres").replace(" km", " kilomètres")); }
       }));
-      // The bar: only when the traffic slows somewhere ahead.
-      var bar = $("tbar"), left = Math.max(1, R.total - along), jams = (R.jams || []).map((j) => ({ a: R.cum[Math.min(j.start, R.cum.length - 1)], b: R.cum[Math.min(j.end, R.cum.length - 1)], level: j.level, delay: j.delay })).filter((j) => j.b > along + 30 && j.b - j.a > 50);
+      // The bar: only for a real jam (red), and only when the car is in it or
+      // about to reach it (3 km). A mere slowing down stays on the route line.
+      var bar = $("tbar"), jams = (R.jams || []).map((j) => ({ a: R.cum[Math.min(j.start, R.cum.length - 1)], b: R.cum[Math.min(j.end, R.cum.length - 1)], level: j.level, delay: j.delay })).filter((j) => j.level === 2 && j.b > along + 30 && j.b - j.a > 50 && (j.a <= along + 20 || j.a - along < 3000));
       if (!jams.length) { bar.hidden = true; return; }
       bar.hidden = false;
       var tk = $("tbTrack"), inJam = jams.find((j) => j.a <= along + 20);
       tk.innerHTML = "";
       bar.classList.toggle("in", !!inJam);
+      var mins = (s) => { var m = Math.round(s / 60); return m >= 60 ? Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0") : Math.max(1, m) + " min"; };
       var seg = (from, to, lo, hi, color) => { var el = document.createElement("i"); el.style.bottom = (100 * (from - lo) / (hi - lo)).toFixed(1) + "%"; el.style.height = Math.max(3, 100 * (to - from) / (hi - lo)).toFixed(1) + "%"; el.style.background = color; tk.appendChild(el); };
       if (inJam) {
         // In it: the jam alone, the car in it, when it ends.
         var rest = inJam.b - along, v = this.speedMps(), secs = Math.max(30, Math.min(rest / Math.max(v, 2.5), inJam.delay + rest / 14));
         tk.style.background = "#3b8cff";
-        seg(along, inJam.b, along, inJam.b + (inJam.b - inJam.a) * 0.2, inJam.level === 2 ? "#e5323b" : "#f08c1a");
+        seg(along, inJam.b, along, inJam.b + (inJam.b - inJam.a) * 0.2, "#e5323b");
         $("tbTop").textContent = "fin dans";
-        $("tbMain").textContent = Math.max(1, Math.round(secs / 60)) + " min";
+        $("tbMain").textContent = mins(secs);
         $("tbSub").textContent = gpsMetres(rest);
       } else {
-        // Only the jam's stretch: the car at the bottom, the jam's end at the
-        // top; the rest of the way is none of the bar's business.
-        var first = jams[0], span = Math.max(1, first.b - along), v = this.speedMps();
+        // Coming up on it: the jam's stretch alone, and the time before it.
+        var first = jams[0], v = this.speedMps();
         tk.style.background = "#3b8cff";
-        seg(first.a, first.b, along, first.b, first.level === 2 ? "#e5323b" : "#f08c1a");
-        var tag = document.createElement("span");
-        tag.className = "tg" + (first.level === 2 ? "" : " amb");
-        tag.textContent = (first.level === 2 ? "bouchon" : "ralenti") + (first.delay >= 60 ? " · " + Math.round(first.delay / 60) + " min" : "");
-        tag.style.bottom = (100 * (first.a - along) / span).toFixed(1) + "%";
-        tk.appendChild(tag);
-        var secs = (first.a - along) / Math.max(v, 2.5) + (first.delay || 0);
-        $("tbTop").textContent = "fin dans";
-        $("tbMain").textContent = Math.max(1, Math.round(secs / 60)) + " min";
+        seg(first.a, first.b, along, first.b, "#e5323b");
+        $("tbTop").textContent = "bouchon";
+        $("tbMain").textContent = mins((first.a - along) / Math.max(v, 2.5));
         $("tbSub").textContent = gpsMetres(first.a - along);
       }
       var me = document.createElement("u"); tk.appendChild(me);
@@ -7004,6 +6998,7 @@
         });
         map.on("mouseenter", "alts", () => { map.getCanvas().style.cursor = "pointer"; });
         map.on("mouseleave", "alts", () => { map.getCanvas().style.cursor = ""; });
+        map.on("move", () => this.clampAlts());
       }
       map.getSource("alts").setData(this.altsData());
       (this.altMarkers || []).forEach((m) => m.remove());
@@ -7016,9 +7011,31 @@
         var el = document.createElement("div");
         el.className = "alttag" + (dmin < 0 ? " win" : dmin > 0 ? " lose" : "");
         el.textContent = dmin === 0 ? "≈ 0 min" : (dmin > 0 ? "+" : "−") + Math.abs(dmin) + " min";
-        var mk = new window.maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(R0.coords[Math.floor(R0.coords.length / 2)]).addTo(map);
+        // The bubble where the driver sees the route: the point of it nearest
+        // the car, kept inside the screen when the map follows.
+        var pt = R0.coords[Math.floor(R0.coords.length / 2)];
+        if (this.pos) {
+          var bd = Infinity;
+          for (var k = 0; k < R0.coords.length; k += 3) { var dd = gpsDist(this.pos, R0.coords[k]); if (dd < bd) { bd = dd; pt = R0.coords[k]; } }
+        }
+        var mk = new window.maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(pt).addTo(map);
+        mk._igorLL = pt;
         this.altMarkers.push(mk);
         el.addEventListener("click", (ev) => { ev.stopPropagation(); this.pickAlt(a); });
+      });
+      this.clampAlts();
+    },
+    // The alternates' bubbles stay where the driver reads them: back on their
+    // route when it is in view, on the screen's edge when it is not.
+    clampAlts() {
+      var map = this.map;
+      if (!map || !this.altMarkers || !this.altMarkers.length) return;
+      var w = map.getCanvas().clientWidth, h = map.getCanvas().clientHeight;
+      this.altMarkers.forEach((m) => {
+        if (!m._igorLL) return;
+        var p = map.project(m._igorLL);
+        var x = Math.min(w - 60, Math.max(60, p.x)), y = Math.min(h - 130, Math.max(130, p.y));
+        m.setLngLat(Math.abs(x - p.x) > 1 || Math.abs(y - p.y) > 1 ? map.unproject([x, y]) : m._igorLL);
       });
     },
     pickAlt(a) {
@@ -7040,13 +7057,21 @@
       } else this.useTomTom(a.route);
       this.drawAlts();
     },
-    // The alternates again, with the main route: every third 3-minute cycle
-    // (9 min), so the free quota is spared.
-    async refreshAlts() {
+    // The alternates again, from where the car is: every third 3-minute cycle
+    // (9 min), so the free quota is spared — at once (`force`) when the driver
+    // opens the whole trip, and rebuilt when they had gone (a stop reached).
+    async refreshAlts(force) {
       var d = this.dest, from = this.pos;
-      if (!this.alts || !this.alts.length || !d || !from || !this.trafficOn()) return;
-      this.altCycle = (this.altCycle || 0) + 1;
-      if (this.altCycle % 3) return;
+      if (!d || !from || !this.trafficOn()) return;
+      if (force) this.altCycle = 0;
+      else { this.altCycle = (this.altCycle || 0) + 1; if (this.altCycle % 3) return; }
+      if (!this.alts || !this.alts.length) {
+        var mine = this.tripAvoid || this.avoidTypes(), has = (t) => mine.indexOf(t) >= 0;
+        this.alts = [];
+        if (!has("motorways")) this.alts.push({ label: "Sans autoroute", types: mine.concat(["motorways"]) });
+        if (!has("tollRoads")) this.alts.push({ label: "Sans péage", types: mine.concat(["tollRoads"]) });
+      }
+      if (!this.alts.length) return;
       var got = await Promise.all(this.alts.map((a) => this.askRoute(d, from, a.types || [])));
       if (this.dest !== d) return;
       got.forEach((r, i) => { if (r && r.ok && r.route && this.alts[i]) this.alts[i].route = r.route; });
@@ -7185,6 +7210,7 @@
       if (this.pos) b.extend(this.pos);
       this.setFollow(false, 20);
       this.map.fitBounds(b, { padding: { top: 110, bottom: 80, left: 70, right: 80 }, bearing: 0, pitch: 0, duration: 600 });
+      if (this.dest) this.refreshAlts(true);
     },
     hush() {
       try { if (this.audio) this.audio.pause(); if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { /* nothing playing */ }
@@ -7725,6 +7751,7 @@
       if (L.incidents && this.traffic && this.traffic.incidents && speed > GPS_MOVING) {
         var inc = null;
         this.traffic.incidents.forEach((i) => {
+          if (i.kind === "jam") return;
           var reach2 = i.closed ? 3000 : 1500, best = null;
           // The incident's nearest point the car meets.
           for (var k = 0; k < i.line.length; k += Math.max(1, Math.floor(i.line.length / 12))) {

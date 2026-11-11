@@ -349,15 +349,21 @@ def parse_nominatim(rows: Any) -> list[dict]:
         except (KeyError, TypeError, ValueError):
             continue
         parts = str(r.get("display_name") or "").split(", ")
+        settlement = str(r.get("addresstype") or r.get("type") or "") in SETTLEMENTS
         out.append({"lat": lat, "lon": lon, "name": str(r.get("name") or parts[0])[:60],
                     "address": ", ".join(parts[:4])[:160],
-                    "settlement": str(r.get("addresstype") or r.get("type") or "") in SETTLEMENTS})
+                    "settlement": settlement, "type": "geo" if settlement else "other",
+                    "city": (parts[1] if len(parts) > 1 else "")[:60]})
     return out
 
 
 def parse_tomtom_search(body: Any) -> list[dict]:
-    """TomTom's fuzzy search → places: a POI's name, else the street and number."""
+    """TomTom's fuzzy search → places: a POI's name, else the street and number.
+    Each place keeps its kind (`addr`, `poi`, `street`, `geo`: a town) and its
+    town, so a full address never falls on the town alone."""
     out = []
+    kinds = {"POINT_ADDRESS": "addr", "STREET_ADDRESS": "addr", "ADDRESS": "addr", "POI": "poi", "STREET": "street"}
+    towns = {"GEOGRAPHY", "MUNICIPALITY", "LOCALITY", "NEIGHBOURHOOD"}
     for r in (body or {}).get("results") or []:
         pos, addr, poi = r.get("position") or {}, r.get("address") or {}, r.get("poi") or {}
         try:
@@ -367,7 +373,10 @@ def parse_tomtom_search(body: Any) -> list[dict]:
         full = str(addr.get("freeformAddress") or "")
         street = " ".join(x for x in (str(addr.get("streetNumber") or ""), str(addr.get("streetName") or "")) if x)
         name = str(poi.get("name") or street or addr.get("municipality") or full.split(",")[0])
-        out.append({"lat": lat, "lon": lon, "name": name[:60], "address": full[:160]})
+        kind = str(r.get("resultType") or r.get("type") or "").upper()
+        out.append({"lat": lat, "lon": lon, "name": name[:60], "address": full[:160],
+                    "type": kinds.get(kind, "geo" if kind in towns else "other"),
+                    "city": str(addr.get("municipality") or "")[:60]})
     return out
 
 
@@ -383,6 +392,31 @@ def merge_places(local: list[dict], world: list[dict], query: str, near: Sequenc
         if not any(haversine_m((p["lon"], p["lat"]), (o["lon"], o["lat"])) < 30 for o in out):
             out.append(p)
     return out
+
+
+# A street asked by its name: « va rue de Pathé » (no town said).
+STREET_WORDS = ("rue ", "avenue", "boulevard", "impasse", "allée", "allee", "chemin", "quai ", "place ",
+                "route ", "rte ", "rond-point", "cours ", "square ", "voie ", "passage ", "citée ")
+
+
+def pick_place(query: str, found: list[dict]) -> tuple[dict, list[dict]]:
+    """The place to go to for a spoken query, and the list to confirm (empty:
+    nothing to confirm). A full address (a number, or a street and its town)
+    keeps its street result and never falls on the town alone; a street asked
+    without its town and found in several towns is confirmed first."""
+    q = fold(query)
+    numbered = re.search(r"\b\d{1,4}\b", q) is not None
+    if not numbered and not any(w in q for w in STREET_WORDS):
+        return found[0], []
+    ranked = [p for p in found if p.get("type") != "geo"] or found
+    if numbered:
+        return ranked[0], []
+    cities = []
+    for p in ranked:
+        c = fold(p.get("city") or "")
+        if c and c not in cities:
+            cities.append(c)
+    return ranked[0], (ranked[:5] if len(cities) > 1 else [])
 
 
 def in_area(p: dict, areas: list[dict]) -> dict | None:

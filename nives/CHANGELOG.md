@@ -6,6 +6,7 @@
 - The squares read are kept on the screen for 30 days (IndexedDB), like the roads already were: a usual trip shows its places at once, without network, and a restart of the head unit no longer starts from an empty map.
 - Cameras and traffic lights are drawn along the way or the route with a wider corridor (a radar beside the road, a light of the cross street one turns into), and a radar is drawn whatever its OpenStreetMap direction says — the tag is often wrong or absent, and valid cameras were left out. The warnings keep their strict rules; only the icons are generous.
 - When Overpass does not answer, the layers' panel says so instead of leaving empty map.
+- A spoken address (« 19 rue de Pathé à Orléans ») keeps its street result and never falls on the town alone; a street asked without its town (« va rue de Pathé ») is confirmed first when it exists in several towns. The stop's cross in the trip panel is centred again, the alternates' bubbles stay where the driver reads them (by the car, kept on the screen) and are recalculated at once when the whole trip is opened, and the Orbis « Route » base map loads again (its style name had one wrong character).
 
 ## 0.38.0 — A navigator you can read and hear
 
