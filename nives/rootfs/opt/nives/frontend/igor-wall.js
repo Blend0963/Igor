@@ -693,6 +693,7 @@
   // ===== igor-wall: the whole screen =====
   //   type: custom:igor-wall
   //   bar: { ... }                       # the status bar, above
+  //   refresh: 250           # the cards follow the house at most every 250 ms (a car sends dozens of changes a second); 0: every change
   //   columns:
   //     - width: 1                       # share of the width (default 1)
   //       cards:
@@ -812,9 +813,22 @@
     }
     disconnectedCallback() {
       if (this._resize) { window.removeEventListener("resize", this._resize); this._resize = null; }
+      clearTimeout(this._pushTimer); this._pushTimer = null;
     }
+    // Home Assistant hands a new state of the house at every change of any
+    // entity: dozens a second with a car's sensors. The cards get the newest
+    // one at most every `refresh` ms (250 by default, 0: every one), which a
+    // small screen (a head unit) can keep up with for hours.
     set hass(hass) {
       this._hass = hass;
+      var every = this.config && this.config.refresh != null ? Number(this.config.refresh) : 250;
+      var now = performance.now();
+      if (!(every > 0) || !this._pushed || now - this._pushed >= every) { this.push(); return; }
+      if (!this._pushTimer) this._pushTimer = setTimeout(() => { this._pushTimer = null; this.push(); }, every - (now - this._pushed));
+    }
+    push() {
+      var hass = this._hass;
+      this._pushed = performance.now();
       if (this.bar) this.bar.hass = hass;
       this.children_.forEach((c) => { c.hass = hass; });
     }
@@ -4905,24 +4919,35 @@
         if (isFinite(p) && p >= 30) el("span", "rain", cell, p + " %");
       });
     }
-    update(hass) {
+    update(hass, prev) {
       var c = this.config, S = (id) => (id ? hass.states[id] : null);
       this.subscribeWeather(hass);
-      this.drawWeather();
+      // Each part only when its own entities changed: a car changes dozens of
+      // values a second, and the weather's icons are not rebuilt for each.
+      var tr0 = c.trip ? (typeof c.trip === "string" ? { entity: c.trip } : c.trip) : null;
+      var now = Date.now();
+      if (changed(prev, hass, [c.weather, c.outside].filter(Boolean)) || now - (this.wxAt || 0) > 300000) { this.wxAt = now; this.drawWeather(); }
+      var gauges = changed(prev, hass, [c.online, c.speed, c.rpm, c.coolant, c.battery].filter(Boolean));
+      var trip = changed(prev, hass, [c.online, tr0 && tr0.entity, c.active, c.consumption].filter(Boolean));
+      if (!gauges && !trip) return;
       var on = !c.online || (S(c.online) && S(c.online).state === "on");
       this.card.classList.toggle("off", !on);
       this.offEl.textContent = on ? "" : "hors ligne";
-      var v = on ? num(S(c.speed)) : null;
-      this.sp.innerHTML = "";
-      this.sp.appendChild(document.createTextNode(v == null ? "—" : String(Math.round(v))));
-      el("small", "", this.sp, "km/h");
+      var v = on ? num(S(c.speed)) : null, vt = v == null ? "—" : String(Math.round(v));
+      if (vt !== this.spText) {
+        this.spText = vt;
+        this.sp.innerHTML = "";
+        this.sp.appendChild(document.createTextNode(vt));
+        el("small", "", this.sp, "km/h");
+      }
       var rpm = on ? num(S(c.rpm)) : null;
       var max = Number(c.rpm_max) || 5000, warn = Number(c.rpm_warn) || max * 0.7, bad = Number(c.rpm_bad) || max * 0.86;
       var lit = rpm == null ? 0 : Math.round((Math.min(rpm, max) / max) * this.segs.length);
       this.segs.forEach((sg, i) => {
         var at = ((i + 1) / this.segs.length) * max;
         var zone = at > bad ? "r" : at > warn ? "y" : "on";
-        sg.className = i < lit ? zone : zone === "on" ? "" : zone + "s";
+        var cn = i < lit ? zone : zone === "on" ? "" : zone + "s";
+        if (sg.className !== cn) sg.className = cn;
       });
       this.rpmEl.textContent = rpm == null ? "—" : fr(Math.round(rpm), 0) + " tr/min";
       var t = on ? num(S(c.coolant)) : null;
@@ -4932,7 +4957,8 @@
       this.battEl.textContent = b == null ? "—" : fr(b, 1) + " V";
       this.battEl.className = b == null ? "" : b < 11.8 || b > 15 ? "bad" : b < 12.4 ? "warn" : "okc";
       // The trip: distance, consumption, eco score.
-      var tr = c.trip ? (typeof c.trip === "string" ? { entity: c.trip } : c.trip) : null;
+      if (!trip) return;
+      var tr = tr0;
       var st = tr && S(tr.entity), data = st ? (tr.attribute ? st.attributes[tr.attribute] : st.attributes) : null;
       this.tripEl.innerHTML = "";
       if (!data || typeof data !== "object") { this.tripEl.hidden = true; return; }
@@ -5175,6 +5201,9 @@
   //   pois: [signals, fuel, rest]           # shown on the map at first (the layers button changes it on this screen):
   //                                         #   signals, fuel, charging, parking, rest, toilets, hospital
   //   street_names: true                    # the road where the car is, at the bottom (false: off)
+  //   fps: 20                               # the map drawn that many times a second while moving (lower: lighter)
+  //   buildings: true                       # false: the map without its buildings (lighter on a head unit)
+  //   pixel_ratio: 2                        # at most that many device pixels per pixel (1: lighter)
   //   dead_reckoning: true                  # in a tunnel, on at the OBD speed (speed_entity) for 3 min (false: off)
   //   traffic: true                         # live traffic and incidents once a TomTom key is set in Igor's options (false: never)
   //   closure_ask: false                    # a closed road on the route (TomTom): round it at once (true: ask first)
@@ -5609,7 +5638,9 @@
       if (!kind) return;
       var limit = kind === "camera" ? gpsLimitValue(t.maxspeed) : null;
       var label = kind === "camera" ? (limit ? String(limit) : "") : kind === "fuel" ? String(t.brand || t.name || "").slice(0, 18) : "";
-      out.push({ id: e.type + e.id, kind: kind, p: [lon, lat], tags: t, limit: limit, label: label, name: String(t.name || t.brand || "") });
+      // Only what is used is kept (thousands of lights over a drive).
+      out.push(kind === "camera" ? { id: e.type + e.id, kind: kind, p: [lon, lat], tags: { direction: t.direction, "camera:direction": t["camera:direction"] }, limit: limit, label: label }
+        : { id: e.type + e.id, kind: kind, p: [lon, lat], label: label });
     });
     return out;
   }
@@ -5736,8 +5767,11 @@
     getCardSize() { return 6; }
     getGridOptions() { return { columns: 12, rows: 4, min_rows: 3 }; }
     set hass(hass) {
+      var prev = this._hass, c = this.config;
       this._hass = hass;
       if (!this.root) this.build();
+      // Only when what the card shows changed (not at every change in the house).
+      if (prev && this.loading && [c.entity, c.speed_entity, c.speed_limit_entity, c.destination, "sun.sun"].every(function (id) { return !id || prev.states[id] === hass.states[id]; })) return;
       this.read();
     }
     connectedCallback() { if (this.map && !this.raf) this.raf = requestAnimationFrame(() => this.tick()); }
@@ -5878,6 +5912,7 @@
     }
     setFollow(on) {
       this.follow = on;
+      this.viewKey = null;
       clearTimeout(this.resume);
       this.$("recenter").hidden = on;
       if (!on && this.config.follow_pause > 0) this.resume = setTimeout(() => this.setFollow(true), this.config.follow_pause * 1000);
@@ -5946,7 +5981,7 @@
       // Driving, the trail does not come back on itself either.
       if (last && !this.cut && this.speedMps() > GPS_FWD && gpsAhead(last, p, this.heading) < -2) return;
       var path = null;
-      if (last && onRoad && gpsDist(last, p) > 8) {
+      if (last && onRoad && gpsDist(last, p) > 40) {
         var way = gpsRoadPath(this.roadLines(last, p, 40), last, p);
         if (way) path = way.slice(1, -1);
       }
@@ -5958,7 +5993,11 @@
       if (!piece || this.cut || (!path && gpsDist(last, p) > 25)) { this.trail.push([p]); this.cut = false; }
       else piece.push.apply(piece, (path || []).concat([p]));
       var n = this.trail.reduce(function (a, x) { return a + x.length; }, 0);
-      while (n > GPS_TRAIL && this.trail.length) { n -= this.trail[0].length; this.trail.shift(); }
+      // The oldest points go, one at a time (not the whole piece at once).
+      while (n > GPS_TRAIL && this.trail.length) {
+        var first = this.trail[0], cut = Math.min(first.length, n - GPS_TRAIL);
+        if (cut >= first.length - 1) { n -= first.length; this.trail.shift(); } else { first.splice(0, cut); n -= cut; }
+      }
       var src = this.map && this.map.getSource("trail");
       if (src) src.setData(this.trailData());
     }
@@ -6010,6 +6049,9 @@
       var map = new ml.Map({
         container: this.$("map"), style: (this.styleNow = this.styleUrl()), center: p, zoom: this.config.zoom, pitch: this.config.pitch,
         bearing: this.headingUp ? this.heading : 0, attributionControl: this.config.hide_attribution ? false : { compact: true },
+        // Light on a small screen: no label fade (it redraws for 300 ms at
+        // each label), at most 2 device pixels per pixel.
+        fadeDuration: 0, pixelRatio: Math.min(window.devicePixelRatio || 1, Number(this.config.pixel_ratio) || 2),
         // Igor's own tiles (traffic) need the Home Assistant login, as every API call.
         transformRequest: (url) => {
           var tok = this._hass && this._hass.auth && this._hass.auth.data && this._hass.auth.data.access_token;
@@ -6042,6 +6084,10 @@
           map.addLayer({ id: "trail", type: "line", source: "trail", layout: { "line-cap": "round", "line-join": "round" },
             paint: { "line-color": "#59d0e0", "line-width": 5, "line-opacity": 0.55 } });
         }
+        // `buildings: false`: the map without its buildings (less to draw).
+        if (this.config.buildings === false) (map.getStyle().layers || []).forEach((l) => {
+          if (/building/i.test(l.id + " " + (l["source-layer"] || ""))) map.setLayoutProperty(l.id, "visibility", "none");
+        });
         this.styleLayers();
         this.message("");
       });
@@ -6110,6 +6156,27 @@
       this.raf = requestAnimationFrame(() => this.tick());
       if (!this.map || !this.fix) return;
       var now = performance.now(), speed = this.speedMps(), moving = speed > GPS_MOVING;
+      // The map is drawn `fps` times a second while the car moves (20 by
+      // default: smooth, and half the work of drawing at every screen frame),
+      // 3 when it stands still. A screen that cannot keep up (its own frames
+      // come late) is drawn less often, down to 6, and more again when it can.
+      var gap = this.rafAt ? now - this.rafAt : 16;
+      this.rafAt = now;
+      this.rafAvg = this.rafAvg == null ? gap : this.rafAvg + (Math.min(gap, 500) - this.rafAvg) * 0.05;
+      var want = Math.max(5, Math.min(60, Number(this.config.fps) || 20));
+      if (!this.fpsNow || this.fpsNow > want) this.fpsNow = want;
+      if (!this.paceAt) this.paceAt = now;
+      if (now - this.paceAt > 5000) {
+        this.paceAt = now;
+        if (this.rafAvg > 40) this.fpsNow = Math.max(6, Math.round(this.fpsNow * 0.7));
+        else if (this.rafAvg < 25) this.fpsNow = Math.min(want, Math.round(this.fpsNow * 1.25) + 1);
+      }
+      var rate = moving || this.way || this.drPos ? this.fpsNow : 3;
+      if (this.frameAt && now - this.frameAt < 1000 / rate - 3) return;
+      // Eased by the time gone by, so the movement is the same at any rate.
+      var fr = this.frameAt ? Math.max(0.25, Math.min(12, (now - this.frameAt) / 16.67)) : 1;
+      this.frameAt = now;
+      var ease = function (k) { return 1 - Math.pow(1 - k, fr); };
       // Driving (not manoeuvring): the car goes where it faces, never back.
       var forward = speed > GPS_FWD;
       // Between two fixes: on along the heading, 4 s at most (not when slow:
@@ -6145,7 +6212,7 @@
       if (s && gpsDist(s.point, target) <= (s.lock || snapM) * 1.5) {
         target = s.point;
         // On a road and rolling (not manoeuvring): the arrow takes the road's direction.
-        if (speed > GPS_SLOW) { this.heading = gpsLerpAngle(this.heading, gpsAlong(s.bearing, this.heading), 0.2); if (this.hstate) this.hstate.heading = this.heading; }
+        if (speed > GPS_SLOW) { this.heading = gpsLerpAngle(this.heading, gpsAlong(s.bearing, this.heading), ease(0.2)); if (this.hstate) this.hstate.heading = this.heading; }
       }
       // A leap (a late fix): the arrow drives there along the roads, not across.
       var before = this.pos;
@@ -6160,7 +6227,7 @@
       }
       if (this.way && this.way.length) {
         // About a second for the whole way, at least the car's speed.
-        var step = Math.max(this.wayLen * 0.06, speed * 0.016 * 1.2), left = step;
+        var step = Math.max(this.wayLen * 0.06, speed * 0.016 * 1.2) * fr, left = step;
         while (left > 0 && this.way.length) {
           var nx = this.way[0], d = gpsDist(this.pos, nx);
           if (d <= left) { this.pos = nx; this.way.shift(); left -= d; }
@@ -6168,14 +6235,14 @@
         }
         if (!this.way.length || now - this.wayFrom > 2500) this.way = null;
       } else {
-        var k = jump > 400 ? 1 : 0.15;
+        var k = jump > 400 ? 1 : ease(0.15);
         this.pos = [this.pos[0] + (target[0] - this.pos[0]) * k, this.pos[1] + (target[1] - this.pos[1]) * k];
       }
       // Last guard: driving, not a step back (a big jump, a real relocation, still goes).
       if (forward && jump <= 400 && gpsAhead(before, this.pos, this.heading) < -0.2) this.pos = before;
-      this.shown = gpsLerpAngle(this.shown, this.heading, 0.1);
+      this.shown = gpsLerpAngle(this.shown, this.heading, ease(0.1));
       this.marker.setLngLat(this.pos).setRotation(this.shown);
-      if (!this.trailAt || now - this.trailAt > 500) {
+      if (!this.trailAt || now - this.trailAt > 1000) {
         this.trailAt = now;
         // On the road only once the arrow has reached it (not while gliding across).
         var on = s && gpsDist(this.pos, s.point) < 3 ? s : null;
@@ -6204,10 +6271,12 @@
           var near = Math.max(250, Math.min(1000, speed * 20));
           if (this.route && this.nextDist != null && this.nextDist < near) tz = Math.max(tz, Math.min(base + 0.6, tz + 1.4));
           else if (this.signalAhead != null && this.signalAhead < 150) tz = Math.min(base + 0.5, tz + 0.4);
-          this.zoomNow = this.zoomNow == null ? tz : this.zoomNow + (tz - this.zoomNow) * 0.02;
+          this.zoomNow = this.zoomNow == null ? tz : this.zoomNow + (tz - this.zoomNow) * ease(0.02);
           view.zoom = this.zoomNow;
         }
-        this.map.jumpTo(view);
+        // Nothing moved (the car parked): nothing is drawn.
+        var vkey = this.pos[0].toFixed(7) + "," + this.pos[1].toFixed(7) + "," + view.bearing.toFixed(1) + "," + (view.zoom == null ? "" : view.zoom.toFixed(3)) + "," + h;
+        if (vkey !== this.viewKey) { this.viewKey = vkey; this.map.jumpTo(view); }
       }
     }
   }
@@ -6767,10 +6836,10 @@
         .then((jj) => {
           if (key !== this.poiKey) return;
           T[next.k] = { at: now, items: gpsPois(jj.elements) };
-          // Squares far behind are let go (more than 20 km).
+          // Squares far behind are let go (more than 12 km).
           Object.keys(T).forEach((k) => {
             var xy = k.split("/"), b = gpsTileBox(Number(xy[0]), Number(xy[1]), z);
-            if (gpsDist(p, [(b.w + b.e) / 2, (b.n + b.s) / 2]) > 20000) delete T[k];
+            if (gpsDist(p, [(b.w + b.e) / 2, (b.n + b.s) / 2]) > 12000) delete T[k];
           });
           var all = {}, list = [];
           Object.keys(T).forEach((k) => (T[k].items || []).forEach((q2) => { if (!all[q2.id]) { all[q2.id] = true; list.push(q2); } }));
@@ -6867,7 +6936,9 @@
         if (d != null && speed >= GPS_SLOW && (!cam || d < cam.d)) cam = { q: q, d: d };
       });
       this.onWay = onWay;
-      this.refreshPois();
+      // Drawn again only when the lights and cameras on the way changed.
+      var wkey = Object.keys(onWay).sort().join(",");
+      if (wkey !== this.onWayKey || this.poiShown == null) { this.onWayKey = wkey; this.refreshPois(); }
       var limitNow = this.lastLimit ? this.lastLimit.v : NaN;
       if (L.cameras === "zone") {
         // The zone: from 3/4 of its length before the camera to 1/4 after,

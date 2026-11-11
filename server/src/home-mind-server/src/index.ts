@@ -207,8 +207,9 @@ app.get("/api/app-token", (req, res) => {
 
 // The house's key (api/house-lock.ts): the integration sends the key entity
 // and the users still answered while it is away; a panel request (ingress)
-// from anyone else is refused while the key is away, as Assist is. The key is
-// read past the Assist exposure list: it is rarely exposed.
+// from anyone else is refused while the key is away, as Assist is, when the
+// owner asked for the threads to lock too (lock_threads; off by default). The
+// key is read past the Assist exposure list: it is rarely exposed.
 let keyReader: HomeAssistantClient | undefined;
 const houseLock = new HouseLock(
   config.conversationStorage === "sqlite" ? path.join(path.dirname(config.conversationDbPath), "house-lock.json") : undefined,

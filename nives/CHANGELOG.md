@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.37.8 — A head unit that keeps up for hours
+
+- A wall follows the house at most every 250 ms (`refresh:`, 0 for every change): a car's sensors change dozens of times a second, and every change redrew every card. A small screen (a car's head unit) fell behind after a while, showing the speed and the position late.
+- `custom:igor-gps-card` draws the map 20 times a second while the car moves (`fps:`) instead of at every screen frame, 3 times when it stands still, and not at all when nothing moved; a screen that cannot keep up is drawn less often (down to 6) and more again when it can. The movement is eased by time, so it looks the same at any rate. No label fade, at most 2 device pixels per pixel (`pixel_ratio:`), `buildings: false` for a map without its buildings. The card reads Home Assistant only when its own entities changed; the places are redrawn only when they change and kept lighter (12 km around the car); the trail is updated once a second and loses its oldest points one at a time.
+- The chat threads no longer lock with the house's key: the key locks Assist, the voice and the screens; the thread panel, behind its Home Assistant login, always answers. Igor's options get « Lock the chat threads with the key too » (off by default) for those who want them locked as before.
+
 ## 0.37.7 — The town's limit, not the motorway's
 
 - `custom:igor-gps-card`, the limit sign: off the roads it has read (a street not loaded yet, OpenStreetMap busy), the card no longer keeps showing the last road's limit as if it were this one's — the motorway's 130 carried into a town. The last limit seen is now carried, greyed, only along the same kind of road; a street with no sign in the map shows what such a street is in France, greyed as probable (50 in a residential street, 20 in a living street); otherwise the sign is barred. `speed_limit_entity` (a sensor polled every 15 s, reading any road within 20 m) is used only when it is less than 45 s old and the card knows no road under the car.

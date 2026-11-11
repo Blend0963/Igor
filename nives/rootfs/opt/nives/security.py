@@ -61,11 +61,15 @@ def settings(hass: HomeAssistant) -> dict:
     yaml = hass.data.get(YAML_KEY, {})
     out = {k: yaml.get(k) for k in (CONF_KEY_ENTITY, CONF_ALARM_ENTITY, CONF_ALARM_ACTIVE, CONF_CODE_HASH)}
     out["allowed_users"] = list(yaml.get("allowed_users") or [])
+    lock_threads = bool(yaml.get("lock_threads"))
     for entry in hass.config_entries.async_entries(DOMAIN):
         opts = {**entry.data, **entry.options}
         for k in out:
             if opts.get(k):
                 out[k] = opts[k]
+        if "lock_threads" in opts:
+            lock_threads = bool(opts["lock_threads"])
+    out["lock_threads"] = lock_threads
     return out
 
 

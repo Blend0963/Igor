@@ -511,7 +511,11 @@ async def _async_push_lock(hass: HomeAssistant, entry: IgorConfigEntry) -> None:
     if data is None:
         return
     sec = security_settings(hass)
-    body = {"key_entity": sec.get(CONF_KEY_ENTITY) or "", "allowed_users": sec.get("allowed_users") or []}
+    body = {
+        "key_entity": sec.get(CONF_KEY_ENTITY) or "",
+        "allowed_users": sec.get("allowed_users") or [],
+        "lock_threads": bool(sec.get("lock_threads")),
+    }
     headers = {"Authorization": f"Bearer {data.api_token}"} if data.api_token else {}
     try:
         async with async_get_clientsession(hass).post(
@@ -1728,6 +1732,7 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Optional("alarm_active_entity"): cv.entity_id,
                 vol.Optional("disarm_code"): vol.All(cv.string, vol.Match(r"^\d{4,12}$", msg="4 to 12 digits")),
                 vol.Optional("allowed_users", default=[]): vol.All(cv.ensure_list, [cv.string]),
+                vol.Optional("lock_threads"): cv.boolean,
                 vol.Optional("openwrt", default=[]): vol.All(cv.ensure_list, [OPENWRT_SCHEMA]),
                 vol.Optional("opnsense"): OPNSENSE_SCHEMA,
                 # Names for the network cards, by MAC or IP: { "AA:BB:…": TV }

@@ -285,7 +285,7 @@ nives:
   allowed_users: [Moi]
 ```
 
-Users can also be picked in Igor's options (« Still answered while the key is away »); a name in `allowed_users` matches a user's login, display name, id or person. A refused request says which user it came from.
+The chat threads stay open while the key is away unless « Lock the chat threads with the key too » is on in Igor's options (`lock_threads: true` in the `nives:` block). Users can also be picked in Igor's options (« Still answered while the key is away »); a name in `allowed_users` matches a user's login, display name, id or person. A refused request says which user it came from.
 
 Give the wall, the tablet and the desk screen a Home Assistant account of their own (not yours): an account in `allowed_users` keeps the thread panel open wherever it is logged in. The installed app, which uses Igor's API key rather than a Home Assistant login, is not checked: whoever holds the key is the owner.
 
