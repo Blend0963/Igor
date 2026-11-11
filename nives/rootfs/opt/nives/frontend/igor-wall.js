@@ -5958,6 +5958,9 @@
         ".alttag { padding: 3px 9px; border-radius: 12px; background: rgba(7,8,10,0.92); border: 1px solid #3d454e; color: #878c95; font-family: " + MONO + "; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }" +
         ".alttag.win { color: #5cc28f; border-color: #5cc28f; } .alttag.lose { color: #f08c1a; border-color: #f08c1a; }" +
         ".eur { color: #e0a33a; font-weight: 700; margin-right: 6px; }" +
+        ".mappick { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.96); border: 1px solid #22262c; font-family: " + MONO + "; }" +
+        ".mappick .mp-name { color: #878c95; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 4px 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
+        ".mappick button { font: inherit; font-size: 14px; padding: 10px 12px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #e9e4da; cursor: pointer; display: flex; align-items: center; gap: 10px; --mdc-icon-size: 20px; white-space: nowrap; } .mappick button ha-icon { color: #59d0e0; flex: none; }" +
         '</style><ha-card id="card"><div id="map"></div><div class="msg" id="msg">Chargement de la carte…</div>' +
         '<div class="btns"><button id="recenter" title="Recentrer" hidden><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' +
         '<button id="orient" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button>' +
@@ -6247,6 +6250,8 @@
       this.marker = new ml.Marker({ element: arrow, rotationAlignment: "map", pitchAlignment: "map" }).setLngLat(p).addTo(map);
       // Each touch (its start, its moves, its end) holds the map and restarts the wait.
       ["dragstart", "zoomstart", "rotatestart", "pitchstart", "drag", "zoom", "dragend", "zoomend", "rotateend", "pitchend"].forEach((ev) => map.on(ev, (e) => { if (e.originalEvent) this.setFollow(false); }));
+      // A tap on the map asks what to do with the place under the finger.
+      map.on("click", (e) => this.mapPick(e));
       // The fingers on the map are the map's (not the page's scroll or swipe).
       this.$("map").style.touchAction = "none";
       map.on("style.load", () => {
@@ -6791,6 +6796,7 @@
       return out.slice(0, 6);
     },
     setDestination(d, write) {
+      this.closePick();
       this.dest = d;
       this.route = null;
       this.alts = [];
@@ -7027,36 +7033,90 @@
         var mid = R0.coords[(band[0] + band[1]) >> 1], pt = null;
         if (whole || !car) pt = mid;
         else {
-          var near = 0, bd = Infinity;
-          for (var k2 = 0; k2 < R0.coords.length; k2 += 3) { var dd = gpsDist(this.pos, R0.coords[k2]); if (dd < bd) { bd = dd; near = k2; } }
-          for (var st = 0; st < R0.coords.length && !pt; st += 3) {
-            for (var ci = -1; ci <= 1 && !pt; ci += 2) {
-              var ki = near + st * ci, c = R0.coords[ki];
-              if (!c || ki < band[0] || ki > band[1]) continue;
-              var s = map.project(c);
-              if (s.x < 60 || s.y < 130 || s.x > w - 60 || s.y > h - 130) continue;
-              if (Math.hypot(s.x - car.x, s.y - car.y) > 110) pt = c;
-            }
+          // A point of its own band, readable: on the safe area away from the
+          // car first, else the band's point nearest the screen's centre. No
+          // point of the band on the screen: no bubble — it waits with its
+          // route and comes back when the route does.
+          var best = null, bs = Infinity;
+          for (var k2 = band[0]; k2 <= band[1]; k2 += 3) {
+            var c = R0.coords[k2];
+            if (!c) continue;
+            var s = map.project(c);
+            if (Math.hypot(s.x - car.x, s.y - car.y) <= 110) continue;
+            var sc = (s.x >= 60 && s.y >= 130 && s.x <= w - 60 && s.y <= h - 130 ? 0 : 1e6) + Math.hypot(s.x - w / 2, s.y - h / 2);
+            if (sc < bs) { bs = sc; best = c; }
           }
-          if (!pt) pt = mid;
+          pt = best;
         }
+        if (!pt) { if (el) el.style.display = "none"; m._igorLL = null; return; }
+        if (el) el.style.display = "";
         m._igorLL = pt;
         m.setLngLat(pt);
       });
       this.clampAlts();
     },
-    // The alternates' bubbles stay where the driver reads them: back on their
-    // route when it is in view, on the screen's edge when it is not.
+    // The bubble lives on its grey line: it never slides to the screen's
+    // edge on its own. When the zoom takes the grey route off the screen,
+    // the bubble goes with it — and comes back when the route does.
     clampAlts() {
       var map = this.map;
       if (!map || !this.altMarkers || !this.altMarkers.length) return;
       var w = map.getCanvas().clientWidth, h = map.getCanvas().clientHeight;
       this.altMarkers.forEach((m) => {
         if (!m._igorLL) return;
-        var p = map.project(m._igorLL);
-        var x = Math.min(w - 60, Math.max(60, p.x)), y = Math.min(h - 130, Math.max(130, p.y));
-        m.setLngLat(Math.abs(x - p.x) > 1 || Math.abs(y - p.y) > 1 ? map.unproject([x, y]) : m._igorLL);
+        var p = map.project(m._igorLL), el = m.getElement();
+        var off = p.x < 40 || p.y < 40 || p.x > w - 40 || p.y > h - 40;
+        if (el) el.style.display = off ? "none" : "";
       });
+    },
+    // A tap anywhere on the map asks what to do with the place: a new route
+    // to it, or a stop on the way. The place's name comes from the map's own
+    // features (the Orbis tiles carry the stations, the shops, the streets),
+    // else the point stands for itself. On a grey route, the tap picks it.
+    mapPick(e) {
+      var map = this.map;
+      if (!map || !e || !e.point || !window.maplibregl) return;
+      if (map.getLayer("alts") && map.queryRenderedFeatures(e.point, { layers: ["alts"] }).length) return;
+      var name = "";
+      (map.queryRenderedFeatures(e.point) || []).some((f) => {
+        var p = f.properties || {};
+        var n = p.name || p["name:latin"] || p.brand;
+        if (n && String(n).trim() && String(n) !== "null") { name = String(n).trim().slice(0, 40); return true; }
+        return false;
+      });
+      this.closePick();
+      var el = document.createElement("div");
+      el.className = "mappick";
+      if (name) { var t = document.createElement("div"); t.className = "mp-name"; t.textContent = name; el.appendChild(t); }
+      var go = document.createElement("button");
+      go.type = "button";
+      go.innerHTML = '<ha-icon icon="mdi:flag"></ha-icon>Nouvel itinéraire';
+      go.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        this.closePick();
+        this.chooseNext = true;
+        this.setDestination({ lat: e.lngLat.lat, lon: e.lngLat.lng, name: name || "destination" }, true);
+        this.$("panel").hidden = true;
+      });
+      el.appendChild(go);
+      if (this.dest) {
+        var via = document.createElement("button");
+        via.type = "button";
+        via.innerHTML = '<ha-icon icon="mdi:flag-variant"></ha-icon>Ajouter une étape';
+        via.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          this.closePick();
+          var d = this.dest;
+          this.setDestination(Object.assign({}, d, { via: (d.via || []).concat([{ lat: e.lngLat.lat, lon: e.lngLat.lng, name: name || "étape" }]) }), true);
+        });
+        el.appendChild(via);
+      }
+      el.addEventListener("click", (ev) => ev.stopPropagation());
+      var mk = new window.maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -12] }).setLngLat(e.lngLat).addTo(map);
+      this._pick = mk;
+    },
+    closePick() {
+      if (this._pick) { try { this._pick.remove(); } catch (e) { /* gone */ } this._pick = null; }
     },
     pickAlt(a) {
       if (!a || !a.route) return;

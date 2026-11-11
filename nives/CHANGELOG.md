@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.8 — Bubbles that live on their grey line
+
+- The alternates' bubbles no longer slide to the screen's edge: they stand on their grey route, and when the zoom takes that route off the screen the bubble goes with it — it comes back when the route comes back. While following, the bubble still sits on the readable part of the grey way, never over the car.
+- A tap anywhere on the map asks what to do with the place: « Nouvel itinéraire » to go there, « Ajouter une étape » to put it on the way (when a trip is under way). The place's name comes from the map's own tiles — a station, a shop, a street — else the point stands for itself.
+
 ## 0.38.7 — Lights that stay seen
 
 - The lights' band widens from 25 to 40 m: a light's OpenStreetMap node often sits back from the big crossroads it serves, and it was dropped from the map for that. Lights stay drawn all along the band (no direction rule — their tag is often wrong); the cameras keep the strict 25 m band with their direction check. And the map now weighs the eighty nearest points instead of forty, so a dense city keeps its lights on the line.
