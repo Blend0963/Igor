@@ -73,6 +73,8 @@ from .const import (
     SERVICE_TRAFFIC,
     SERVICE_ROUTE,
     TRAFFIC_TILE_URL,
+    BASEMAP_STYLE_URL,
+    BASEMAP_PROXY_URL,
     CONF_CAR_TRACKER,
     CONF_CAR_DESTINATION,
     SERVICE_CAR_GO,
@@ -850,6 +852,10 @@ def _async_register_traffic(hass: HomeAssistant) -> None:
     if not store.get("traffic_view"):
         hass.http.register_view(TrafficTileView())
         store["traffic_view"] = True
+    if not store.get("basemap_views"):
+        hass.http.register_view(BasemapStyleView())
+        hass.http.register_view(BasemapProxyView())
+        store["basemap_views"] = True
     if hass.services.has_service(DOMAIN, SERVICE_TRAFFIC):
         return
 
@@ -1000,6 +1006,114 @@ class TrafficTileView(HomeAssistantView):
         return web.Response(body=body, content_type="image/png", headers={"Cache-Control": "private, max-age=60"})
 
 
+# The TomTom Orbis base maps: the styles the GPS card may ask for, and the
+# upstream every style URL, tile, font and sprite comes from.
+ORBIS_ORIGIN = "https://api.tomtom.com"
+ORBIS_STYLE_URL = ORBIS_ORIGIN + "/maps/orbis/assets/styles/0.*/style"
+ORBIS_MAPS = (
+    "basic_mono-dark",
+    "basic_street-dark_driving",
+    "basic_street-light",
+    "basic_street-satellite",
+)
+BASEMAP_CACHE_S = 300
+
+
+def _basemap_rewrite(node, proxied: str) -> None:
+    """Every api.tomtom.com URL in a style goes through the proxy below."""
+    if isinstance(node, dict):
+        items = node.items()
+    elif isinstance(node, list):
+        items = enumerate(node)
+    else:
+        return
+    for k, v in items:
+        if isinstance(v, str) and v.startswith(ORBIS_ORIGIN):
+            node[k] = proxied + v[len(ORBIS_ORIGIN):].lstrip("/")
+        else:
+            _basemap_rewrite(v, proxied)
+
+
+def _basemap_user(request: web.Request) -> bool:
+    user = request.get("hass_user")
+    return bool(user and (user.is_admin or user.id in _car_users(request.app[KEY_HASS])))
+
+
+class BasemapStyleView(HomeAssistantView):
+    """A TomTom Orbis style, MapLibre-ready, for the GPS card's layers button:
+    the key is added here and every URL of the style is rewritten to the proxy
+    below, so it never reaches a dashboard or a browser. Logged-in
+    administrators only (the card sends its Home Assistant token)."""
+
+    url = BASEMAP_STYLE_URL
+    name = "api:nives:basemap_style"
+    requires_auth = True
+
+    def __init__(self) -> None:
+        self._styles: dict[str, tuple[float, dict]] = {}
+
+    async def get(self, request: web.Request) -> web.Response:
+        if not _basemap_user(request):
+            return web.Response(status=403)
+        wanted = str(request.query.get("map") or "")
+        if wanted not in ORBIS_MAPS:
+            return web.Response(status=400)
+        hass: HomeAssistant = request.app[KEY_HASS]
+        key = _traffic_key(hass)
+        if not key:
+            return web.Response(status=404)
+        now = time.monotonic()
+        hit = self._styles.get(wanted)
+        if hit and now - hit[0] < BASEMAP_CACHE_S:
+            style = hit[1]
+        else:
+            try:
+                async with async_get_clientsession(hass).get(
+                    ORBIS_STYLE_URL, params={"key": key, "apiVersion": "1", "map": wanted}, timeout=aiohttp.ClientTimeout(total=10)
+                ) as r:
+                    if r.status != 200:
+                        return web.Response(status=502)
+                    style = await r.json(content_type=None)
+            except (aiohttp.ClientError, TimeoutError, ValueError):
+                return web.Response(status=504)
+            _basemap_rewrite(style, f"{request.url.origin()}{BASEMAP_PROXY_URL.split('{')[0]}")
+            self._styles.clear()
+            self._styles[wanted] = (now, style)
+        return web.json_response(style, headers={"Cache-Control": "private, max-age=300"})
+
+
+class BasemapProxyView(HomeAssistantView):
+    """The tiles, fonts and sprites behind the Orbis style above: the key is
+    added here, so it never reaches a dashboard or a browser."""
+
+    url = BASEMAP_PROXY_URL
+    name = "api:nives:basemap_proxy"
+    requires_auth = True
+
+    async def get(self, request: web.Request, path: str) -> web.Response:
+        if not _basemap_user(request):
+            return web.Response(status=403)
+        if not path.startswith("maps/orbis/"):
+            return web.Response(status=400)
+        hass: HomeAssistant = request.app[KEY_HASS]
+        key = _traffic_key(hass)
+        if not key:
+            return web.Response(status=404)
+        params = dict(request.query)
+        params["key"] = key
+        try:
+            async with async_get_clientsession(hass).get(
+                f"{ORBIS_ORIGIN}/{path}", params=params, timeout=aiohttp.ClientTimeout(total=15)
+            ) as r:
+                if r.status != 200:
+                    return web.Response(status=502)
+                body = await r.read()
+        except (aiohttp.ClientError, TimeoutError):
+            return web.Response(status=504)
+        age = 86400 if "/assets/" in path else 3600
+        return web.Response(body=body, headers={"Content-Type": r.headers.get("Content-Type", "application/octet-stream"), "Cache-Control": f"private, max-age={age}"})
+
+
 def _car_settings(hass: HomeAssistant) -> tuple[str | None, str | None]:
     for entry in hass.config_entries.async_entries(DOMAIN):
         opts = {**entry.data, **entry.options}
@@ -1029,6 +1143,8 @@ CAR_GO_SCHEMA = vol.Schema(
         vol.Optional("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
         vol.Optional("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
         vol.Optional("name"): vol.All(cv.string, vol.Length(max=80)),
+        # The place's number when the driver chose among other_matches.
+        vol.Optional("choice"): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
         vol.Optional("stop", default=False): cv.boolean,
         # « sans autoroute », « sans péage » : motorways, tolls, ferries
         vol.Optional("avoid", default=[]): vol.All(cv.ensure_list, [vol.In(["motorways", "tolls", "ferries"])]),
@@ -1045,6 +1161,7 @@ CAR_NEARBY_SCHEMA = vol.Schema(
 CAR_STOP_SCHEMA = vol.Schema(
     {
         vol.Optional("choice"): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
+        vol.Optional("query"): vol.All(cv.string, vol.Length(max=200)),
         vol.Optional("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
         vol.Optional("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
         vol.Optional("name", default="étape"): vol.All(cv.string, vol.Length(max=80)),
@@ -1074,6 +1191,7 @@ CAR_LIMIT_SCHEMA = vol.Schema(
 )
 CAR_RADARS_KEY = "nives_car_radars"
 CAR_LAST_KEY = "nives_car_last"
+CAR_GO_KEY = "nives_car_go"
 CAR_LAST_S = 1200
 
 
@@ -1137,7 +1255,13 @@ def _async_register_car(hass: HomeAssistant) -> None:
         here = _car_position(hass, tracker)
         others: list[str] = []
         avoid = call.data["avoid"]
-        if call.data["reroute"] and not call.data.get("query"):
+        choice = call.data.get("choice")
+        if choice:
+            at, found = hass.data.get(CAR_GO_KEY) or (0.0, [])
+            if not found or time.monotonic() - at > CAR_LAST_S or choice > len(found):
+                return {"ok": False, "error": "la liste des lieux proposés est périmée : redemander le lieu"}
+            dest = found[choice - 1]
+        elif call.data["reroute"] and not call.data.get("query"):
             now_dest = parse_destination(hass.states.get(dest_entity).state)
             if not now_dest:
                 return {"ok": False, "error": "pas de trajet en cours"}
@@ -1145,7 +1269,7 @@ def _async_register_car(hass: HomeAssistant) -> None:
             out = {"ok": True, "rerouted": True, "destination": now_dest["name"], "avoiding": avoid}
             out.update(await _trip(here, now_dest, avoid))
             return out
-        if call.data.get("latitude") is not None and call.data.get("longitude") is not None:
+        elif call.data.get("latitude") is not None and call.data.get("longitude") is not None:
             dest = {"lat": call.data["latitude"], "lon": call.data["longitude"], "name": call.data.get("name") or "destination"}
         else:
             query = str(call.data.get("query") or "").strip()
@@ -1160,7 +1284,12 @@ def _async_register_car(hass: HomeAssistant) -> None:
                 if not found:
                     return {"ok": False, "error": f"aucun lieu trouvé pour « {query} »"}
                 dest = found[0]
-                others = [f"{p['name']} ({p['address']})" for p in found[1:4]]
+                # Several places of the same name (two « rue du Saucisson »):
+                # the driver chooses (choice: n). A town, a single match, one
+                # name against other names: goes at once, no question.
+                if any(fold(p.get("name") or "") == fold(dest.get("name") or "") for p in found[1:]):
+                    hass.data[CAR_GO_KEY] = (time.monotonic(), found[:5])
+                    others = [f"{i + 1}. {p['name']} ({p['address']})" for i, p in enumerate(found[:4])]
         await _write(dest_entity, format_destination(dest, (), avoid))
         out: dict = {"ok": True, "destination": {k: dest.get(k) for k in ("name", "address", "lat", "lon") if dest.get(k) is not None}}
         if avoid:
@@ -1207,6 +1336,25 @@ def _async_register_car(hass: HomeAssistant) -> None:
             return err
         if call.data.get("latitude") is not None and call.data.get("longitude") is not None:
             stop = {"lat": call.data["latitude"], "lon": call.data["longitude"], "name": call.data["name"]}
+        elif str(call.data.get("query") or "").strip():
+            query = str(call.data["query"]).strip()
+            here = _car_position(hass, tracker)
+            stop = _zone(query)
+            if stop is None:
+                try:
+                    found = await car.geocode(query, here)
+                except Exception:  # noqa: BLE001 - no internet, busy
+                    return {"ok": False, "error": "recherche de lieu impossible (pas d'internet ?)"}
+                if not found:
+                    return {"ok": False, "error": f"aucun lieu trouvé pour « {query} »"}
+                stop = found[0]
+                # Several places of the same name: nothing is added until the
+                # driver chose (car_stop again, choice: n).
+                if any(fold(p.get("name") or "") == fold(stop.get("name") or "") for p in found[1:]):
+                    hass.data[CAR_GO_KEY] = (time.monotonic(), found[:5])
+                    return {"ok": False, "ambiguous": True,
+                            "other_matches": [f"{i + 1}. {p['name']} ({p['address']})" for i, p in enumerate(found[:4])],
+                            "note": "plusieurs lieux du même nom : demander lequel, puis car_stop avec choice"}
         else:
             at, places = hass.data.get(CAR_LAST_KEY) or (0, [])
             n = call.data.get("choice") or 1
@@ -1218,12 +1366,19 @@ def _async_register_car(hass: HomeAssistant) -> None:
         if not dest:
             await _write(dest_entity, format_destination(stop))
             return {"ok": True, "guided_to": stop["name"], "note": "pas d'itinéraire en cours : c'est la destination"}
-        await _write(dest_entity, format_destination(dest, [stop]))
-        out = {"ok": True, "stop": stop["name"], "then": dest["name"]}
+        # One more stop on the way (at most three), unless it is already one.
+        via = list(dest.get("via") or [])
+        if any(car_haversine([v["lon"], v["lat"]], [stop["lon"], stop["lat"]]) < 50 for v in via):
+            return {"ok": True, "stop": stop["name"], "then": dest["name"], "note": "déjà une étape"}
+        if len(via) >= 3:
+            return {"ok": False, "error": "déjà trois étapes : en retirer une d'abord"}
+        via.append(stop)
+        await _write(dest_entity, format_destination(dest, via))
+        out = {"ok": True, "stop": stop["name"], "then": dest["name"], "stops": [v.get("name") or "étape" for v in via]}
         here = _car_position(hass, tracker)
         if here:
             try:
-                r = await car.route([here, [stop["lon"], stop["lat"]], [dest["lon"], dest["lat"]]], steps=False)
+                r = await car.route([here] + [[v["lon"], v["lat"]] for v in via] + [[dest["lon"], dest["lat"]]], steps=False)
             except Exception:  # noqa: BLE001
                 r = None
             if r:

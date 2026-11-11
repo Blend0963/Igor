@@ -359,11 +359,14 @@ export const HOME_EXTRA_TOOLS: ToolDefinition[] = [
       "The car's GPS (its dashboard screen): guide it somewhere, or stop the guidance. Use it for « emmène-moi à la maison », " +
       "« mets-moi un trajet pour aller à … », « arrête le guidage ». Pass the place as heard (« maison », a zone's name, an address, " +
       "a shop, a town); home and Home Assistant zones are found first, then the place nearest the car. Say where it goes, the " +
-      "distance and the arrival time it returns; if other_matches came back and the place may be wrong, say which one was taken.",
+      "distance and the arrival time it returns. A town, a village or a single match goes at once, never ask « où ça ? ». " +
+      "When other_matches came back (several places of the same name, two « rue du Saucisson »), do NOT say it is done: list them " +
+      "with their numbers and ASK which one; when the driver chose, call again with choice (its number).",
     parameters: {
       type: "object",
       properties: {
         destination: { type: "string", description: "Where to, as heard (« 15 rue du Saucisson à Orléans », « la maison », « le Leclerc »)." },
+        choice: { type: "number", description: "The place's number from other_matches, once the driver chose (1 = the first listed)." },
         stop: { type: "boolean", description: "true to stop the guidance." },
         avoid: {
           type: "array",
@@ -402,13 +405,16 @@ export const HOME_EXTRA_TOOLS: ToolDefinition[] = [
   {
     name: "car_add_stop",
     description:
-      "Add a stop on the car's way, once the driver accepted a place car_find_nearby proposed: pass its choice (1 = the " +
-      "first place of the last answer, as listed). The GPS guides there first, then on to the destination; without a " +
-      "destination it becomes the destination. Say the new arrival time it returns.",
+      "Add a stop on the car's way: either a place car_find_nearby proposed and the driver accepted (pass its choice, 1 = the " +
+      "first place of the last answer, as listed), or a place the driver names (« ajoute une étape au Leclerc »: pass query as " +
+      "heard). The GPS guides there first, then on to the destination; without a destination it becomes the destination. " +
+      "When other_matches came back (several places of the same name), do NOT add anything: list them with their numbers and " +
+      "ASK which one, then call again with choice. Say the new arrival time it returns.",
     parameters: {
       type: "object",
       properties: {
-        choice: { type: "number", description: "The place's number in the last car_find_nearby answer (its `choice`)." },
+        choice: { type: "number", description: "The place's number in the last car_find_nearby answer, or in other_matches, once the driver chose (1 = the first)." },
+        query: { type: "string", description: "A place the driver names (« ajoute une étape à Port d'Orléans »), as heard, when no place was proposed before." },
         latitude: { type: "number", description: "Instead of a choice: the place's latitude." },
         longitude: { type: "number" },
         name: { type: "string" },

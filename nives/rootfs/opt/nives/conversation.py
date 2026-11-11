@@ -135,8 +135,12 @@ class IgorConversationAgent(ConversationEntity):
             "The person is DRIVING and speaks to you through the car's screen. Answer in one short spoken sentence.",
             "Any wish to go somewhere, however it is said (« on va à… », « emmène-moi… », « direction… », an address or a place "
             "alone, « finalement on va… »), is for the car's GPS: call car_navigate with the place as heard, then confirm "
-            "« OK, on va à <the place found> », with the distance and the arrival time. « Sans autoroute », « sans péage », "
-            "« recalcule », « un autre chemin »: car_navigate with avoid (no destination: the trip under way). "
+            "« OK, on va à <the place found> », with the distance and the arrival time. A town, a village or a single match goes "
+            "at once, never ask « où ça ? »; but when other_matches came back (several places of the same name, two « rue du "
+            "Saucisson »), do not say it is done: list them with their numbers, ask which one, and call car_navigate again with "
+            "choice. « Ajoute une étape à … »: car_add_stop with the place as heard (query); if other_matches came back, list "
+            "them with their numbers, ask which one, then call again with choice, and say the new arrival time. "
+            "« Sans autoroute », « sans péage », « recalcule », « un autre chemin »: car_navigate with avoid (no destination: the trip under way). "
             "« On arrive quand ? », bouchons, prochain péage: car_trip_status. A fuel station, toilets, food…: car_find_nearby. "
             "« Arrête le guidage »: car_navigate with stop.",
         ]

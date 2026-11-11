@@ -122,6 +122,17 @@ describe("car tools", () => {
     expect(await handleHomeTool(ha, "car_navigate", {})).toHaveProperty("error");
   });
 
+  it("hands the driver's choice and a named stop to the integration", async () => {
+    const callService = vi.fn().mockResolvedValue({ service_response: { ok: true } });
+    const ha = { callService } as unknown as HomeAssistantClient;
+    await handleHomeTool(ha, "car_navigate", { choice: 2 });
+    expect(callService).toHaveBeenLastCalledWith("nives", "car_go", undefined, { choice: 2, return_response: true });
+    await handleHomeTool(ha, "car_navigate", { choice: 2, avoid: ["tolls"] });
+    expect(callService).toHaveBeenLastCalledWith("nives", "car_go", undefined, { avoid: ["tolls"], choice: 2, return_response: true });
+    await handleHomeTool(ha, "car_add_stop", { query: "Port d'Orléans" });
+    expect(callService).toHaveBeenLastCalledWith("nives", "car_stop", undefined, { query: "Port d'Orléans", return_response: true });
+  });
+
   it("says the car is not set up when the service is missing", async () => {
     const ha = { callService: vi.fn().mockRejectedValue(new Error("HA API error 400: Service not found")) } as unknown as HomeAssistantClient;
     const out = (await handleHomeTool(ha, "car_find_nearby", { kind: "fuel" })) as { error: string };
