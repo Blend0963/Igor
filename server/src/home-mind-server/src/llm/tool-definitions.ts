@@ -365,7 +365,7 @@ export const HOME_EXTRA_TOOLS: ToolDefinition[] = [
     parameters: {
       type: "object",
       properties: {
-        destination: { type: "string", description: "Where to, as heard (« 15 rue du Saucisson à Orléans », « la maison », « le Leclerc »)." },
+        destination: { type: "string", description: "Where to, as heard, the whole thing (« 15 rue du Saucisson à Orléans », « porte d'Orléans à Paris », « la maison », « le Leclerc »): never drop the street or the town of an address, the town alone would drive to the middle of the town." },
         choice: { type: "number", description: "The place's number from other_matches, once the driver chose (1 = the first listed)." },
         stop: { type: "boolean", description: "true to stop the guidance." },
         avoid: {
@@ -414,7 +414,7 @@ export const HOME_EXTRA_TOOLS: ToolDefinition[] = [
       type: "object",
       properties: {
         choice: { type: "number", description: "The place's number in the last car_find_nearby answer, or in other_matches, once the driver chose (1 = the first)." },
-        query: { type: "string", description: "A place the driver names (« ajoute une étape à Port d'Orléans »), as heard, when no place was proposed before." },
+        query: { type: "string", description: "A place the driver names (« ajoute une étape à Port d'Orléans »), as heard, the whole address with its street and town, when no place was proposed before." },
         latitude: { type: "number", description: "Instead of a choice: the place's latitude." },
         longitude: { type: "number" },
         name: { type: "string" },

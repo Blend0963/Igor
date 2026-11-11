@@ -105,7 +105,7 @@ export const LOCAL_TOOL_DEFS: OpenAI.ChatCompletionTool[] = [
     for_minutes: { type: "number" },
     text: { type: "string" },
   }, ["entity_id", "condition", "value", "text"]),
-  fn("car_navigate", "GPS de la voiture : y aller (« maison », une adresse, un lieu), ou stop: true pour arrêter le guidage.", {
+  fn("car_navigate", "GPS de la voiture : y aller (« maison », une adresse, un lieu), ou stop: true pour arrêter le guidage. L'adresse entière, rue et ville (« 19 rue de Pathé à Orléans »), jamais la ville seule.", {
     destination: { type: "string" },
     stop: { type: "boolean" },
   }),

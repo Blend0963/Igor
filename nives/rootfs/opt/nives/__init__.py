@@ -1012,7 +1012,7 @@ ORBIS_ORIGIN = "https://api.tomtom.com"
 ORBIS_STYLE_URL = ORBIS_ORIGIN + "/maps/orbis/assets/styles/0.*/style"
 ORBIS_MAPS = (
     "basic_mono-dark",
-    "basic_street-dark_driving",
+    "basic_street-dark-driving",
     "basic_street-light",
     "basic_street-satellite",
 )
@@ -1205,7 +1205,7 @@ def _async_register_car(hass: HomeAssistant) -> None:
     from homeassistant.util import dt as dt_util
 
     from .car import (
-        HOME_WORDS, KINDS, RADARS_URL, Car, fold, format_destination, kind_of, parse_destination, parse_radars, radars_near,
+        HOME_WORDS, KINDS, RADARS_URL, Car, fold, format_destination, kind_of, parse_destination, parse_radars, pick_place, radars_near,
     )
     from .car import haversine_m as car_haversine
 
@@ -1283,13 +1283,13 @@ def _async_register_car(hass: HomeAssistant) -> None:
                     return {"ok": False, "error": "recherche de lieu impossible (pas d'internet ?)"}
                 if not found:
                     return {"ok": False, "error": f"aucun lieu trouvé pour « {query} »"}
-                dest = found[0]
-                # Several places of the same name (two « rue du Saucisson »):
-                # the driver chooses (choice: n). A town, a single match, one
-                # name against other names: goes at once, no question.
-                if any(fold(p.get("name") or "") == fold(dest.get("name") or "") for p in found[1:]):
-                    hass.data[CAR_GO_KEY] = (time.monotonic(), found[:5])
-                    others = [f"{i + 1}. {p['name']} ({p['address']})" for i, p in enumerate(found[:4])]
+                dest, ask = pick_place(query, found)
+                # Several places of the same name (two « rue du Saucisson »),
+                # or a street named in several towns: the driver chooses
+                # (choice: n). A town, a single match: goes at once, no question.
+                if ask or any(fold(p.get("name") or "") == fold(dest.get("name") or "") for p in found[1:]):
+                    hass.data[CAR_GO_KEY] = (time.monotonic(), (ask or found)[:5])
+                    others = [f"{i + 1}. {p['name']} ({p['address']})" for i, p in enumerate((ask or found)[:4])]
         await _write(dest_entity, format_destination(dest, (), avoid))
         out: dict = {"ok": True, "destination": {k: dest.get(k) for k in ("name", "address", "lat", "lon") if dest.get(k) is not None}}
         if avoid:
@@ -1347,13 +1347,14 @@ def _async_register_car(hass: HomeAssistant) -> None:
                     return {"ok": False, "error": "recherche de lieu impossible (pas d'internet ?)"}
                 if not found:
                     return {"ok": False, "error": f"aucun lieu trouvé pour « {query} »"}
-                stop = found[0]
-                # Several places of the same name: nothing is added until the
-                # driver chose (car_stop again, choice: n).
-                if any(fold(p.get("name") or "") == fold(stop.get("name") or "") for p in found[1:]):
-                    hass.data[CAR_GO_KEY] = (time.monotonic(), found[:5])
+                stop, ask = pick_place(query, found)
+                # Several places of the same name, or a street named in several
+                # towns: nothing is added until the driver chose (car_stop
+                # again, choice: n).
+                if ask or any(fold(p.get("name") or "") == fold(stop.get("name") or "") for p in found[1:]):
+                    hass.data[CAR_GO_KEY] = (time.monotonic(), (ask or found)[:5])
                     return {"ok": False, "ambiguous": True,
-                            "other_matches": [f"{i + 1}. {p['name']} ({p['address']})" for i, p in enumerate(found[:4])],
+                            "other_matches": [f"{i + 1}. {p['name']} ({p['address']})" for i, p in enumerate((ask or found)[:4])],
                             "note": "plusieurs lieux du même nom : demander lequel, puis car_stop avec choice"}
         else:
             at, places = hass.data.get(CAR_LAST_KEY) or (0, [])
