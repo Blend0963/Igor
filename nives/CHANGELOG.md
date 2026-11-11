@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.14 — The radar in the house's colours
+
+- The radars' pin leaves the white disc for the house's own drawing: a dark rounded tile, the camera in a thin off-white line, one red spark — the red stays the alert's alone. Still drawn on the spot, nothing to host.
+
 ## 0.38.13 — The zone that swallowed the address
 
 - The real thief was found: a Home Assistant zone whose name was merely CONTAINED in the request won before any search — a zone « Orléans » drove « 19 rue de Pathé à Orléans » to the town's middle, and « Porte d'Orléans » with it, for destinations and stops alike. A zone now wins only when the request IS the zone, the small words apart (« à Orléans », « vers la maison »); an address said reaches the search.
