@@ -361,6 +361,64 @@
           "description": "Which place of the last car_nearby answer (1 = the first), instead of a latitude and longitude."
         }
       }
+    },
+    "car_search": {
+      "name": "Car: search a place",
+      "description": "Places for a query (an address, a shop, a town), the ones near the car first: TomTom's search when a key is set, else OpenStreetMap asked near the car then anywhere. For the GPS card's search. Administrators and the car's users.",
+      "fields": {
+        "query": {
+          "name": "Query",
+          "description": "What to look for."
+        },
+        "latitude": {
+          "name": "Latitude",
+          "description": "Near where (default: the car)."
+        },
+        "longitude": {
+          "name": "Longitude",
+          "description": "Near where (default: the car)."
+        },
+        "limit": {
+          "name": "Count",
+          "description": "How many places."
+        }
+      }
+    },
+    "car_cameras": {
+      "name": "Car: cameras nearby",
+      "description": "France's automatic cameras around a point (fixed, red light, average speed, level crossing), from the Ministry of the Interior's public list, read once a week. For the GPS card. Administrators and the car's users.",
+      "fields": {
+        "latitude": {
+          "name": "Latitude",
+          "description": "Where."
+        },
+        "longitude": {
+          "name": "Longitude",
+          "description": "Where."
+        },
+        "radius_km": {
+          "name": "Radius",
+          "description": "How far around, in kilometres."
+        }
+      }
+    },
+    "car_limit": {
+      "name": "Car: speed limit here",
+      "description": "The speed limit of the road at a point, the way the car goes, from TomTom (the key in Igor's options): for the GPS card, where OpenStreetMap has no limit. Administrators and the car's users. Without a key it answers enabled: false.",
+      "fields": {
+        "latitude": {
+          "name": "Latitude",
+          "description": "Where."
+        },
+        "longitude": {
+          "name": "Longitude",
+          "description": "Where."
+        },
+        "heading": {
+          "name": "Heading",
+          "description": "Where the car faces, in degrees."
+        }
+      }
     }
   }
 }

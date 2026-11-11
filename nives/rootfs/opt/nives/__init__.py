@@ -78,6 +78,9 @@ from .const import (
     SERVICE_CAR_GO,
     SERVICE_CAR_NEARBY,
     SERVICE_CAR_STOP,
+    SERVICE_CAR_SEARCH,
+    SERVICE_CAR_CAMERAS,
+    SERVICE_CAR_LIMIT,
     CONF_CAR_USERS,
 )
 
@@ -1039,6 +1042,29 @@ CAR_STOP_SCHEMA = vol.Schema(
         vol.Optional("name", default="étape"): vol.All(cv.string, vol.Length(max=80)),
     }
 )
+CAR_SEARCH_SCHEMA = vol.Schema(
+    {
+        vol.Required("query"): vol.All(cv.string, vol.Length(max=200)),
+        vol.Optional("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
+        vol.Optional("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
+        vol.Optional("limit", default=6): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
+    }
+)
+CAR_CAMERAS_SCHEMA = vol.Schema(
+    {
+        vol.Required("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
+        vol.Required("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
+        vol.Optional("radius_km", default=15): vol.All(vol.Coerce(float), vol.Range(min=1, max=50)),
+    }
+)
+CAR_LIMIT_SCHEMA = vol.Schema(
+    {
+        vol.Required("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
+        vol.Required("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
+        vol.Optional("heading"): vol.All(vol.Coerce(float), vol.Range(min=0, max=360)),
+    }
+)
+CAR_RADARS_KEY = "nives_car_radars"
 CAR_LAST_KEY = "nives_car_last"
 CAR_LAST_S = 1200
 
@@ -1052,7 +1078,10 @@ def _async_register_car(hass: HomeAssistant) -> None:
         return
     from homeassistant.util import dt as dt_util
 
-    from .car import HOME_WORDS, KINDS, Car, fold, format_destination, kind_of, parse_destination
+    from .car import (
+        HOME_WORDS, KINDS, RADARS_URL, Car, fold, format_destination, kind_of, parse_destination, parse_radars, radars_near,
+    )
+    from .car import haversine_m as car_haversine
 
     async def _fetch(method: str, url: str, params: dict | None, data, json_body=None):
         session = async_get_clientsession(hass)
@@ -1183,7 +1212,82 @@ def _async_register_car(hass: HomeAssistant) -> None:
                 out["arrival"] = dt_util.as_local(dt_util.now() + timedelta(seconds=r["duration"])).strftime("%H:%M")
         return out
 
+    async def _search(call: ServiceCall) -> ServiceResponse:
+        """Places for the GPS card's search: near the car first."""
+        tracker, _dest = _car_settings(hass)
+        if call.data.get("latitude") is not None and call.data.get("longitude") is not None:
+            here = [call.data["longitude"], call.data["latitude"]]
+        else:
+            here = _car_position(hass, tracker)
+        query = call.data["query"].strip()
+        if not query:
+            return {"ok": True, "results": []}
+        zone = _zone(query)
+        try:
+            found = await car.geocode(query, here, call.data["limit"])
+        except Exception:  # noqa: BLE001
+            return {"ok": False, "error": "recherche impossible (pas d'internet ?)", "results": []}
+        if zone:
+            found.insert(0, {**zone, "address": "zone Home Assistant"})
+        for p in found:
+            p.pop("settlement", None)
+            if here:
+                p["distance_km"] = round(car_haversine(here, (p["lon"], p["lat"])) / 1000, 1)
+        return {"ok": True, "source": car.last_source, "results": found}
+
+    limit_cache: dict[tuple, tuple[float, dict]] = {}
+
+    async def _limit(call: ServiceCall) -> ServiceResponse:
+        """The road's limit from TomTom, where OpenStreetMap has none."""
+        key = _traffic_key(hass)
+        if not key:
+            return {"enabled": False}
+        lat, lon, heading = call.data["latitude"], call.data["longitude"], call.data.get("heading")
+        where = (round(lat, 4), round(lon, 4), None if heading is None else int(heading) // 45)
+        now = time.monotonic()
+        hit = limit_cache.get(where)
+        if hit and now - hit[0] < 600:
+            return hit[1]
+        try:
+            limit = await car.speed_limit(lat, lon, heading, key)
+        except Exception:  # noqa: BLE001
+            return {"enabled": True, "ok": False}
+        out = {"enabled": True, "ok": True, "limit": limit}
+        if len(limit_cache) > 500:
+            limit_cache.clear()
+        limit_cache[where] = (now, out)
+        return out
+
+    async def _radars() -> list[dict]:
+        """France's official camera list, read once a week and kept on disk."""
+        from homeassistant.helpers.storage import Store
+
+        cache = hass.data.setdefault(CAR_RADARS_KEY, {"at": 0.0, "items": None, "store": Store(hass, 1, "nives_radars"), "tried": 0.0})
+        now = time.time()
+        if cache["items"] is None:
+            saved = await cache["store"].async_load() or {}
+            cache["items"] = saved.get("items") or []
+            cache["at"] = float(saved.get("at") or 0)
+        if now - cache["at"] > 7 * 86400 and now - cache["tried"] > 600:
+            cache["tried"] = now
+            try:
+                items = parse_radars(await _fetch("GET", RADARS_URL, None, None))
+            except Exception:  # noqa: BLE001 - no internet: the list kept
+                items = []
+            if len(items) > 500:
+                cache["items"], cache["at"] = items, now
+                await cache["store"].async_save({"at": now, "items": items})
+        return cache["items"]
+
+    async def _cameras(call: ServiceCall) -> ServiceResponse:
+        items = await _radars()
+        near = radars_near(items, call.data["latitude"], call.data["longitude"], call.data["radius_km"] * 1000)
+        return {"ok": True, "source": "securite-routiere.gouv.fr", "known": len(items), "cameras": near[:400]}
+
     for name, handler, schema in (
+        (SERVICE_CAR_SEARCH, _search, CAR_SEARCH_SCHEMA),
+        (SERVICE_CAR_CAMERAS, _cameras, CAR_CAMERAS_SCHEMA),
+        (SERVICE_CAR_LIMIT, _limit, CAR_LIMIT_SCHEMA),
         (SERVICE_CAR_GO, _go, CAR_GO_SCHEMA),
         (SERVICE_CAR_NEARBY, _nearby, CAR_NEARBY_SCHEMA),
         (SERVICE_CAR_STOP, _stop, CAR_STOP_SCHEMA),

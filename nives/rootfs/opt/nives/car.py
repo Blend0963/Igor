@@ -26,6 +26,22 @@ OVERPASS = (
     "https://overpass.private.coffee/api/interpreter",
 )
 OSRM = "https://router.project-osrm.org/route/v1/driving/"
+TOMTOM_REVERSE = "https://api.tomtom.com/search/2/reverseGeocode/{lat:.6f},{lon:.6f}.json"
+TOMTOM_SEARCH = "https://api.tomtom.com/search/2/search/{q}.json"
+# France's automatic cameras, as the Ministry of the Interior publishes them
+# (fixed, red light, average speed, level crossing…): about 3,700 places.
+RADARS_URL = "https://radars.securite-routiere.gouv.fr/radars/all?_format=json"
+RADAR_KINDS = {
+    "fixes": "Radar fixe",
+    "discriminants": "Radar discriminant",
+    "feux": "Radar feu rouge",
+    "troncons": "Radar tronçon",
+    "niveaux": "Radar passage à niveau",
+    "itineraire": "Radar d'itinéraire",
+    "urbain": "Radar urbain",
+}
+# A town, a village: found by its name, it comes before a street of that name nearby.
+SETTLEMENTS = {"city", "town", "village", "municipality", "hamlet", "suburb", "administrative"}
 TOMTOM_ALONG = "https://api.tomtom.com/search/2/searchAlongRoute/{q}.json"
 TOMTOM_NEARBY = "https://api.tomtom.com/search/2/categorySearch/{q}.json"
 # With the TomTom key: TomTom's places (brands, opening hours, the detour it
@@ -277,6 +293,89 @@ def parse_tomtom(body: Any) -> list[dict]:
     return out
 
 
+def parse_radars(body: Any) -> list[dict]:
+    """The official list → [{id, kind, what, lat, lon}], bad rows dropped."""
+    out = []
+    for r in body if isinstance(body, list) else []:
+        if not isinstance(r, dict):
+            continue
+        try:
+            lat, lon = float(r["lat"]), float(r["lng"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180) or (lat == 0 and lon == 0):
+            continue
+        kind = str(r.get("type") or "")
+        out.append({"id": f"fr{r.get('id')}", "kind": kind, "what": RADAR_KINDS.get(kind, "Radar"),
+                    "lat": round(lat, 6), "lon": round(lon, 6)})
+    return out
+
+
+def radars_near(items: Sequence[dict], lat: float, lon: float, radius_m: float) -> list[dict]:
+    """Those within `radius_m` of a point (a quick box first)."""
+    dlat = radius_m / 111320.0
+    dlon = dlat / max(0.05, math.cos(math.radians(lat)))
+    return [
+        r for r in items
+        if abs(r["lat"] - lat) <= dlat and abs(r["lon"] - lon) <= dlon
+        and haversine_m((lon, lat), (r["lon"], r["lat"])) <= radius_m
+    ]
+
+
+def parse_speed_limit(body: Any) -> int | None:
+    """TomTom's reverse geocoding → the road's limit in km/h (« 50.00KPH », « 30.00MPH »)."""
+    for a in (body or {}).get("addresses") or []:
+        m = re.match(r"^\s*(\d+(?:\.\d+)?)\s*(KPH|MPH)", str((a.get("address") or {}).get("speedLimit") or ""), re.I)
+        if m:
+            v = float(m.group(1)) * (1.609344 if m.group(2).upper() == "MPH" else 1)
+            return int(round(v)) if 5 <= v <= 200 else None
+    return None
+
+
+def parse_nominatim(rows: Any) -> list[dict]:
+    out = []
+    for r in rows if isinstance(rows, list) else []:
+        try:
+            lat, lon = float(r["lat"]), float(r["lon"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        parts = str(r.get("display_name") or "").split(", ")
+        out.append({"lat": lat, "lon": lon, "name": str(r.get("name") or parts[0])[:60],
+                    "address": ", ".join(parts[:4])[:160],
+                    "settlement": str(r.get("addresstype") or r.get("type") or "") in SETTLEMENTS})
+    return out
+
+
+def parse_tomtom_search(body: Any) -> list[dict]:
+    """TomTom's fuzzy search → places: a POI's name, else the street and number."""
+    out = []
+    for r in (body or {}).get("results") or []:
+        pos, addr, poi = r.get("position") or {}, r.get("address") or {}, r.get("poi") or {}
+        try:
+            lat, lon = float(pos["lat"]), float(pos["lon"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        full = str(addr.get("freeformAddress") or "")
+        street = " ".join(x for x in (str(addr.get("streetNumber") or ""), str(addr.get("streetName") or "")) if x)
+        name = str(poi.get("name") or street or addr.get("municipality") or full.split(",")[0])
+        out.append({"lat": lat, "lon": lon, "name": name[:60], "address": full[:160]})
+    return out
+
+
+def merge_places(local: list[dict], world: list[dict], query: str, near: Sequence[float] | None) -> list[dict]:
+    """Nearby results first, nearest first; then the rest of the world. A town
+    asked by its name (« Lyon ») comes before a « rue de Lyon » nearby."""
+    if near:
+        local = sorted(local, key=lambda p: haversine_m(near, (p["lon"], p["lat"])))
+    out: list[dict] = []
+    q = fold(query)
+    towns = [p for p in world if p.get("settlement") and fold(p["name"]) == q]
+    for p in [*towns[:1], *local, *world]:
+        if not any(haversine_m((p["lon"], p["lat"]), (o["lon"], o["lat"])) < 30 for o in out):
+            out.append(p)
+    return out
+
+
 def in_area(p: dict, areas: list[dict]) -> dict | None:
     pad = 0.0015  # about 150 m around the area's box
     for a in areas:
@@ -293,6 +392,7 @@ class Car:
     def __init__(self, fetch: Fetch, tomtom_key: Callable[[], str | None] | None = None) -> None:
         self.fetch = fetch
         self.tomtom_key = tomtom_key or (lambda: None)
+        self.last_source = "osm"
 
     async def tomtom_along(self, kind: str, line: list, key: str) -> list[dict]:
         """TomTom's places along the route (at most 15 minutes of detour)."""
@@ -327,23 +427,50 @@ class Car:
         routes = (body or {}).get("routes") or []
         return routes[0] if routes else None
 
-    async def geocode(self, query: str, near: Sequence[float] | None) -> list[dict]:
-        params = {"format": "jsonv2", "limit": "5", "accept-language": "fr", "q": query}
-        if near:
-            params["viewbox"] = ",".join(f"{v:.4f}" for v in (near[0] - 1, near[1] + 1, near[0] + 1, near[1] - 1))
-        rows = await self.fetch("GET", NOMINATIM, params, None) or []
-        out = []
-        for r in rows if isinstance(rows, list) else []:
+    async def speed_limit(self, lat: float, lon: float, heading: float | None, key: str) -> int | None:
+        """The limit of the road at a point, the way the car goes (TomTom)."""
+        params = {"key": key, "returnSpeedLimit": "true", "radius": "40"}
+        if heading is not None:
+            params["heading"] = str(int(heading) % 360)
+        return parse_speed_limit(await self.fetch("GET", TOMTOM_REVERSE.format(lat=lat, lon=lon), params, None))
+
+    async def geocode(self, query: str, near: Sequence[float] | None, limit: int = 6) -> list[dict]:
+        """Places for a query, the ones near the car first. TomTom's search
+        when a key is set (addresses with their numbers, shops, towns, biased
+        to where the car is); else OpenStreetMap's Nominatim, asked twice:
+        within about 60 km of the car, then anywhere."""
+        key = self.tomtom_key()
+        if key:
+            params = {"key": key, "limit": str(limit), "language": "fr-FR", "typeahead": "true"}
+            if near:
+                params.update({"lat": f"{near[1]:.5f}", "lon": f"{near[0]:.5f}"})
             try:
-                lat, lon = float(r["lat"]), float(r["lon"])
-            except (KeyError, TypeError, ValueError):
-                continue
-            parts = str(r.get("display_name") or "").split(", ")
-            out.append({"lat": lat, "lon": lon, "name": str(r.get("name") or parts[0])[:60],
-                        "address": ", ".join(parts[:4])[:160]})
+                from urllib.parse import quote
+
+                found = parse_tomtom_search(
+                    await self.fetch("GET", TOMTOM_SEARCH.format(q=quote(query, safe="")), params, None)
+                )
+            except Exception:  # noqa: BLE001 - busy, refused: OpenStreetMap
+                found = []
+            if found:
+                self.last_source = "tomtom"
+                return found[:limit]
+        self.last_source = "osm"
+        base = {"format": "jsonv2", "limit": str(limit), "accept-language": "fr", "q": query}
+        local: list[dict] = []
         if near:
-            out.sort(key=lambda p: haversine_m(near, (p["lon"], p["lat"])))
-        return out
+            box = ",".join(f"{v:.4f}" for v in (near[0] - 0.8, near[1] + 0.55, near[0] + 0.8, near[1] - 0.55))
+            try:
+                local = parse_nominatim(await self.fetch("GET", NOMINATIM, {**base, "viewbox": box, "bounded": "1"}, None))
+            except Exception:  # noqa: BLE001
+                local = []
+        try:
+            world = parse_nominatim(await self.fetch("GET", NOMINATIM, base, None))
+        except Exception:  # noqa: BLE001
+            if not local:
+                raise
+            world = []
+        return merge_places(local, world, query, near)[:limit]
 
     async def nearby(self, kind: str, car: Sequence[float], dest: dict | None, count: int = 3) -> dict:
         """The places of a kind the driver can reach: along the route when

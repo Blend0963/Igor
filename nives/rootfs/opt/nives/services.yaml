@@ -229,3 +229,70 @@ car_stop:
     name:
       selector:
         text:
+car_search:
+  fields:
+    query:
+      required: true
+      selector:
+        text:
+    latitude:
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: any
+    longitude:
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any
+    limit:
+      default: 6
+      selector:
+        number:
+          min: 1
+          max: 10
+car_cameras:
+  fields:
+    latitude:
+      required: true
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: any
+    longitude:
+      required: true
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any
+    radius_km:
+      default: 15
+      selector:
+        number:
+          min: 1
+          max: 50
+car_limit:
+  fields:
+    latitude:
+      required: true
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: any
+    longitude:
+      required: true
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any
+    heading:
+      selector:
+        number:
+          min: 0
+          max: 360
