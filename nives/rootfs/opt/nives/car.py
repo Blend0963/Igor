@@ -359,6 +359,19 @@ def parse_nominatim(rows: Any) -> list[dict]:
     return out
 
 
+def town_split(query: str) -> tuple[str, str] | None:
+    """« porte d'Orléans à Paris » → (« porte d'Orléans », « Paris »): the place
+    and the town said after a « à » (or its unaccented twin, as speech may
+    write it). The place must stand; the town is a word or three at the end."""
+    q = str(query or "").strip()
+    for sep in (" à ", " a "):
+        if sep in q:
+            place, _, town = q.rpartition(sep)
+            if place.strip() and town.strip() and len(town.split()) <= 3:
+                return place.strip(), town.strip()
+    return None
+
+
 def parse_tomtom_search(body: Any) -> list[dict]:
     """TomTom's fuzzy search → places: a POI's name, else the street and number.
     Each place keeps its kind (`addr`, `poi`, `street`, `geo`: a town) and its
@@ -442,6 +455,7 @@ def pick_place(query: str, found: list[dict]) -> tuple[dict, list[dict]]:
     the driver chooses instead of being driven to the town's middle."""
     q = fold(query)
     numbered = re.search(r"\b\d{1,4}\b", q) is not None
+    small = ("le", "la", "les", "de", "des", "du", "un", "une", "au", "aux", "a", "en", "d", "l", "sur")
     if not numbered and not street_said(q):
         # The town itself came first while the query names a place: the named
         # place wins (its words were said in the query).
@@ -451,6 +465,13 @@ def pick_place(query: str, found: list[dict]) -> tuple[dict, list[dict]]:
         if named:
             return named[0], []
         if found[0].get("type") == "geo":
+            # The search understood only the town: the places first, the town
+            # last — « la première » must never be the town's middle.
+            rest = [p for p in found[1:] if p.get("type") != "geo"]
+            return found[0], (rest + [found[0]])[:5]
+        # A place asked in several words that no result's name carries: the
+        # driver chooses instead of being driven to the first answer.
+        if len([w for w in words_of(q) if w not in small]) >= 2:
             return found[0], found[:5]
         return found[0], []
     ranked = [p for p in found if p.get("type") != "geo"] or found
@@ -533,37 +554,49 @@ class Car:
         when a key is set (addresses with their numbers, shops, towns, biased
         to where the car is); else OpenStreetMap's Nominatim, asked twice:
         within about 60 km of the car, then anywhere."""
+        # A place said with its town (« porte d'Orléans à Paris ») is asked in
+        # the comma form first — the town after a comma TomTom reads as the
+        # place's town; after a « à » it may read as nothing at all and answer
+        # the town alone. Nothing found: the words as they were said.
+        parts = town_split(query)
+        queries = [f"{parts[0]}, {parts[1]}", query] if parts else [query]
         key = self.tomtom_key()
         if key:
-            params = {"key": key, "limit": str(limit), "language": "fr-FR", "typeahead": "true"}
-            if near:
-                params.update({"lat": f"{near[1]:.5f}", "lon": f"{near[0]:.5f}"})
-            try:
-                from urllib.parse import quote
+            for q in queries:
+                params = {"key": key, "limit": str(limit), "language": "fr-FR", "typeahead": "true"}
+                if near:
+                    params.update({"lat": f"{near[1]:.5f}", "lon": f"{near[0]:.5f}"})
+                try:
+                    from urllib.parse import quote
 
-                found = parse_tomtom_search(
-                    await self.fetch("GET", TOMTOM_SEARCH.format(q=quote(query, safe="")), params, None)
-                )
-            except Exception:  # noqa: BLE001 - busy, refused: OpenStreetMap
-                found = []
-            if found:
-                self.last_source = "tomtom"
-                return found[:limit]
+                    found = parse_tomtom_search(
+                        await self.fetch("GET", TOMTOM_SEARCH.format(q=quote(q, safe="")), params, None)
+                    )
+                except Exception:  # noqa: BLE001 - busy, refused: OpenStreetMap
+                    found = []
+                if found:
+                    self.last_source = "tomtom"
+                    return found[:limit]
         self.last_source = "osm"
-        base = {"format": "jsonv2", "limit": str(limit), "accept-language": "fr", "q": query}
         local: list[dict] = []
-        if near:
-            box = ",".join(f"{v:.4f}" for v in (near[0] - 0.8, near[1] + 0.55, near[0] + 0.8, near[1] - 0.55))
+        world: list[dict] = []
+        for q in queries:
+            base = {"format": "jsonv2", "limit": str(limit), "accept-language": "fr", "q": q}
+            if near:
+                box = ",".join(f"{v:.4f}" for v in (near[0] - 0.8, near[1] + 0.55, near[0] + 0.8, near[1] - 0.55))
+                try:
+                    local = parse_nominatim(await self.fetch("GET", NOMINATIM, {**base, "viewbox": box, "bounded": "1"}, None))
+                except Exception:  # noqa: BLE001
+                    local = []
             try:
-                local = parse_nominatim(await self.fetch("GET", NOMINATIM, {**base, "viewbox": box, "bounded": "1"}, None))
+                world = parse_nominatim(await self.fetch("GET", NOMINATIM, base, None))
             except Exception:  # noqa: BLE001
-                local = []
-        try:
-            world = parse_nominatim(await self.fetch("GET", NOMINATIM, base, None))
-        except Exception:  # noqa: BLE001
-            if not local:
-                raise
-            world = []
+                if not local:
+                    if q == queries[-1]:
+                        raise
+                    continue
+            if local or world:
+                break
         return merge_places(local, world, query, near)[:limit]
 
     async def nearby(self, kind: str, car: Sequence[float], dest: dict | None, count: int = 3) -> dict:

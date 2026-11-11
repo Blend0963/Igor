@@ -5965,7 +5965,7 @@
         ".mappick .mp-head { display: flex; align-items: center; gap: 4px; }" +
         ".mappick button { font: inherit; font-size: 14px; padding: 10px 12px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #e9e4da; cursor: pointer; display: flex; align-items: center; gap: 10px; --mdc-icon-size: 20px; white-space: nowrap; } .mappick button ha-icon { color: #59d0e0; flex: none; }" +
         ".mappick .mp-name { color: #878c95; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; min-width: 0; padding: 2px 0 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
-        ".mappick .mp-x { flex: none; width: 30px; height: 30px; min-height: 0; padding: 0; justify-content: center; border: none; background: transparent; color: #878c95; --mdc-icon-size: 18px; } .mappick .mp-x ha-icon { color: #878c95; }" +
+        ".mappick .mp-x { flex: none; margin-left: auto; width: 30px; height: 30px; min-height: 0; padding: 0; justify-content: center; border: none; background: transparent; color: #878c95; --mdc-icon-size: 18px; } .mappick .mp-x ha-icon { color: #878c95; }" +
         '</style><ha-card id="card"><div id="map"></div><div class="msg" id="msg">Chargement de la carte…</div>' +
         '<div class="btns"><button id="recenter" title="Recentrer" hidden><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' +
         '<button id="orient" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button>' +
@@ -6886,7 +6886,7 @@
       if (this.trafficOn()) {
         // A destination just chosen by hand: the routes to choose from.
         if (this.chooseNext) { this.chooseNext = false; if (await this.chooseRoute(d, from)) return; if (this.dest !== d) return; }
-        var tt = await this.askRoute(d, from, this.tripAvoid || this.avoidTypes());
+        var tt = await this.askRoute(d, from, this.tripAvoid || []);
         if (this.dest !== d) return;
         if (tt && tt.ok && tt.route) { this.useTomTom(tt.route); return; }
         if (this.avoid && this.avoid.length) this.banner("mdi:road-variant", "", "Impossible d'éviter la route fermée" + (tt && tt.error ? " (" + tt.error + ")" : ""), "wait");
@@ -6962,10 +6962,6 @@
         $("tbSub").textContent = gpsMetres(first.a - along);
       }
       var me = document.createElement("u"); tk.appendChild(me);
-    },
-    // The kinds of road the driver keeps off (the route panel's « éviter »), kept by this screen.
-    avoidTypes() {
-      try { var v = JSON.parse(window.localStorage.getItem("igor-gps-avoid") || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; }
     },
     askRoute(d, from, types) {
       return this._hass.callWS({ type: "call_service", domain: "nives", service: "route", return_response: true,
@@ -7162,7 +7158,7 @@
       var R = this.route;
       this.alts = (this.alts || []).filter((x) => x !== a && !x.parsed);
       if (R && R.source === "tomtom" && R.coords && R.coords.length > 1) {
-        this.alts = this.alts.concat([{ label: "En cours", types: (this.tripAvoid || this.avoidTypes()).slice(), parsed: true,
+        this.alts = this.alts.concat([{ label: "En cours", types: (this.tripAvoid || []).slice(), parsed: true,
           route: { coords: R.coords, steps: R.steps, duration: R.duration, jams: R.jams || [], delay: R.delay || 0,
             limits: R.limits || [], lanes: R.lanes || [], tolls: R.tolls || [], ferries: R.ferries || [], lez: R.lez || [] } }]);
       }
@@ -7185,7 +7181,7 @@
       if (force) this.altCycle = 0;
       else { this.altCycle = (this.altCycle || 0) + 1; if (this.altCycle % 3) return; }
       if (!this.alts || !this.alts.length) {
-        var mine = this.tripAvoid || this.avoidTypes(), has = (t) => mine.indexOf(t) >= 0;
+        var mine = this.tripAvoid || [], has = (t) => mine.indexOf(t) >= 0;
         this.alts = [];
         // The other choice always exists: without, when the trip allows it;
         // with (tolls, motorways) when the trip avoids it — switching back stays possible.
@@ -7208,8 +7204,13 @@
     // keeps off), without motorways, without tolls, without the low-emission
     // zones (the ZFE a vignette may not enter); those that are the same way
     // are shown once. Not touched for 12 s: the first one starts.
-    async chooseRoute(d, from) {
-      var mine = this.avoidTypes(), has = (t) => mine.indexOf(t) >= 0;
+    async chooseRoute(d, from, keep) {
+      // The panel forgets what was chosen before: everything is offered again
+      // (except when the chips were just touched — `keep`). What the driver
+      // chose for the trip under way lives in tripAvoid, the recalculations
+      // keep it; the panel itself starts from a blank page.
+      if (!keep) this.askAvoid = null;
+      var mine = this.askAvoid || [], has = (t) => mine.indexOf(t) >= 0;
       var asks = [{ label: "Le plus rapide", types: mine }];
       if (!has("motorways")) asks.push({ label: "Sans autoroute", types: mine.concat(["motorways"]) });
       if (!has("tollRoads")) asks.push({ label: "Sans péage", types: mine.concat(["tollRoads"]) });
@@ -7263,11 +7264,11 @@
       [["motorways", "Éviter autoroutes"], ["tollRoads", "Éviter péages"], ["ferries", "Éviter ferries"], ["lowEmissionZones", "Éviter ZFE"]].forEach((c) => {
         var b = document.createElement("button"); b.type = "button"; b.textContent = c[1]; b.className = has(c[0]) ? "on" : "";
         b.addEventListener("click", () => {
-          var cur = this.avoidTypes(), k = cur.indexOf(c[0]);
+          var cur = (this.askAvoid || []).slice(), k = cur.indexOf(c[0]);
           if (k >= 0) cur.splice(k, 1); else cur.push(c[0]);
-          try { window.localStorage.setItem("igor-gps-avoid", JSON.stringify(cur)); } catch (e) { /* no storage */ }
+          this.askAvoid = cur;
           clearTimeout(this.pickTimer);
-          this.chooseRoute(d, this.pos || from);
+          this.chooseRoute(d, this.pos || from, true);
         });
         chips.appendChild(b);
       });
@@ -7491,14 +7492,40 @@
       var cam = ["radar", "zone", "off"].indexOf(c.cameras) >= 0 ? c.cameras : c.cameras === false ? "off" : "zone";
       this.layers = { basemap: "dark", bld3d: false, cameras: cam, trafficMap: c.traffic_map === true, incidents: c.traffic !== false };
       Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") this.layers[k] = pois.indexOf(k) >= 0; });
-      if (saved && typeof saved === "object") Object.keys(this.layers).forEach((k) => { if (saved[k] !== undefined) this.layers[k] = saved[k]; });
+      var had = !!(saved && typeof saved === "object");
+      if (had) Object.keys(this.layers).forEach((k) => { if (saved[k] !== undefined) this.layers[k] = saved[k]; });
       // A base map gone since (the old Igor/CARTO one, "mono", "light"): Orbis is the only one left.
       if (!GPS_ORBIS[this.layers.basemap]) this.layers.basemap = "dark";
       if (c.traffic === false) { this.layers.trafficMap = false; this.layers.incidents = false; }
       this.applyLayers();
+      // The browser forgot its own (a head unit's web view clears itself at
+      // each start): the house remembers — its .storage keeps the settings
+      // (the nives.gps_layers service). When the browser knew, its word wins.
+      if (!had) {
+        var card = this;
+        try {
+          this._hass.callWS({ type: "call_service", domain: "nives", service: "gps_layers", service_data: {}, return_response: true })
+            .then((r) => {
+              var v = r && r.response && r.response.value;
+              if (!v) return;
+              var kept = JSON.parse(v);
+              if (!kept || typeof kept !== "object") return;
+              Object.keys(card.layers).forEach((k) => { if (kept[k] !== undefined) card.layers[k] = kept[k]; });
+              if (!GPS_ORBIS[card.layers.basemap]) card.layers.basemap = "dark";
+              card.applyLayers();
+              card.applyBuildings3D();
+              if (!card.$("lpanel").hidden) card.openLayers();
+            })
+            .catch(function (e) { /* no service yet: the defaults stand */ });
+        } catch (e) { /* no connection yet */ }
+      }
     },
     saveLayers() {
       try { window.localStorage.setItem("igor-gps-layers", JSON.stringify(this.layers)); } catch (e) { /* no storage */ }
+      try {
+        this._hass.callWS({ type: "call_service", domain: "nives", service: "gps_layers",
+          service_data: { value: JSON.stringify(this.layers) }, return_response: true }).catch(function (e) { /* no service */ });
+      } catch (e) { /* no connection yet */ }
       this.poiDirty = true;
       this.applyLayers();
       this.openLayers();

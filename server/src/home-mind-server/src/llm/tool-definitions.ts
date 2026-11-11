@@ -414,7 +414,7 @@ export const HOME_EXTRA_TOOLS: ToolDefinition[] = [
       type: "object",
       properties: {
         choice: { type: "number", description: "The place's number in the last car_find_nearby answer, or in other_matches, once the driver chose (1 = the first)." },
-        query: { type: "string", description: "A place the driver names (« ajoute une étape à Port d'Orléans »), as heard, the whole address with its street and town, when no place was proposed before." },
+        query: { type: "string", description: "A place the driver names (« ajoute une étape à Port d'Orléans »), as heard, the whole address with its street and town, when no place was proposed before. Never reduce it to the town alone: « porte d'Orléans à Paris » stays whole — « Paris » alone would put the stop in the middle of the town." },
         latitude: { type: "number", description: "Instead of a choice: the place's latitude." },
         longitude: { type: "number" },
         name: { type: "string" },
