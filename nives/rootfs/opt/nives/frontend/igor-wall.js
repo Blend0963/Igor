@@ -5911,7 +5911,7 @@
         // A warning (a camera, a zone, an incident): a small tile under the
         // limit sign, its distance in large figures, and the card's frame lit
         // red for a camera. The map stays in view.
-        ".side { position: absolute; z-index: 3; right: 10px; top: 96px; bottom: 64px; width: 118px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }" +
+        ".side { position: absolute; z-index: 3; right: 10px; top: 96px; bottom: 96px; width: 118px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }" +
         ".alert { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 6px; text-align: center; border-radius: var(--igor-radius, 3px); background: rgba(40,10,12,0.95); border: 2px solid #e5323b; color: #e9e4da; font-family: " + MONO + "; --mdc-icon-size: 30px; }" +
         ".alert[hidden] { display: none; } .alert ha-icon { color: #e5323b; width: 46px; height: 46px; border-radius: 50%; background: #fff; display: grid; place-items: center; flex: none; }" +
         ".alert #alS { font-family: 'Chakra Petch', " + MONO + "; font-size: 30px; font-weight: 600; line-height: 1.05; white-space: nowrap; }" +
@@ -5939,7 +5939,7 @@
         ".street { position: absolute; z-index: 2; bottom: 12px; left: 50%; transform: translateX(-50%); max-width: 55%; padding: 6px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.88); border: 1px solid #22262c; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }" +
         ".street[hidden] { display: none; }" +
         // A word for a few seconds (a detour, the voice's setting): small, above the bottom bar.
-        ".toast { position: absolute; z-index: 3; left: 50%; bottom: 64px; transform: translateX(-50%); max-width: 80%; padding: 8px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.94); border: 1px solid #f08c1a; border-left: 4px solid #f08c1a; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }" +
+        ".toast { position: absolute; z-index: 3; left: 50%; bottom: 84px; transform: translateX(-50%); max-width: 80%; padding: 8px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.94); border: 1px solid #f08c1a; border-left: 4px solid #f08c1a; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }" +
         ".toast[hidden] { display: none; } .toast b { color: #f08c1a; font-weight: 500; } .toast button { font: inherit; margin-left: 12px; background: none; border: 1px solid #22262c; color: #878c95; padding: 2px 8px; border-radius: 2px; cursor: pointer; }" +
         ".shield { display: inline-block; padding: 1px 6px; margin-right: 8px; border-radius: 3px; font-family: 'Barlow Condensed', 'Roboto Condensed', 'Arial Narrow', sans-serif; font-weight: 700; font-size: 0.86em; line-height: 1.25; letter-spacing: 0.02em; vertical-align: 1px; white-space: nowrap; background: #e9e4da; color: #111; box-shadow: inset 0 0 0 1.5px currentColor; }" +
         ".shield.a, .shield.n { background: #d33; color: #fff; } .shield.e { background: #2f8a3e; color: #fff; } .shield.d { background: #f2c200; color: #111; } .shield.m { background: #2a9fd6; color: #fff; }" +
