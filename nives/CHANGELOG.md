@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.5 — The place said, not the town
+
+- A place said with its town (« Porte d'Orléans à Paris ») is no longer swallowed by the town: when the search answers with the town first while the query names a place, the named place wins (its name is the one said). A town asked alone (« va à Paris ») still goes to the town at once, and a numbered address still keeps its street result.
+- The alternates' bubbles sit only on the part of the grey route that is its own — from where it leaves the blue route to where it comes back. On the way the two routes share, no bubble: nothing grey to read there. An alternate that never leaves the route shows no bubble at all.
+
 ## 0.38.4 — Radars that stay on my road
 
 - The map draws only the cameras and lights of the road driven: the route while navigating, else the road under the car — never the road beside anymore. Three levels decide: on the way (15 m) the point is drawn; a little off it (15 to 25 m) a camera is drawn only when its OpenStreetMap direction really watches the car's way (the opposite carriageway's radar stays hidden), a light is drawn anyway (its direction tag is often wrong); beyond, another road, never drawn. The warnings (the spoken and shown alerts) follow the same rule — a radar is announced only when its camera watches the way.
