@@ -6000,6 +6000,7 @@
         ".trow .del { flex: none; width: 36px; height: 36px; min-height: 0; padding: 0; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #878c95; cursor: pointer; display: grid; place-items: center; --mdc-icon-size: 20px; }" +
         ".alttag { padding: 3px 9px; border-radius: 12px; background: rgba(7,8,10,0.92); border: 1px solid #3d454e; color: #878c95; font-family: " + MONO + "; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }" +
         ".alttag.win { color: #5cc28f; border-color: #5cc28f; } .alttag.lose { color: #f08c1a; border-color: #f08c1a; }" +
+        ".eur { color: #e0a33a; font-weight: 700; margin-right: 6px; }" +
         '</style><ha-card id="card"><div id="map"></div><div class="msg" id="msg">Chargement de la carte…</div>' +
         '<div class="btns"><button id="recenter" title="Recentrer" hidden><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' +
         '<button id="orient" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button>' +
@@ -7000,6 +7001,7 @@
         map.on("mouseenter", "alts", () => { map.getCanvas().style.cursor = "pointer"; });
         map.on("mouseleave", "alts", () => { map.getCanvas().style.cursor = ""; });
         map.on("move", () => this.clampAlts());
+        map.on("moveend", () => this.placeAlts());
       }
       map.getSource("alts").setData(this.altsData());
       (this.altMarkers || []).forEach((m) => m.remove());
@@ -7011,18 +7013,53 @@
         var dmin = Math.round((R0.duration - (R ? R.duration : R0.duration)) / 60);
         var el = document.createElement("div");
         el.className = "alttag" + (dmin < 0 ? " win" : dmin > 0 ? " lose" : "");
-        el.textContent = dmin === 0 ? "≈ 0 min" : (dmin > 0 ? "+" : "−") + Math.abs(dmin) + " min";
-        // The bubble where the driver sees the route: the point of it nearest
-        // the car, kept inside the screen when the map follows.
-        var pt = R0.coords[Math.floor(R0.coords.length / 2)];
-        if (this.pos) {
-          var bd = Infinity;
-          for (var k = 0; k < R0.coords.length; k += 3) { var dd = gpsDist(this.pos, R0.coords[k]); if (dd < bd) { bd = dd; pt = R0.coords[k]; } }
-        }
-        var mk = new window.maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(pt).addTo(map);
-        mk._igorLL = pt;
+        if (R0.tolls && R0.tolls.length) { var e = document.createElement("span"); e.className = "eur"; e.textContent = "€"; el.appendChild(e); }
+        el.appendChild(document.createTextNode(dmin === 0 ? "≈ 0 min" : (dmin > 0 ? "+" : "−") + Math.abs(dmin) + " min"));
+        var mk = new window.maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(R0.coords[Math.floor(R0.coords.length / 2)]).addTo(map);
+        mk._igorAlt = a;
         this.altMarkers.push(mk);
         el.addEventListener("click", (ev) => { ev.stopPropagation(); this.pickAlt(a); });
+      });
+      this.placeAlts(true);
+    },
+    // Where each bubble sits: on its grey line, where the driver reads it —
+    // away from the car while following (at the crossing where the other
+    // route leaves, never over the car), at the middle of its route when the
+    // whole trip is on the screen, as a GPS shows it zoomed out.
+    placeAlts(force) {
+      var map = this.map;
+      if (!map || !window.maplibregl || !this.altMarkers || !this.altMarkers.length) return;
+      var now = performance.now();
+      if (!force && this._altPlaced && now - this._altPlaced < 1000) return;
+      this._altPlaced = now;
+      var w = map.getCanvas().clientWidth, h = map.getCanvas().clientHeight, whole = false;
+      if (this.route && this.route.coords && this.route.coords.length > 1) {
+        var bb = map.getBounds();
+        whole = true;
+        for (var k = 0; k < this.route.coords.length && whole; k += 10) whole = bb.contains(this.route.coords[k]);
+      }
+      var car = this.pos ? map.project(this.pos) : null;
+      this.altMarkers.forEach((m) => {
+        var R0 = m._igorAlt && m._igorAlt.route;
+        if (!R0 || !R0.coords || R0.coords.length < 2) return;
+        var pt = null;
+        if (whole || !car) pt = R0.coords[Math.floor(R0.coords.length / 2)];
+        else {
+          var near = 0, bd = Infinity;
+          for (var k2 = 0; k2 < R0.coords.length; k2 += 3) { var dd = gpsDist(this.pos, R0.coords[k2]); if (dd < bd) { bd = dd; near = k2; } }
+          for (var st = 0; st < R0.coords.length && !pt; st += 3) {
+            for (var ci = -1; ci <= 1 && !pt; ci += 2) {
+              var c = R0.coords[near + st * ci];
+              if (!c) continue;
+              var s = map.project(c);
+              if (s.x < 60 || s.y < 130 || s.x > w - 60 || s.y > h - 130) continue;
+              if (Math.hypot(s.x - car.x, s.y - car.y) > 110) pt = c;
+            }
+          }
+          if (!pt) pt = R0.coords[near];
+        }
+        m._igorLL = pt;
+        m.setLngLat(pt);
       });
       this.clampAlts();
     },
@@ -7069,8 +7106,12 @@
       if (!this.alts || !this.alts.length) {
         var mine = this.tripAvoid || this.avoidTypes(), has = (t) => mine.indexOf(t) >= 0;
         this.alts = [];
+        // The other choice always exists: without, when the trip allows it;
+        // with (tolls, motorways) when the trip avoids it — switching back stays possible.
         if (!has("motorways")) this.alts.push({ label: "Sans autoroute", types: mine.concat(["motorways"]) });
+        else this.alts.push({ label: "Avec autoroute", types: mine.filter((t) => t !== "motorways") });
         if (!has("tollRoads")) this.alts.push({ label: "Sans péage", types: mine.concat(["tollRoads"]) });
+        else this.alts.push({ label: "Avec péage", types: mine.filter((t) => t !== "tollRoads") });
       }
       if (!this.alts.length) return;
       var got = await Promise.all(this.alts.map((a) => this.askRoute(d, from, a.types || [])));
@@ -7120,8 +7161,9 @@
         b.type = "button"; b.className = "ropt" + (i ? "" : " sel");
         var dot = document.createElement("span"); dot.className = "dot"; dot.style.background = COL[i]; b.appendChild(dot);
         var mid = document.createElement("div"), mins = Math.round(R0.duration / 60);
+        if (R0.tolls && R0.tolls.length) { var e = document.createElement("span"); e.className = "eur"; e.textContent = "€"; mid.appendChild(e); }
         var t = document.createElement("b"); t.textContent = mins >= 60 ? Math.floor(mins / 60) + " h " + String(mins % 60).padStart(2, "0") : mins + " min"; mid.appendChild(t);
-        var sm = document.createElement("small"); sm.textContent = o.label + (R0.tolls && R0.tolls.length ? " · péage" : "") + (R0.ferries && R0.ferries.length ? " · ferry" : ""); mid.appendChild(sm);
+        var sm = document.createElement("small"); sm.textContent = o.label + (R0.ferries && R0.ferries.length ? " · ferry" : ""); mid.appendChild(sm);
         b.appendChild(mid);
         var r = document.createElement("div"); r.className = "r";
         r.appendChild(document.createTextNode(gpsMetres(R0.distance)));
