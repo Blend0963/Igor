@@ -5199,7 +5199,9 @@
   //   snap: 20                              # metres within which the arrow sits on the nearest road; 0: off
   //   theme: sombre                         # sombre, clair, or auto (light by day, dark at night)
   //   hide_attribution: false
-  //   style: <a MapLibre style URL>         # another base map
+  //   style: <a MapLibre style URL>         # another base map (the layers' button's choice wins when it is a TomTom one)
+  //                                         # the layers' button also chooses the base map: Igor (CARTO, the theme's)
+  //                                         # or TomTom Orbis (mono sombre, conduite, clair, satellite; a TomTom key needed)
   //   destination: input_text.car_destination  # « lat,lon;Nom »: guidance there (set it from a phone, or the card's flag)
   //   favorites:                            # the flag's quick places
   //     - { name: Maison, zone: zone.home }
@@ -5232,6 +5234,10 @@
   var GPS_MAPLIBRE = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl";
   var GPS_DARK = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
   var GPS_DAY = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
+  // TomTom Orbis base maps, chosen in the layers' panel: the style and its
+  // tiles come from Home Assistant (the key stays on the server), a TomTom
+  // key in Igor's options is needed.
+  var GPS_ORBIS = { mono: "basic_mono-dark", dark: "basic_street-dark_driving", light: "basic_street-light", satellite: "basic_street-satellite" };
   var GPS_R = 6378137, GPS_PREDICT_S = 4, GPS_MOVING = 0.8, GPS_TRAIL = 600;
   // Speeds (m/s, from the car itself when it says, else the GPS):
   // above GPS_FWD (15 km/h) a car only drives forward, so where it goes is
@@ -6090,6 +6096,8 @@
       if (!on && secs > 0) this.resume = setTimeout(() => this.setFollow(true), secs * 1000);
     }
     styleUrl() {
+      var bm = this.layers && this.layers.basemap;
+      if (bm && GPS_ORBIS[bm]) return window.location.origin + "/api/nives/basemap/style?map=" + GPS_ORBIS[bm];
       if (this.config.style) return this.config.style;
       if (this.config.theme === "clair") return GPS_DAY;
       if (this.config.theme === "auto") {
@@ -6323,7 +6331,9 @@
       } catch (e) { return []; }
       var lines = [];
       feats.forEach((f) => {
-        var g = f.geometry, cls = String((f.properties && (f.properties.class || f.properties.subclass)) || "");
+        var g = f.geometry, props = f.properties || {};
+        // OpenMapTiles says class/subclass; TomTom Orbis says roadClass/roadFunction.
+        var cls = String(props.class || props.subclass || props.roadClass || props.roadFunction || "");
         // Only where a car drives: no railway, path, footway, cycleway, ferry.
         if (!g || /rail|transit|path|footway|pedestrian|cycle|bicycle|bridleway|steps|track|ferry|cable|aerial|pier/.test(cls)) return;
         if (/rail|path|ferry|aeroway|pier|transit|cable/.test(String(f.layer && f.layer.id || ""))) return;
@@ -7324,7 +7334,7 @@
       try { saved = JSON.parse(window.localStorage.getItem("igor-gps-layers") || "null"); } catch (e) { saved = null; }
       var pois = Array.isArray(c.pois) ? c.pois : GPS_POI_DEFAULT;
       var cam = ["radar", "zone", "off"].indexOf(c.cameras) >= 0 ? c.cameras : c.cameras === false ? "off" : "zone";
-      this.layers = { cameras: cam, trafficMap: c.traffic_map === true, incidents: c.traffic !== false };
+      this.layers = { basemap: "igor", cameras: cam, trafficMap: c.traffic_map === true, incidents: c.traffic !== false };
       Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") this.layers[k] = pois.indexOf(k) >= 0; });
       if (saved && typeof saved === "object") Object.keys(this.layers).forEach((k) => { if (saved[k] !== undefined) this.layers[k] = saved[k]; });
       if (c.traffic === false) { this.layers.trafficMap = false; this.layers.incidents = false; }
@@ -7347,6 +7357,23 @@
       $("lpanel").hidden = false;
       list.innerHTML = "";
       var head = function (txt) { var h = document.createElement("div"); h.className = "note"; h.textContent = txt; list.appendChild(h); };
+      head("Fond de carte");
+      var bmseg = document.createElement("div"); bmseg.className = "seg";
+      [["igor", "Igor"], ["mono", "Mono"], ["dark", "Route"], ["light", "Clair"], ["satellite", "Sat."]].forEach((o) => {
+        var b = document.createElement("button"); b.type = "button"; b.textContent = o[1];
+        b.classList.toggle("on", (L.basemap || "igor") === o[0]);
+        b.addEventListener("click", () => {
+          if (o[0] !== "igor" && this.config.traffic === false) { this.toast("La carte TomTom est désactivée (traffic: false)", 3000); return; }
+          if (o[0] !== "igor" && this.traffic && !this.traffic.enabled && !this.traffic.denied) { this.toast("Ajouter une clé TomTom dans les options d'Igor", 3000); return; }
+          L.basemap = o[0]; this.saveLayers(); this.applyBasemap();
+        });
+        bmseg.appendChild(b);
+      });
+      list.appendChild(bmseg);
+      var bmnote = document.createElement("div"); bmnote.className = "note";
+      bmnote.textContent = L.basemap && L.basemap !== "igor" ? "Fond TomTom Orbis, servi par Home Assistant (la clé reste sur le serveur)"
+        : "Le fond du thème Igor (CARTO). Les fonds TomTom demandent une clé TomTom dans les options d'Igor.";
+      list.appendChild(bmnote);
       head("Contrôles de vitesse");
       var seg = document.createElement("div"); seg.className = "seg";
       [["zone", "Zones de danger"], ["radar", "Radars"], ["off", "Aucun"]].forEach((o) => {
@@ -7377,6 +7404,15 @@
         toggle("trafficMap", "Trafic sur toute la carte", "#e5823b", why || "Sinon, seulement sur l'itinéraire : orange ralenti, rouge bouché");
         toggle("incidents", "Routes fermées, travaux, accidents", "#e5323b", why);
       }
+    },
+    // A base map chosen in the layers' panel: the style is swapped (the
+    // style.load handler puts the route, the trail and the rest back on it).
+    applyBasemap() {
+      if (!this.map || !this.styleUrl) return;
+      var url = this.styleUrl();
+      if (this.styleNow === url) return;
+      this.styleNow = url;
+      this.map.setStyle(url, { diff: false });
     },
     applyLayers() {
       var map = this.map;

@@ -73,6 +73,8 @@ from .const import (
     SERVICE_TRAFFIC,
     SERVICE_ROUTE,
     TRAFFIC_TILE_URL,
+    BASEMAP_STYLE_URL,
+    BASEMAP_PROXY_URL,
     CONF_CAR_TRACKER,
     CONF_CAR_DESTINATION,
     SERVICE_CAR_GO,
@@ -850,6 +852,10 @@ def _async_register_traffic(hass: HomeAssistant) -> None:
     if not store.get("traffic_view"):
         hass.http.register_view(TrafficTileView())
         store["traffic_view"] = True
+    if not store.get("basemap_views"):
+        hass.http.register_view(BasemapStyleView())
+        hass.http.register_view(BasemapProxyView())
+        store["basemap_views"] = True
     if hass.services.has_service(DOMAIN, SERVICE_TRAFFIC):
         return
 
@@ -998,6 +1004,114 @@ class TrafficTileView(HomeAssistantView):
                     self._tiles.pop(k, None)
             self._tiles[(zi, xi, yi)] = (now, body)
         return web.Response(body=body, content_type="image/png", headers={"Cache-Control": "private, max-age=60"})
+
+
+# The TomTom Orbis base maps: the styles the GPS card may ask for, and the
+# upstream every style URL, tile, font and sprite comes from.
+ORBIS_ORIGIN = "https://api.tomtom.com"
+ORBIS_STYLE_URL = ORBIS_ORIGIN + "/maps/orbis/assets/styles/0.*/style"
+ORBIS_MAPS = (
+    "basic_mono-dark",
+    "basic_street-dark_driving",
+    "basic_street-light",
+    "basic_street-satellite",
+)
+BASEMAP_CACHE_S = 300
+
+
+def _basemap_rewrite(node, proxied: str) -> None:
+    """Every api.tomtom.com URL in a style goes through the proxy below."""
+    if isinstance(node, dict):
+        items = node.items()
+    elif isinstance(node, list):
+        items = enumerate(node)
+    else:
+        return
+    for k, v in items:
+        if isinstance(v, str) and v.startswith(ORBIS_ORIGIN):
+            node[k] = proxied + v[len(ORBIS_ORIGIN):].lstrip("/")
+        else:
+            _basemap_rewrite(v, proxied)
+
+
+def _basemap_user(request: web.Request) -> bool:
+    user = request.get("hass_user")
+    return bool(user and (user.is_admin or user.id in _car_users(request.app[KEY_HASS])))
+
+
+class BasemapStyleView(HomeAssistantView):
+    """A TomTom Orbis style, MapLibre-ready, for the GPS card's layers button:
+    the key is added here and every URL of the style is rewritten to the proxy
+    below, so it never reaches a dashboard or a browser. Logged-in
+    administrators only (the card sends its Home Assistant token)."""
+
+    url = BASEMAP_STYLE_URL
+    name = "api:nives:basemap_style"
+    requires_auth = True
+
+    def __init__(self) -> None:
+        self._styles: dict[str, tuple[float, dict]] = {}
+
+    async def get(self, request: web.Request) -> web.Response:
+        if not _basemap_user(request):
+            return web.Response(status=403)
+        wanted = str(request.query.get("map") or "")
+        if wanted not in ORBIS_MAPS:
+            return web.Response(status=400)
+        hass: HomeAssistant = request.app[KEY_HASS]
+        key = _traffic_key(hass)
+        if not key:
+            return web.Response(status=404)
+        now = time.monotonic()
+        hit = self._styles.get(wanted)
+        if hit and now - hit[0] < BASEMAP_CACHE_S:
+            style = hit[1]
+        else:
+            try:
+                async with async_get_clientsession(hass).get(
+                    ORBIS_STYLE_URL, params={"key": key, "apiVersion": "1", "map": wanted}, timeout=aiohttp.ClientTimeout(total=10)
+                ) as r:
+                    if r.status != 200:
+                        return web.Response(status=502)
+                    style = await r.json(content_type=None)
+            except (aiohttp.ClientError, TimeoutError, ValueError):
+                return web.Response(status=504)
+            _basemap_rewrite(style, f"{request.url.origin()}{BASEMAP_PROXY_URL.split('{')[0]}")
+            self._styles.clear()
+            self._styles[wanted] = (now, style)
+        return web.json_response(style, headers={"Cache-Control": "private, max-age=300"})
+
+
+class BasemapProxyView(HomeAssistantView):
+    """The tiles, fonts and sprites behind the Orbis style above: the key is
+    added here, so it never reaches a dashboard or a browser."""
+
+    url = BASEMAP_PROXY_URL
+    name = "api:nives:basemap_proxy"
+    requires_auth = True
+
+    async def get(self, request: web.Request, path: str) -> web.Response:
+        if not _basemap_user(request):
+            return web.Response(status=403)
+        if not path.startswith("maps/orbis/"):
+            return web.Response(status=400)
+        hass: HomeAssistant = request.app[KEY_HASS]
+        key = _traffic_key(hass)
+        if not key:
+            return web.Response(status=404)
+        params = dict(request.query)
+        params["key"] = key
+        try:
+            async with async_get_clientsession(hass).get(
+                f"{ORBIS_ORIGIN}/{path}", params=params, timeout=aiohttp.ClientTimeout(total=15)
+            ) as r:
+                if r.status != 200:
+                    return web.Response(status=502)
+                body = await r.read()
+        except (aiohttp.ClientError, TimeoutError):
+            return web.Response(status=504)
+        age = 86400 if "/assets/" in path else 3600
+        return web.Response(body=body, headers={"Content-Type": r.headers.get("Content-Type", "application/octet-stream"), "Cache-Control": f"private, max-age={age}"})
 
 
 def _car_settings(hass: HomeAssistant) -> tuple[str | None, str | None]:

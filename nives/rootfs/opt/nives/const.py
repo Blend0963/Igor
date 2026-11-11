@@ -186,6 +186,11 @@ SERVICE_TRIP_MAP = "trip_map"
 CONF_TRAFFIC_KEY = "traffic_key"
 SERVICE_TRAFFIC = "traffic"
 TRAFFIC_TILE_URL = "/api/nives/traffic_tile/{z}/{x}/{y}"
+# The TomTom Orbis base maps for the GPS card (the layers' button): the style
+# and its tiles, fonts and sprites come through Home Assistant, the key stays
+# on the server.
+BASEMAP_STYLE_URL = "/api/nives/basemap/style"
+BASEMAP_PROXY_URL = "/api/nives/basemap/tomtom/{path:.*}"
 SERVICE_ROUTE = "route"
 # The car Igor guides (car.py): its position and the GPS card's destination.
 CONF_CAR_TRACKER = "car_tracker"
