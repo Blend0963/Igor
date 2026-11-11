@@ -160,6 +160,10 @@ OPNSENSE_KEY = "nives_opnsense"
 NAMES_KEY = "nives_names"
 # The desk screen (igor-ear's `run.sh screen`): the service fires this event.
 SERVICE_SCREEN = "screen"
+# The GPS card's settings (the layers, the 3D buildings), kept in .storage so
+# they survive a restart even when the screen's browser forgets its own.
+SERVICE_GPS_LAYERS = "gps_layers"
+GPS_LAYERS_KEY = "nives_gps_layers"
 SCREEN_EVENT = "igor_screen"
 SCREEN_ACTIONS = ("pc", "dashboard", "off", "on", "toggle", "app", "close")
 SCREEN_APPS = ("sound", "equalizer", "bluetooth")

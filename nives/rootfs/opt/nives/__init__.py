@@ -49,6 +49,8 @@ from .const import (
     SCREEN_APPS,
     SCREEN_EVENT,
     SERVICE_JOURNAL,
+    SERVICE_GPS_LAYERS,
+    GPS_LAYERS_KEY,
     SERVICE_NEWS,
     SERVICE_DNS_LOG,
     SERVICE_DNS_MAP,
@@ -480,6 +482,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
         _async_register_wifi_scan(hass)
         _async_register_screen(hass)
     _async_register_disarm(hass)
+    _async_register_gps_layers(hass)
     await _async_register_notifications(hass)
     _async_register_trip_map(hass)
     _async_register_traffic(hass)
@@ -614,6 +617,36 @@ def _async_register_screen(hass: HomeAssistant) -> None:
         hass.bus.async_fire(SCREEN_EVENT, data, context=call.context)
 
     hass.services.async_register(DOMAIN, SERVICE_SCREEN, _screen, schema=SCREEN_SCHEMA)
+
+
+GPS_LAYERS_SCHEMA = vol.Schema({vol.Optional("value"): str})
+
+
+@callback
+def _async_register_gps_layers(hass: HomeAssistant) -> None:
+    """The GPS card's settings (the layers, the 3D buildings), kept in
+    .storage: the screen's browser may forget its own (a head unit's web view
+    clears itself), the house does not. Called with `value` (a JSON string)
+    it saves; without, it answers what was saved."""
+    if hass.services.has_service(DOMAIN, SERVICE_GPS_LAYERS):
+        return
+    from homeassistant.helpers.storage import Store
+
+    async def _gps_layers(call: ServiceCall) -> ServiceResponse:
+        store: Store = Store(hass, 1, GPS_LAYERS_KEY)
+        value = call.data.get("value")
+        if value is not None:
+            await store.async_save({"value": str(value)[:4000]})
+            return {"ok": True}
+        try:
+            saved = await store.async_load()
+        except Exception:  # noqa: BLE001 - a damaged file: nothing kept
+            saved = None
+        return {"value": saved.get("value") if isinstance(saved, dict) else None}
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_GPS_LAYERS, _gps_layers, schema=GPS_LAYERS_SCHEMA, supports_response=SupportsResponse.ONLY
+    )
 
 
 JOURNAL_SCHEMA = vol.Schema(

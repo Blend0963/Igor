@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.38.12 — Settings the house keeps, a panel that offers everything, a place asked in its own words
+
+- The layers' panel (the 3D buildings, the radars, the traffic) is kept by the house now, in its .storage: a head unit's browser that clears its own memory at each start finds its settings again. The cross of the map's place panel stands at the right, always.
+- The « éviter » chips are no longer remembered from one trip to the next: opening the routes' panel offers everything again — the fastest, without motorways, without tolls, without the ZFE. What the driver chose for the trip under way is kept by the recalculations, nothing more.
+- « Porte d'Orléans à Paris » asked the search in its own words: the place and its town go as « Porte d'Orléans, Paris » (a comma the search reads; a « à » it may swallow). And when the search understood only the town, the places come first in the question and the town last — « oui » and « la première » can no longer mean the middle of Paris. A place asked in several words that nothing answers is asked back, never taken in silence.
+
 ## 0.38.11 — A cross to close, a trip that stays, a place said word for word
 
 - The map's place panel wears a small cross at its top: a tap on the map by mistake no longer traps the screen.
