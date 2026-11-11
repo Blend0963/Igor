@@ -7718,11 +7718,14 @@
       return o && o.dist <= within ? o.dist : null;
     },
     // The three levels of the map: on my way (<= 15 m) the point is drawn;
-    // 15-25 m it is drawn only when it really watches the way (a camera whose
-    // OSM direction says so; a light needs no direction, its tag is often
-    // wrong); beyond, it stands on another road and is never drawn.
+    // in the band it is drawn only when it really watches the way (a camera
+    // whose OSM direction says so; a light needs no direction, its tag is
+    // often wrong); beyond, it stands on another road and is never drawn.
+    // The band is wider for lights (40 m: they sit at big crossroads, their
+    // node is often set back) than for cameras (25 m: they watch one way).
     onMyWay(q, watch) {
-      var d = this.wayNear(q.p, 25);
+      var far = watch ? 25 : 40;
+      var d = this.wayNear(q.p, far);
       if (d == null) return false;
       if (d <= 15) return true;
       return watch ? gpsCameraWatches(q.tags, this.heading) : true;
@@ -7745,7 +7748,7 @@
       var cam = null, L = this.layers || {}, onWay = {};
       // What is drawn: only the lights and cameras on my way — the route
       // while navigating, else the road under the car. Never the road beside:
-      // the three levels of onMyWay decide. The nearest forty only (the line
+      // the three levels of onMyWay decide. The nearest eighty only (the line
       // is searched segment by segment; a city has hundreds of lights).
       var onMap = {}, near = [];
       (this.pois || []).forEach((q) => {
@@ -7754,7 +7757,7 @@
         if (q.kind === "camera" && (!L.cameras || L.cameras === "off")) return;
         near.push(q);
       });
-      near.sort((u, v) => gpsDist(this.pos, u.p) - gpsDist(this.pos, v.p)).slice(0, 40).forEach((q) => {
+      near.sort((u, v) => gpsDist(this.pos, u.p) - gpsDist(this.pos, v.p)).slice(0, 80).forEach((q) => {
         if (this.onMyWay(q, q.kind === "camera")) onMap[q.id] = true;
       });
       this.onMap = onMap;

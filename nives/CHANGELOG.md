@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.7 — Lights that stay seen
+
+- The lights' band widens from 25 to 40 m: a light's OpenStreetMap node often sits back from the big crossroads it serves, and it was dropped from the map for that. Lights stay drawn all along the band (no direction rule — their tag is often wrong); the cameras keep the strict 25 m band with their direction check. And the map now weighs the eighty nearest points instead of forty, so a dense city keeps its lights on the line.
+
 ## 0.38.6 — One base map
 
 - The TomTom Orbis map (« Route ») is the only base map: the layers' panel no longer chooses between it and the theme's CARTO one, and a screen that had picked another falls back on Orbis. The places (stations, parkings, toilets, hospitals, charging stations, rest areas) are no longer fetched from OpenStreetMap — the Orbis map draws its own — so Overpass is asked for the lights and the cameras only, and the old places kept on the screen are dropped. The lights' toggle stays; the radars, the danger zones, the live traffic and the 3D buildings too. A screen set with « traffic: false » (no TomTom key at all) keeps the theme's CARTO map.
