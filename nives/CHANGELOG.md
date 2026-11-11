@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.2 — Two base maps, and buildings that stand up
+
+- The layers' panel keeps two base maps only — Igor (CARTO) and « Route » (TomTom Orbis) — and gains a « Bâtiments en 3D » switch: on the Orbis map the buildings stand up, their heights coming with the tiles already fetched (no extra request, but heavier to draw; off by default). A base map chosen before the others existed falls back on Route.
+
 ## 0.38.1 — Places that stay on the map
 
 - The GPS card's places (fuel stations, parkings, toilets, hospitals, charging stations, rest areas, traffic lights) and the cameras no longer come and go. Overpass (OpenStreetMap's free service, often busy) is asked with a 20 s timeout — a hanging request used to stop every place from loading until the screen was reloaded —, two squares at once instead of one, the squares the car drives towards first, and a failure waits longer and longer (15 s to 4 min) instead of hammering the service.
@@ -7,7 +11,6 @@
 - Cameras and traffic lights are drawn along the way or the route with a wider corridor (a radar beside the road, a light of the cross street one turns into), and a radar is drawn whatever its OpenStreetMap direction says — the tag is often wrong or absent, and valid cameras were left out. The warnings keep their strict rules; only the icons are generous.
 - When Overpass does not answer, the layers' panel says so instead of leaving empty map.
 - A spoken address (« 19 rue de Pathé à Orléans ») keeps its street result and never falls on the town alone; a street asked without its town (« va rue de Pathé ») is confirmed first when it exists in several towns. The stop's cross in the trip panel is centred again, the alternates' bubbles stay where the driver reads them (by the car, kept on the screen) and are recalculated at once when the whole trip is opened, and the Orbis « Route » base map loads again (its style name had one wrong character).
-- The layers' panel keeps two base maps only — Igor (CARTO) and « Route » (TomTom Orbis) — and gains a « Bâtiments en 3D » switch: on the Orbis map the buildings stand up, their heights coming with the tiles already fetched (no extra request, but heavier to draw; off by default).
 
 ## 0.38.0 — A navigator you can read and hear
 
