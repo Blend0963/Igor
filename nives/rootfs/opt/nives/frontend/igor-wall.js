@@ -5931,7 +5931,7 @@
         ".tbar .tg { position: absolute; right: 20px; white-space: nowrap; padding: 2px 7px; border-radius: 2px; background: #e5323b; color: #fff; font-size: 13px; font-weight: 600; }" +
         ".tbar .tg.amb { background: #f08c1a; color: #111; } .tbar b { color: #e9e4da; font-size: 14px; font-weight: 600; } .tbar.in .top { color: #e5323b; }" +
         // A closed road on the route: avoid it or not, a touch away.
-        ".ask { position: absolute; z-index: 5; left: 50%; bottom: 72px; transform: translateX(-50%); width: min(560px, calc(100% - 32px)); box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 14px 16px; border-radius: var(--igor-radius, 3px); background: rgba(30,8,10,0.96); border: 1px solid #e5323b; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; --mdc-icon-size: 34px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }" +
+        ".ask { position: absolute; z-index: 5; left: 50%; bottom: 96px; transform: translateX(-50%); width: min(560px, calc(100% - 32px)); box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 14px 16px; border-radius: var(--igor-radius, 3px); background: rgba(30,8,10,0.96); border: 1px solid #e5323b; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; --mdc-icon-size: 34px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }" +
         ".ask[hidden] { display: none; } .ask > ha-icon { color: #e5323b; flex: none; } .ask .q { flex: 1; min-width: 180px; } .ask b { display: block; font-family: 'Chakra Petch', " + MONO + "; font-size: 20px; font-weight: 500; } .ask .q div { color: #c9ccd1; margin-top: 3px; }" +
         ".ask .bt { display: flex; gap: 10px; flex: none; } .ask button { font: inherit; font-size: 16px; min-height: 52px; padding: 0 20px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #e9e4da; cursor: pointer; }" +
         ".ask button.yes { background: #e5323b; border-color: #e5323b; color: #fff; }" +
@@ -5939,7 +5939,7 @@
         ".street { position: absolute; z-index: 2; bottom: 12px; left: 50%; transform: translateX(-50%); max-width: 55%; padding: 6px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.88); border: 1px solid #22262c; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }" +
         ".street[hidden] { display: none; }" +
         // A word for a few seconds (a detour, the voice's setting): small, above the bottom bar.
-        ".toast { position: absolute; z-index: 3; left: 50%; bottom: 84px; transform: translateX(-50%); max-width: 80%; padding: 8px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.94); border: 1px solid #f08c1a; border-left: 4px solid #f08c1a; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }" +
+        ".toast { position: absolute; z-index: 3; left: 50%; bottom: 96px; transform: translateX(-50%); max-width: 80%; padding: 8px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.94); border: 1px solid #f08c1a; border-left: 4px solid #f08c1a; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }" +
         ".toast[hidden] { display: none; } .toast b { color: #f08c1a; font-weight: 500; } .toast button { font: inherit; margin-left: 12px; background: none; border: 1px solid #22262c; color: #878c95; padding: 2px 8px; border-radius: 2px; cursor: pointer; }" +
         ".shield { display: inline-block; padding: 1px 6px; margin-right: 8px; border-radius: 3px; font-family: 'Barlow Condensed', 'Roboto Condensed', 'Arial Narrow', sans-serif; font-weight: 700; font-size: 0.86em; line-height: 1.25; letter-spacing: 0.02em; vertical-align: 1px; white-space: nowrap; background: #e9e4da; color: #111; box-shadow: inset 0 0 0 1.5px currentColor; }" +
         ".shield.a, .shield.n { background: #d33; color: #fff; } .shield.e { background: #2f8a3e; color: #fff; } .shield.d { background: #f2c200; color: #111; } .shield.m { background: #2a9fd6; color: #fff; }" +
@@ -5983,6 +5983,13 @@
         ".panel button.go ha-icon, .panel button.stop ha-icon { color: inherit; } .panel button.go, .panel button.stop { justify-content: center; }" +
         ".panel button.go { background: #59d0e0; color: #07080a; border-color: #59d0e0; text-align: center; } .panel button.stop { border-color: #e5323b; color: #e5323b; text-align: center; }" +
         ".panel .list { display: grid; gap: 8px; } .panel .list small { display: block; color: #878c95; font-size: 12px; margin-top: 3px; } .panel .note { color: #878c95; font-size: 13px; }" +
+        ".trow { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #22262c; border-radius: var(--igor-radius, 3px); background: rgba(18,23,28,0.8); }" +
+        ".trow > ha-icon { color: #e5323b; flex: none; --mdc-icon-size: 24px; } .trow .via > ha-icon { color: #d9a441; }" +
+        ".trow .tt { flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
+        ".trow .tt small { display: block; color: #878c95; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }" +
+        ".trow .del { flex: none; width: 36px; height: 36px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #878c95; cursor: pointer; display: grid; place-items: center; }" +
+        ".alttag { padding: 3px 9px; border-radius: 12px; background: rgba(7,8,10,0.92); border: 1px solid #3d454e; color: #878c95; font-family: " + MONO + "; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }" +
+        ".alttag.win { color: #5cc28f; border-color: #5cc28f; } .alttag.lose { color: #f08c1a; border-color: #f08c1a; }" +
         '</style><ha-card id="card"><div id="map"></div><div class="msg" id="msg">Chargement de la carte…</div>' +
         '<div class="btns"><button id="recenter" title="Recentrer" hidden><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' +
         '<button id="orient" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button>' +
@@ -6001,8 +6008,9 @@
         '<div class="panel lpanel" id="lpanel" hidden><div class="ph"><span>sur la carte</span><button id="lclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="llist"></div></div>' +
         '<div class="eta" id="eta" hidden></div>' +
         '<div class="panel" id="panel" hidden><div class="ph"><span>destination</span><button id="pclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
+        '<div class="list" id="ptrip" hidden></div>' +
         '<form id="pform"><input id="pq" type="text" enterkeyhint="search" placeholder="Adresse, ville, lieu…" autocomplete="off"><button class="go" type="submit"><ha-icon icon="mdi:magnify"></ha-icon><span>Chercher</span></button></form>' +
-        '<div class="list" id="plist"></div><div class="list" id="pfav"></div><button class="stop" id="pstop" hidden><ha-icon icon="mdi:close-octagon-outline"></ha-icon><span>Arrêter le guidage</span></button></div>' +
+        '<div class="list" id="plist"></div><div class="list" id="pfav"></div><div class="list" id="phist" hidden></div><button class="stop" id="pstop" hidden><ha-icon icon="mdi:close-octagon-outline"></ha-icon><span>Arrêter le guidage</span></button></div>' +
         '<div class="hud sp"><div class="speed" id="speed"><b>0</b><span>KM/H</span></div></div>' +
         '<div class="hud lim"><div class="sign" id="limit" hidden>' + GPS_SIGN + "</div></div>" +
         '<div class="snap" id="snapEl"></div></ha-card>');
@@ -6290,6 +6298,7 @@
           map.addLayer({ id: "trail", type: "line", source: "trail", layout: { "line-cap": "round", "line-join": "round" },
             paint: { "line-color": "#59d0e0", "line-width": 5, "line-opacity": 0.55 } });
         }
+        this.drawAlts();
         // `buildings: false`: the map without its buildings (less to draw).
         if (this.config.buildings === false) (map.getStyle().layers || []).forEach((l) => {
           if (/building/i.test(l.id + " " + (l["source-layer"] || ""))) map.setLayoutProperty(l.id, "visibility", "none");
@@ -6677,6 +6686,15 @@
       $("panel").hidden = false;
       $("pstop").hidden = !this.dest;
       $("plist").innerHTML = "";
+      // The trip under way: the destination, then the stops, each removable.
+      var trip = $("ptrip");
+      trip.innerHTML = "";
+      trip.hidden = !this.dest;
+      if (this.dest) {
+        var d = this.dest;
+        trip.appendChild(this.tripRow("mdi:flag-checkered", d.name || "destination", "destination", null));
+        (d.via || []).forEach((v, i) => trip.appendChild(this.tripRow("mdi:flag-variant", v.name || "étape", "étape", () => this.removeVia(i))));
+      }
       var fav = $("pfav");
       fav.innerHTML = "";
       var favs = this.config.favorites || [{ name: "Maison", zone: "zone.home" }];
@@ -6694,7 +6712,50 @@
         b.addEventListener("click", () => { this.chooseNext = true; this.setDestination({ lat: at.lat, lon: at.lon, name: f.name || ent }, true); $("panel").hidden = true; });
         fav.appendChild(b);
       });
+      // The searches the driver chose before (kept by this screen).
+      var hist = $("phist"), rec = this.recentList();
+      hist.innerHTML = "";
+      hist.hidden = !rec.length;
+      rec.forEach((r) => {
+        var b = document.createElement("button");
+        b.type = "button";
+        var ri = document.createElement("ha-icon"); ri.setAttribute("icon", "mdi:history"); b.appendChild(ri);
+        var rt = document.createElement("div"); rt.textContent = r.name; b.appendChild(rt);
+        b.addEventListener("click", () => { this.chooseNext = true; this.setDestination({ lat: r.lat, lon: r.lon, name: r.name }, true); $("panel").hidden = true; });
+        hist.appendChild(b);
+      });
       setTimeout(() => $("pq").focus(), 50);
+    },
+    tripRow(icon, name, kind, remove) {
+      var row = document.createElement("div");
+      row.className = "trow" + (kind === "étape" ? " via" : "");
+      var i = document.createElement("ha-icon"); i.setAttribute("icon", icon); row.appendChild(i);
+      var t = document.createElement("div"); t.className = "tt"; t.textContent = name;
+      var s = document.createElement("small"); s.textContent = kind; t.appendChild(s);
+      row.appendChild(t);
+      if (remove) {
+        var x = document.createElement("button"); x.type = "button"; x.className = "del"; x.title = "Retirer l'étape";
+        var xi = document.createElement("ha-icon"); xi.setAttribute("icon", "mdi:close"); x.appendChild(xi);
+        x.addEventListener("click", remove);
+        row.appendChild(x);
+      }
+      return row;
+    },
+    removeVia(i) {
+      var d = this.dest;
+      if (!d) return;
+      this.setDestination(Object.assign({}, d, { via: (d.via || []).filter((_, j) => j !== i) }), true);
+      this.openPanel();
+    },
+    // The places the driver went to (this screen keeps six).
+    remember(p) {
+      if (!p || !isFinite(p.lat) || !isFinite(p.lon)) return;
+      var rec = this.recentList().filter((r) => r.name !== p.name && gpsDist([r.lon, r.lat], [p.lon, p.lat]) > 200);
+      rec.unshift({ name: String(p.name || "destination").slice(0, 40), lat: p.lat, lon: p.lon });
+      try { window.localStorage.setItem("igor-gps-recent", JSON.stringify(rec.slice(0, 6))); } catch (e) { /* no storage */ }
+    },
+    recentList() {
+      try { var v = JSON.parse(window.localStorage.getItem("igor-gps-recent") || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; }
     },
     // OpenStreetMap's search (Nominatim): on « Chercher » only, never as one types.
     // The search goes through Igor (nives.car_search): TomTom's when a key is
@@ -6754,6 +6815,9 @@
     setDestination(d, write) {
       this.dest = d;
       this.route = null;
+      this.alts = [];
+      this.altCycle = 0;
+      if (d) this.remember(d);
       this.spoken = {};
       this.offCount = 0;
       this.tripAvoid = d && d.avoid && d.avoid.length ? d.avoid : null;
@@ -6775,6 +6839,7 @@
       this.viaMarkers = [];
       var src = this.map && this.map.getSource("route");
       if (src) src.setData(this.routeData());
+      this.drawAlts();
       this.$("nav").hidden = !d;
       this.$("eta").hidden = true;
       this.$("card").classList.toggle("withnav", !!d);
@@ -6870,16 +6935,20 @@
         $("tbMain").textContent = Math.max(1, Math.round(secs / 60)) + " min";
         $("tbSub").textContent = gpsMetres(rest);
       } else {
+        // Only the jam's stretch: the car at the bottom, the jam's end at the
+        // top; the rest of the way is none of the bar's business.
+        var first = jams[0], span = Math.max(1, first.b - along), v = this.speedMps();
         tk.style.background = "#3b8cff";
-        jams.forEach((j) => seg(Math.max(j.a, along), j.b, along, R.total, j.level === 2 ? "#e5323b" : "#f08c1a"));
-        var first = jams[0], tag = document.createElement("span");
+        seg(first.a, first.b, along, first.b, first.level === 2 ? "#e5323b" : "#f08c1a");
+        var tag = document.createElement("span");
         tag.className = "tg" + (first.level === 2 ? "" : " amb");
         tag.textContent = (first.level === 2 ? "bouchon" : "ralenti") + (first.delay >= 60 ? " · " + Math.round(first.delay / 60) + " min" : "");
-        tag.style.bottom = (100 * (first.a - along) / left).toFixed(1) + "%";
+        tag.style.bottom = (100 * (first.a - along) / span).toFixed(1) + "%";
         tk.appendChild(tag);
-        $("tbTop").textContent = hhmm(new Date(Date.now() + (R.total ? R.duration * (left / R.total) : 0) * 1000));
-        $("tbMain").textContent = "";
-        $("tbSub").textContent = gpsMetres(first.a - along > 0 ? first.a - along : 0);
+        var secs = (first.a - along) / Math.max(v, 2.5) + (first.delay || 0);
+        $("tbTop").textContent = "fin dans";
+        $("tbMain").textContent = Math.max(1, Math.round(secs / 60)) + " min";
+        $("tbSub").textContent = gpsMetres(first.a - along);
       }
       var me = document.createElement("u"); tk.appendChild(me);
     },
@@ -6892,6 +6961,81 @@
         service_data: Object.assign({ from: [from[1], from[0]], to: [d.lat, d.lon], via: (d.via || []).map((v) => [v.lat, v.lon]), avoid: (this.avoid || []).slice(-10), avoid_types: types || [] },
           this.speedMps() > 2 ? { heading: Math.round(this.heading) % 360 } : {}) })
         .then((res) => res && res.response).catch(() => null);
+    },
+    // The other routes, greyed on the map, each with its bubble (the minutes
+    // it wins or costs); a touch on the line or the bubble changes the trip.
+    altsData() {
+      var feats = [];
+      (this.alts || []).forEach((a, i) => {
+        var R0 = a.route;
+        if (R0 && R0.coords && R0.coords.length > 1) feats.push({ type: "Feature", geometry: { type: "LineString", coordinates: R0.coords }, properties: { idx: i } });
+      });
+      return { type: "FeatureCollection", features: feats };
+    },
+    drawAlts() {
+      var map = this.map;
+      if (!map || !window.maplibregl || !map.getSource("route")) { (this.altMarkers || []).forEach((m) => m.remove()); this.altMarkers = []; return; }
+      if (!map.getSource("alts")) {
+        map.addSource("alts", { type: "geojson", data: this.altsData() });
+        map.addLayer({ id: "alts", type: "line", source: "alts", layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": "#8a8f96", "line-width": 5, "line-dasharray": [2, 2], "line-opacity": 0.9 } }, "route-case");
+      }
+      if (!this.altsWired) {
+        this.altsWired = true;
+        map.on("click", "alts", (e) => {
+          var i = e.features && e.features[0] && e.features[0].properties && e.features[0].properties.idx;
+          var a = this.alts && this.alts[i];
+          if (a) this.pickAlt(a);
+        });
+        map.on("mouseenter", "alts", () => { map.getCanvas().style.cursor = "pointer"; });
+        map.on("mouseleave", "alts", () => { map.getCanvas().style.cursor = ""; });
+      }
+      map.getSource("alts").setData(this.altsData());
+      (this.altMarkers || []).forEach((m) => m.remove());
+      this.altMarkers = [];
+      var R = this.route;
+      (this.alts || []).forEach((a) => {
+        var R0 = a.route;
+        if (!R0 || !R0.coords || R0.coords.length < 2) return;
+        var dmin = Math.round((R0.duration - (R ? R.duration : R0.duration)) / 60);
+        var el = document.createElement("div");
+        el.className = "alttag" + (dmin < 0 ? " win" : dmin > 0 ? " lose" : "");
+        el.textContent = dmin === 0 ? "≈ 0 min" : (dmin > 0 ? "+" : "−") + Math.abs(dmin) + " min";
+        var mk = new window.maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(R0.coords[Math.floor(R0.coords.length / 2)]).addTo(map);
+        this.altMarkers.push(mk);
+        el.addEventListener("click", (ev) => { ev.stopPropagation(); this.pickAlt(a); });
+      });
+    },
+    pickAlt(a) {
+      if (!a || !a.route) return;
+      var R = this.route;
+      this.alts = (this.alts || []).filter((x) => x !== a && !x.parsed);
+      if (R && R.source === "tomtom" && R.coords && R.coords.length > 1) {
+        this.alts = this.alts.concat([{ label: "En cours", types: (this.tripAvoid || this.avoidTypes()).slice(), parsed: true,
+          route: { coords: R.coords, steps: R.steps, duration: R.duration, jams: R.jams || [], delay: R.delay || 0,
+            limits: R.limits || [], lanes: R.lanes || [], tolls: R.tolls || [], ferries: R.ferries || [] } }]);
+      }
+      this.tripAvoid = a.types && a.types.length ? a.types : null;
+      this.routeAt = performance.now();
+      this.toast("Itinéraire changé", 3000);
+      if (a.parsed) {
+        var r0 = a.route;
+        this.useRoute(r0.coords, r0.steps, r0.duration, "tomtom",
+          { jams: r0.jams || [], delay: r0.delay || 0, limits: r0.limits || [], lanes: r0.lanes || [], tolls: r0.tolls || [], ferries: r0.ferries || [] });
+      } else this.useTomTom(a.route);
+      this.drawAlts();
+    },
+    // The alternates again, with the main route: every third 3-minute cycle
+    // (9 min), so the free quota is spared.
+    async refreshAlts() {
+      var d = this.dest, from = this.pos;
+      if (!this.alts || !this.alts.length || !d || !from || !this.trafficOn()) return;
+      this.altCycle = (this.altCycle || 0) + 1;
+      if (this.altCycle % 3) return;
+      var got = await Promise.all(this.alts.map((a) => this.askRoute(d, from, a.types || [])));
+      if (this.dest !== d) return;
+      got.forEach((r, i) => { if (r && r.ok && r.route && this.alts[i]) this.alts[i].route = r.route; });
+      this.drawAlts();
     },
     useTomTom(R0) {
       this.useRoute(R0.coords, R0.steps.map((x) => Object.assign(gpsTomTomStep(x), { loc: x.loc })), R0.duration, "tomtom",
@@ -6916,7 +7060,15 @@
         opts.push({ label: asks[i].label, types: asks[i].types, route: R0 });
       });
       if (!opts.length) return false;
-      var pick = (o) => { clearTimeout(this.pickTimer); this.$("rpanel").hidden = true; this.tripAvoid = o.types; this.useTomTom(o.route); };
+      var pick = (o) => {
+        clearTimeout(this.pickTimer);
+        this.$("rpanel").hidden = true;
+        this.alts = opts.filter((x) => x !== o);
+        this.tripAvoid = o.types;
+        this.routeAt = performance.now();
+        this.useTomTom(o.route);
+        this.drawAlts();
+      };
       if (opts.length === 1) { pick(opts[0]); return true; }
       var $ = this.$, list = $("rlist");
       list.innerHTML = "";
@@ -7014,6 +7166,7 @@
       if (!R || !this.map || !window.maplibregl) return;
       var b = new window.maplibregl.LngLatBounds(R.coords[0], R.coords[0]);
       R.coords.forEach((q) => b.extend(q));
+      (this.alts || []).forEach((a) => ((a.route && a.route.coords) || []).forEach((q) => b.extend(q)));
       if (this.pos) b.extend(this.pos);
       this.setFollow(false, 20);
       this.map.fitBounds(b, { padding: { top: 110, bottom: 80, left: 70, right: 80 }, bearing: 0, pitch: 0, duration: 600 });
@@ -7097,7 +7250,7 @@
       // jams move, and so do the colours and the arrival time.
       if (R.source === "tomtom" && moving && now - (this.routeAt || 0) > 180000 && !this.routeBusy) {
         this.routeBusy = true;
-        Promise.resolve(this.routeTo()).catch(() => {}).then(() => { this.routeBusy = false; });
+        Promise.resolve(this.routeTo()).catch(() => {}).then(() => this.refreshAlts()).then(() => { this.routeBusy = false; });
       }
       // The stop reached: said once, then the way goes on to the destination
       // (the stop leaves the destination, so a new route does not go back).

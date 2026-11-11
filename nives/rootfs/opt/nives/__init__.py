@@ -1029,6 +1029,8 @@ CAR_GO_SCHEMA = vol.Schema(
         vol.Optional("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
         vol.Optional("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
         vol.Optional("name"): vol.All(cv.string, vol.Length(max=80)),
+        # The place's number when the driver chose among other_matches.
+        vol.Optional("choice"): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
         vol.Optional("stop", default=False): cv.boolean,
         # « sans autoroute », « sans péage » : motorways, tolls, ferries
         vol.Optional("avoid", default=[]): vol.All(cv.ensure_list, [vol.In(["motorways", "tolls", "ferries"])]),
@@ -1045,6 +1047,7 @@ CAR_NEARBY_SCHEMA = vol.Schema(
 CAR_STOP_SCHEMA = vol.Schema(
     {
         vol.Optional("choice"): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
+        vol.Optional("query"): vol.All(cv.string, vol.Length(max=200)),
         vol.Optional("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
         vol.Optional("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
         vol.Optional("name", default="étape"): vol.All(cv.string, vol.Length(max=80)),
@@ -1074,6 +1077,7 @@ CAR_LIMIT_SCHEMA = vol.Schema(
 )
 CAR_RADARS_KEY = "nives_car_radars"
 CAR_LAST_KEY = "nives_car_last"
+CAR_GO_KEY = "nives_car_go"
 CAR_LAST_S = 1200
 
 
@@ -1137,7 +1141,13 @@ def _async_register_car(hass: HomeAssistant) -> None:
         here = _car_position(hass, tracker)
         others: list[str] = []
         avoid = call.data["avoid"]
-        if call.data["reroute"] and not call.data.get("query"):
+        choice = call.data.get("choice")
+        if choice:
+            at, found = hass.data.get(CAR_GO_KEY) or (0.0, [])
+            if not found or time.monotonic() - at > CAR_LAST_S or choice > len(found):
+                return {"ok": False, "error": "la liste des lieux proposés est périmée : redemander le lieu"}
+            dest = found[choice - 1]
+        elif call.data["reroute"] and not call.data.get("query"):
             now_dest = parse_destination(hass.states.get(dest_entity).state)
             if not now_dest:
                 return {"ok": False, "error": "pas de trajet en cours"}
@@ -1145,7 +1155,7 @@ def _async_register_car(hass: HomeAssistant) -> None:
             out = {"ok": True, "rerouted": True, "destination": now_dest["name"], "avoiding": avoid}
             out.update(await _trip(here, now_dest, avoid))
             return out
-        if call.data.get("latitude") is not None and call.data.get("longitude") is not None:
+        elif call.data.get("latitude") is not None and call.data.get("longitude") is not None:
             dest = {"lat": call.data["latitude"], "lon": call.data["longitude"], "name": call.data.get("name") or "destination"}
         else:
             query = str(call.data.get("query") or "").strip()
@@ -1160,7 +1170,12 @@ def _async_register_car(hass: HomeAssistant) -> None:
                 if not found:
                     return {"ok": False, "error": f"aucun lieu trouvé pour « {query} »"}
                 dest = found[0]
-                others = [f"{p['name']} ({p['address']})" for p in found[1:4]]
+                # Several places of the same name (two « rue du Saucisson »):
+                # the driver chooses (choice: n). A town, a single match, one
+                # name against other names: goes at once, no question.
+                if any(fold(p.get("name") or "") == fold(dest.get("name") or "") for p in found[1:]):
+                    hass.data[CAR_GO_KEY] = (time.monotonic(), found[:5])
+                    others = [f"{i + 1}. {p['name']} ({p['address']})" for i, p in enumerate(found[:4])]
         await _write(dest_entity, format_destination(dest, (), avoid))
         out: dict = {"ok": True, "destination": {k: dest.get(k) for k in ("name", "address", "lat", "lon") if dest.get(k) is not None}}
         if avoid:
@@ -1207,6 +1222,25 @@ def _async_register_car(hass: HomeAssistant) -> None:
             return err
         if call.data.get("latitude") is not None and call.data.get("longitude") is not None:
             stop = {"lat": call.data["latitude"], "lon": call.data["longitude"], "name": call.data["name"]}
+        elif str(call.data.get("query") or "").strip():
+            query = str(call.data["query"]).strip()
+            here = _car_position(hass, tracker)
+            stop = _zone(query)
+            if stop is None:
+                try:
+                    found = await car.geocode(query, here)
+                except Exception:  # noqa: BLE001 - no internet, busy
+                    return {"ok": False, "error": "recherche de lieu impossible (pas d'internet ?)"}
+                if not found:
+                    return {"ok": False, "error": f"aucun lieu trouvé pour « {query} »"}
+                stop = found[0]
+                # Several places of the same name: nothing is added until the
+                # driver chose (car_stop again, choice: n).
+                if any(fold(p.get("name") or "") == fold(stop.get("name") or "") for p in found[1:]):
+                    hass.data[CAR_GO_KEY] = (time.monotonic(), found[:5])
+                    return {"ok": False, "ambiguous": True,
+                            "other_matches": [f"{i + 1}. {p['name']} ({p['address']})" for i, p in enumerate(found[:4])],
+                            "note": "plusieurs lieux du même nom : demander lequel, puis car_stop avec choice"}
         else:
             at, places = hass.data.get(CAR_LAST_KEY) or (0, [])
             n = call.data.get("choice") or 1
@@ -1218,12 +1252,19 @@ def _async_register_car(hass: HomeAssistant) -> None:
         if not dest:
             await _write(dest_entity, format_destination(stop))
             return {"ok": True, "guided_to": stop["name"], "note": "pas d'itinéraire en cours : c'est la destination"}
-        await _write(dest_entity, format_destination(dest, [stop]))
-        out = {"ok": True, "stop": stop["name"], "then": dest["name"]}
+        # One more stop on the way (at most three), unless it is already one.
+        via = list(dest.get("via") or [])
+        if any(car_haversine([v["lon"], v["lat"]], [stop["lon"], stop["lat"]]) < 50 for v in via):
+            return {"ok": True, "stop": stop["name"], "then": dest["name"], "note": "déjà une étape"}
+        if len(via) >= 3:
+            return {"ok": False, "error": "déjà trois étapes : en retirer une d'abord"}
+        via.append(stop)
+        await _write(dest_entity, format_destination(dest, via))
+        out = {"ok": True, "stop": stop["name"], "then": dest["name"], "stops": [v.get("name") or "étape" for v in via]}
         here = _car_position(hass, tracker)
         if here:
             try:
-                r = await car.route([here, [stop["lon"], stop["lat"]], [dest["lon"], dest["lat"]]], steps=False)
+                r = await car.route([here] + [[v["lon"], v["lat"]] for v in via] + [[dest["lon"], dest["lat"]]], steps=False)
             except Exception:  # noqa: BLE001
                 r = None
             if r:

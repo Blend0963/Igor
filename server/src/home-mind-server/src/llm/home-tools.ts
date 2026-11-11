@@ -322,10 +322,12 @@ export async function handleHomeTool(
       if (name === "car_navigate") {
         const avoid = (Array.isArray(input.avoid) ? input.avoid : []).filter((a): a is string => ["motorways", "tolls", "ferries"].includes(a as string));
         if (avoid.length) data.avoid = avoid;
+        const pick = Number(input.choice);
+        if (Number.isFinite(pick) && pick >= 1) data.choice = Math.min(5, Math.round(pick));
         if (input.stop === true) data.stop = true;
         else if (str("destination")) data.query = str("destination");
-        else if (!avoid.length && !Array.isArray(input.avoid)) return { error: "Where to? Pass destination, or stop: true." };
-        else data.reroute = true;
+        else if (!avoid.length && !Array.isArray(input.avoid) && !data.choice) return { error: "Where to? Pass destination, or stop: true." };
+        else if (!data.choice) data.reroute = true;
       } else if (name === "car_trip_status") {
         // nothing to pass: the car and its trip are the integration's
       } else if (name === "car_find_nearby") {
@@ -336,7 +338,8 @@ export async function handleHomeTool(
           data.latitude = lat;
           data.longitude = lon;
           if (str("name")) data.name = str("name");
-        } else data.choice = Number.isFinite(choice) && choice >= 1 ? Math.min(5, Math.round(choice)) : 1;
+        } else if (str("query")) data.query = str("query");
+        else data.choice = Number.isFinite(choice) && choice >= 1 ? Math.min(5, Math.round(choice)) : 1;
       }
       try {
         const res = await ha.callService("nives", service, undefined, { ...data, return_response: true });
