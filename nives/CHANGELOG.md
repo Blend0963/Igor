@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.9 — The choice again, and stops from the search
+
+- The small map button no longer zooms out (the fingers do that): it brings the choice back — the panel of the routes, the best ways computed anew from where the car is, with the same 12 s before the fastest starts.
+- Every row of the search's panel — the favourites, the earlier searches, the results — carries a small amber flag: it puts the place on the way as a stop, when a trip is under way.
+
 ## 0.38.8 — Bubbles that live on their grey line
 
 - The alternates' bubbles no longer slide to the screen's edge: they stand on their grey route, and when the zoom takes that route off the screen the bubble goes with it — it comes back when the route comes back. While following, the bubble still sits on the readable part of the grey way, never over the car.
