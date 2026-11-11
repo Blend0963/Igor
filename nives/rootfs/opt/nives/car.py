@@ -97,8 +97,10 @@ Fetch = Callable[[str, str, dict | None, Any], Awaitable[Any]]
 
 
 def fold(text: str) -> str:
-    """Lower case, no accents, single spaces."""
-    t = unicodedata.normalize("NFKD", str(text or "")).encode("ascii", "ignore").decode().lower()
+    """Lower case, no accents, single spaces — an apostrophe (’ or ') ends a
+    word, it never glues two: « d’Orléans » and « d'Orléans » fold alike."""
+    t = str(text or "").replace("’", " ").replace("'", " ")
+    t = unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode().lower()
     return re.sub(r"\s+", " ", t).strip()
 
 
@@ -394,9 +396,40 @@ def merge_places(local: list[dict], world: list[dict], query: str, near: Sequenc
     return out
 
 
-# A street asked by its name: « va rue de Pathé » (no town said).
-STREET_WORDS = ("rue ", "avenue", "boulevard", "impasse", "allée", "allee", "chemin", "quai ", "place ",
-                "route ", "rte ", "rond-point", "cours ", "square ", "voie ", "passage ", "citée ")
+# A street asked by its name: « va rue de Pathé » (no town said). Whole words
+# only — « porte » is not a street, though « rte » hides inside it.
+STREET_WORDS = ("rue", "avenue", "boulevard", "impasse", "allee", "chemin", "quai", "place",
+                "route", "rte", "rond-point", "cours", "square", "voie", "passage", "citee")
+
+
+def street_said(q: str) -> bool:
+    """A street's kind was said: a whole word of the query starts with one."""
+    return any(t.startswith(w) for t in q.split() for w in STREET_WORDS)
+
+
+def words_of(text: str) -> list[str]:
+    """The words of a name: folded, cut on everything that is not a letter or
+    a figure — an apostrophe (’ or ') ends a word, it never glues two."""
+    t = str(text or "").replace("’", " ").replace("'", " ")
+    t = unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode().lower()
+    return [w for w in re.split(r"[^a-z0-9]+", t) if w]
+
+
+def place_said(name: str, q: str) -> bool:
+    """Whether a place's name was said in the query, whatever its punctuation:
+    « Porte d'Orléans » sits in « porte d'Orléans à Paris » even when the
+    apostrophes differ — every word of the name (the small ones apart) was
+    said."""
+    n = fold(name)
+    if not n:
+        return False
+    if n in q:
+        return True
+    nt = [w for w in words_of(name) if len(w) > 2 and w not in ("les", "des")]
+    if not nt:
+        return False
+    qt = set(words_of(q))
+    return all(w in qt for w in nt)
 
 
 def pick_place(query: str, found: list[dict]) -> tuple[dict, list[dict]]:
@@ -405,20 +438,30 @@ def pick_place(query: str, found: list[dict]) -> tuple[dict, list[dict]]:
     keeps its street result and never falls on the town alone; a street asked
     without its town and found in several towns is confirmed first; a place
     said with its town (« porte d'Orléans à Paris ») is never swallowed by
-    the town itself."""
+    the town itself — and when the search understood nothing but the town,
+    the driver chooses instead of being driven to the town's middle."""
     q = fold(query)
     numbered = re.search(r"\b\d{1,4}\b", q) is not None
-    if not numbered and not any(w in q for w in STREET_WORDS):
+    if not numbered and not street_said(q):
         # The town itself came first while the query names a place: the named
-        # place wins (a result's name said in the query).
-        if fold(found[0].get("name") or "") != q:
-            named = [p for p in found if p.get("type") != "geo" and fold(p.get("name") or "") in q]
-            if named:
-                return named[0], []
+        # place wins (its words were said in the query).
+        if fold(found[0].get("name") or "") == q:
+            return found[0], []
+        named = [p for p in found if p.get("type") != "geo" and place_said(p.get("name") or "", q)]
+        if named:
+            return named[0], []
+        if found[0].get("type") == "geo":
+            return found[0], found[:5]
         return found[0], []
     ranked = [p for p in found if p.get("type") != "geo"] or found
     if numbered:
         return ranked[0], []
+    # The town said with the street (« rue de Pathé à Orléans »): the results
+    # of that town only — the query was precise, no question.
+    words = q.split()
+    said = [p for p in ranked if p.get("city") and words[-1] in fold(p["city"]).split()] if words else []
+    if said:
+        return said[0], []
     cities = []
     for p in ranked:
         c = fold(p.get("city") or "")

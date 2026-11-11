@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.38.11 — A cross to close, a trip that stays, a place said word for word
+
+- The map's place panel wears a small cross at its top: a tap on the map by mistake no longer traps the screen.
+- The routes' panel closed without choosing keeps the trip as it was — only a destination asked for and not yet on the road is dropped.
+- The place said wins, whole words and apostrophes apart: « Porte d'Orléans à Paris » goes to the Porte d'Orléans, not to the middle of Paris (« rte » hid inside « porte » and the query was read as a street). A street said with its town goes straight there; when the search understood only the town, the driver chooses — and nothing starts until he has.
+
 ## 0.38.10 — The low-emission zones, said and avoided
 
 - The routes now know the ZFE: TomTom marks the low-emission stretches along the way, the choice's panel wears a red « ZFE » badge next to the « € » when a route crosses one (the grey bubbles too), a word warns when the car is about to enter one, and picking such a route says the vignette is required.
