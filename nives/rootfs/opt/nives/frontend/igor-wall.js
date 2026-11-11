@@ -6621,6 +6621,9 @@
       }
       var onWay = best && best.dist < 25;
       if (onWay) {
+        // The road under the car: the line the warnings fall back to when no
+        // route is driven.
+        this.roadLine = best.w.geom;
         // Forward when the car goes the way the way is drawn.
         var fwd = Math.abs(((best.bearing - this.heading + 540) % 360) - 180) < 90;
         var v = gpsWayLimit(best.w.tags, fwd), cls = String(best.w.tags.highway || "").replace(/_link$/, "");
@@ -6637,7 +6640,7 @@
       } else if ((this.osmLimit || this.osmGuess || this.wayCls) && (!this.osmAt || gpsDist(p, this.osmAt) > 40)) {
         // Off the roads read (a car park, a square not read yet): the last
         // road's limit is not this place's.
-        this.osmLimit = null; this.osmGuess = null; this.wayCls = null;
+        this.osmLimit = null; this.osmGuess = null; this.wayCls = null; this.roadLine = null;
         this.setRoadName(null);
         this.overlays();
       }
@@ -7736,13 +7739,46 @@
       var along = R.cum[at.i - 1] + gpsDist(R.coords[at.i - 1], at.point) - here;
       return along > -5 ? along : null;
     },
-    // A point the car will meet: on the route, or ahead and within `side`
-    // metres of its way. Metres to it, or null.
+    // How far off the route's line a point sits, when it is on it — either
+    // side of the car (a drawing keeps a point just passed). Metres, or null.
+    routeNear(q, within) {
+      var R = this.route;
+      if (!R || !this.seg) return null;
+      var from = Math.max(1, this.seg - 2), to = Math.min(R.coords.length, this.seg + 400), at = null;
+      for (var i = from; i < to; i++) {
+        var o = gpsOnLine(q, [R.coords[i - 1], R.coords[i]]);
+        if (o && o.dist <= within && (!at || o.dist < at.dist)) { at = o; at.i = i; }
+      }
+      return at ? at.dist : null;
+    },
+    // How far off my way a point sits: the route while navigating, else the
+    // road under the car. Metres, or null when it is on another road.
+    wayNear(q, within) {
+      var d = this.routeNear(q, within);
+      if (d != null || this.route) return d;
+      if (!this.roadLine) return null;
+      var o = gpsOnLine(q, this.roadLine);
+      return o && o.dist <= within ? o.dist : null;
+    },
+    // The three levels of the map: on my way (<= 15 m) the point is drawn;
+    // 15-25 m it is drawn only when it really watches the way (a camera whose
+    // OSM direction says so; a light needs no direction, its tag is often
+    // wrong); beyond, it stands on another road and is never drawn.
+    onMyWay(q, watch) {
+      var d = this.wayNear(q.p, 25);
+      if (d == null) return false;
+      if (d <= 15) return true;
+      return watch ? gpsCameraWatches(q.tags, this.heading) : true;
+    },
+    // A point the car will meet: on its way (the route while navigating, else
+    // the road under the car), within `side` metres. Metres to it, or null.
     meets(q, side) {
-      var onRoute = this.routeAhead(q, 30);
-      if (onRoute != null) return onRoute;
-      var r = gpsRelative(this.pos, q, this.heading);
-      return r.ahead > 0 && r.side < side ? r.d : null;
+      if (this.route && this.seg) return this.routeAhead(q, side);
+      if (!this.roadLine) return null;
+      var o = gpsOnLine(q, this.roadLine);
+      if (!o || o.dist > side) return null;
+      var r = gpsRelative(this.pos, o.point, this.heading);
+      return r.ahead > 0 ? r.d : null;
     },
     alertTick(now, speed) {
       if (!this.pos) return;
@@ -7750,28 +7786,19 @@
       var kmh = speed * 3.6;
       this.signalAhead = null;
       var cam = null, L = this.layers || {}, onWay = {};
-      // What is drawn: the lights and cameras near the way or on the route —
-      // a wider corridor than the warnings' (a radar beside the road, a light
-      // of the cross street one turns into), and a radar drawn whatever its
-      // OSM direction says (the tag is often wrong or absent). The warnings
-      // keep the strict rules; only the icons are generous.
-      var onMap = {}, far = [];
+      // What is drawn: only the lights and cameras on my way — the route
+      // while navigating, else the road under the car. Never the road beside:
+      // the three levels of onMyWay decide. The nearest forty only (the line
+      // is searched segment by segment; a city has hundreds of lights).
+      var onMap = {}, near = [];
       (this.pois || []).forEach((q) => {
         if (q.kind !== "signals" && q.kind !== "camera") return;
         if (gpsDist(this.pos, q.p) > 5000) return;
-        var r = gpsRelative(this.pos, q.p, this.heading);
-        if (q.kind === "signals") {
-          if (r.ahead > -50 && r.ahead < 1500 && r.side < 60) onMap[q.id] = true;
-          else if (this.route) far.push(q);
-        } else if (L.cameras && L.cameras !== "off") {
-          if (r.ahead > -50 && r.ahead < 3000 && r.side < 80) onMap[q.id] = true;
-          else if (this.route) far.push(q);
-        }
+        if (q.kind === "camera" && (!L.cameras || L.cameras === "off")) return;
+        near.push(q);
       });
-      // On the route but out of the cone: the nearest forty only (the route
-      // is searched segment by segment; a city has hundreds of lights).
-      far.sort((u, v) => gpsDist(this.pos, u.p) - gpsDist(this.pos, v.p)).slice(0, 40).forEach((q) => {
-        if (this.routeAhead(q.p, q.kind === "camera" ? 30 : 25) != null) onMap[q.id] = true;
+      near.sort((u, v) => gpsDist(this.pos, u.p) - gpsDist(this.pos, v.p)).slice(0, 40).forEach((q) => {
+        if (this.onMyWay(q, q.kind === "camera")) onMap[q.id] = true;
       });
       this.onMap = onMap;
       (this.pois || []).forEach((q) => {
@@ -7785,7 +7812,7 @@
         }
         if (!L.cameras || L.cameras === "off") return;
         if (!gpsCameraWatches(q.tags, this.heading)) return;
-        var d = this.meets(q.p, 40);
+        var d = this.meets(q.p, 25);
         if (d != null) onWay[q.id] = true;
         if (d != null && speed >= GPS_SLOW && (!cam || d < cam.d)) cam = { q: q, d: d };
       });

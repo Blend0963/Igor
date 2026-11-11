@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.4 — Radars that stay on my road
+
+- The map draws only the cameras and lights of the road driven: the route while navigating, else the road under the car — never the road beside anymore. Three levels decide: on the way (15 m) the point is drawn; a little off it (15 to 25 m) a camera is drawn only when its OpenStreetMap direction really watches the car's way (the opposite carriageway's radar stays hidden), a light is drawn anyway (its direction tag is often wrong); beyond, another road, never drawn. The warnings (the spoken and shown alerts) follow the same rule — a radar is announced only when its camera watches the way.
+
 ## 0.38.3 — Alternates that read like Waze
 
 - The alternates' bubbles sit on their grey route, where the driver reads them: away from the car while following (where the other route leaves, never over the car), at the middle of its route when the whole trip is on the screen. And the other choice never disappears: after taking the road without tolls, the one with tolls (or with motorways) stays greyed and comes back by itself when the alternates are rebuilt. A paying route says so with a small amber « € » — in the bubbles and in the choice of routes.
