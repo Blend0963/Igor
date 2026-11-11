@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.13 — The zone that swallowed the address
+
+- The real thief was found: a Home Assistant zone whose name was merely CONTAINED in the request won before any search — a zone « Orléans » drove « 19 rue de Pathé à Orléans » to the town's middle, and « Porte d'Orléans » with it, for destinations and stops alike. A zone now wins only when the request IS the zone, the small words apart (« à Orléans », « vers la maison »); an address said reaches the search.
+- The car's service calls leave a trace in Home Assistant's log: the query heard and the place chosen, so a next hunt takes minutes, not weeks.
+
 ## 0.38.12 — Settings the house keeps, a panel that offers everything, a place asked in its own words
 
 - The layers' panel (the 3D buildings, the radars, the traffic) is kept by the house now, in its .storage: a head unit's browser that clears its own memory at each start finds its settings again. The cross of the map's place panel stands at the right, always.

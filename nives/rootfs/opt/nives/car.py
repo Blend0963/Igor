@@ -92,6 +92,9 @@ KIND_WORDS = {
     "cafe": "cafe", "lavage": "car_wash", "garage": "car_repair", "parking": "parking",
 }
 HOME_WORDS = {"maison", "domicile", "home", "chez moi", "a la maison", "chez nous", "la maison"}
+# The words that carry no place of their own (« à », « vers », « la »): a name
+# is what stands once they are gone.
+SMALL_WORDS = ("le", "la", "les", "de", "des", "du", "un", "une", "au", "aux", "a", "en", "d", "l", "sur", "vers", "dans", "pour")
 
 Fetch = Callable[[str, str, dict | None, Any], Awaitable[Any]]
 
@@ -455,7 +458,6 @@ def pick_place(query: str, found: list[dict]) -> tuple[dict, list[dict]]:
     the driver chooses instead of being driven to the town's middle."""
     q = fold(query)
     numbered = re.search(r"\b\d{1,4}\b", q) is not None
-    small = ("le", "la", "les", "de", "des", "du", "un", "une", "au", "aux", "a", "en", "d", "l", "sur")
     if not numbered and not street_said(q):
         # The town itself came first while the query names a place: the named
         # place wins (its words were said in the query).
@@ -471,7 +473,7 @@ def pick_place(query: str, found: list[dict]) -> tuple[dict, list[dict]]:
             return found[0], (rest + [found[0]])[:5]
         # A place asked in several words that no result's name carries: the
         # driver chooses instead of being driven to the first answer.
-        if len([w for w in words_of(q) if w not in small]) >= 2:
+        if len([w for w in words_of(q) if w not in SMALL_WORDS]) >= 2:
             return found[0], found[:5]
         return found[0], []
     ranked = [p for p in found if p.get("type") != "geo"] or found
