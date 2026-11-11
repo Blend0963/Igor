@@ -1250,7 +1250,6 @@ def _async_register_car(hass: HomeAssistant) -> None:
             await _write(dest_entity, "")
             return {"ok": True, "stopped": True}
         here = _car_position(hass, tracker)
-        others: list[str] = []
         avoid = call.data["avoid"]
         choice = call.data.get("choice")
         if choice:
@@ -1285,14 +1284,15 @@ def _async_register_car(hass: HomeAssistant) -> None:
                 # or a street named in several towns: the driver chooses
                 # (choice: n). A town, a single match: goes at once, no question.
                 if ask or any(fold(p.get("name") or "") == fold(dest.get("name") or "") for p in found[1:]):
+                    # Nothing is written while the driver has not chosen: the
+                    # car must not be sent to the town's middle in the meantime.
                     hass.data[CAR_GO_KEY] = (time.monotonic(), (ask or found)[:5])
-                    others = [f"{i + 1}. {p['name']} ({p['address']})" for i, p in enumerate((ask or found)[:4])]
+                    return {"ok": True, "asked": True,
+                            "other_matches": [f"{i + 1}. {p['name']} ({p['address']})" for i, p in enumerate((ask or found)[:4])]}
         await _write(dest_entity, format_destination(dest, (), avoid))
         out: dict = {"ok": True, "destination": {k: dest.get(k) for k in ("name", "address", "lat", "lon") if dest.get(k) is not None}}
         if avoid:
             out["avoiding"] = avoid
-        if others:
-            out["other_matches"] = others
         if here:
             try:
                 r = await car.route([here, [dest["lon"], dest["lat"]]], steps=False)
