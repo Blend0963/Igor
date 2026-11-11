@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.15 — The line that follows the road's curve
+
+- TomTom's route points stand some ten metres apart, so on a bend the drawn line cut the curve the road makes. Each marked corner of the drawn line (the route, its jams, the alternatives) is replaced by a small arc that stays inside the two segments — the line hugs the road again. Only the drawing changes: the data, the sections' indexes, the bubbles are the search's own.
+
 ## 0.38.14 — The radar in the house's colours
 
 - The radars' pin leaves the white disc for the house's own drawing: a dark rounded tile, the camera in a thin off-white line, one red spark — the red stays the alert's alone. Still drawn on the spot, nothing to host.

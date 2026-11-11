@@ -5392,6 +5392,36 @@
     });
     return best;
   }
+  // The drawn line, softened: TomTom's points stand some ten metres apart,
+  // so on a bend the straight segments between them cut the curve the road
+  // makes. Each marked corner is replaced by a small arc (a quadratic curve
+  // through the corner, a few metres along each road): the arc stays inside
+  // the two segments, so the line keeps to the road. Only the drawing
+  // changes — the data, the indexes of the sections, the bubbles stay as the
+  // search gave them.
+  function gpsSmoothed(coords) {
+    if (!coords || coords.length < 3) return coords;
+    var out = [coords[0]];
+    for (var i = 1; i < coords.length - 1; i++) {
+      var a = coords[i - 1], c = coords[i], b = coords[i + 1];
+      var d1 = gpsDist(a, c), d2 = gpsDist(c, b);
+      if (!d1 || !d2) { out.push(c); continue; }
+      var b1 = gpsBearing(a, c), b2 = gpsBearing(c, b);
+      var turn = Math.abs(b2 - b1);
+      if (turn > 180) turn = 360 - turn;
+      if (turn < 29) { out.push(c); continue; }
+      var s = gpsProject(c, b1 + 180, Math.min(14, d1 * 0.4));
+      var e = gpsProject(c, b2, Math.min(14, d2 * 0.4));
+      out.push(s);
+      for (var t = 0.25; t < 1; t += 0.25) {
+        var q = (1 - t) * (1 - t), r = 2 * (1 - t) * t, w = t * t;
+        out.push([q * s[0] + r * c[0] + w * e[0], q * s[1] + r * c[1] + w * e[1]]);
+      }
+      out.push(e);
+    }
+    out.push(coords[coords.length - 1]);
+    return out;
+  }
   // From a to b along a road line: the line's own vertices between the two,
   // so the trail bends with the road; null when a is not on that line or the
   // way round is much longer than the gap (another branch of the road).
@@ -6671,13 +6701,14 @@
     routeJamData() {
       var R = this.route, feats = [];
       (R && R.jams || []).forEach((j) => {
-        var pts = R.coords.slice(Math.max(0, j.start), Math.min(R.coords.length, j.end + 1));
+        var pts = gpsSmoothed(R.coords.slice(Math.max(0, j.start), Math.min(R.coords.length, j.end + 1)));
         if (pts.length > 1) feats.push({ type: "Feature", geometry: { type: "LineString", coordinates: pts }, properties: { level: j.level } });
       });
       return { type: "FeatureCollection", features: feats };
     },
     routeData() {
-      return { type: "Feature", geometry: { type: "LineString", coordinates: this.route ? this.route.coords : [] } };
+      var R = this.route;
+      return { type: "Feature", geometry: { type: "LineString", coordinates: R ? (R.smooth || (R.smooth = gpsSmoothed(R.coords))) : [] } };
     },
     openPanel() {
       var $ = this.$;
@@ -6983,7 +7014,7 @@
       var feats = [];
       (this.alts || []).forEach((a, i) => {
         var R0 = a.route;
-        if (R0 && R0.coords && R0.coords.length > 1) feats.push({ type: "Feature", geometry: { type: "LineString", coordinates: R0.coords }, properties: { idx: i } });
+        if (R0 && R0.coords && R0.coords.length > 1) feats.push({ type: "Feature", geometry: { type: "LineString", coordinates: R0.smooth || (R0.smooth = gpsSmoothed(R0.coords)) }, properties: { idx: i } });
       });
       return { type: "FeatureCollection", features: feats };
     },
