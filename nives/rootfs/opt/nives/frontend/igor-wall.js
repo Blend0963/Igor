@@ -7018,17 +7018,34 @@
         el.className = "alttag" + (dmin < 0 ? " win" : dmin > 0 ? " lose" : "");
         if (R0.tolls && R0.tolls.length) { var e = document.createElement("span"); e.className = "eur"; e.textContent = "€"; el.appendChild(e); }
         el.appendChild(document.createTextNode(dmin === 0 ? "≈ 0 min" : (dmin > 0 ? "+" : "−") + Math.abs(dmin) + " min"));
-        var mk = new window.maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(R0.coords[Math.floor(R0.coords.length / 2)]).addTo(map);
+        var band = this.altBand(R0);
+        var mk = new window.maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(R0.coords[band ? (band[0] + band[1]) >> 1 : Math.floor(R0.coords.length / 2)]).addTo(map);
         mk._igorAlt = a;
+        mk._igorBand = band;
         this.altMarkers.push(mk);
         el.addEventListener("click", (ev) => { ev.stopPropagation(); this.pickAlt(a); });
       });
       this.placeAlts(true);
     },
+    // The part of an alternate that is its own: from where it leaves the
+    // route driven to where it comes back. null when it never leaves it —
+    // then no bubble: the way it shares with the route is not its own, and
+    // a bubble there would sit on the blue line.
+    altBand(R0) {
+      var R = this.route;
+      if (!R || !R.coords || R.coords.length < 2 || !R0 || !R0.coords || R0.coords.length < 2) return null;
+      var line = R.coords.filter((c, i) => i % 2 === 0), i0 = -1, i1 = -1;
+      for (var k = 0; k < R0.coords.length; k += 5) {
+        if (gpsOnLine(R0.coords[k], line).dist > 30) { if (i0 < 0) i0 = k; i1 = k; }
+      }
+      return i0 < 0 ? null : [i0, i1];
+    },
     // Where each bubble sits: on its grey line, where the driver reads it —
     // away from the car while following (at the crossing where the other
-    // route leaves, never over the car), at the middle of its route when the
-    // whole trip is on the screen, as a GPS shows it zoomed out.
+    // route leaves, never over the car), at the middle of its own way when
+    // the whole trip is on the screen, as a GPS shows it zoomed out. Never
+    // on the way the route shares with it: a bubble there would sit on the
+    // blue line.
     placeAlts(force) {
       var map = this.map;
       if (!map || !window.maplibregl || !this.altMarkers || !this.altMarkers.length) return;
@@ -7045,21 +7062,24 @@
       this.altMarkers.forEach((m) => {
         var R0 = m._igorAlt && m._igorAlt.route;
         if (!R0 || !R0.coords || R0.coords.length < 2) return;
-        var pt = null;
-        if (whole || !car) pt = R0.coords[Math.floor(R0.coords.length / 2)];
+        var band = m._igorBand, el = m.getElement();
+        if (!band) { if (el) el.style.display = "none"; return; }
+        if (el) el.style.display = "";
+        var mid = R0.coords[(band[0] + band[1]) >> 1], pt = null;
+        if (whole || !car) pt = mid;
         else {
           var near = 0, bd = Infinity;
           for (var k2 = 0; k2 < R0.coords.length; k2 += 3) { var dd = gpsDist(this.pos, R0.coords[k2]); if (dd < bd) { bd = dd; near = k2; } }
           for (var st = 0; st < R0.coords.length && !pt; st += 3) {
             for (var ci = -1; ci <= 1 && !pt; ci += 2) {
-              var c = R0.coords[near + st * ci];
-              if (!c) continue;
+              var ki = near + st * ci, c = R0.coords[ki];
+              if (!c || ki < band[0] || ki > band[1]) continue;
               var s = map.project(c);
               if (s.x < 60 || s.y < 130 || s.x > w - 60 || s.y > h - 130) continue;
               if (Math.hypot(s.x - car.x, s.y - car.y) > 110) pt = c;
             }
           }
-          if (!pt) pt = R0.coords[near];
+          if (!pt) pt = mid;
         }
         m._igorLL = pt;
         m.setLngLat(pt);

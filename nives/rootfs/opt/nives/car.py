@@ -403,10 +403,18 @@ def pick_place(query: str, found: list[dict]) -> tuple[dict, list[dict]]:
     """The place to go to for a spoken query, and the list to confirm (empty:
     nothing to confirm). A full address (a number, or a street and its town)
     keeps its street result and never falls on the town alone; a street asked
-    without its town and found in several towns is confirmed first."""
+    without its town and found in several towns is confirmed first; a place
+    said with its town (« porte d'Orléans à Paris ») is never swallowed by
+    the town itself."""
     q = fold(query)
     numbered = re.search(r"\b\d{1,4}\b", q) is not None
     if not numbered and not any(w in q for w in STREET_WORDS):
+        # The town itself came first while the query names a place: the named
+        # place wins (a result's name said in the query).
+        if fold(found[0].get("name") or "") != q:
+            named = [p for p in found if p.get("type") != "geo" and fold(p.get("name") or "") in q]
+            if named:
+                return named[0], []
         return found[0], []
     ranked = [p for p in found if p.get("type") != "geo"] or found
     if numbered:
