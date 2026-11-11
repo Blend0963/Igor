@@ -5950,6 +5950,8 @@
         ".panel button.go ha-icon, .panel button.stop ha-icon { color: inherit; } .panel button.go, .panel button.stop { justify-content: center; }" +
         ".panel button.go { background: #59d0e0; color: #07080a; border-color: #59d0e0; text-align: center; } .panel button.stop { border-color: #e5323b; color: #e5323b; text-align: center; }" +
         ".panel .list { display: grid; gap: 8px; } .panel .list small { display: block; color: #878c95; font-size: 12px; margin-top: 3px; } .panel .note { color: #878c95; font-size: 13px; }" +
+        ".panel .row2 { display: flex; gap: 8px; } .panel .row2 > button:first-child { flex: 1; min-width: 0; }" +
+        ".panel .row2 .via { flex: none; width: 52px; min-height: 0; padding: 0; justify-content: center; } .panel .row2 .via ha-icon { color: #d9a441; }" +
         ".trow { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #22262c; border-radius: var(--igor-radius, 3px); background: rgba(18,23,28,0.8); }" +
         ".trow > ha-icon { color: #e5323b; flex: none; --mdc-icon-size: 24px; } .trow.via > ha-icon { color: #d9a441; }" +
         ".trow .tt { flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
@@ -5967,7 +5969,7 @@
         '<button id="dest" title="Destination"><ha-icon icon="mdi:flag-checkered"></ha-icon></button>' +
         '<button id="voice" title="Voix du guidage"><ha-icon icon="mdi:volume-high"></ha-icon></button>' +
         '<button id="layers" title="Sur la carte"><ha-icon icon="mdi:layers-outline"></ha-icon></button>' +
-        '<button id="overview" title="Voir tout le trajet" hidden><ha-icon icon="mdi:map-marker-path"></ha-icon></button></div>' +
+        '<button id="overview" title="Choisir l’itinéraire" hidden><ha-icon icon="mdi:map-search"></ha-icon></button></div>' +
         '<div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div style="min-width:0"><div class="d" id="navD"></div><div class="t" id="navT"></div><div class="x" id="navX" hidden></div><div class="l" id="navL" hidden></div></div></div>' +
         '<div class="glow" id="glow" hidden></div>' +
         '<div class="side"><div class="alert" id="alert" hidden><ha-icon id="alIcon" icon="mdi:cctv"></ha-icon><div id="alS"></div><b id="alT"></b><div class="bar2"><i id="alBar"></i></div></div>' +
@@ -6693,7 +6695,10 @@
         var fi = document.createElement("ha-icon"); fi.setAttribute("icon", f.icon || (ent === "zone.home" ? "mdi:home" : "mdi:star-outline")); b.appendChild(fi);
         var fl = document.createElement("span"); fl.textContent = f.name || ent; b.appendChild(fl);
         b.addEventListener("click", () => { this.chooseNext = true; this.setDestination({ lat: at.lat, lon: at.lon, name: f.name || ent }, true); $("panel").hidden = true; });
-        fav.appendChild(b);
+        var row = document.createElement("div"); row.className = "row2";
+        row.appendChild(b);
+        if (this.dest) row.appendChild(this.viaBtn(at));
+        fav.appendChild(row);
       });
       // The searches the driver chose before (kept by this screen).
       var hist = $("phist"), rec = this.recentList();
@@ -6705,9 +6710,28 @@
         var ri = document.createElement("ha-icon"); ri.setAttribute("icon", "mdi:history"); b.appendChild(ri);
         var rt = document.createElement("div"); rt.textContent = r.name; b.appendChild(rt);
         b.addEventListener("click", () => { this.chooseNext = true; this.setDestination({ lat: r.lat, lon: r.lon, name: r.name }, true); $("panel").hidden = true; });
-        hist.appendChild(b);
+        var row = document.createElement("div"); row.className = "row2";
+        row.appendChild(b);
+        if (this.dest) row.appendChild(this.viaBtn(r));
+        hist.appendChild(row);
       });
       setTimeout(() => $("pq").focus(), 50);
+    },
+    // The small flag that puts a place on the way, beside a row of the
+    // panel: only when a trip is under way — an étape needs a trip.
+    viaBtn(p) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "via";
+      b.title = "Ajouter une étape";
+      b.innerHTML = '<ha-icon icon="mdi:flag-variant"></ha-icon>';
+      b.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        var d = this.dest;
+        this.setDestination(Object.assign({}, d, { via: (d.via || []).concat([{ lat: p.lat, lon: p.lon, name: p.name || "étape" }]) }), true);
+        this.$("panel").hidden = true;
+      });
+      return b;
     },
     tripRow(icon, name, kind, remove) {
       var row = document.createElement("div");
@@ -6774,7 +6798,10 @@
         sm.textContent = [r.address && r.address !== r.name ? r.address : "", here ? gpsMetres(gpsDist(here, [lon, lat])) : ""].filter(Boolean).join(" · ");
         rt.appendChild(sm);
         b.addEventListener("click", () => { this.chooseNext = true; this.setDestination({ lat: lat, lon: lon, name: r.name || "destination" }, true); this.$("panel").hidden = true; });
-        list.appendChild(b);
+        var row = document.createElement("div"); row.className = "row2";
+        row.appendChild(b);
+        if (this.dest) row.appendChild(this.viaBtn({ lat: lat, lon: lon, name: r.name }));
+        list.appendChild(row);
       });
     },
     // OpenStreetMap's search (Nominatim) from this screen: within about 60 km
@@ -7285,17 +7312,13 @@
       clearTimeout(this.toastTimer);
       this.toastTimer = setTimeout(() => { t.hidden = true; }, ms || 6000);
     },
-    // The whole route on the screen, north up, for a look; the map follows again by itself.
+    // Not the whole route on the screen any more — the fingers zoom out —
+    // but the choice again: the panel of the routes, the best ways computed
+    // anew from where the car is.
     overview() {
-      var R = this.route;
-      if (!R || !this.map || !window.maplibregl) return;
-      var b = new window.maplibregl.LngLatBounds(R.coords[0], R.coords[0]);
-      R.coords.forEach((q) => b.extend(q));
-      (this.alts || []).forEach((a) => ((a.route && a.route.coords) || []).forEach((q) => b.extend(q)));
-      if (this.pos) b.extend(this.pos);
-      this.setFollow(false, 20);
-      this.map.fitBounds(b, { padding: { top: 110, bottom: 80, left: 70, right: 80 }, bearing: 0, pitch: 0, duration: 600 });
-      if (this.dest) this.refreshAlts(true);
+      if (!this.dest || !this.map || !window.maplibregl) return;
+      var from = this.pos || (this.route && this.route.coords && this.route.coords[0]);
+      this.chooseRoute(this.dest, from);
     },
     hush() {
       try { if (this.audio) this.audio.pause(); if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { /* nothing playing */ }
