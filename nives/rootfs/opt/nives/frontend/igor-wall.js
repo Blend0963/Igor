@@ -5817,10 +5817,18 @@
       g.beginPath(); g.roundRect ? g.roundRect(14, 3, 20, 42, 6) : g.rect(14, 3, 20, 42); g.fill(); g.stroke();
       [["#e5323b", 12], ["#d9a441", 24], ["#5cc28f", 36]].forEach(function (l) { g.beginPath(); g.arc(24, l[1], 5, 0, Math.PI * 2); g.fillStyle = l[0]; g.fill(); });
     });
+    // The radar as the house draws it: a dark tile, the camera in a thin
+    // off-white line, one red spark — the red stays the alert's alone.
     draw("camera", function (g) {
-      disc(g, "#fff", "#e5323b");
-      g.fillStyle = "#1a1a1a"; g.fillRect(12, 18, 18, 13); g.beginPath(); g.moveTo(30, 21); g.lineTo(37, 17); g.lineTo(37, 32); g.lineTo(30, 28); g.closePath(); g.fill();
-      g.beginPath(); g.arc(21, 24.5, 3.5, 0, Math.PI * 2); g.fillStyle = "#fff"; g.fill();
+      g.fillStyle = "#14161a"; g.strokeStyle = "#2a2d33"; g.lineWidth = 1.5;
+      g.beginPath(); g.roundRect ? g.roundRect(5, 5, 38, 38, 9) : g.rect(5, 5, 38, 38); g.fill(); g.stroke();
+      g.strokeStyle = "#e9e4da"; g.lineWidth = 2;
+      g.beginPath(); g.roundRect ? g.roundRect(15.5, 19, 13, 9, 2) : g.rect(15.5, 19, 13, 9); g.stroke();
+      g.beginPath(); g.moveTo(28.5, 21.5); g.lineTo(33, 19.5); g.lineTo(33, 27.5); g.lineTo(28.5, 25.5); g.closePath(); g.stroke();
+      g.beginPath(); g.arc(20, 23.5, 2.2, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.moveTo(22, 28); g.lineTo(22, 36); g.moveTo(17.5, 36); g.lineTo(26.5, 36); g.stroke();
+      g.fillStyle = "#e5323b";
+      g.beginPath(); g.moveTo(24, 11); g.lineTo(27, 11); g.lineTo(25, 14.5); g.lineTo(27.5, 14.5); g.lineTo(22.5, 20); g.lineTo(24.2, 16); g.lineTo(21.8, 16); g.closePath(); g.fill();
     });
     return out;
   }
