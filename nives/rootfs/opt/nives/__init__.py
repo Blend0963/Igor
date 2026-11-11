@@ -906,8 +906,8 @@ ROUTE_SCHEMA = vol.Schema(
         vol.Optional("avoid", default=[]): vol.All(
             cv.ensure_list, vol.Length(max=10), [vol.ExactSequence([vol.Coerce(float)] * 4)]
         ),
-        # « éviter » : motorways, tollRoads, ferries, unpavedRoads
-        vol.Optional("avoid_types", default=[]): vol.All(cv.ensure_list, vol.Length(max=4), [cv.string]),
+        # « éviter » : motorways, tollRoads, ferries, unpavedRoads, lowEmissionZones
+        vol.Optional("avoid_types", default=[]): vol.All(cv.ensure_list, vol.Length(max=6), [cv.string]),
         vol.Optional("alternatives", default=0): vol.All(vol.Coerce(int), vol.Range(min=0, max=2)),
     }
 )

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.10 — The low-emission zones, said and avoided
+
+- The routes now know the ZFE: TomTom marks the low-emission stretches along the way, the choice's panel wears a red « ZFE » badge next to the « € » when a route crosses one (the grey bubbles too), a word warns when the car is about to enter one, and picking such a route says the vignette is required.
+- A fourth choice, « Sans ZFE », computes the way that goes round the zones; the « Éviter ZFE » chip keeps them off this trip and the next ones. TomTom does not read the vignette's level — the badge says a zone is crossed, the driver knows what his Crit'Air allows.
+
 ## 0.38.9 — The choice again, and stops from the search
 
 - The small map button no longer zooms out (the fingers do that): it brings the choice back — the panel of the routes, the best ways computed anew from where the car is, with the same 12 s before the fastest starts.
