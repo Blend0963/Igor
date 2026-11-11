@@ -7000,6 +7000,7 @@
         map.on("mouseenter", "alts", () => { map.getCanvas().style.cursor = "pointer"; });
         map.on("mouseleave", "alts", () => { map.getCanvas().style.cursor = ""; });
         map.on("move", () => this.clampAlts());
+        map.on("moveend", () => this.placeAlts());
       }
       map.getSource("alts").setData(this.altsData());
       (this.altMarkers || []).forEach((m) => m.remove());
@@ -7012,17 +7013,51 @@
         var el = document.createElement("div");
         el.className = "alttag" + (dmin < 0 ? " win" : dmin > 0 ? " lose" : "");
         el.textContent = dmin === 0 ? "≈ 0 min" : (dmin > 0 ? "+" : "−") + Math.abs(dmin) + " min";
-        // The bubble where the driver sees the route: the point of it nearest
-        // the car, kept inside the screen when the map follows.
-        var pt = R0.coords[Math.floor(R0.coords.length / 2)];
-        if (this.pos) {
-          var bd = Infinity;
-          for (var k = 0; k < R0.coords.length; k += 3) { var dd = gpsDist(this.pos, R0.coords[k]); if (dd < bd) { bd = dd; pt = R0.coords[k]; } }
-        }
-        var mk = new window.maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(pt).addTo(map);
-        mk._igorLL = pt;
+        var mk = new window.maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(R0.coords[Math.floor(R0.coords.length / 2)]).addTo(map);
+        mk._igorAlt = a;
         this.altMarkers.push(mk);
         el.addEventListener("click", (ev) => { ev.stopPropagation(); this.pickAlt(a); });
+      });
+      this.placeAlts(true);
+    },
+    // Where each bubble sits: on its grey line, where the driver reads it —
+    // away from the car while following (at the crossing where the other
+    // route leaves, never over the car), at the middle of its route when the
+    // whole trip is on the screen, as a GPS shows it zoomed out.
+    placeAlts(force) {
+      var map = this.map;
+      if (!map || !window.maplibregl || !this.altMarkers || !this.altMarkers.length) return;
+      var now = performance.now();
+      if (!force && this._altPlaced && now - this._altPlaced < 1000) return;
+      this._altPlaced = now;
+      var w = map.getCanvas().clientWidth, h = map.getCanvas().clientHeight, whole = false;
+      if (this.route && this.route.coords && this.route.coords.length > 1) {
+        var bb = map.getBounds();
+        whole = true;
+        for (var k = 0; k < this.route.coords.length && whole; k += 10) whole = bb.contains(this.route.coords[k]);
+      }
+      var car = this.pos ? map.project(this.pos) : null;
+      this.altMarkers.forEach((m) => {
+        var R0 = m._igorAlt && m._igorAlt.route;
+        if (!R0 || !R0.coords || R0.coords.length < 2) return;
+        var pt = null;
+        if (whole || !car) pt = R0.coords[Math.floor(R0.coords.length / 2)];
+        else {
+          var near = 0, bd = Infinity;
+          for (var k2 = 0; k2 < R0.coords.length; k2 += 3) { var dd = gpsDist(this.pos, R0.coords[k2]); if (dd < bd) { bd = dd; near = k2; } }
+          for (var st = 0; st < R0.coords.length && !pt; st += 3) {
+            for (var ci = -1; ci <= 1 && !pt; ci += 2) {
+              var c = R0.coords[near + st * ci];
+              if (!c) continue;
+              var s = map.project(c);
+              if (s.x < 60 || s.y < 130 || s.x > w - 60 || s.y > h - 130) continue;
+              if (Math.hypot(s.x - car.x, s.y - car.y) > 110) pt = c;
+            }
+          }
+          if (!pt) pt = R0.coords[near];
+        }
+        m._igorLL = pt;
+        m.setLngLat(pt);
       });
       this.clampAlts();
     },
@@ -7069,8 +7104,12 @@
       if (!this.alts || !this.alts.length) {
         var mine = this.tripAvoid || this.avoidTypes(), has = (t) => mine.indexOf(t) >= 0;
         this.alts = [];
+        // The other choice always exists: without, when the trip allows it;
+        // with (tolls, motorways) when the trip avoids it — switching back stays possible.
         if (!has("motorways")) this.alts.push({ label: "Sans autoroute", types: mine.concat(["motorways"]) });
+        else this.alts.push({ label: "Avec autoroute", types: mine.filter((t) => t !== "motorways") });
         if (!has("tollRoads")) this.alts.push({ label: "Sans péage", types: mine.concat(["tollRoads"]) });
+        else this.alts.push({ label: "Avec péage", types: mine.filter((t) => t !== "tollRoads") });
       }
       if (!this.alts.length) return;
       var got = await Promise.all(this.alts.map((a) => this.askRoute(d, from, a.types || [])));
