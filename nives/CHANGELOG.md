@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.27 — The phone that stopped answering
+
+- A GPS card with a `fallback_entity` now watches its primary: entity gone, or the arbitration driving on the fallback, and a band stands in the card — « téléphone introuvable · GPS de la voiture en secours » (or just « téléphone introuvable » when the fallback is dead too) — until the phone answers again. Said once when it happens: a toast of 5 s, and a spoken line of the alert kind (heard with the voice on « tout » or « alertes », silent when the voice is cut). Portrait, the band sits above the speed square; landscape, above the toast row.
+
 ## 0.38.26 — The portrait bottom, each in its place
 
 - Portrait: the street name takes the whole width at the bottom; above it the speed becomes a true 72 px square, its figure centred inside, sitting 6 px above the bar — the same gap the top buttons keep; the toast sits at the square's right with the same 6 px, on the same row, and wraps upward when it is long. Guided, the eta bar takes the very bottom and the whole row climbs above it (a `guiding` class follows the eta's visibility). The head unit's landscape layout is untouched.

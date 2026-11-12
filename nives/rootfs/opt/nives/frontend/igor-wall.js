@@ -5932,6 +5932,7 @@
         ".portrait .hud.sp { bottom: 51px; } .portrait.guiding .hud.sp { bottom: 101px; }" +
         ".portrait .speed { width: 72px; min-width: 72px; height: 72px; padding: 0; } .portrait .speed b { font-size: 26px; white-space: nowrap; }" +
         ".portrait .toast { left: 90px; right: 10px; transform: none; max-width: none; bottom: 51px; white-space: normal; } .portrait.guiding .toast { bottom: 101px; }" +
+        ".portrait .lost { left: 10px; right: 10px; transform: none; max-width: none; bottom: 129px; } .portrait.guiding .lost { bottom: 179px; }" +
         ".portrait .eta { left: 10px; right: 10px; gap: 10px; padding: 6px 10px; } .portrait .eta b { font-size: 18px; } .portrait .eta span { font-size: 11px; } .portrait.withspeed .eta { left: 10px; }" +
         ".portrait .ask { bottom: 240px; }" +
         ".hud { position: absolute; z-index: 2; pointer-events: none; }" +
@@ -5978,6 +5979,9 @@
         ".street[hidden] { display: none; }" +
         // A word for a few seconds (a detour, the voice's setting): small, above the bottom bar.
         ".toast { position: absolute; z-index: 3; left: 50%; bottom: 96px; transform: translateX(-50%); max-width: 80%; padding: 8px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.94); border: 1px solid #f08c1a; border-left: 4px solid #f08c1a; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }" +
+        // The phone that stopped answering: said once, then a band that stays
+        // while it lasts — a toast of 5 s is missed, driving blind is worse.
+        ".lost { position: absolute; z-index: 3; left: 50%; bottom: 140px; transform: translateX(-50%); max-width: 70%; display: flex; gap: 10px; align-items: center; padding: 8px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.94); border: 1px solid #f08c1a; border-left: 4px solid #f08c1a; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; } .lost[hidden] { display: none; } .lost ha-icon { color: #f08c1a; flex: none; }" +
         ".toast[hidden] { display: none; } .toast b { color: #f08c1a; font-weight: 500; } .toast button { font: inherit; margin-left: 12px; background: none; border: 1px solid #22262c; color: #878c95; padding: 2px 8px; border-radius: 2px; cursor: pointer; }" +
         ".shield { display: inline-block; padding: 1px 6px; margin-right: 8px; border-radius: 3px; font-family: 'Barlow Condensed', 'Roboto Condensed', 'Arial Narrow', sans-serif; font-weight: 700; font-size: 0.86em; line-height: 1.25; letter-spacing: 0.02em; vertical-align: 1px; white-space: nowrap; background: #e9e4da; color: #111; box-shadow: inset 0 0 0 1.5px currentColor; }" +
         ".shield.a, .shield.n { background: #d33; color: #fff; } .shield.e { background: #2f8a3e; color: #fff; } .shield.d { background: #f2c200; color: #111; } .shield.m { background: #2a9fd6; color: #fff; }" +
@@ -6054,6 +6058,7 @@
         '<div class="tbar" id="tbar" hidden><span class="top" id="tbTop"></span><div class="tk" id="tbTrack"></div><b id="tbMain"></b><span id="tbSub"></span></div></div>' +
         '<div class="street" id="street" hidden></div>' +
         '<div class="toast" id="toast" hidden></div>' +
+        '<div class="lost" id="lost" hidden><ha-icon icon="mdi:cellphone-off"></ha-icon><span id="lostS"></span></div>' +
         '<div class="ask" id="ask" hidden><ha-icon icon="mdi:road-variant"></ha-icon><div class="q"><b>Route fermée sur votre itinéraire</b><div id="askS"></div></div><div class="bt"><button class="yes" id="askYes">Éviter</button><button id="askNo">Ignorer</button></div></div>' +
         '<div class="panel rpanel" id="rpanel" hidden><div class="ph"><span id="rtitle">itinéraires</span><button id="rclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="rlist"></div><div class="seg" id="rchips"></div></div>' +
         '<div class="panel lpanel" id="lpanel" hidden><div class="ph"><span>sur la carte</span><button id="lclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="llist"></div></div>' +
@@ -6195,6 +6200,24 @@
       }
       return use === "phone" ? fb : main;
     }
+    // The primary GPS that stopped answering: the arbitration has already
+    // switched to the fallback (or the entity is gone); say it once, then let
+    // a band stand while it lasts. Voice only where a voice is welcome.
+    lostCheck() {
+      var fbId = this.config.fallback_entity;
+      if (!fbId || !this._hass) return;
+      var main = this._hass.states[this.config.entity];
+      var fb = this._hass.states[fbId];
+      var fbAlive = fb && ["unavailable", "unknown"].indexOf(fb.state) < 0 && fb.attributes.latitude != null;
+      var lost = !main || ["unavailable", "unknown"].indexOf(main.state) >= 0 || this.srcNow === "phone";
+      if (lost === this.lost) return;
+      this.lost = lost;
+      this.$("lost").hidden = !lost;
+      if (!lost) return;
+      this.$("lostS").textContent = fbAlive ? "téléphone introuvable · GPS de la voiture en secours" : "téléphone introuvable";
+      this.toast("Téléphone introuvable", 5000);
+      this.say(fbAlive ? "Téléphone introuvable, j'utilise le GPS de la voiture" : "Téléphone introuvable", "alert");
+    }
     read() {
       var st = this.pickSource();
       if (!st) { this.message("Entité introuvable : " + this.config.entity); return; }
@@ -6214,6 +6237,7 @@
       this.accuracy = Number(a.gps_accuracy != null ? a.gps_accuracy : a.accuracy) || 0;
       if (!this.fix || this.fix.updated !== st.last_updated) this.onFix(p, course, speed, st.last_updated);
       this.overlays();
+      this.lostCheck();
       // A destination set elsewhere (the phone, Igor): guidance there.
       var de = this.config.destination && this._hass.states[this.config.destination];
       if (de && de.state !== this.destState) {
