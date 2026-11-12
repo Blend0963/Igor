@@ -890,7 +890,10 @@
     // Exactly the screen's height below where the wall starts; stacked on a phone.
     fit() {
       if (!this.wall) return;
-      var narrow = window.innerWidth < (this.config.stack_below || 760);
+      // An explicit `stack_below: 0` means never stack — a GPS that fills a
+      // phone held upright; the default (760) stands when it is not a number.
+      var below = Number(this.config.stack_below);
+      var narrow = window.innerWidth < (isNaN(below) ? 760 : below);
       this.wall.classList.toggle("stack", narrow);
       if (narrow) { this.wall.style.height = "auto"; return; }
       var top = this.getBoundingClientRect().top + (window.scrollY || 0);
