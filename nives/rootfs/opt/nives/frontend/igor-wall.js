@@ -305,7 +305,9 @@
       this.igorEl = el("span", "state", left, "");
       // The dashboard's pages, the one shown in red (`tabs: false`: none).
       // `tabs: true`: kept on a narrow screen too (a car's head unit).
-      this.tabsEl = this.config.tabs === false ? null : el("span", "tabs" + (this.config.tabs === true ? " keep" : ""), this.root);
+      // `no-swipe`: the strip slides sideways to reach the hidden tabs; that
+      // slide must not be read as a page change.
+      this.tabsEl = this.config.tabs === false ? null : el("span", "tabs no-swipe" + (this.config.tabs === true ? " keep" : ""), this.root);
       if (this.tabsEl) this.tabsEl.addEventListener("click", (ev) => ev.stopPropagation());
       var lane = el("div", "lane", this.root);
       this.lane = lane;
@@ -6004,7 +6006,10 @@
         ".mappick button { font: inherit; font-size: 14px; padding: 10px 12px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #e9e4da; cursor: pointer; display: flex; align-items: center; gap: 10px; --mdc-icon-size: 20px; white-space: nowrap; } .mappick button ha-icon { color: #59d0e0; flex: none; }" +
         ".mappick .mp-name { color: #878c95; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; min-width: 0; padding: 2px 0 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
         ".mappick .mp-x { flex: none; margin-left: auto; width: 30px; height: 30px; min-height: 0; padding: 0; justify-content: center; border: none; background: transparent; color: #878c95; --mdc-icon-size: 18px; } .mappick .mp-x ha-icon { color: #878c95; }" +
-        '</style><ha-card id="card"><div id="map"></div><div class="msg" id="msg">Chargement de la carte…</div>' +
+        // The map carries `no-swipe`: a finger dragging it moves the map,
+        // never the dashboard's page (the swipe-between-tabs module above
+        // reads this very class).
+        '</style><ha-card id="card"><div id="map" class="no-swipe"></div><div class="msg" id="msg">Chargement de la carte…</div>' +
         '<div class="btns"><button id="recenter" title="Recentrer" hidden><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' +
         '<button id="orient" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button>' +
         '<button id="dest" title="Destination"><ha-icon icon="mdi:flag-checkered"></ha-icon></button>' +
