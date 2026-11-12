@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.24 — The yellow word finds its own row
+
+- Portrait: the toast (the yellow-edged word — « Déviation · route fermée », ZFE, voice mode) had the same row as the street name — it covered the street, and on the previous release the speed box too. It now has its own row above the speed box, and the road-closure pop rises above it. From the bottom: eta bar, street name, speed box, toast, popups.
+
 ## 0.38.23 — A speed box with room to breathe
 
 - The fullscreen speed box appears at once (it waited for the next position read: parked, that could be forever).

@@ -5919,7 +5919,7 @@
         ".portrait .side { right: 8px; top: 120px; bottom: 140px; width: 96px; } .portrait .alert { padding: 6px 4px; --mdc-icon-size: 24px; } .portrait .alert ha-icon { width: 36px; height: 36px; } .portrait .alert #alS { font-size: 22px; } .portrait .tbar { width: 52px; }" +
         ".portrait .hud.sp { bottom: 110px; } .portrait .speed { min-width: 84px; height: 56px; padding: 0 10px; } .portrait .speed b { font-size: 28px; white-space: nowrap; }" +
         ".portrait .eta { left: 10px; right: 10px; gap: 10px; padding: 6px 10px; } .portrait .eta b { font-size: 18px; } .portrait .eta span { font-size: 11px; } .portrait.withspeed .eta { left: 10px; }" +
-        ".portrait .street, .portrait .toast { bottom: 70px; } .portrait .street { max-width: 90%; } .portrait .ask { bottom: 174px; }" +
+        ".portrait .street { bottom: 70px; max-width: 90%; } .portrait .toast { bottom: 174px; } .portrait .ask { bottom: 240px; }" +
         ".hud { position: absolute; z-index: 2; pointer-events: none; }" +
         ".hud.sp { left: 12px; bottom: 12px; } .hud.lim { right: 12px; top: 12px; }" +
         ".speed { min-width: 78px; height: 70px; padding: 0 12px; box-sizing: border-box; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.86); border: 1px solid #22262c; color: #e9e4da;" +
