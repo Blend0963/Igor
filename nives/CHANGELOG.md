@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.29 — The arrow that keeps up, the word that never had to be said
+
+- The incident pop ("Trafic coupé · 2,4 km", the yellow box at the top right) is gone: the jams live in the side bar, a closed road asks for its detour by itself, and the incidents stay drawn on the map. The radar and danger-zone warnings keep their place.
+- The arrow no longer falls behind between two fixes. It used to advance 4 s past the last GPS point and then wait for the next one — with a phone reporting every 15–30 s, that was up to 200 m of lag. The estimate now goes on at the last known speed until the next fix: the OBD's when it answers (up to 3 min, the tunnel case), else the GPS's own (20 s at most — the fix, whenever it comes, stays the truth). An OBD sensor silent for 45 s is no longer believed.
+
 ## 0.38.28 — The toast that knows when the speed is there
 
 - Portrait: the toast keeps the whole row again — centred as before — when the speed square is not on the card (`show_speed: false` and not fullscreen, the car's dashboard in its place). It steps to the square's right with the same 6 px gap only while the square is actually shown (the phone GPS, or the card fullscreen).

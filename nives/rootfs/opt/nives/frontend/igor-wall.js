@@ -6562,11 +6562,15 @@
       // the car may be reversing).
       var elapsed = Math.min((now - this.fix.time) / 1000, GPS_PREDICT_S);
       var target = speed > GPS_SLOW ? gpsProject(this.fix.point, this.heading, speed * elapsed) : this.fix.point;
-      // No fix for a while (a tunnel, a lost signal) while the car's own speed
-      // (OBD) says it drives: the arrow goes on at that speed, along the route
-      // when guided, else along the road it is on, for 3 minutes at most.
+      // No fix for a while (a tunnel, a lost signal, a phone that reports
+      // every 20 s) while the car still drives: the arrow goes on at the last
+      // speed — the OBD's when it answers, else the GPS's own — along the
+      // route when guided, else along the road it is on. The OBD may carry it
+      // 3 minutes (a tunnel); the GPS's word only bridges to the next fix,
+      // 20 s at most: the fix, whenever it comes, is the truth.
       var lost = (now - this.fix.time) / 1000;
-      if (this.config.dead_reckoning !== false && this.obdSpeed() && speed > GPS_SLOW && lost > GPS_PREDICT_S && lost < GPS_DR_MAX_S) {
+      var obd = this.obdSpeed();
+      if (this.config.dead_reckoning !== false && speed > GPS_SLOW && lost > GPS_PREDICT_S && lost < (obd != null ? GPS_DR_MAX_S : 20)) {
         target = this.deadReckon(now, speed);
       } else { this.drPos = null; this.drAt = 0; }
       // Onto the road, a few times a second, moving or stopped, as a
@@ -6662,8 +6666,11 @@
 
   Object.assign(IgorGpsCard.prototype, {
     // The car's own speed (speed_entity, the OBD) is there: m/s, else null.
+    // A sensor that has not spoken for 45 s is not there: the last figure of
+    // a dead link would carry the car far past the truth.
     obdSpeed() {
       var e = this.config.speed_entity && this._hass && this._hass.states[this.config.speed_entity];
+      if (e && Date.now() - (Date.parse(e.last_updated) || 0) > 45000) return null;
       var v = e ? parseFloat(e.state) : NaN;
       return isNaN(v) ? null : v / 3.6;
     },
@@ -8121,29 +8128,9 @@
           return;
         }
       }
-      // The traffic: a closed road ahead (3 km), else the nearest incident (1.5 km).
-      if (L.incidents && this.traffic && this.traffic.incidents && speed > GPS_MOVING) {
-        var inc = null;
-        this.traffic.incidents.forEach((i) => {
-          if (i.kind === "jam") return;
-          var reach2 = i.closed ? 3000 : 1500, best = null;
-          // The incident's nearest point the car meets.
-          for (var k = 0; k < i.line.length; k += Math.max(1, Math.floor(i.line.length / 12))) {
-            var dd = this.meets(i.line[k], 40);
-            if (dd != null && (best == null || dd < best)) best = dd;
-          }
-          if (best != null && best <= reach2 && (!inc || (i.closed && !inc.i.closed) || (i.closed === inc.i.closed && best < inc.d))) inc = { i: i, d: best };
-        });
-        if (inc) {
-          var I = inc.i, look = GPS_INCIDENT[I.kind] || GPS_INCIDENT.other;
-          var title = I.label + (I.delay >= 60 ? " · +" + Math.round(I.delay / 60) + " min" : "");
-          var where = [I.text !== I.label ? I.text : "", I.from && I.to ? I.from + " → " + I.to : ""].filter(Boolean).join(" · ");
-          this.showAlert({ key: "inc" + I.id, icon: look.icon, title: title, big: gpsMetres(inc.d), sub: "à " + gpsMetres(inc.d) + (where ? " · " + where : ""),
-            cls: "inc", bar: 1 - inc.d / (I.closed ? 3000 : 1500),
-            voice: I.label + " dans " + gpsMetres(inc.d).replace(" m", " mètres").replace(" km", " kilomètres") });
-          return;
-        }
-      }
+      // No incident word: the jams live in the side bar, a closed road asks
+      // for its detour by itself; the box stayed a yellow shout for a thing
+      // the map already tells.
       this.showAlert(null);
     },
     // A closed road on the route ahead, not yet answered: ask whether to go round it.
