@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.19 — The finger that moves the map no longer turns the page
+
+- The GPS card's map and the bar's sliding tab strip join the swipe exclusions (`no-swipe`): dragging the map moves the map, sliding the tab strip reaches the hidden tabs — neither changes the dashboard's page any more. The swipe between tabs keeps working everywhere else.
+
 ## 0.38.18 — The house said http, the phone wanted https
 
 - The phone's grey map is explained at last: behind a proxy that ends the TLS (nginx + a WAF), Home Assistant sees plain http and writes its own proxy links in http:// inside the Orbis style. A page arrived in https refuses those links (mixed content) — the style came, its tiles never did, and every browser on the phone failed alike while the head unit (plain http on the LAN) worked. The card now rewrites any house link said in http back to its own origin before handing the style to MapLibre, whatever host the house believed it was.
