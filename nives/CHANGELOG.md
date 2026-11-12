@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.28 — The toast that knows when the speed is there
+
+- Portrait: the toast keeps the whole row again — centred as before — when the speed square is not on the card (`show_speed: false` and not fullscreen, the car's dashboard in its place). It steps to the square's right with the same 6 px gap only while the square is actually shown (the phone GPS, or the card fullscreen).
+
 ## 0.38.27 — The phone that stopped answering
 
 - A GPS card with a `fallback_entity` now watches its primary: entity gone, or the arbitration driving on the fallback, and a band stands in the card — « téléphone introuvable · GPS de la voiture en secours » (or just « téléphone introuvable » when the fallback is dead too) — until the phone answers again. Said once when it happens: a toast of 5 s, and a spoken line of the alert kind (heard with the voice on « tout » or « alertes », silent when the voice is cut). Portrait, the band sits above the speed square; landscape, above the toast row.

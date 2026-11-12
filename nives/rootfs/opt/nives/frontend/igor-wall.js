@@ -5926,12 +5926,13 @@
         // The bottom of a portrait screen, each on its own row: the street full
         // width, then the speed — a true square — with the toast at its right,
         // the same 6 px the buttons keep. Guided, the eta bar takes the bottom
-        // and the row climbs above it.
+        // and the row climbs above it. The toast steps aside only while the
+        // speed square is actually there; without it, it keeps the whole row.
         ".portrait .street { left: 10px; right: 10px; transform: none; max-width: none; }" +
         ".portrait.guiding .street { bottom: 62px; }" +
         ".portrait .hud.sp { bottom: 51px; } .portrait.guiding .hud.sp { bottom: 101px; }" +
         ".portrait .speed { width: 72px; min-width: 72px; height: 72px; padding: 0; } .portrait .speed b { font-size: 26px; white-space: nowrap; }" +
-        ".portrait .toast { left: 90px; right: 10px; transform: none; max-width: none; bottom: 51px; white-space: normal; } .portrait.guiding .toast { bottom: 101px; }" +
+        ".portrait .toast { left: 10px; right: 10px; transform: none; max-width: none; bottom: 51px; white-space: normal; } .portrait.withspeed .toast { left: 90px; } .portrait.guiding .toast { bottom: 101px; }" +
         ".portrait .lost { left: 10px; right: 10px; transform: none; max-width: none; bottom: 129px; } .portrait.guiding .lost { bottom: 179px; }" +
         ".portrait .eta { left: 10px; right: 10px; gap: 10px; padding: 6px 10px; } .portrait .eta b { font-size: 18px; } .portrait .eta span { font-size: 11px; } .portrait.withspeed .eta { left: 10px; }" +
         ".portrait .ask { bottom: 240px; }" +
