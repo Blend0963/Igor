@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.23 — A speed box with room to breathe
+
+- The fullscreen speed box appears at once (it waited for the next position read: parked, that could be forever).
+- Portrait: the speed box is wider (three digits fit with room to spare, and it still grows with the figure) and climbs above the street-name row — nothing touches the eta bar any more, and the road-closure pop rises above the box. Landscape: the eta bar steps 132 px aside, clear of a three-digit speed.
+
 ## 0.38.22 — The speed that follows the fullscreen
 
 - A GPS card set with `show_speed: false` (the car's dashboard) now shows its speed box when it takes the whole screen, and hides it again when it goes back to its place; the eta bar steps aside while the box is there. The phone GPS (`show_speed: true`) is unchanged — always shown.
