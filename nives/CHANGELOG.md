@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.25 — The line breathes with the zoom
+
+- The drawn lines follow the zoom now: thin on the overview (2.5 px, they no longer smother the map), road-wide at the zooms one drives at (7 px at zoom 16, 10 px at 18). The dark halo follows proportionally, the alternates, the trail and the incidents stay a step thinner than the chosen route. Pure paint: the GPU interpolates the width, nothing to download, nothing new to compute.
+
 ## 0.38.24 — The yellow word finds its own row
 
 - Portrait: the toast (the yellow-edged word — « Déviation · route fermée », ZFE, voice mode) had the same row as the street name — it covered the street, and on the previous release the speed box too. It now has its own row above the speed box, and the road-closure pop rises above it. From the bottom: eta bar, street name, speed box, toast, popups.

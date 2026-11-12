@@ -5243,6 +5243,12 @@
   // server), a TomTom key in Igor's options is needed.
   var GPS_ORBIS = { dark: "basic_street-dark-driving" };
   var GPS_R = 6378137, GPS_PREDICT_S = 4, GPS_MOVING = 0.8, GPS_TRAIL = 600;
+  // The drawn lines breathe with the zoom: thin on the overview (they must not
+  // smother the map), road-wide at the zooms one drives at. Pure paint — the
+  // GPU interpolates, nothing to download, nothing to compute twice.
+  var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
+  var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
+  var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
   // Speeds (m/s, from the car itself when it says, else the GPS):
   // above GPS_FWD (15 km/h) a car only drives forward, so where it goes is
   // where it faces; under GPS_SLOW (9 km/h) it may be manoeuvring or reversing,
@@ -6386,20 +6392,20 @@
         if (!map.getSource("route")) {
           map.addSource("route", { type: "geojson", data: this.routeData() });
           map.addLayer({ id: "route-case", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#07080a", "line-width": 11, "line-opacity": 0.8 } });
+            paint: { "line-color": "#07080a", "line-width": GPS_CASE_W, "line-opacity": 0.8 } });
           map.addLayer({ id: "route", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#3b8cff", "line-width": 7 } });
+            paint: { "line-color": "#3b8cff", "line-width": GPS_ROUTE_W } });
         }
         // The route's slow stretches (TomTom): orange when it slows, red when it is jammed.
         if (!map.getSource("routejam")) {
           map.addSource("routejam", { type: "geojson", data: this.routeJamData() });
           map.addLayer({ id: "routejam", type: "line", source: "routejam", layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": ["match", ["get", "level"], 2, "#e5323b", "#f08c1a"], "line-width": 7 } });
+            paint: { "line-color": ["match", ["get", "level"], 2, "#e5323b", "#f08c1a"], "line-width": GPS_ROUTE_W } });
         }
         if (!map.getSource("trail")) {
           map.addSource("trail", { type: "geojson", data: this.trailData() });
           map.addLayer({ id: "trail", type: "line", source: "trail", layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#59d0e0", "line-width": 5, "line-opacity": 0.55 } });
+            paint: { "line-color": "#59d0e0", "line-width": GPS_ALT_W, "line-opacity": 0.55 } });
         }
         this.drawAlts();
         // `buildings: false`: the map without its buildings (less to draw).
@@ -7124,7 +7130,7 @@
       if (!map.getSource("alts")) {
         map.addSource("alts", { type: "geojson", data: this.altsData() });
         map.addLayer({ id: "alts", type: "line", source: "alts", layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": "#8a8f96", "line-width": 5, "line-dasharray": [2, 2], "line-opacity": 0.9 } }, "route-case");
+          paint: { "line-color": "#8a8f96", "line-width": GPS_ALT_W, "line-dasharray": [2, 2], "line-opacity": 0.9 } }, "route-case");
       }
       if (!this.altsWired) {
         this.altsWired = true;
@@ -7771,10 +7777,10 @@
       if (this.trafficOn()) this.addTrafficLayer();
       map.addSource("incidents", { type: "geojson", data: this.incidentData() });
       map.addLayer({ id: "incidents", type: "line", source: "incidents", filter: ["all", [">", ["get", "n"], 1], ["!", ["get", "closed"]]], layout: { "line-cap": "round" },
-        paint: { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.85 } }, "route-case");
+        paint: { "line-color": ["get", "color"], "line-width": GPS_ALT_W, "line-opacity": 0.85 } }, "route-case");
       // A closed road: dashed red, as a barrier.
       map.addLayer({ id: "incidents-closed", type: "line", source: "incidents", filter: ["all", [">", ["get", "n"], 1], ["get", "closed"]],
-        paint: { "line-color": "#e5323b", "line-width": 6, "line-dasharray": [1, 1.2] } }, "route-case");
+        paint: { "line-color": "#e5323b", "line-width": GPS_ALT_W, "line-dasharray": [1, 1.2] } }, "route-case");
       map.addLayer({ id: "incidents-pt", type: "circle", source: "incidents", filter: ["==", ["get", "n"], 1],
         paint: { "circle-radius": 7, "circle-color": ["get", "color"], "circle-stroke-color": "#07080a", "circle-stroke-width": 2 } });
       map.addSource("pois", { type: "geojson", data: this.poiData() });
