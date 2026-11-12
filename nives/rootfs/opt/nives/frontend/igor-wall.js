@@ -5903,6 +5903,20 @@
         ".btns { position: absolute; top: 10px; left: 10px; display: flex; flex-direction: column; gap: 8px; z-index: 2; }" +
         ".btns button { width: 44px; height: 44px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; cursor: pointer; background: rgba(7,8,10,0.85); color: #e9e4da; display: grid; place-items: center; --mdc-icon-size: 22px; }" +
         ".btns button[hidden] { display: none; }" +
+        // The card as the whole screen: the dashboard's bar and neighbours lie
+        // beneath it, while its own panels, toasts and popups (its children)
+        // keep their place above the map. The map refits through the observer.
+        "ha-card.full { position: fixed; inset: 0; z-index: 40; height: auto; min-height: 0; border-radius: 0; }" +
+        // A phone held upright (the card taller than wide): the pieces
+        // tighten and step aside so nothing sits on the map. Landscape never
+        // sees this class — the head unit keeps its full-sized furniture.
+        ".portrait .btns { gap: 6px; } .portrait .btns button { width: 40px; height: 40px; --mdc-icon-size: 20px; }" +
+        ".portrait .nav { right: 76px; padding: 8px 10px; gap: 10px; --mdc-icon-size: 34px; } .portrait .nav .d { font-size: 22px; } .portrait .nav .t { font-size: 12px; }" +
+        ".portrait .hud.lim .sign { width: 56px; height: 56px; } .portrait .snap { top: 76px; }" +
+        ".portrait .side { right: 8px; top: 120px; bottom: 140px; width: 96px; } .portrait .alert { padding: 6px 4px; --mdc-icon-size: 24px; } .portrait .alert ha-icon { width: 36px; height: 36px; } .portrait .alert #alS { font-size: 22px; } .portrait .tbar { width: 52px; }" +
+        ".portrait .hud.sp { bottom: 70px; } .portrait .speed { min-width: 64px; height: 52px; } .portrait .speed b { font-size: 28px; }" +
+        ".portrait .eta { left: 10px; right: 10px; gap: 10px; padding: 6px 10px; } .portrait .eta b { font-size: 18px; } .portrait .eta span { font-size: 11px; } .portrait.withspeed .eta { left: 10px; }" +
+        ".portrait .street, .portrait .toast, .portrait .ask { bottom: 70px; } .portrait .street { max-width: 90%; }" +
         ".hud { position: absolute; z-index: 2; pointer-events: none; }" +
         ".hud.sp { left: 12px; bottom: 12px; } .hud.lim { right: 12px; top: 12px; }" +
         ".speed { min-width: 78px; height: 70px; padding: 0 12px; box-sizing: border-box; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.86); border: 1px solid #22262c; color: #e9e4da;" +
@@ -6015,7 +6029,8 @@
         '<button id="dest" title="Destination"><ha-icon icon="mdi:flag-checkered"></ha-icon></button>' +
         '<button id="voice" title="Voix du guidage"><ha-icon icon="mdi:volume-high"></ha-icon></button>' +
         '<button id="layers" title="Sur la carte"><ha-icon icon="mdi:layers-outline"></ha-icon></button>' +
-        '<button id="overview" title="Choisir l’itinéraire" hidden><ha-icon icon="mdi:map-search"></ha-icon></button></div>' +
+        '<button id="overview" title="Choisir l’itinéraire" hidden><ha-icon icon="mdi:map-search"></ha-icon></button>' +
+        '<button id="full" title="Plein écran"><ha-icon icon="mdi:fullscreen"></ha-icon></button></div>' +
         '<div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div style="min-width:0"><div class="d" id="navD"></div><div class="t" id="navT"></div><div class="x" id="navX" hidden></div><div class="l" id="navL" hidden></div></div></div>' +
         '<div class="glow" id="glow" hidden></div>' +
         '<div class="side"><div class="alert" id="alert" hidden><ha-icon id="alIcon" icon="mdi:cctv"></ha-icon><div id="alS"></div><b id="alT"></b><div class="bar2"><i id="alBar"></i></div></div>' +
@@ -6069,6 +6084,7 @@
       };
       document.addEventListener("pointerdown", unlock, true);
       $("overview").addEventListener("click", () => this.overview());
+      $("full").addEventListener("click", () => this.setFull(!this.full));
       $("pclose").addEventListener("click", () => { $("panel").hidden = true; });
       $("layers").addEventListener("click", () => this.openLayers());
       $("lclose").addEventListener("click", () => { $("lpanel").hidden = true; });
@@ -6109,6 +6125,15 @@
       this.$("recenter").hidden = on;
       var secs = pause || Number(this.config.follow_pause);
       if (!on && secs > 0) this.resume = setTimeout(() => this.setFollow(true), secs * 1000);
+    }
+    // The card over everything (the bar, the neighbours), and back: its own
+    // panels and toasts are its children, they ride along; the map refits
+    // itself through the observer watching its container.
+    setFull(on) {
+      this.full = !!on;
+      this.$("card").classList.toggle("full", this.full);
+      this.$("full").firstElementChild.setAttribute("icon", this.full ? "mdi:fullscreen-exit" : "mdi:fullscreen");
+      this.$("full").title = this.full ? "Réduire" : "Plein écran";
     }
     styleUrl() {
       var bm = this.layers && this.layers.basemap;
@@ -6389,7 +6414,13 @@
         clearTimeout(this.msgTimer);
         this.msgTimer = setTimeout(() => { this.msgShown = null; this.message(""); }, 8000);
       });
-      new ResizeObserver(() => map.resize()).observe(this.$("map"));
+      // The card taller than wide (a phone held upright) tightens itself:
+      // the portrait class moves the pieces aside so nothing sits on the map.
+      new ResizeObserver(() => {
+        var c = this.$("card");
+        c.classList.toggle("portrait", c.clientHeight > c.clientWidth);
+        map.resize();
+      }).observe(this.$("map"));
       this.pos = p;
       this.shown = this.heading;
       if (!this.raf) this.raf = requestAnimationFrame(() => this.tick());
