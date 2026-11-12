@@ -992,8 +992,8 @@ def _async_register_route(hass: HomeAssistant) -> None:
 
 class TrafficTileView(HomeAssistantView):
     """The traffic flow map, one tile at a time, for the GPS card: the key is
-    added here, so it never reaches a dashboard or a browser. Logged-in
-    administrators only (the card sends its Home Assistant token)."""
+    added here, so it never reaches a dashboard or a browser. Any logged-in
+    user (the card sends its Home Assistant token)."""
 
     url = TRAFFIC_TILE_URL
     name = "api:nives:traffic_tile"
@@ -1005,8 +1005,7 @@ class TrafficTileView(HomeAssistantView):
     async def get(self, request: web.Request, z: str, x: str, y: str) -> web.Response:
         from .traffic import flow_tile_url, tile_ok
 
-        user = request.get("hass_user")
-        if user is None or not (user.is_admin or user.id in _car_users(request.app[KEY_HASS])):
+        if request.get("hass_user") is None:
             return web.Response(status=403)
         try:
             zi, xi, yi = int(z), int(x), int(str(y).removesuffix(".png"))
@@ -1065,15 +1064,16 @@ def _basemap_rewrite(node, proxied: str) -> None:
 
 
 def _basemap_user(request: web.Request) -> bool:
-    user = request.get("hass_user")
-    return bool(user and (user.is_admin or user.id in _car_users(request.app[KEY_HASS])))
+    """Any logged-in user: the TomTom key stays in the house (the proxy adds
+    it), so there is nothing here a non-admin could take."""
+    return bool(request.get("hass_user"))
 
 
 class BasemapStyleView(HomeAssistantView):
     """A TomTom Orbis style, MapLibre-ready, for the GPS card's layers button:
     the key is added here and every URL of the style is rewritten to the proxy
-    below, so it never reaches a dashboard or a browser. Logged-in
-    administrators only (the card sends its Home Assistant token)."""
+    below, so it never reaches a dashboard or a browser. Any logged-in user
+    (the card sends its Home Assistant token)."""
 
     url = BASEMAP_STYLE_URL
     name = "api:nives:basemap_style"
@@ -1114,7 +1114,8 @@ class BasemapStyleView(HomeAssistantView):
 
 class BasemapProxyView(HomeAssistantView):
     """The tiles, fonts and sprites behind the Orbis style above: the key is
-    added here, so it never reaches a dashboard or a browser."""
+    added here, so it never reaches a dashboard or a browser. Any logged-in
+    user."""
 
     url = BASEMAP_PROXY_URL
     name = "api:nives:basemap_proxy"
