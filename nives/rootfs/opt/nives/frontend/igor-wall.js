@@ -6277,7 +6277,8 @@
       this.loading = true;
       var ml;
       try { ml = await gpsMapLibre(); } catch (e) { this.message(e.message); this.loading = false; return; }
-      var map = new ml.Map({
+      var map;
+      try { map = new ml.Map({
         container: this.$("map"), style: (this.styleNow = this.styleUrl()), center: p, zoom: this.config.zoom, pitch: this.config.pitch,
         bearing: this.headingUp ? this.heading : 0, attributionControl: this.config.hide_attribution ? false : { compact: true },
         // Light on a small screen: no label fade (it redraws for 300 ms at
@@ -6288,7 +6289,7 @@
           var tok = this._hass && this._hass.auth && this._hass.auth.data && this._hass.auth.data.access_token;
           return tok && url.indexOf(window.location.origin + "/api/nives/") === 0 ? { url: url, headers: { Authorization: "Bearer " + tok } } : undefined;
         }
-      });
+      }); } catch (e) { this.message("carte : " + (e && e.message || "WebGL indisponible sur cet appareil")); this.loading = false; return; }
       this.map = map;
       var arrow = document.createElement("div");
       arrow.innerHTML = GPS_ARROW;
@@ -6327,9 +6328,21 @@
         });
         this.applyBuildings3D();
         this.styleLayers();
+        this.msgShown = null;
         this.message("");
       });
-      map.on("error", (e) => console.warn("igor-gps-card:", e && e.error));
+      // A grey map says nothing by itself: its wounds (a style refused, a
+      // WebGL gone, tiles unreachable) are shown in the message band, so the
+      // screen tells what ails it instead of the browser's buried console.
+      map.on("error", (e) => {
+        var err = e && e.error, m = err && (err.message || (err.status ? "réponse " + err.status : "")) || String((err && err.message) || err || "erreur inconnue");
+        console.warn("igor-gps-card:", err || e);
+        if (this.msgShown === m) return;
+        this.msgShown = m;
+        this.message("carte : " + m);
+        clearTimeout(this.msgTimer);
+        this.msgTimer = setTimeout(() => { this.msgShown = null; this.message(""); }, 8000);
+      });
       new ResizeObserver(() => map.resize()).observe(this.$("map"));
       this.pos = p;
       this.shown = this.heading;

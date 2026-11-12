@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.16 — The map says what ails it
+
+- A grey map no longer keeps quiet: what went wrong (WebGL missing on the device, a style refused, tiles unreachable) is shown in the card's message band, instead of buried in the browser's console.
+- The Orbis base map, its proxy and the traffic tiles open to every logged-in user: the TomTom key never leaves the house (the proxy adds it server-side), so the administrators-only gate guarded nothing the proxy had not already closed.
+
 ## 0.38.15 — The line that follows the road's curve
 
 - TomTom's route points stand some ten metres apart, so on a bend the drawn line cut the curve the road makes. Each marked corner of the drawn line (the route, its jams, the alternatives) is replaced by a small arc that stays inside the two segments — the line hugs the road again. Only the drawing changes: the data, the sections' indexes, the bubbles are the search's own.
