@@ -6294,6 +6294,21 @@
             this.loading = false; return;
           }
           style = await r.json();
+          // Behind a proxy that ends the TLS, the house writes its own
+          // addresses in http — and a page arrived in https refuses them
+          // (mixed content), which no console will confess. That was the
+          // phone's grey map: the style itself came, its tiles did not. The
+          // card knows the address it really serves; any house link said in
+          // http goes back to its own origin, whatever host the house
+          // believed it was.
+          var mark = "/api/nives/basemap/tomtom/";
+          var fix = function (n) {
+            if (Array.isArray(n)) { for (var i = 0; i < n.length; i++) n[i] = fix(n[i]); return n; }
+            if (n && typeof n === "object") { for (var k in n) n[k] = fix(n[k]); return n; }
+            return typeof n === "string" && n.indexOf("http://") === 0 && n.indexOf(mark) > 0
+              ? window.location.origin + n.slice(n.indexOf(mark)) : n;
+          };
+          style = fix(style);
         } catch (e) {
           this.message(e instanceof SyntaxError
             ? "carte : à la place du style, autre chose a répondu (portail, filtre, proxy) · " + window.location.origin
