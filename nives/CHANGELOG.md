@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.20 — The map fills the screen, and stands upright
+
+- A new button on the GPS card: the map over the whole screen (the dashboard's bar and neighbours beneath it, the card's own panels, toasts and popups riding along), and the same button back to its place.
+- The card held taller than wide (a phone in portrait) tightens itself: compact guidance banner, smaller speed cluster and limit sign lifted above the arrival bar, narrower alert column — so nothing sits on the map. Landscape (the head unit) never sees it.
+
 ## 0.38.19 — The finger that moves the map no longer turns the page
 
 - The GPS card's map and the bar's sliding tab strip join the swipe exclusions (`no-swipe`): dragging the map moves the map, sliding the tab strip reaches the hidden tabs — neither changes the dashboard's page any more. The swipe between tabs keeps working everywhere else.
