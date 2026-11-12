@@ -5917,9 +5917,9 @@
         ".portrait .nav { right: 76px; padding: 8px 10px; gap: 10px; --mdc-icon-size: 34px; } .portrait .nav .d { font-size: 22px; } .portrait .nav .t { font-size: 12px; }" +
         ".portrait .hud.lim .sign { width: 56px; height: 56px; } .portrait .snap { top: 76px; }" +
         ".portrait .side { right: 8px; top: 120px; bottom: 140px; width: 96px; } .portrait .alert { padding: 6px 4px; --mdc-icon-size: 24px; } .portrait .alert ha-icon { width: 36px; height: 36px; } .portrait .alert #alS { font-size: 22px; } .portrait .tbar { width: 52px; }" +
-        ".portrait .hud.sp { bottom: 70px; } .portrait .speed { min-width: 64px; height: 52px; } .portrait .speed b { font-size: 28px; }" +
+        ".portrait .hud.sp { bottom: 110px; } .portrait .speed { min-width: 84px; height: 56px; padding: 0 10px; } .portrait .speed b { font-size: 28px; white-space: nowrap; }" +
         ".portrait .eta { left: 10px; right: 10px; gap: 10px; padding: 6px 10px; } .portrait .eta b { font-size: 18px; } .portrait .eta span { font-size: 11px; } .portrait.withspeed .eta { left: 10px; }" +
-        ".portrait .street, .portrait .toast, .portrait .ask { bottom: 70px; } .portrait .street { max-width: 90%; }" +
+        ".portrait .street, .portrait .toast { bottom: 70px; } .portrait .street { max-width: 90%; } .portrait .ask { bottom: 174px; }" +
         ".hud { position: absolute; z-index: 2; pointer-events: none; }" +
         ".hud.sp { left: 12px; bottom: 12px; } .hud.lim { right: 12px; top: 12px; }" +
         ".speed { min-width: 78px; height: 70px; padding: 0 12px; box-sizing: border-box; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.86); border: 1px solid #22262c; color: #e9e4da;" +
@@ -5987,7 +5987,7 @@
         ".nav ha-icon { color: #59d0e0; flex: none; } .nav .d { font-family: 'Chakra Petch', " + MONO + "; font-size: 30px; font-weight: 500; line-height: 1; } .nav .t { font-size: 14px; color: #c9ccd1; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }" +
         ".nav.arrived { border-left-color: #5cc28f; } .nav.arrived ha-icon { color: #5cc28f; } .nav.wait { border-left-color: #d9a441; }" +
         ".eta { position: absolute; z-index: 2; bottom: 12px; left: 12px; right: 12px; display: flex; gap: 14px; align-items: baseline; justify-content: space-around; padding: 8px 12px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.88); border: 1px solid #22262c; color: #e9e4da; font-family: " + MONO + "; font-size: 15px; pointer-events: none; }" +
-        ".withspeed .eta { left: 104px; } .withattr .eta { right: 52px; }" +
+        ".withspeed .eta { left: 132px; } .withattr .eta { right: 52px; }" +
         ".eta { align-items: center; justify-content: flex-start; gap: 18px; }" +
         // Each figure on one line with its unit; the arrival takes what is left.
         ".eta b { font-family: 'Chakra Petch', " + MONO + "; font-size: 22px; font-weight: 500; white-space: nowrap; flex: none; }" +
@@ -6139,6 +6139,9 @@
       // screen (the car's dashboard reads the OBD speed only in fullscreen);
       // the eta bar steps aside to leave it room.
       this.$("card").classList.toggle("withspeed", this.config.show_speed !== false || this.full);
+      // Now, not at the next position read: parked, the fixes are rare and the
+      // box would stay hidden until the car moves.
+      this.$("speed").hidden = this.config.show_speed === false && !this.full;
       this.$("full").firstElementChild.setAttribute("icon", this.full ? "mdi:fullscreen-exit" : "mdi:fullscreen");
       this.$("full").title = this.full ? "Réduire" : "Plein écran";
     }
