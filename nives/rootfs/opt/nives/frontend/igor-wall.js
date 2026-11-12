@@ -5243,6 +5243,12 @@
   // server), a TomTom key in Igor's options is needed.
   var GPS_ORBIS = { dark: "basic_street-dark-driving" };
   var GPS_R = 6378137, GPS_PREDICT_S = 4, GPS_MOVING = 0.8, GPS_TRAIL = 600;
+  // The drawn lines breathe with the zoom: thin on the overview (they must not
+  // smother the map), road-wide at the zooms one drives at. Pure paint — the
+  // GPU interpolates, nothing to download, nothing to compute twice.
+  var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
+  var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
+  var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
   // Speeds (m/s, from the car itself when it says, else the GPS):
   // above GPS_FWD (15 km/h) a car only drives forward, so where it goes is
   // where it faces; under GPS_SLOW (9 km/h) it may be manoeuvring or reversing,
@@ -5917,9 +5923,18 @@
         ".portrait .nav { right: 76px; padding: 8px 10px; gap: 10px; --mdc-icon-size: 34px; } .portrait .nav .d { font-size: 22px; } .portrait .nav .t { font-size: 12px; }" +
         ".portrait .hud.lim .sign { width: 56px; height: 56px; } .portrait .snap { top: 76px; }" +
         ".portrait .side { right: 8px; top: 120px; bottom: 140px; width: 96px; } .portrait .alert { padding: 6px 4px; --mdc-icon-size: 24px; } .portrait .alert ha-icon { width: 36px; height: 36px; } .portrait .alert #alS { font-size: 22px; } .portrait .tbar { width: 52px; }" +
-        ".portrait .hud.sp { bottom: 110px; } .portrait .speed { min-width: 84px; height: 56px; padding: 0 10px; } .portrait .speed b { font-size: 28px; white-space: nowrap; }" +
+        // The bottom of a portrait screen, each on its own row: the street full
+        // width, then the speed — a true square — with the toast at its right,
+        // the same 6 px the buttons keep. Guided, the eta bar takes the bottom
+        // and the row climbs above it.
+        ".portrait .street { left: 10px; right: 10px; transform: none; max-width: none; }" +
+        ".portrait.guiding .street { bottom: 62px; }" +
+        ".portrait .hud.sp { bottom: 51px; } .portrait.guiding .hud.sp { bottom: 101px; }" +
+        ".portrait .speed { width: 72px; min-width: 72px; height: 72px; padding: 0; } .portrait .speed b { font-size: 26px; white-space: nowrap; }" +
+        ".portrait .toast { left: 90px; right: 10px; transform: none; max-width: none; bottom: 51px; white-space: normal; } .portrait.guiding .toast { bottom: 101px; }" +
+        ".portrait .lost { left: 10px; right: 10px; transform: none; max-width: none; bottom: 129px; } .portrait.guiding .lost { bottom: 179px; }" +
         ".portrait .eta { left: 10px; right: 10px; gap: 10px; padding: 6px 10px; } .portrait .eta b { font-size: 18px; } .portrait .eta span { font-size: 11px; } .portrait.withspeed .eta { left: 10px; }" +
-        ".portrait .street { bottom: 70px; max-width: 90%; } .portrait .toast { bottom: 174px; } .portrait .ask { bottom: 240px; }" +
+        ".portrait .ask { bottom: 240px; }" +
         ".hud { position: absolute; z-index: 2; pointer-events: none; }" +
         ".hud.sp { left: 12px; bottom: 12px; } .hud.lim { right: 12px; top: 12px; }" +
         ".speed { min-width: 78px; height: 70px; padding: 0 12px; box-sizing: border-box; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.86); border: 1px solid #22262c; color: #e9e4da;" +
@@ -5964,6 +5979,9 @@
         ".street[hidden] { display: none; }" +
         // A word for a few seconds (a detour, the voice's setting): small, above the bottom bar.
         ".toast { position: absolute; z-index: 3; left: 50%; bottom: 96px; transform: translateX(-50%); max-width: 80%; padding: 8px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.94); border: 1px solid #f08c1a; border-left: 4px solid #f08c1a; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }" +
+        // The phone that stopped answering: said once, then a band that stays
+        // while it lasts — a toast of 5 s is missed, driving blind is worse.
+        ".lost { position: absolute; z-index: 3; left: 50%; bottom: 140px; transform: translateX(-50%); max-width: 70%; display: flex; gap: 10px; align-items: center; padding: 8px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.94); border: 1px solid #f08c1a; border-left: 4px solid #f08c1a; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; } .lost[hidden] { display: none; } .lost ha-icon { color: #f08c1a; flex: none; }" +
         ".toast[hidden] { display: none; } .toast b { color: #f08c1a; font-weight: 500; } .toast button { font: inherit; margin-left: 12px; background: none; border: 1px solid #22262c; color: #878c95; padding: 2px 8px; border-radius: 2px; cursor: pointer; }" +
         ".shield { display: inline-block; padding: 1px 6px; margin-right: 8px; border-radius: 3px; font-family: 'Barlow Condensed', 'Roboto Condensed', 'Arial Narrow', sans-serif; font-weight: 700; font-size: 0.86em; line-height: 1.25; letter-spacing: 0.02em; vertical-align: 1px; white-space: nowrap; background: #e9e4da; color: #111; box-shadow: inset 0 0 0 1.5px currentColor; }" +
         ".shield.a, .shield.n { background: #d33; color: #fff; } .shield.e { background: #2f8a3e; color: #fff; } .shield.d { background: #f2c200; color: #111; } .shield.m { background: #2a9fd6; color: #fff; }" +
@@ -6040,6 +6058,7 @@
         '<div class="tbar" id="tbar" hidden><span class="top" id="tbTop"></span><div class="tk" id="tbTrack"></div><b id="tbMain"></b><span id="tbSub"></span></div></div>' +
         '<div class="street" id="street" hidden></div>' +
         '<div class="toast" id="toast" hidden></div>' +
+        '<div class="lost" id="lost" hidden><ha-icon icon="mdi:cellphone-off"></ha-icon><span id="lostS"></span></div>' +
         '<div class="ask" id="ask" hidden><ha-icon icon="mdi:road-variant"></ha-icon><div class="q"><b>Route fermée sur votre itinéraire</b><div id="askS"></div></div><div class="bt"><button class="yes" id="askYes">Éviter</button><button id="askNo">Ignorer</button></div></div>' +
         '<div class="panel rpanel" id="rpanel" hidden><div class="ph"><span id="rtitle">itinéraires</span><button id="rclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="rlist"></div><div class="seg" id="rchips"></div></div>' +
         '<div class="panel lpanel" id="lpanel" hidden><div class="ph"><span>sur la carte</span><button id="lclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="llist"></div></div>' +
@@ -6181,6 +6200,24 @@
       }
       return use === "phone" ? fb : main;
     }
+    // The primary GPS that stopped answering: the arbitration has already
+    // switched to the fallback (or the entity is gone); say it once, then let
+    // a band stand while it lasts. Voice only where a voice is welcome.
+    lostCheck() {
+      var fbId = this.config.fallback_entity;
+      if (!fbId || !this._hass) return;
+      var main = this._hass.states[this.config.entity];
+      var fb = this._hass.states[fbId];
+      var fbAlive = fb && ["unavailable", "unknown"].indexOf(fb.state) < 0 && fb.attributes.latitude != null;
+      var lost = !main || ["unavailable", "unknown"].indexOf(main.state) >= 0 || this.srcNow === "phone";
+      if (lost === this.lost) return;
+      this.lost = lost;
+      this.$("lost").hidden = !lost;
+      if (!lost) return;
+      this.$("lostS").textContent = fbAlive ? "téléphone introuvable · GPS de la voiture en secours" : "téléphone introuvable";
+      this.toast("Téléphone introuvable", 5000);
+      this.say(fbAlive ? "Téléphone introuvable, j'utilise le GPS de la voiture" : "Téléphone introuvable", "alert");
+    }
     read() {
       var st = this.pickSource();
       if (!st) { this.message("Entité introuvable : " + this.config.entity); return; }
@@ -6200,6 +6237,7 @@
       this.accuracy = Number(a.gps_accuracy != null ? a.gps_accuracy : a.accuracy) || 0;
       if (!this.fix || this.fix.updated !== st.last_updated) this.onFix(p, course, speed, st.last_updated);
       this.overlays();
+      this.lostCheck();
       // A destination set elsewhere (the phone, Igor): guidance there.
       var de = this.config.destination && this._hass.states[this.config.destination];
       if (de && de.state !== this.destState) {
@@ -6386,20 +6424,20 @@
         if (!map.getSource("route")) {
           map.addSource("route", { type: "geojson", data: this.routeData() });
           map.addLayer({ id: "route-case", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#07080a", "line-width": 11, "line-opacity": 0.8 } });
+            paint: { "line-color": "#07080a", "line-width": GPS_CASE_W, "line-opacity": 0.8 } });
           map.addLayer({ id: "route", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#3b8cff", "line-width": 7 } });
+            paint: { "line-color": "#3b8cff", "line-width": GPS_ROUTE_W } });
         }
         // The route's slow stretches (TomTom): orange when it slows, red when it is jammed.
         if (!map.getSource("routejam")) {
           map.addSource("routejam", { type: "geojson", data: this.routeJamData() });
           map.addLayer({ id: "routejam", type: "line", source: "routejam", layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": ["match", ["get", "level"], 2, "#e5323b", "#f08c1a"], "line-width": 7 } });
+            paint: { "line-color": ["match", ["get", "level"], 2, "#e5323b", "#f08c1a"], "line-width": GPS_ROUTE_W } });
         }
         if (!map.getSource("trail")) {
           map.addSource("trail", { type: "geojson", data: this.trailData() });
           map.addLayer({ id: "trail", type: "line", source: "trail", layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#59d0e0", "line-width": 5, "line-opacity": 0.55 } });
+            paint: { "line-color": "#59d0e0", "line-width": GPS_ALT_W, "line-opacity": 0.55 } });
         }
         this.drawAlts();
         // `buildings: false`: the map without its buildings (less to draw).
@@ -6997,6 +7035,7 @@
       this.drawAlts();
       this.$("nav").hidden = !d;
       this.$("eta").hidden = true;
+      this.$("card").classList.toggle("guiding", false);
       this.$("card").classList.toggle("withnav", !!d);
       this.showStreet();
       if (!d) return;
@@ -7124,7 +7163,7 @@
       if (!map.getSource("alts")) {
         map.addSource("alts", { type: "geojson", data: this.altsData() });
         map.addLayer({ id: "alts", type: "line", source: "alts", layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": "#8a8f96", "line-width": 5, "line-dasharray": [2, 2], "line-opacity": 0.9 } }, "route-case");
+          paint: { "line-color": "#8a8f96", "line-width": GPS_ALT_W, "line-dasharray": [2, 2], "line-opacity": 0.9 } }, "route-case");
       }
       if (!this.altsWired) {
         this.altsWired = true;
@@ -7570,6 +7609,7 @@
           this.arrived = true;
           this.banner("mdi:flag-checkered", "", "Vous êtes arrivé" + (d && d.name !== "destination" ? " : " + d.name : ""), "arrived");
           this.$("eta").hidden = true;
+          this.$("card").classList.toggle("guiding", false);
           this.say("Vous êtes arrivé", "nav");
           setTimeout(() => { if (this.arrived) { this.arrived = false; this.setDestination(null, true); } }, 15000);
         }
@@ -7601,6 +7641,7 @@
       var eta = new Date(Date.now() + secs * 1000);
       var e = this.$("eta");
       e.hidden = false;
+      this.$("card").classList.toggle("guiding", true);
       e.innerHTML = "";
       // « 450 m · 1 min », each with its unit, never split; then the arrival.
       var fig = function (v, unit) {
@@ -7771,10 +7812,10 @@
       if (this.trafficOn()) this.addTrafficLayer();
       map.addSource("incidents", { type: "geojson", data: this.incidentData() });
       map.addLayer({ id: "incidents", type: "line", source: "incidents", filter: ["all", [">", ["get", "n"], 1], ["!", ["get", "closed"]]], layout: { "line-cap": "round" },
-        paint: { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.85 } }, "route-case");
+        paint: { "line-color": ["get", "color"], "line-width": GPS_ALT_W, "line-opacity": 0.85 } }, "route-case");
       // A closed road: dashed red, as a barrier.
       map.addLayer({ id: "incidents-closed", type: "line", source: "incidents", filter: ["all", [">", ["get", "n"], 1], ["get", "closed"]],
-        paint: { "line-color": "#e5323b", "line-width": 6, "line-dasharray": [1, 1.2] } }, "route-case");
+        paint: { "line-color": "#e5323b", "line-width": GPS_ALT_W, "line-dasharray": [1, 1.2] } }, "route-case");
       map.addLayer({ id: "incidents-pt", type: "circle", source: "incidents", filter: ["==", ["get", "n"], 1],
         paint: { "circle-radius": 7, "circle-color": ["get", "color"], "circle-stroke-color": "#07080a", "circle-stroke-width": 2 } });
       map.addSource("pois", { type: "geojson", data: this.poiData() });
