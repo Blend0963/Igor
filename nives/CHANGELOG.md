@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.18 — The house said http, the phone wanted https
+
+- The phone's grey map is explained at last: behind a proxy that ends the TLS (nginx + a WAF), Home Assistant sees plain http and writes its own proxy links in http:// inside the Orbis style. A page arrived in https refuses those links (mixed content) — the style came, its tiles never did, and every browser on the phone failed alike while the head unit (plain http on the LAN) worked. The card now rewrites any house link said in http back to its own origin before handing the style to MapLibre, whatever host the house believed it was.
+
 ## 0.38.17 — The wound gets a name
 
 - The style is fetched by the card itself before the map is drawn, and a failure there is now said in plain words on the screen: the server unreachable (with the address the browser really uses — a phone may not come the same road as the head unit), an answer refused (401 session expired, 403), or something else answering in the style's place (a portal, a filter, a proxy). MapLibre's own failures on later requests (tiles, glyphs) now name the resource asked.
