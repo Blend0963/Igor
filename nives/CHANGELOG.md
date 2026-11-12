@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.22 — The speed that follows the fullscreen
+
+- A GPS card set with `show_speed: false` (the car's dashboard) now shows its speed box when it takes the whole screen, and hides it again when it goes back to its place; the eta bar steps aside while the box is there. The phone GPS (`show_speed: true`) is unchanged — always shown.
+
 ## 0.38.21 — The wall that fills a phone held upright
 
 - `stack_below: 0` now means what it says: the wall never switches to its stacked (scrolling) phone layout and fills the screen instead — the GPS card grows to the whole height, the buttons stay at the bottom. Before, the zero was swallowed by the default (760) and a phone's GPS stayed a third of the screen.
