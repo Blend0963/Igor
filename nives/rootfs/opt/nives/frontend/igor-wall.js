@@ -5923,9 +5923,17 @@
         ".portrait .nav { right: 76px; padding: 8px 10px; gap: 10px; --mdc-icon-size: 34px; } .portrait .nav .d { font-size: 22px; } .portrait .nav .t { font-size: 12px; }" +
         ".portrait .hud.lim .sign { width: 56px; height: 56px; } .portrait .snap { top: 76px; }" +
         ".portrait .side { right: 8px; top: 120px; bottom: 140px; width: 96px; } .portrait .alert { padding: 6px 4px; --mdc-icon-size: 24px; } .portrait .alert ha-icon { width: 36px; height: 36px; } .portrait .alert #alS { font-size: 22px; } .portrait .tbar { width: 52px; }" +
-        ".portrait .hud.sp { bottom: 110px; } .portrait .speed { min-width: 84px; height: 56px; padding: 0 10px; } .portrait .speed b { font-size: 28px; white-space: nowrap; }" +
+        // The bottom of a portrait screen, each on its own row: the street full
+        // width, then the speed — a true square — with the toast at its right,
+        // the same 6 px the buttons keep. Guided, the eta bar takes the bottom
+        // and the row climbs above it.
+        ".portrait .street { left: 10px; right: 10px; transform: none; max-width: none; }" +
+        ".portrait.guiding .street { bottom: 62px; }" +
+        ".portrait .hud.sp { bottom: 51px; } .portrait.guiding .hud.sp { bottom: 101px; }" +
+        ".portrait .speed { width: 72px; min-width: 72px; height: 72px; padding: 0; } .portrait .speed b { font-size: 26px; white-space: nowrap; }" +
+        ".portrait .toast { left: 90px; right: 10px; transform: none; max-width: none; bottom: 51px; white-space: normal; } .portrait.guiding .toast { bottom: 101px; }" +
         ".portrait .eta { left: 10px; right: 10px; gap: 10px; padding: 6px 10px; } .portrait .eta b { font-size: 18px; } .portrait .eta span { font-size: 11px; } .portrait.withspeed .eta { left: 10px; }" +
-        ".portrait .street { bottom: 70px; max-width: 90%; } .portrait .toast { bottom: 174px; } .portrait .ask { bottom: 240px; }" +
+        ".portrait .ask { bottom: 240px; }" +
         ".hud { position: absolute; z-index: 2; pointer-events: none; }" +
         ".hud.sp { left: 12px; bottom: 12px; } .hud.lim { right: 12px; top: 12px; }" +
         ".speed { min-width: 78px; height: 70px; padding: 0 12px; box-sizing: border-box; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.86); border: 1px solid #22262c; color: #e9e4da;" +
@@ -7003,6 +7011,7 @@
       this.drawAlts();
       this.$("nav").hidden = !d;
       this.$("eta").hidden = true;
+      this.$("card").classList.toggle("guiding", false);
       this.$("card").classList.toggle("withnav", !!d);
       this.showStreet();
       if (!d) return;
@@ -7576,6 +7585,7 @@
           this.arrived = true;
           this.banner("mdi:flag-checkered", "", "Vous êtes arrivé" + (d && d.name !== "destination" ? " : " + d.name : ""), "arrived");
           this.$("eta").hidden = true;
+          this.$("card").classList.toggle("guiding", false);
           this.say("Vous êtes arrivé", "nav");
           setTimeout(() => { if (this.arrived) { this.arrived = false; this.setDestination(null, true); } }, 15000);
         }
@@ -7607,6 +7617,7 @@
       var eta = new Date(Date.now() + secs * 1000);
       var e = this.$("eta");
       e.hidden = false;
+      this.$("card").classList.toggle("guiding", true);
       e.innerHTML = "";
       // « 450 m · 1 min », each with its unit, never split; then the arrival.
       var fig = function (v, unit) {

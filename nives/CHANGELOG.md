@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.26 — The portrait bottom, each in its place
+
+- Portrait: the street name takes the whole width at the bottom; above it the speed becomes a true 72 px square, its figure centred inside, sitting 6 px above the bar — the same gap the top buttons keep; the toast sits at the square's right with the same 6 px, on the same row, and wraps upward when it is long. Guided, the eta bar takes the very bottom and the whole row climbs above it (a `guiding` class follows the eta's visibility). The head unit's landscape layout is untouched.
+
 ## 0.38.25 — The line breathes with the zoom
 
 - The drawn lines follow the zoom now: thin on the overview (2.5 px, they no longer smother the map), road-wide at the zooms one drives at (7 px at zoom 16, 10 px at 18). The dark halo follows proportionally, the alternates, the trail and the incidents stay a step thinner than the chosen route. Pure paint: the GPU interpolates the width, nothing to download, nothing new to compute.
