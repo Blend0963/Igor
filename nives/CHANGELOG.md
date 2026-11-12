@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.17 — The wound gets a name
+
+- The style is fetched by the card itself before the map is drawn, and a failure there is now said in plain words on the screen: the server unreachable (with the address the browser really uses — a phone may not come the same road as the head unit), an answer refused (401 session expired, 403), or something else answering in the style's place (a portal, a filter, a proxy). MapLibre's own failures on later requests (tiles, glyphs) now name the resource asked.
+
 ## 0.38.16 — The map says what ails it
 
 - A grey map no longer keeps quiet: what went wrong (WebGL missing on the device, a style refused, tiles unreachable) is shown in the card's message band, instead of buried in the browser's console.

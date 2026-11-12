@@ -6277,15 +6277,40 @@
       this.loading = true;
       var ml;
       try { ml = await gpsMapLibre(); } catch (e) { this.message(e.message); this.loading = false; return; }
+      // The style is fetched by hand first: left to MapLibre, its failure on
+      // it is a grey map and a buried console line. Fetched here, the wound
+      // keeps its name — the house unreachable, an answer refused, a portal
+      // answering in its place — and the screen says which, with the address
+      // the browser really uses (a phone may not come the same road as the
+      // head unit). The fetched style is handed to the map, so nothing is
+      // asked twice.
+      var style = (this.styleNow = this.styleUrl());
+      if (style.indexOf(window.location.origin + "/api/nives/") === 0) {
+        try {
+          var tok = this._hass && this._hass.auth && this._hass.auth.data && this._hass.auth.data.access_token;
+          var r = await fetch(style, tok ? { headers: { Authorization: "Bearer " + tok } } : undefined);
+          if (!r.ok) {
+            this.message("carte : style · réponse " + r.status + (r.status === 401 ? " (session expirée — recharge la page)" : r.status === 403 ? " (accès refusé)" : ""));
+            this.loading = false; return;
+          }
+          style = await r.json();
+        } catch (e) {
+          this.message(e instanceof SyntaxError
+            ? "carte : à la place du style, autre chose a répondu (portail, filtre, proxy) · " + window.location.origin
+            : "carte : serveur injoignable (réseau) · " + window.location.origin);
+          this.loading = false; return;
+        }
+      }
       var map;
       try { map = new ml.Map({
-        container: this.$("map"), style: (this.styleNow = this.styleUrl()), center: p, zoom: this.config.zoom, pitch: this.config.pitch,
+        container: this.$("map"), style: style, center: p, zoom: this.config.zoom, pitch: this.config.pitch,
         bearing: this.headingUp ? this.heading : 0, attributionControl: this.config.hide_attribution ? false : { compact: true },
         // Light on a small screen: no label fade (it redraws for 300 ms at
         // each label), at most 2 device pixels per pixel.
         fadeDuration: 0, pixelRatio: Math.min(window.devicePixelRatio || 1, Number(this.config.pixel_ratio) || 2),
         // Igor's own tiles (traffic) need the Home Assistant login, as every API call.
         transformRequest: (url) => {
+          if (url.indexOf("/api/nives/") >= 0) this.lastNives = url;
           var tok = this._hass && this._hass.auth && this._hass.auth.data && this._hass.auth.data.access_token;
           return tok && url.indexOf(window.location.origin + "/api/nives/") === 0 ? { url: url, headers: { Authorization: "Bearer " + tok } } : undefined;
         }
@@ -6336,6 +6361,7 @@
       // screen tells what ails it instead of the browser's buried console.
       map.on("error", (e) => {
         var err = e && e.error, m = err && (err.message || (err.status ? "réponse " + err.status : "")) || String((err && err.message) || err || "erreur inconnue");
+        if (m.indexOf("/api/") < 0 && this.lastNives) m += " · " + this.lastNives.replace(window.location.origin, "");
         console.warn("igor-gps-card:", err || e);
         if (this.msgShown === m) return;
         this.msgShown = m;
