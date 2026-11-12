@@ -890,7 +890,10 @@
     // Exactly the screen's height below where the wall starts; stacked on a phone.
     fit() {
       if (!this.wall) return;
-      var narrow = window.innerWidth < (this.config.stack_below || 760);
+      // An explicit `stack_below: 0` means never stack — a GPS that fills a
+      // phone held upright; the default (760) stands when it is not a number.
+      var below = Number(this.config.stack_below);
+      var narrow = window.innerWidth < (isNaN(below) ? 760 : below);
       this.wall.classList.toggle("stack", narrow);
       if (narrow) { this.wall.style.height = "auto"; return; }
       var top = this.getBoundingClientRect().top + (window.scrollY || 0);
@@ -6132,6 +6135,10 @@
     setFull(on) {
       this.full = !!on;
       this.$("card").classList.toggle("full", this.full);
+      // A card set without a speed box still shows it when it takes the whole
+      // screen (the car's dashboard reads the OBD speed only in fullscreen);
+      // the eta bar steps aside to leave it room.
+      this.$("card").classList.toggle("withspeed", this.config.show_speed !== false || this.full);
       this.$("full").firstElementChild.setAttribute("icon", this.full ? "mdi:fullscreen-exit" : "mdi:fullscreen");
       this.$("full").title = this.full ? "Réduire" : "Plein écran";
     }
@@ -6282,7 +6289,7 @@
       var guess = isNaN(limit) && this.osmGuess ? this.osmGuess : NaN;
       var over = !isNaN(limit) && kmh > limit + 3;
       var sp = this.$("speed");
-      sp.hidden = this.config.show_speed === false;
+      sp.hidden = this.config.show_speed === false && !this.full;
       sp.firstElementChild.textContent = kmh;
       sp.classList.toggle("over", over);
       var sign = this.$("limit"), here = this.pos || (this.fix && this.fix.point);
