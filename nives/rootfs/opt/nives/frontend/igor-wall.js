@@ -5955,7 +5955,7 @@
         '<link rel="stylesheet" href="' + GPS_MAPLIBRE + '.css"><style>' +
         ":host { display: block; height: 100%; }" +
         "ha-card { display: block; position: relative; height: 100%; min-height: 240px; overflow: hidden; background: #07080a; border-radius: var(--igor-radius, 3px); }" +
-        "#map { position: absolute; inset: 0; }" +
+        "#map { position: absolute; inset: 0; touch-action: none; } #map .maplibregl-canvas { touch-action: none; }" +
         ".msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; text-align: center; color: #878c95; font-family: " + MONO + "; font-size: 13px; }" +
         ".msg[hidden] { display: none; }" +
         ".btns { position: absolute; top: 10px; left: 10px; display: flex; flex-direction: column; gap: 8px; z-index: 2; }" +
@@ -5969,9 +5969,9 @@
         // tighten and step aside so nothing sits on the map. Landscape never
         // sees this class — the head unit keeps its full-sized furniture.
         ".portrait .btns { gap: 6px; } .portrait .btns button { width: 40px; height: 40px; --mdc-icon-size: 20px; }" +
-        ".portrait .nav { right: 76px; padding: 8px 10px; gap: 10px; --mdc-icon-size: 34px; } .portrait .nav .d { font-size: 22px; } .portrait .nav .t { font-size: 12px; }" +
+        ".portrait .nav { right: 112px; padding: 8px 10px; gap: 10px; --mdc-icon-size: 34px; } .portrait .nav .d { font-size: 22px; } .portrait .nav .t { font-size: 12px; }" +
         ".portrait .hud.lim .sign { width: 56px; height: 56px; } .portrait .snap { top: 76px; }" +
-        ".portrait .side { right: 8px; top: 120px; bottom: 140px; width: 96px; } .portrait .alert { padding: 6px 4px; --mdc-icon-size: 24px; } .portrait .alert ha-icon { width: 36px; height: 36px; } .portrait .alert #alS { font-size: 22px; } .portrait .tbar { width: 52px; }" +
+        ".portrait .side { right: 8px; top: 120px; bottom: 140px; width: 96px; } .portrait .alert { padding: 6px 4px; --mdc-icon-size: 24px; } .portrait .alert ha-icon { width: 36px; height: 36px; } .portrait .alert #alS { font-size: 18px; } .portrait .tbar { width: 52px; }" +
         // The bottom of a portrait screen, each on its own row: the street full
         // width, then the speed — a true square — with the toast at its right,
         // the same 6 px the buttons keep. Guided, the eta bar takes the bottom
@@ -6004,7 +6004,7 @@
         ".side { position: absolute; z-index: 3; right: 10px; top: 96px; bottom: 96px; width: 118px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }" +
         ".alert { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 6px; text-align: center; border-radius: var(--igor-radius, 3px); background: rgba(40,10,12,0.95); border: 2px solid #e5323b; color: #e9e4da; font-family: " + MONO + "; --mdc-icon-size: 30px; }" +
         ".alert[hidden] { display: none; } .alert ha-icon { color: #e5323b; width: 46px; height: 46px; border-radius: 50%; background: #fff; display: grid; place-items: center; flex: none; }" +
-        ".alert #alS { font-family: 'Chakra Petch', " + MONO + "; font-size: 30px; font-weight: 600; line-height: 1.05; white-space: nowrap; }" +
+        ".alert #alS { font-family: 'Chakra Petch', " + MONO + "; font-size: 24px; font-weight: 600; line-height: 1.05; white-space: nowrap; max-width: 100%; }" +
         ".alert b { font-size: 11px; font-weight: 400; letter-spacing: 0.04em; text-transform: uppercase; color: #f3c9cc; line-height: 1.25; }" +
         ".alert .bar2 { width: 100%; height: 5px; margin-top: 5px; background: rgba(229,50,59,0.25); overflow: hidden; } .alert .bar2 i { display: block; height: 100%; background: #e5323b; }" +
         ".alert.ok { background: rgba(10,30,20,0.95); border-color: #5cc28f; } .alert.ok ha-icon { color: #2f8a3e; } .alert.ok b { color: #bfe6d2; } .alert.ok .bar2 i { background: #5cc28f; }" +
@@ -6050,7 +6050,7 @@
         ".noattr .maplibregl-ctrl-attrib, .noattr .maplibregl-ctrl-bottom-right { display: none !important; }" +
         "@media (prefers-reduced-motion: reduce) { .sign.over { animation: none; } }" +
         // guidance: the next turn on top, the rest of the way at the bottom, the destination panel
-        ".nav { position: absolute; z-index: 2; top: 10px; left: 64px; right: 100px; display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.92); border: 1px solid #22262c; border-left: 4px solid #59d0e0; color: #e9e4da; font-family: " + MONO + "; --mdc-icon-size: 44px; }" +
+        ".nav { position: absolute; z-index: 2; top: 10px; left: 64px; right: 142px; display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.92); border: 1px solid #22262c; border-left: 4px solid #59d0e0; color: #e9e4da; font-family: " + MONO + "; --mdc-icon-size: 44px; }" +
         ".nav[hidden], .eta[hidden], .panel[hidden] { display: none; }" +
         ".nav ha-icon { color: #59d0e0; flex: none; } .nav .d { font-family: 'Chakra Petch', " + MONO + "; font-size: 30px; font-weight: 500; line-height: 1; } .nav .t { font-size: 14px; color: #c9ccd1; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }" +
         ".nav.arrived { border-left-color: #5cc28f; } .nav.arrived ha-icon { color: #5cc28f; } .nav.wait { border-left-color: #d9a441; }" +
@@ -6494,6 +6494,10 @@
       this.map = map;
       var arrow = document.createElement("div");
       arrow.innerHTML = GPS_ARROW;
+      // The arrow is a picture, not a handle: a finger that lands on it (the
+      // car sits at the screen's centre while guiding) drags the map like
+      // anywhere else, instead of holding a dead spot.
+      arrow.style.pointerEvents = "none";
       this.marker = new ml.Marker({ element: arrow, rotationAlignment: "map", pitchAlignment: "map" }).setLngLat(p).addTo(map);
       // Each touch (its start, its moves, its end) holds the map and restarts the wait.
       ["dragstart", "zoomstart", "rotatestart", "pitchstart", "drag", "zoom", "dragend", "zoomend", "rotateend", "pitchend"].forEach((ev) => map.on(ev, (e) => { if (e.originalEvent) this.setFollow(false); }));
@@ -7254,13 +7258,15 @@
       var mins = (s) => { var m = Math.round(s / 60); return m >= 60 ? Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0") : Math.max(1, m) + " min"; };
       var seg = (from, to, lo, hi, color) => { var el = document.createElement("i"); el.style.bottom = (100 * (from - lo) / (hi - lo)).toFixed(1) + "%"; el.style.height = Math.max(3, 100 * (to - from) / (hi - lo)).toFixed(1) + "%"; el.style.background = color; tk.appendChild(el); };
       if (inJam) {
-        // In it: the jam alone, the car in it, when it ends.
+        // In it: the jam alone, the car climbing inside it — the scale is the
+        // jam itself, so the dot rises from its first metre to its last.
         var rest = inJam.b - along, v = this.speedMps(), secs = Math.max(30, Math.min(rest / Math.max(v, 2.5), inJam.delay + rest / 14));
         tk.style.background = "#3b8cff";
-        seg(along, inJam.b, along, inJam.b + (inJam.b - inJam.a) * 0.2, "#e5323b");
+        seg(Math.max(along, inJam.a), inJam.b, inJam.a, inJam.b + (inJam.b - inJam.a) * 0.1, "#e5323b");
         $("tbTop").textContent = "fin dans";
         $("tbMain").textContent = mins(secs);
         $("tbSub").textContent = gpsMetres(rest);
+        var meLo = inJam.a, meHi = inJam.b + (inJam.b - inJam.a) * 0.1;
       } else {
         // Coming up on it: the jam's stretch alone, and the time before it.
         var first = jams[0], v = this.speedMps();
@@ -7269,8 +7275,14 @@
         $("tbTop").textContent = "bouchon";
         $("tbMain").textContent = mins((first.a - along) / Math.max(v, 2.5));
         $("tbSub").textContent = gpsMetres(first.a - along);
+        var meLo = along, meHi = first.b;
       }
-      var me = document.createElement("u"); tk.appendChild(me);
+      // The car's dot sits where the car stands on the scale above: it enters
+      // at the foot of the bar and leaves it at the jam's end.
+      var me = document.createElement("u");
+      me.style.bottom = Math.max(0, Math.min(100, 100 * (along - meLo) / (meHi - meLo))).toFixed(1) + "%";
+      me.style.transform = "translateY(50%)";
+      tk.appendChild(me);
     },
     askRoute(d, from, types) {
       return this._hass.callWS({ type: "call_service", domain: "nives", service: "route", return_response: true,
