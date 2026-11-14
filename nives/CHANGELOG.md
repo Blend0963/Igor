@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.38.45 — The stations the State keeps
+
+- The Ministry's stations are now drawn on the map themselves — always, with or without a route, even when Overpass sleeps and TomTom is silent: a 10 km ask around the car, asked again every 6 km, like the cameras. A tap on a marker opens the prices at once (the markers carry them; no ask at all).
+- The map's squares no longer ask for fuel places: the flux is the stations' one source, so a place is never drawn twice. A square's own station still lends its brand (the flux says the prices, not the sign) when one stands within 100 m.
+- The squares followed the eye: zooming or sliding a finger now fills the zone looked at, near the car or far — twelve squares at most, the closest first, and what is looked at is kept even when the car is elsewhere.
+
 ## 0.38.44 — The failure believed half a minute
 
 - A price the flux would not give is remembered thirty seconds only, not ten minutes: one of the Raspberry's network silences no longer sticks « flux indisponible » to a station for ten minutes.
