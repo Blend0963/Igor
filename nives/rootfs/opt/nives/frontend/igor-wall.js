@@ -5247,6 +5247,10 @@
   // The drawn lines breathe with the zoom: thin on the overview (they must not
   // smother the map), road-wide at the zooms one drives at. Pure paint — the
   // GPU interpolates, nothing to download, nothing to compute twice.
+  // The card's own release, shown when something fails: the screen that
+  // kept an old script (the kiosk browsers do) then says so itself, and the
+  // word "old" stops being a guess.
+  var GPS_CARD_VERSION = "0.38.41";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7146,7 +7150,7 @@
       if (rows == null) rows = await this.searchOsm(q, here);
       if (seq !== this.searchSeq) return;
       list.innerHTML = "";
-      if (rows == null) { note.textContent = "Recherche impossible (pas d'internet ?)"; list.appendChild(note); return; }
+      if (rows == null) { note.textContent = "Recherche impossible (pas d'internet ?) · carte v" + GPS_CARD_VERSION; list.appendChild(note); return; }
       if (!rows.length) { note.textContent = "Rien trouvé."; list.appendChild(note); return; }
       rows.forEach((r) => {
         var lat = Number(r.lat), lon = Number(r.lon);
@@ -7593,9 +7597,10 @@
       var here = this.pos || (this.fix && this.fix.point);
       if (!here) { note.textContent = "Position inconnue."; return; }
       var seq = this.fuelSeq = (this.fuelSeq || 0) + 1;
-      var found = null, prices = null, fuelErr = "";
+      var found = null, prices = null, fuelErr = "", asked = false;
       try {
         var r = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_nearby", return_response: true, service_data: { kind: "fuel", count: 8 } });
+        asked = true;
         if (r && r.response) { if (r.response.ok) found = r.response.places || []; else fuelErr = r.response.error || ""; }
       } catch (e) { found = null; }
       try {
@@ -7621,7 +7626,9 @@
       list.innerHTML = "";
       if (!found || !found.length) {
         var none = document.createElement("div"); none.className = "note";
-        none.textContent = found === null ? "Recherche impossible (pas d'internet ?)" : (fuelErr || "Aucune station trouvée autour.");
+        // The server's own words stand when it answered and found nothing:
+        // only a call that never came back says "pas d'internet ?".
+        none.textContent = (!asked ? "Recherche impossible (pas d'internet ?)" : (fuelErr || "Aucune station trouvée autour.")) + " · carte v" + GPS_CARD_VERSION;
         list.appendChild(none);
         return;
       }
