@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.38.52 — One pin, the enseigne's word
+
+- No station drawn twice: the fusion of the two hands widens to 150 m — TomTom's pin stands at the entrance, the ministry's geom at the middle of the parcel, and the gap between the two words is now folded into one marker, the square's, which carries the enseigne.
+- The ministry's own doubles are folded in the reading: the same address within 100 m is one station, the prices of both kept. Two different addresses (a motorway's two aires, one a carriageway each) stand two hundred metres apart and both stay — no station forgotten.
+- A station without an enseigne says its address now ("Aire de Fontaine Colette") instead of falling back to the town's name.
+
 ## 0.38.51 — The stations that stood off the Earth
 
 - The root of the missing prices found at last: the flux's text `latitude`/`longitude` columns keep the old degrees-times-a-hundred-thousand ("4716719" for 47.16719°), and the reader took them first — every station of the flux stood at latitude four million, off the Earth, invisible on the map and never within reach of a tap. The portal's own geom is read first now, and a latitude above 90 betrays the old format and is brought back down.

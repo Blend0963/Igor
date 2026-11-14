@@ -449,7 +449,26 @@ def parse_fuel(body: Any) -> list[dict]:
                     "address": str(f.get("adresse") or f.get("address") or "")[:80],
                     "city": str(f.get("ville") or f.get("city") or "")[:60],
                     "prices": prices, "maj": maj})
-    return out
+    # The ministry sometimes says a station twice — two rows, one pin. The
+    # same folded address within 100 m is one station: the prices of both
+    # are kept, the place said once. Two different addresses (a motorway's
+    # two aires, one a carriageway each) stand two hundred metres apart and
+    # both stay.
+    kept: list[dict] = []
+    for s in out:
+        twin = None
+        for o in kept:
+            if fold(s["address"]) == fold(o["address"]) and haversine_m((s["lon"], s["lat"]), (o["lon"], o["lat"])) < 100:
+                twin = o
+                break
+        if twin:
+            for k, v in s["prices"].items():
+                twin["prices"].setdefault(k, v)
+            for k, v in s["maj"].items():
+                twin["maj"].setdefault(k, v)
+            continue
+        kept.append(s)
+    return kept
 
 
 def merge_places(local: list[dict], world: list[dict], query: str, near: Sequence[float] | None) -> list[dict]:

@@ -5250,7 +5250,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.51";
+  var GPS_CARD_VERSION = "0.38.52";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -8396,15 +8396,14 @@
       }));
       var L = this.layers || {};
       if (L.fuel) (this.fluxFuel || []).forEach((s) => {
-        // A station the squares already draw (within 100 m) is not drawn
-        // twice; the flux's only adds what they never said.
-        for (var i = 0; i < tileFuel.length; i++) if (gpsDist(tileFuel[i].p, s.p) < 100) return;
-        if (!s.brand) {
-          for (var i = 0; i < tileFuel.length; i++) {
-            if (gpsDist(tileFuel[i].p, s.p) < 100) { s.brand = tileFuel[i].brand || tileFuel[i].label || ""; break; }
-          }
-        }
-        if (!s.label) s.label = s.brand || s.city || "";
+        // A station the squares already draw is not drawn twice: the square's
+        // pin stands at the entrance, the ministry's geom at the middle of
+        // the parcel, and the gap between the two words runs to a hundred and
+        // fifty metres — within that, one marker, the square's (it carries
+        // the enseigne). The flux's only adds what the squares never said,
+        // said by its address when it has no enseigne to say.
+        for (var i = 0; i < tileFuel.length; i++) if (gpsDist(tileFuel[i].p, s.p) < 150) return;
+        if (!s.label) s.label = (s.brand || s.address || s.city || "").slice(0, 24).trim();
         list.push(s);
       });
       var L = this.layers || {};
