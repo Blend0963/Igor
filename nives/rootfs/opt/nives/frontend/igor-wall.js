@@ -5250,7 +5250,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.54";
+  var GPS_CARD_VERSION = "0.38.55";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -5729,6 +5729,20 @@
     for (var j = 0; j < GPS_BRAND_WORDS.length; j++) if (b.indexOf(" " + GPS_BRAND_WORDS[j][0] + " ") >= 0) return "/nives_static/logos/" + GPS_BRAND_WORDS[j][1];
     return null;
   }
+  // The fuels' pictogram: the pump's own nozzle in its regulated colour
+  // (the gazole's black turned amber so the card's night keeps it). A file
+  // that failed says its name instead — never an empty frame.
+  function fuelIcon(k, name) {
+    var im = document.createElement("img");
+    im.className = "fico";
+    im.src = "/nives_static/logos/fuel-" + k + ".svg";
+    im.alt = name || k; im.title = name || k; im.draggable = false;
+    im.addEventListener("error", function () {
+      var s = document.createElement("small"); s.textContent = name || k;
+      if (im.parentNode) im.parentNode.replaceChild(s, im);
+    });
+    return im;
+  }
   // Overpass' elements → the points the card knows.
   function gpsPois(elements) {
     var out = [];
@@ -6079,17 +6093,22 @@
         // The layers' list.
         ".lpanel .tg { justify-content: space-between; } .lpanel .tg .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }" +
         ".lpanel .tg.off { opacity: 0.45; } .lpanel .seg { display: flex; gap: 8px; } .lpanel .seg button { flex: 1; justify-content: center; } .lpanel .seg button.on { border-color: #59d0e0; color: #59d0e0; }" +
-        // The stations' panel: each row its price at the right, the gazole in
-        // the big figures' hand, the fuel's name in the small muted one.
-        ".fpanel .pp { margin-left: auto; flex: none; text-align: right; font-family: 'Chakra Petch', " + MONO + "; font-size: 18px; font-weight: 600; color: #e9e4da; line-height: 1.05; }" +
+        // The stations' panel: each row its price at the right, the nozzle's
+        // pictogram beside it, the unit in the small muted one under.
+        ".fpanel .pp { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; flex: none; font-family: 'Chakra Petch', " + MONO + "; font-size: 18px; font-weight: 600; color: #e9e4da; line-height: 1.05; }" +
+        ".fpanel .pp .pc { display: flex; flex-direction: column; align-items: flex-end; }" +
         ".fpanel .pp small { display: block; margin-top: 2px; font-family: " + MONO + "; font-size: 10px; font-weight: 400; color: #878c95; letter-spacing: 0.08em; text-transform: uppercase; }" +
         ".fpanel .pp.nop { font-family: " + MONO + "; font-size: 11px; font-weight: 400; color: #878c95; align-self: center; }" +
         // The station's prices in the tap popup: the gazole large, the other
         // fuels in a whisper on one line under it.
         ".mappick .mp-prices { display: flex; flex-direction: column; gap: 4px; padding: 2px 4px 10px; }" +
-        ".mappick .mp-prices .big { font-family: 'Chakra Petch', " + MONO + "; font-size: 22px; font-weight: 600; color: #e9e4da; line-height: 1; }" +
-        ".mappick .mp-prices .big small { font-family: " + MONO + "; font-size: 11px; font-weight: 400; color: #878c95; margin-left: 8px; letter-spacing: 0.08em; text-transform: uppercase; }" +
+        ".mappick .mp-prices .big { display: flex; align-items: center; gap: 8px; font-family: 'Chakra Petch', " + MONO + "; font-size: 22px; font-weight: 600; color: #e9e4da; line-height: 1; }" +
+        ".mappick .mp-prices .big small { font-family: " + MONO + "; font-size: 11px; font-weight: 400; color: #878c95; letter-spacing: 0.08em; text-transform: uppercase; }" +
         ".mappick .mp-prices .row { display: flex; flex-wrap: wrap; gap: 4px 14px; font-family: " + MONO + "; font-size: 12px; color: #878c95; } .mappick .mp-prices .row b { color: #c9ccd1; font-weight: 500; }" +
+        // The fuels' nozzles: one size everywhere, never wider than the words
+        // they replace, kept on the text's line by the flex's own hand.
+        ".fico { width: 15px; height: 15px; flex: none; opacity: 0.95; }" +
+        ".mappick .mp-prices .row .fu { display: inline-flex; align-items: center; gap: 5px; }" +
         // The brands' marks: a small light chip behind each, so a dark logo
         // keeps its face on the card's night (the marks come with the add-on).
         ".mappick .mp-head .mp-logo, .fpanel .row2 button .plogo { height: 20px; max-width: 68px; object-fit: contain; flex: none; background: #f4f1ea; border-radius: 4px; padding: 3px 5px; box-sizing: content-box; }" +
@@ -7550,15 +7569,23 @@
       var put = function (s) {
         box.innerHTML = "";
         var pr = (s && s.prices) || {};
-        var order = ["gazole", "sp98", "sp95", "e10", "e85", "gplc"], names = { gazole: "gazole", sp98: "SP98", sp95: "SP95", e10: "E10", e85: "E85", gplc: "GPLc" };
+        var order = ["gazole", "sp98", "sp95", "e10", "e85", "gplc"], names = { gazole: "Gazole", sp98: "Sans plomb 98", sp95: "Sans plomb 95", e10: "E10", e85: "E85 (superéthanol)", gplc: "GPLc" };
         var main = pr.gazole != null ? "gazole" : order.filter(function (k) { return pr[k] != null; })[0];
         if (!main) { say("prix indisponibles"); return; }
         var big = document.createElement("div"); big.className = "big";
-        big.textContent = pr[main].toFixed(3).replace('.', ',');
-        var lb = document.createElement("small"); lb.textContent = names[main] + " €/L";
+        big.appendChild(fuelIcon(main, names[main]));
+        var v = document.createElement("span"); v.textContent = pr[main].toFixed(3).replace('.', ',');
+        big.appendChild(v);
+        var lb = document.createElement("small"); lb.textContent = "€/L";
         big.appendChild(lb); box.appendChild(big);
         var row = document.createElement("div"); row.className = "row";
-        order.forEach(function (k) { if (k !== main && pr[k] != null) { var b = document.createElement("b"); b.textContent = names[k] + " " + pr[k].toFixed(3).replace('.', ','); row.appendChild(b); } });
+        order.forEach(function (k) {
+          if (k === main || pr[k] == null) return;
+          var fu = document.createElement("span"); fu.className = "fu";
+          fu.appendChild(fuelIcon(k, names[k]));
+          var b = document.createElement("b"); b.textContent = pr[k].toFixed(3).replace('.', ',');
+          fu.appendChild(b); row.appendChild(fu);
+        });
         if (row.childNodes.length) box.appendChild(row);
       };
       var at = f && f.geometry && f.geometry.coordinates;
@@ -7674,9 +7701,12 @@
         if (f && f.prices && !Object.keys(f.prices).length) f = null;
         if (f && f.prices && f.prices.gazole != null) {
           var pp = document.createElement("span"); pp.className = "pp";
+          pp.appendChild(fuelIcon("gazole", "Gazole"));
+          var pc = document.createElement("span"); pc.className = "pc";
           var big = document.createElement("b"); big.textContent = f.prices.gazole.toFixed(3).replace('.', ',');
-          var pu = document.createElement("small"); pu.textContent = "gazole €/L";
-          pp.appendChild(big); pp.appendChild(pu);
+          var pu = document.createElement("small"); pu.textContent = "€/L";
+          pc.appendChild(big); pc.appendChild(pu);
+          pp.appendChild(pc);
           row.appendChild(pp);
         }
         if (this.dest) row.appendChild(this.viaBtn({ lat: lat, lon: lon, name: nm }));

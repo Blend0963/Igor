@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.55 — The fuels' colours
+
+- The fuels' names give way to the pump's own nozzle in its regulated colour (the gazole's black turned amber so the card's night keeps it): in the tap popup, the nozzle stands beside the big figure and each other fuel keeps its nozzle beside its price; in the stations' panel, the nozzle stands before the gazole's price.
+- One size everywhere (15 px), held on the text's line by flex; the full name stays in the tooltip; a pictogram that failed says its name instead — never an empty frame. Six hand-drawn SVGs shipped with the add-on, no request beyond the add-on.
+
 ## 0.38.54 — One hand on the map
 
 - The map's fuel markers are TomTom's alone (Overpass still answers when TomTom sleeps): the Ministry's flux no longer draws any marker, so no more stations labelled by their address where the enseigne was missing. Nothing else moves — the prices are still the Ministry's, spoken at the click and in the stations' panel.
