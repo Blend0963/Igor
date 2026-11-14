@@ -582,13 +582,19 @@ class Car:
         says which of the two answered."""
         km = max(1, round(radius_m / 1000.0))
         geo = f"distance(geom, geom'POINT({lon:.6f} {lat:.6f})', {km}km)"
-        out = parse_fuel(await self.fetch("GET", FUEL_URL, {"where": geo, "limit": "100"}, None))
-        if out:
-            return out
         dlat = radius_m / 111320.0
         dlon = dlat / max(0.2, math.cos(math.radians(lat)))
         box = (f"latitude >= {lat - dlat:.6f} and latitude <= {lat + dlat:.6f}"
                f" and longitude >= {lon - dlon:.6f} and longitude <= {lon + dlon:.6f}")
+        # The distance ask first; a refused ask (the portal's function moved,
+        # a gateway in a mood) falls to the plain box before giving up — the
+        # box is cruder but it is an answer.
+        try:
+            out = parse_fuel(await self.fetch("GET", FUEL_URL, {"where": geo, "limit": "100"}, None))
+            if out:
+                return out
+        except Exception:  # noqa: BLE001 - the box is asked before despair
+            pass
         return parse_fuel(await self.fetch("GET", FUEL_URL, {"where": box, "limit": "100"}, None))
 
     async def overpass(self, query: str) -> Any:

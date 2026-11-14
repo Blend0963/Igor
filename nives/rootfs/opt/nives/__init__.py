@@ -1623,8 +1623,11 @@ def _async_register_car(hass: HomeAssistant) -> None:
         try:
             stations = await car.fuel(lat, lon, radius)
         except Exception as err:  # noqa: BLE001 - portal busy, moved, unreachable
-            _LOGGER.warning("car_fuel: the Ministry's flux failed around %.3f,%.3f: %s", lat, lon, str(err)[:120])
-            return {"ok": False, "error": "flux des prix injoignable (" + str(err)[:80] + ")"}
+            # The portal's URL is a hundred and twenty characters of nothing:
+            # the reason stands behind it (answered 403, a timeout, a name
+            # unresolved) — logged whole, sent tail-first, the head is noise.
+            _LOGGER.warning("car_fuel: the Ministry's flux failed around %.3f,%.3f: %s", lat, lon, str(err))
+            return {"ok": False, "error": "flux des prix injoignable (…" + str(err)[-80:] + ")"}
         _LOGGER.info("car_fuel: box %.3f,%.3f r=%dm -> %d station(s)", lat, lon, radius, len(stations))
         if len(fuel_cache) > 200:
             fuel_cache.clear()
