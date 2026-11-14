@@ -574,22 +574,22 @@ class Car:
 
     async def fuel(self, lat: float, lon: float, radius_m: int = 3000) -> list[dict]:
         """The fuel prices of the stations around a point, from the Ministry's
-        instant flux. A plain box on the dataset's own latitude/longitude
-        columns — the portal's distance functions have moved before, a box on
-        two plain columns cannot; the caller matches the stations it knows
-        (within 300 m), a box a little generous only widens the net. A box
-        that comes back empty asks again on the geometry itself (the portal's
-        own distance function, whose spelling may move): one of the two
-        worded asks answers, and the log says which."""
-        dlat = radius_m / 111320.0
-        dlon = dlat / max(0.2, math.cos(math.radians(lat)))
-        where = (f"latitude >= {lat - dlat:.6f} and latitude <= {lat + dlat:.6f}"
-                 f" and longitude >= {lon - dlon:.6f} and longitude <= {lon + dlon:.6f}")
-        out = parse_fuel(await self.fetch("GET", FUEL_URL, {"where": where, "limit": "100"}, None))
+        instant flux. The portal's own distance function, spelled the way the
+        prix-carburant integration — fifty contributors, many users — has
+        proven it: `distance(geom, geom'POINT(lon lat)', Nkm)`, kilometres.
+        The plain box on the latitude/longitude columns stays behind as the
+        spare ask, for the day the portal's function moves again; the log
+        says which of the two answered."""
+        km = max(1, round(radius_m / 1000.0))
+        geo = f"distance(geom, geom'POINT({lon:.6f} {lat:.6f})', {km}km)"
+        out = parse_fuel(await self.fetch("GET", FUEL_URL, {"where": geo, "limit": "100"}, None))
         if out:
             return out
-        geo = f'within_distance(geom, GEOMETRY("point",{lon:.6f},{lat:.6f}),{radius_m})'
-        return parse_fuel(await self.fetch("GET", FUEL_URL, {"where": geo, "limit": "100"}, None))
+        dlat = radius_m / 111320.0
+        dlon = dlat / max(0.2, math.cos(math.radians(lat)))
+        box = (f"latitude >= {lat - dlat:.6f} and latitude <= {lat + dlat:.6f}"
+               f" and longitude >= {lon - dlon:.6f} and longitude <= {lon + dlon:.6f}")
+        return parse_fuel(await self.fetch("GET", FUEL_URL, {"where": box, "limit": "100"}, None))
 
     async def overpass(self, query: str) -> Any:
         last: Exception | None = None

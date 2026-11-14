@@ -2,8 +2,9 @@
 
 ## 0.38.39 — The prices that say why they are not
 
-- When the prices do not come, the card no longer shrugs (« prix indisponibles »): it says which of the three troubles it is \u2014 the Ministry's flux unreachable (with the reason it gave), no station of the flux in the coin, or the station unknown to the flux. Three silences, three words.
-- An empty box on the dataset's latitude/longitude columns asks again on the geometry itself (the portal's own distance function): one of the two worded asks answers, and the add-on's log says which \u2014 with the station count at every ask.
+- The ask is spelled the way the prix-carburant integration — fifty contributors, many users — has proven it: `distance(geom, geom'POINT(lon lat)', Nkm)`, the portal's own distance function, kilometres. The plain box on the latitude/longitude columns stays behind as the spare ask. My own first spelling was a guess; theirs is a fact, and the prices should now come.
+- When the prices still do not come, the card no longer shrugs (« prix indisponibles »): it says which of the three troubles it is — the Ministry's flux unreachable (with the reason it gave), no station of the flux in the coin, or the station unknown to the flux. Three silences, three words.
+- The add-on's log tells the truth at every ask: the station count, or the portal's own error (`car_fuel:` lines).
 
 ## 0.38.38 — The brands' own marks
 
