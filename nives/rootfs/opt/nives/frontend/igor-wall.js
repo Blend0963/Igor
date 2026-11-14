@@ -5265,6 +5265,11 @@
   }
   // Without fixes (a tunnel), the car goes on at the OBD speed for 3 minutes at most.
   var GPS_DR_MAX_S = 180;
+  // A U-turn at speed is not a thing a car does: above GPS_UTURN (10 km/h)
+  // the roads and the routes that start by going back are not believed. And
+  // no fix may ask the car to teleport: more than GPS_JUMP_MS (about 200 km/h)
+  // between two fixes is a reflection, a network fix, not the truth.
+  var GPS_UTURN = 2.8, GPS_JUMP_MS = 55;
   window.__igorGps = { step: function (st, fix) { return gpsHeadingStep(st, fix); } };
   function gpsMapLibre() {
     if (window.maplibregl) return Promise.resolve(window.maplibregl);
@@ -6314,10 +6319,24 @@
       // While estimating (a tunnel): a vague position (the phone's network
       // fix) that agrees with the estimate is no real fix; the estimate goes on.
       if (this.drPos && (this.accuracy || 0) > 100 && gpsDist(p, this.drPos) < this.accuracy) { if (this.fix) this.fix.updated = updated; return; }
+      // No teleporting: a point that would need more than GPS_JUMP_MS between
+      // the last fix and this one (a network fix after a GPS gap, a reflection
+      // in a city canyon) is not the truth; the last word stands until a
+      // believable one comes. Three strange ones in a row: the truth has
+      // moved, it is believed.
+      var at = Date.parse(updated) || 0;
+      if (this.fix && this.fix.at && at > this.fix.at) {
+        var dt = Math.max((at - this.fix.at) / 1000, 0.5), far = gpsDist(this.fix.point, p);
+        if (far / dt > GPS_JUMP_MS) {
+          this.fixBad = (this.fixBad || 0) + 1;
+          if (this.fixBad < 3) { if (this.fix) this.fix.updated = updated; return; }
+        }
+      }
+      this.fixBad = 0;
       this.hstate = this.hstate || { heading: this.fix ? this.heading : null };
       gpsHeadingStep(this.hstate, { p: p, t: Date.now(), course: course, gpsSpeed: gpsSpeed, speed: this.speedMps(), accuracy: this.accuracy });
       if (this.hstate.heading != null) this.heading = this.hstate.heading;
-      this.fix = { point: p, time: performance.now(), gpsSpeed: isFinite(gpsSpeed) ? gpsSpeed : 0, updated: updated };
+      this.fix = { point: p, time: performance.now(), gpsSpeed: isFinite(gpsSpeed) ? gpsSpeed : 0, updated: updated, at: at };
     }
     // The trail is drawn on the roads only: each point the arrow takes on a
     // road, joined to the last one along that road's own shape; off the road
@@ -6556,8 +6575,8 @@
         // Staying on the road already taken wins over a slightly nearer one
         // (a noisy fix should not jump to a side street).
         var stay = this.lastRoad && gpsOnLine(this.lastRoad, l);
-        b.stay = !!(stay && stay.dist <= 4);
-        b.score = b.dist + (off > 50 ? 1000 : off * 0.15) + (this.lastRoad && !b.stay ? 10 : 0);
+        b.stay = !!(stay && stay.dist <= 8);
+        b.score = b.dist + (off > 50 ? 1000 : off * 0.15) + (this.lastRoad && !b.stay ? 15 : 0);
         if (!best || b.score < best.score) best = b;
         if (b.stay && b.score < 1000 && (!bestStay || b.score < bestStay.score)) bestStay = b;
       });
@@ -6565,7 +6584,7 @@
       // the road taken is kept until the other one has been clearly nearer for
       // 3 seconds. A real turn changes the heading and switches at once.
       if (best && bestStay && best !== bestStay && best.score < 1000) {
-        if (best.dist + 6 < bestStay.dist) {
+        if (best.dist + 12 < bestStay.dist) {
           this.switchAt = this.switchAt || now || performance.now();
           if ((now || performance.now()) - this.switchAt < 3000) return bestStay;
         } else { this.switchAt = 0; return bestStay; }
@@ -6765,7 +6784,10 @@
       }
       if (!best || best.dist > lock) return null;
       // Driving against the route's way (a U-turn made): not on it any more.
-      if (moving && Math.abs(((best.bearing - this.heading + 540) % 360) - 180) > 100) return null;
+      // Above a walking pace a car does not turn round: the route read
+      // backwards is refused until the car really does (under 10 km/h it may
+      // be manoeuvring, in a car park, at the pump).
+      if (this.speedMps() > GPS_UTURN && Math.abs(((best.bearing - this.heading + 540) % 360) - 180) > 100) return null;
       best.lock = lock;
       best.onRoute = true;
       return best;
@@ -7107,6 +7129,12 @@
       var d = this.dest, from = this.pos || (this.fix && this.fix.point);
       if (!d) return;
       if (!from) { setTimeout(() => this.routeTo(), 2000); return; }
+      // TomTom does not read a car's heading (a truck's only): asked from the
+      // exact point, a recalculation may start by crossing over and going
+      // back — the abrupt U-turn on a motorway. So the departure is put a
+      // couple of seconds ahead, where the car will actually be; standing
+      // still (a parking, a choice made by hand) the point stays the truth.
+      if (this.speedMps() > GPS_UTURN) from = gpsProject(from, this.heading, Math.min(80, Math.max(10, this.speedMps() * 2)));
       this.routeAt = performance.now();
       // With the traffic key: TomTom's route, which knows the jams and goes
       // round closed roads (and the ones the driver chose to avoid); OSRM

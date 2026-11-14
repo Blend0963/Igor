@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.31 — The arrow that does not turn round, the point that cannot teleport
+
+- No more abrupt U-turns at speed. TomTom reads a vehicle's heading for trucks only — for a car it plans the recalculation from the exact point, which can start by crossing over and going back (the sudden U-turn on a motorway). When driving faster than 10 km/h, the departure is now put a couple of seconds ahead (up to 80 m), where the car will actually be. The route read backwards is also refused above 10 km/h (it was above 3), and the arrow does not adopt a road's direction under 9 km/h — a car below that may be manoeuvring.
+- No more teleporting. A fix that would need more than about 200 km/h between it and the last one (a network fix after a GPS gap, a reflection in a city canyon) is not believed: the arrow holds its estimate until a believable point comes — three strange ones in a row are believed (the truth has really moved).
+- Fewer road jumps in town. Staying on the road taken counts for more (8 m of grace instead of 4, a 15-point premium instead of 10), and another road must be clearly nearer — by 12 m, not 6 — for 3 seconds before the arrow moves over.
 ## 0.38.30 — The map that comes back, the places that come with it
 
 - The Igor (CARTO) base map is back in the layers' panel, next to Route (TomTom Orbis) — Orbis has been failing about every other load lately, and a map that answers beats a map that knows the jams. It is the default again for a fresh screen; a screen that had chosen Route keeps it (one touch on « Igor » in the layers to come back).
