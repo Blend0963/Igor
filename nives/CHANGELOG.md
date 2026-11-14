@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.54 — One hand on the map
+
+- The map's fuel markers are TomTom's alone (Overpass still answers when TomTom sleeps): the Ministry's flux no longer draws any marker, so no more stations labelled by their address where the enseigne was missing. Nothing else moves — the prices are still the Ministry's, spoken at the click and in the stations' panel.
+- The flux's instant cache and its tap-through (a station the flux knew but no marker showed) leave with the markers: a click on a station is a click on a drawn station.
+
 ## 0.38.53 — The prices that stood beyond the ask
 
 - The stations' panel asked the flux's prices within 5 km while the stations it lists reach 15 km — in the open country, where the nearest station the ministry knows stands 7 km away, the price column stayed empty for ever. The panel now asks as far as it lists (15 km).
