@@ -7597,9 +7597,10 @@
       var here = this.pos || (this.fix && this.fix.point);
       if (!here) { note.textContent = "Position inconnue."; return; }
       var seq = this.fuelSeq = (this.fuelSeq || 0) + 1;
-      var found = null, prices = null, fuelErr = "";
+      var found = null, prices = null, fuelErr = "", asked = false;
       try {
         var r = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_nearby", return_response: true, service_data: { kind: "fuel", count: 8 } });
+        asked = true;
         if (r && r.response) { if (r.response.ok) found = r.response.places || []; else fuelErr = r.response.error || ""; }
       } catch (e) { found = null; }
       try {
@@ -7625,7 +7626,9 @@
       list.innerHTML = "";
       if (!found || !found.length) {
         var none = document.createElement("div"); none.className = "note";
-        none.textContent = (found === null ? "Recherche impossible (pas d'internet ?)" : (fuelErr || "Aucune station trouvée autour.")) + " · carte v" + GPS_CARD_VERSION;
+        // The server's own words stand when it answered and found nothing:
+        // only a call that never came back says "pas d'internet ?".
+        none.textContent = (!asked ? "Recherche impossible (pas d'internet ?)" : (fuelErr || "Aucune station trouvée autour.")) + " · carte v" + GPS_CARD_VERSION;
         list.appendChild(none);
         return;
       }

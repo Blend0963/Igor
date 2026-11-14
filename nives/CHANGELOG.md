@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.42 — The server's words kept
+
+- When the stations' server answers and finds nothing, its own reason now stands in the panel (« recherche impossible pour l'instant (service OpenStreetMap occupé…) · carte v… »): the generic « pas d'internet ? » is kept only for a call that never came back — the server's words were swallowed before.
+
 ## 0.38.41 — The card that says which card it is
 
 - When the stations' search or the place search fails, the note now carries the card's own release (« … · carte v0.38.41 »): a screen that kept an old script — the kiosk browsers do — says so itself, and « old » stops being a guess.
