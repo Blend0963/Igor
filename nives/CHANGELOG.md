@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.37 — The button that falls back on the map's own places
+
+- When the stations' search comes back empty or broken, the button now asks the map's own places (TomTom's category search, the same source that paints the squares) before it admits defeat — the list stands even with the route server and Overpass both silent, simply without the minutes of the detour.
+
 ## 0.38.36 — The list that survives a bad night
 
 - The stations' button no longer dies with the free services: OSRM's route server or Overpass staying silent, the list is still given (TomTom's places, the prices), simply without the minutes of the detour — a list without figures beats no list. Only when every source is silent does it say so, with the reason.
