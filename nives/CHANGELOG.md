@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.51 — The stations that stood off the Earth
+
+- The root of the missing prices found at last: the flux's text `latitude`/`longitude` columns keep the old degrees-times-a-hundred-thousand ("4716719" for 47.16719°), and the reader took them first — every station of the flux stood at latitude four million, off the Earth, invisible on the map and never within reach of a tap. The portal's own geom is read first now, and a latitude above 90 betrays the old format and is brought back down.
+- Read whole against the live flux: the stations around the car now stand where they stand, with their prices.
+
 ## 0.38.50 — The price that says how far it stands
 
 - The price's reach widens: a station of the flux within 500 m of the tap (was 300 m) answers for its neighbour — TomTom's pin stands at the entrance, the ministry's geom at the middle of the parcel, and the gap between the two words was sometimes wider than the old reach.
