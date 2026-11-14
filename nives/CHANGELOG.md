@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.48 — The stations from both hands
+
+- The squares' stations (TomTom, Overpass) are markers again: the Ministry's flux, unreachable from some boxes, had left the map without a single station. The two sources now stand side by side — a station both tell (within 100 m) is drawn once, the square's word winning; the flux only adds what the squares never said.
+
 ## 0.38.47 — The reason behind the address
 
 - The flux's failure said its address and nothing else — the portal's URL is exactly the hundred and twenty characters the log kept, the reason stood behind it, unseen. Now the log keeps it whole and the card receives the tail: « flux des prix injoignable (…answered 403) » says what the portal answered.
