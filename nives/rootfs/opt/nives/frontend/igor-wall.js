@@ -5250,7 +5250,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.45";
+  var GPS_CARD_VERSION = "0.38.46";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7487,6 +7487,14 @@
         var pf = (map.getLayer("pois") ? map.queryRenderedFeatures(e.point, { layers: ["pois"] }) : []) || [];
         for (var i = 0; i < pf.length; i++) if (pf[i].properties && pf[i].properties.kind === "fuel") { fuel = pf[i]; break; }
       } catch (err) { fuel = null; }
+      // A station the flux knows but no marker showed (its ask still
+      // travelling): the tapped point itself is asked — a station of the
+      // flux within 50 m of the finger is the station.
+      if (!fuel && this.fluxFuel && this.fluxFuel.length && e.lngLat) {
+        var tapped = [e.lngLat.lng, e.lngLat.lat], nf = null, nd = 50;
+        this.fluxFuel.forEach((s) => { var d = gpsDist(s.p, tapped); if (d < nd) { nd = d; nf = s; } });
+        if (nf) fuel = { geometry: { coordinates: nf.p }, properties: { kind: "fuel", label: nf.label || nf.city || "", brand: nf.brand || "" } };
+      }
       var name = "";
       if (fuel && fuel.properties && fuel.properties.label) name = String(fuel.properties.label).slice(0, 40);
       (map.queryRenderedFeatures(e.point) || []).some((f) => {
@@ -7567,7 +7575,7 @@
       // network's brief silence must not stick to the station for ten. And a
       // failure remembered says its own words again, not a shrug.
       var hit = key && this._fuelCache && this._fuelCache[key];
-      if (hit && Date.now() - hit.at < (hit.bad ? 30000 : 600000)) { if (hit.s) put(hit.s); else say(hit.err || "prix indisponibles"); return box; }
+      if (hit && Date.now() - hit.at < (hit.bad ? 30000 : 600000)) { if (hit.s) put(hit.s); else say((hit.err || "prix indisponibles") + " \u00b7 carte v" + GPS_CARD_VERSION); return box; }
       // The map's own stations carry their prices already (the flux's own
       // markers): one standing within 300 m is answered at once, no ask.
       if (at && this.fluxFuel && this.fluxFuel.length) {
@@ -7593,9 +7601,9 @@
           if (!best && !r.ok) r = { err: r.error || "flux des prix injoignable", bad: true };
           else if (!best) r = { err: (r.stations || []).length ? "station inconnue du flux" : "aucune station du flux dans le coin" };
           self._fuelCache[key] = { at: Date.now(), s: best, err: best ? "" : r.err, bad: !best && !!r.bad };
-          if (self._pick) { if (best) put(best); else say(r.err); }
+          if (self._pick) { if (best) put(best); else say(r.err + " \u00b7 carte v" + GPS_CARD_VERSION); }
         })
-        .catch(function () { self._fuelCache[key] = { at: Date.now(), s: null, err: "flux des prix injoignable", bad: true }; if (self._pick) say("flux des prix injoignable"); });
+        .catch(function () { self._fuelCache[key] = { at: Date.now(), s: null, err: "flux des prix injoignable", bad: true }; if (self._pick) say("flux des prix injoignable \u00b7 carte v" + GPS_CARD_VERSION); });
       return box;
     },
     // The stations around: Waze's button. Igor's `car_nearby` says which are
@@ -8049,6 +8057,12 @@
       Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") this.layers[k] = pois.indexOf(k) >= 0; });
       var had = !!(saved && typeof saved === "object");
       if (had) Object.keys(this.layers).forEach((k) => { if (saved[k] !== undefined) this.layers[k] = saved[k]; });
+      // Once, marked: the stations' layer slept while its only live source
+      // was dead — a switch nobody had a reason to touch (an old `pois:` in
+      // the YAML, a state saved before the flux existed) stays off for
+      // nothing. The flux's arrival wakes it, this once; turned off after,
+      // it stays off.
+      if (!this.layers.mig2) { this.layers.fuel = true; this.layers.mig2 = 1; }
       // Once, marked: the Orbis map failing about every other load — every
       // screen comes back to the CARTO one, without a finger raised. Choosing
       // Route after this update keeps (the mark is set, and saved).
@@ -8154,6 +8168,7 @@
       };
       head("Sur la carte");
       if (this.poiDown) { var down = document.createElement("div"); down.className = "note"; down.textContent = "OpenStreetMap (Overpass) ne répond pas : les lieux manquants reviendront d'eux-mêmes."; list.appendChild(down); }
+      if (this.fuelFailed) { var fdown = document.createElement("div"); fdown.className = "note"; fdown.textContent = "Flux des prix injoignable : les stations reviendront d'elles-mêmes (essai chaque minute)."; list.appendChild(fdown); }
       Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") toggle(k, GPS_POI[k].name, GPS_POI[k].color); });
       if (this.config.traffic !== false) {
         head("Circulation en direct");
@@ -8423,7 +8438,7 @@
       var L = this.layers || {}, p = this.pos;
       if (!p || !this._hass || !L.fuel || this.fuelBusy) return;
       if (this.fuelCenter && gpsDist(this.fuelCenter, p) < 6000) return;
-      if (this.fuelAsked && now - this.fuelAsked < (this.fuelFailed ? 300000 : 10000)) return;
+      if (this.fuelAsked && now - this.fuelAsked < (this.fuelFailed ? 60000 : 10000)) return;
       this.fuelAsked = now;
       this.fuelBusy = true;
       var at = p.slice();
@@ -8431,6 +8446,10 @@
         service_data: { latitude: at[1], longitude: at[0], radius_km: 10 } })
         .then((res) => {
           var r = (res && res.response) || {};
+          // A refusal is not an empty country: the flux unreachable is a
+          // failure, believed a minute, asked again — not a silence kept
+          // until the car has driven six kilometres.
+          if (!r.ok) { this.fuelFailed = true; return; }
           this.fluxFuel = (r.stations || []).map((s) => ({
             id: "flux" + (s.id || s.lon.toFixed(5) + "," + s.lat.toFixed(5)),
             kind: "fuel", p: [s.lon, s.lat], label: s.brand || "", brand: s.brand || "",

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.38.46 — The layer that slept for nothing
+
+- A refusal of the flux is no longer taken for an empty country: the stations' ask is failed, believed a minute, asked again — one network's silence at startup no longer leaves the whole ride without stations.
+- The stations' layer is woken once: an old state saved before the flux existed (or an old `pois:` line in the YAML) kept it off for nothing — the switch nobody had a reason to touch. Turned off after, it stays off.
+- A tap near a station the flux knows answers with its prices even when no marker was drawn yet (within 50 m of the finger).
+- The failures say which card says them (« · carte v0.38.46 ») and the layers' panel shows when the flux is down.
+
 ## 0.38.45 — The stations the State keeps
 
 - The Ministry's stations are now drawn on the map themselves — always, with or without a route, even when Overpass sleeps and TomTom is silent: a 10 km ask around the car, asked again every 6 km, like the cameras. A tap on a marker opens the prices at once (the markers carry them; no ask at all).
