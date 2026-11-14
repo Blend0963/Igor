@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.38.33 — The GPS found again is the truth, the black map comes home alone
+
+- The GPS found again far from where it was lost (a village left under a roof, a valley) is believed at once: the heading it kept was a memory, not a fact — the arrow now faces the new course and nothing holds it back on the road it left. It used to keep the car in the village for as long as the sky stayed closed.
+- The spare position (the car's own) carries the arrow only while the primary is silent. The primary back and answering is the truth again — it used to have to buy its place back with a better accuracy than the spare's, and a phone back from a dead zone (25–40 m) could never pay: the arrow stayed on the spare for good.
+- The CARTO base map comes back on every screen without a finger raised, once, marked: Orbis fails about every other load. Choosing Route after this update keeps.
+
 ## 0.38.32 — The hour at the flag
 
 - The trip tells its hours. In the flag's panel, each stop shows the hour it is reached (the big figures' hand), the destination the arrival in the small muted one. In the arrival bar, when the trip has stops, the hour that stood there — the end's — becomes the next stop's, and the end's moves under it, smaller: « étape Maison · 14:32 », then « puis Dijon · arrivée 15:05 ». Without stops, nothing changed.
