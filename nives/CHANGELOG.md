@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.44 — The failure believed half a minute
+
+- A price the flux would not give is remembered thirty seconds only, not ten minutes: one of the Raspberry's network silences no longer sticks « flux indisponible » to a station for ten minutes.
+- A failure remembered says its own words again (« flux des prix injoignable… ») instead of the vague « prix indisponibles ».
+
 ## 0.38.43 — The search knows where the car is
 
 - The stations' panel sends the card's own position with its ask: the search no longer depends on the tracker configured in the integration (« La position de la voiture »), which slept while the phone was driving — « position de la voiture inconnue » in the middle of a road is gone.

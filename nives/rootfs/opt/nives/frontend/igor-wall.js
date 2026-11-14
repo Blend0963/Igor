@@ -5250,7 +5250,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.41";
+  var GPS_CARD_VERSION = "0.38.44";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7563,8 +7563,11 @@
       };
       var at = f && f.geometry && f.geometry.coordinates;
       var key = at ? at[0].toFixed(3) + "," + at[1].toFixed(3) : "";
+      // A price is kept ten minutes; a failure only half a minute — a
+      // network's brief silence must not stick to the station for ten. And a
+      // failure remembered says its own words again, not a shrug.
       var hit = key && this._fuelCache && this._fuelCache[key];
-      if (hit && Date.now() - hit.at < 600000) { put(hit.s); return box; }
+      if (hit && Date.now() - hit.at < (hit.bad ? 30000 : 600000)) { if (hit.s) put(hit.s); else say(hit.err || "prix indisponibles"); return box; }
       if (!at || !this._hass) { say("prix indisponibles"); return box; }
       say("prix…");
       var self = this;
@@ -7576,12 +7579,12 @@
           (r.stations || []).forEach(function (s) { var d = gpsDist([s.lon, s.lat], at); if (d < bd) { bd = d; best = s; } });
           // The reason stands when the prices do not: the flux unreachable is
           // not the station unknown to it — the words say which.
-          if (!best && !r.ok) r = { err: r.error || "flux des prix injoignable" };
+          if (!best && !r.ok) r = { err: r.error || "flux des prix injoignable", bad: true };
           else if (!best) r = { err: (r.stations || []).length ? "station inconnue du flux" : "aucune station du flux dans le coin" };
-          self._fuelCache[key] = { at: Date.now(), s: best, err: best ? "" : r.err };
+          self._fuelCache[key] = { at: Date.now(), s: best, err: best ? "" : r.err, bad: !best && !!r.bad };
           if (self._pick) { if (best) put(best); else say(r.err); }
         })
-        .catch(function () { self._fuelCache[key] = { at: Date.now(), s: null, err: "flux des prix injoignable" }; if (self._pick) say("flux des prix injoignable"); });
+        .catch(function () { self._fuelCache[key] = { at: Date.now(), s: null, err: "flux des prix injoignable", bad: true }; if (self._pick) say("flux des prix injoignable"); });
       return box;
     },
     // The stations around: Waze's button. Igor's `car_nearby` says which are
