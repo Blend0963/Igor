@@ -6046,6 +6046,17 @@
         // The layers' list.
         ".lpanel .tg { justify-content: space-between; } .lpanel .tg .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }" +
         ".lpanel .tg.off { opacity: 0.45; } .lpanel .seg { display: flex; gap: 8px; } .lpanel .seg button { flex: 1; justify-content: center; } .lpanel .seg button.on { border-color: #59d0e0; color: #59d0e0; }" +
+        // The stations' panel: each row its price at the right, the gazole in
+        // the big figures' hand, the fuel's name in the small muted one.
+        ".fpanel .pp { margin-left: auto; flex: none; text-align: right; font-family: 'Chakra Petch', " + MONO + "; font-size: 18px; font-weight: 600; color: #e9e4da; line-height: 1.05; }" +
+        ".fpanel .pp small { display: block; margin-top: 2px; font-family: " + MONO + "; font-size: 10px; font-weight: 400; color: #878c95; letter-spacing: 0.08em; text-transform: uppercase; }" +
+        ".fpanel .pp.nop { font-family: " + MONO + "; font-size: 11px; font-weight: 400; color: #878c95; align-self: center; }" +
+        // The station's prices in the tap popup: the gazole large, the other
+        // fuels in a whisper on one line under it.
+        ".mappick .mp-prices { display: flex; flex-direction: column; gap: 4px; padding: 2px 4px 10px; }" +
+        ".mappick .mp-prices .big { font-family: 'Chakra Petch', " + MONO + "; font-size: 22px; font-weight: 600; color: #e9e4da; line-height: 1; }" +
+        ".mappick .mp-prices .big small { font-family: " + MONO + "; font-size: 11px; font-weight: 400; color: #878c95; margin-left: 8px; letter-spacing: 0.08em; text-transform: uppercase; }" +
+        ".mappick .mp-prices .row { display: flex; flex-wrap: wrap; gap: 4px 14px; font-family: " + MONO + "; font-size: 12px; color: #878c95; } .mappick .mp-prices .row b { color: #c9ccd1; font-weight: 500; }" +
         ".snap.dr { color: #d9a441; } .snap { position: absolute; right: 12px; top: 96px; z-index: 2; font-family: " + MONO + "; font-size: 10px; color: #3d454e; letter-spacing: 0.1em; text-transform: uppercase; }" +
         ".noattr .maplibregl-ctrl-attrib, .noattr .maplibregl-ctrl-bottom-right { display: none !important; }" +
         "@media (prefers-reduced-motion: reduce) { .sign.over { animation: none; } }" +
@@ -6101,6 +6112,7 @@
         '<div class="btns"><button id="recenter" title="Recentrer" hidden><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' +
         '<button id="orient" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button>' +
         '<button id="dest" title="Destination"><ha-icon icon="mdi:flag-checkered"></ha-icon></button>' +
+        '<button id="fuel" title="Stations-service"><ha-icon icon="mdi:gas-station"></ha-icon></button>' +
         '<button id="voice" title="Voix du guidage"><ha-icon icon="mdi:volume-high"></ha-icon></button>' +
         '<button id="layers" title="Sur la carte"><ha-icon icon="mdi:layers-outline"></ha-icon></button>' +
         '<button id="overview" title="Choisir l’itinéraire" hidden><ha-icon icon="mdi:map-search"></ha-icon></button>' +
@@ -6115,6 +6127,7 @@
         '<div class="ask" id="ask" hidden><ha-icon icon="mdi:road-variant"></ha-icon><div class="q"><b>Route fermée sur votre itinéraire</b><div id="askS"></div></div><div class="bt"><button class="yes" id="askYes">Éviter</button><button id="askNo">Ignorer</button></div></div>' +
         '<div class="panel rpanel" id="rpanel" hidden><div class="ph"><span id="rtitle">itinéraires</span><button id="rclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="rlist"></div><div class="seg" id="rchips"></div></div>' +
         '<div class="panel lpanel" id="lpanel" hidden><div class="ph"><span>sur la carte</span><button id="lclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="llist"></div></div>' +
+        '<div class="panel fpanel" id="fpanel" hidden><div class="ph"><span>stations-service</span><button id="fclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="flist"></div></div>' +
         '<div class="eta" id="eta" hidden></div>' +
         '<div class="panel" id="panel" hidden><div class="ph"><span>destination</span><button id="pclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
         '<div class="list" id="ptrip" hidden></div>' +
@@ -6129,6 +6142,10 @@
       $("card").classList.toggle("withspeed", this.config.show_speed !== false);
       $("card").classList.toggle("withattr", !this.config.hide_attribution);
       $("dest").addEventListener("click", () => this.openPanel());
+      // The fuel, Waze's way: a touch, the stations around, each with its
+      // gazole price and its detour; a touch on one, and the car goes.
+      $("fuel").addEventListener("click", () => this.openFuel());
+      $("fclose").addEventListener("click", () => { $("fpanel").hidden = true; });
       // The voice, three ways, a touch to change: everything (each turn, as a
       // navigator), the warnings only (cameras, jams, detours), nothing. Kept
       // by Home Assistant for this user (and by the screen, to know it at once).
@@ -6970,6 +6987,7 @@
     },
     openPanel() {
       var $ = this.$;
+      $("fpanel").hidden = true;
       $("panel").hidden = false;
       $("pstop").hidden = !this.dest;
       $("plist").innerHTML = "";
@@ -7427,7 +7445,14 @@
       var map = this.map;
       if (!map || !e || !e.point || !window.maplibregl) return;
       if (map.getLayer("alts") && map.queryRenderedFeatures(e.point, { layers: ["alts"] }).length) return;
+      // A station of the map's own layer: its prices first, then the two ways.
+      var fuel = null;
+      try {
+        var pf = (map.getLayer("pois") ? map.queryRenderedFeatures(e.point, { layers: ["pois"] }) : []) || [];
+        for (var i = 0; i < pf.length; i++) if (pf[i].properties && pf[i].properties.kind === "fuel") { fuel = pf[i]; break; }
+      } catch (err) { fuel = null; }
       var name = "";
+      if (fuel && fuel.properties && fuel.properties.label) name = String(fuel.properties.label).slice(0, 40);
       (map.queryRenderedFeatures(e.point) || []).some((f) => {
         var p = f.properties || {};
         var n = p.name || p["name:latin"] || p.brand;
@@ -7444,6 +7469,7 @@
       x.addEventListener("click", (ev) => { ev.stopPropagation(); this.closePick(); });
       head.appendChild(x);
       el.appendChild(head);
+      if (fuel) el.appendChild(this.fuelPrices(fuel));
       var go = document.createElement("button");
       go.type = "button";
       go.innerHTML = '<ha-icon icon="mdi:flag"></ha-icon>Nouvel itinéraire';
@@ -7473,6 +7499,109 @@
     },
     closePick() {
       if (this._pick) { try { this._pick.remove(); } catch (e) { /* gone */ } this._pick = null; }
+    },
+    // The station's prices, read from the Ministry's instant flux (Igor asks
+    // data.economie.gouv.fr, the station nearest the tap within 300 m): the
+    // gazole large, the other fuels in a whisper. Asked once and kept ten
+    // minutes — the flux itself is only ten minutes old.
+    fuelPrices(f) {
+      var box = document.createElement("div"); box.className = "mp-prices";
+      var say = function (txt) { var n = document.createElement("div"); n.className = "row"; n.textContent = txt; box.appendChild(n); };
+      var put = function (s) {
+        box.innerHTML = "";
+        var pr = (s && s.prices) || {};
+        var order = ["gazole", "sp98", "sp95", "e10", "e85", "gplc"], names = { gazole: "gazole", sp98: "SP98", sp95: "SP95", e10: "E10", e85: "E85", gplc: "GPLc" };
+        var main = pr.gazole != null ? "gazole" : order.filter(function (k) { return pr[k] != null; })[0];
+        if (!main) { say("prix indisponibles"); return; }
+        var big = document.createElement("div"); big.className = "big";
+        big.textContent = pr[main].toFixed(3).replace('.', ',');
+        var lb = document.createElement("small"); lb.textContent = names[main] + " €/L";
+        big.appendChild(lb); box.appendChild(big);
+        var row = document.createElement("div"); row.className = "row";
+        order.forEach(function (k) { if (k !== main && pr[k] != null) { var b = document.createElement("b"); b.textContent = names[k] + " " + pr[k].toFixed(3).replace('.', ','); row.appendChild(b); } });
+        if (row.childNodes.length) box.appendChild(row);
+      };
+      var at = f && f.geometry && f.geometry.coordinates;
+      var key = at ? at[0].toFixed(3) + "," + at[1].toFixed(3) : "";
+      var hit = key && this._fuelCache && this._fuelCache[key];
+      if (hit && Date.now() - hit.at < 600000) { put(hit.s); return box; }
+      if (!at || !this._hass) { say("prix indisponibles"); return box; }
+      say("prix…");
+      var self = this;
+      this._fuelCache = this._fuelCache || {};
+      this._hass.callWS({ type: "call_service", domain: "nives", service: "car_fuel", return_response: true,
+        service_data: { latitude: at[1], longitude: at[0], radius_km: 1 } })
+        .then(function (res) {
+          var r = (res && res.response) || {}, best = null, bd = 300;
+          (r.stations || []).forEach(function (s) { var d = gpsDist([s.lon, s.lat], at); if (d < bd) { bd = d; best = s; } });
+          self._fuelCache[key] = { at: Date.now(), s: best };
+          if (self._pick) put(best);
+        })
+        .catch(function () { self._fuelCache[key] = { at: Date.now(), s: null }; if (self._pick) put(null); });
+      return box;
+    },
+    // The stations around: Waze's button. Igor's `car_nearby` says which are
+    // worth the way (the detour each adds when a trip is under way), the
+    // Ministry's flux says what the gazole costs; a touch on a row, and the
+    // car goes there or stops there.
+    async openFuel() {
+      var $ = this.$, list = $("flist");
+      $("panel").hidden = true; $("rpanel").hidden = true; $("lpanel").hidden = true;
+      $("fpanel").hidden = false;
+      list.innerHTML = "";
+      var note = document.createElement("div"); note.className = "note"; note.textContent = "Recherche des stations…"; list.appendChild(note);
+      var here = this.pos || (this.fix && this.fix.point);
+      if (!here) { note.textContent = "Position inconnue."; return; }
+      var seq = this.fuelSeq = (this.fuelSeq || 0) + 1;
+      var found = null, prices = null;
+      try {
+        var r = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_nearby", return_response: true, service_data: { kind: "fuel", count: 8 } });
+        if (r && r.response && r.response.ok) found = r.response.places || [];
+      } catch (e) { found = null; }
+      try {
+        var pr = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_fuel", return_response: true, service_data: { latitude: here[1], longitude: here[0], radius_km: 5 } });
+        if (pr && pr.response && pr.response.ok) prices = pr.response.stations || [];
+      } catch (e) { prices = null; }
+      if (seq !== this.fuelSeq || $("fpanel").hidden) return;
+      list.innerHTML = "";
+      if (!found || !found.length) {
+        var none = document.createElement("div"); none.className = "note";
+        none.textContent = found === null ? "Recherche impossible (pas d'internet ?)" : "Aucune station trouvée autour.";
+        list.appendChild(none);
+        return;
+      }
+      found.forEach((p) => {
+        var lat = Number(p.lat), lon = Number(p.lon);
+        if (isNaN(lat) || isNaN(lon)) return;
+        var nm = p.name || p.brand || "Station-service";
+        var b = document.createElement("button"); b.type = "button";
+        var i = document.createElement("ha-icon"); i.setAttribute("icon", "mdi:gas-station"); b.appendChild(i);
+        var t = document.createElement("div"); t.textContent = nm; b.appendChild(t);
+        var detour = p.detour_min != null ? "détour +" + p.detour_min + " min" : (p.minutes != null ? p.minutes + " min" : "");
+        var sm = document.createElement("small");
+        sm.textContent = [p.service_area || p.address || "", here ? gpsMetres(gpsDist(here, [lon, lat])) : "", detour].filter(Boolean).join(" · ");
+        t.appendChild(sm);
+        var row = document.createElement("div"); row.className = "row2";
+        b.addEventListener("click", () => { this.chooseNext = true; this.setDestination({ lat: lat, lon: lon, name: nm }, true); $("fpanel").hidden = true; });
+        row.appendChild(b);
+        // The gazole's price at the right, the fuel's name under it; a station
+        // the flux does not know simply says nothing there.
+        var f = this.nearestFuel(prices, lat, lon);
+        if (f && f.prices && f.prices.gazole != null) {
+          var pp = document.createElement("span"); pp.className = "pp";
+          var big = document.createElement("b"); big.textContent = f.prices.gazole.toFixed(3).replace('.', ',');
+          var pu = document.createElement("small"); pu.textContent = "gazole €/L";
+          pp.appendChild(big); pp.appendChild(pu);
+          row.appendChild(pp);
+        }
+        if (this.dest) row.appendChild(this.viaBtn({ lat: lat, lon: lon, name: nm }));
+        list.appendChild(row);
+      });
+    },
+    nearestFuel(stations, lat, lon) {
+      var best = null, bd = 300;
+      (stations || []).forEach((s) => { var d = gpsDist([s.lon, s.lat], [lon, lat]); if (d < bd) { bd = d; best = s; } });
+      return best;
     },
     pickAlt(a) {
       if (!a || !a.route) return;
@@ -7593,6 +7722,7 @@
         });
         chips.appendChild(b);
       });
+      $("fpanel").hidden = true;
       $("rpanel").hidden = false;
       clearTimeout(this.pickTimer);
       this.pickTimer = setTimeout(() => { if (!$("rpanel").hidden) pick(opts[0]); }, 12000);
@@ -7879,6 +8009,7 @@
     },
     openLayers() {
       var $ = this.$, L = this.layers, list = $("llist");
+      $("fpanel").hidden = true;
       $("lpanel").hidden = false;
       list.innerHTML = "";
       var head = function (txt) { var h = document.createElement("div"); h.className = "note"; h.textContent = txt; list.appendChild(h); };
@@ -8050,7 +8181,9 @@
       want.sort((u, v) => u.d - v.d);
       var T = this.poiTiles || (this.poiTiles = {});
       var busy = this.poiBusy || (this.poiBusy = {});
-      for (var n = 0; n < 2; n++) {
+      // TomTom answers lightly (four squares at once); Overpass, free and
+      // busy, is asked two at a time only — the card knows which it reads.
+      for (var n = 0; n < (this.poiTT === false ? 2 : 4); n++) {
         var next = want.find((t) => (!T[t.k] || (T[t.k].failed && now - T[t.k].at > 15000)) && !busy[t.k]);
         if (!next) break;
         busy[next.k] = true;
@@ -8059,6 +8192,27 @@
     },
     askPoi(t, key, now) {
       var busy = this.poiBusy, done = () => { delete busy[t.k]; };
+      var keep = (items) => {
+        if (key !== this.poiKey) return;
+        this.poiTiles[t.k] = { at: now, items: items };
+        gpsStorePut("poi/" + t.k, { at: Date.now(), items: items });
+        this.poiFails = 0;
+        this.poiNextTry = 0;
+        this.poiDown = false;
+        // Squares far behind are let go (more than 12 km).
+        var p = this.pos, z = GPS_TILE_Z, T = this.poiTiles;
+        Object.keys(T).forEach((k) => {
+          var xy = k.split("/"), b = gpsTileBox(Number(xy[0]), Number(xy[1]), z);
+          if (gpsDist(p, [(b.w + b.e) / 2, (b.n + b.s) / 2]) > 12000) delete T[k];
+        });
+        this.rebuildPois();
+      };
+      var overpassItems = (ks) => {
+        var q = gpsPoiTileQuery(t.b, ks);
+        if (!q) return Promise.resolve([]);
+        return gpsOverpass(this.config, q).then((jj) => gpsPois(jj.elements));
+      };
+      var fromOverpass = () => overpassItems(this.poiKinds()).then((items) => { if (key === this.poiKey) keep(items); });
       gpsStoreGet("poi/" + t.k).then((saved) => {
         if (key !== this.poiKey) return;
         if (saved && Array.isArray(saved.items) && Date.now() - saved.at < GPS_KEEP_MS) {
@@ -8066,24 +8220,33 @@
           this.rebuildPois();
           return;
         }
-        var q = gpsPoiTileQuery(t.b, this.poiKinds());
-        if (!q) return;
-        return gpsOverpass(this.config, q).then((jj) => {
-          if (key !== this.poiKey) return;
-          var items = gpsPois(jj.elements);
-          this.poiTiles[t.k] = { at: now, items: items };
-          gpsStorePut("poi/" + t.k, { at: Date.now(), items: items });
-          this.poiFails = 0;
-          this.poiNextTry = 0;
-          this.poiDown = false;
-          // Squares far behind are let go (more than 12 km).
-          var p = this.pos, z = GPS_TILE_Z, T = this.poiTiles;
-          Object.keys(T).forEach((k) => {
-            var xy = k.split("/"), b = gpsTileBox(Number(xy[0]), Number(xy[1]), z);
-            if (gpsDist(p, [(b.w + b.e) / 2, (b.n + b.s) / 2]) > 12000) delete T[k];
-          });
-          this.rebuildPois();
-        });
+        // TomTom's places first (the key set in Igor's options: the same
+        // network as the roads, the brands, the stations that are truly
+        // there): the square's centre, three kilometres around. An empty
+        // answer is one as good as a full one — a square without stations is
+        // kept too, so a quiet country road does not ask again. The lights
+        // and the cameras stay OpenStreetMap's (TomTom's squares have none):
+        // a light ask, nodes only, the same square. No key, or TomTom silent:
+        // the whole square from Overpass, as before.
+        var c = [(t.b.w + t.b.e) / 2, (t.b.n + t.b.s) / 2];
+        var kinds = this.poiKinds().filter((k) => k !== "camera" && k !== "signals").join(",");
+        if (this._hass && this.config.tomtom_pois !== false && kinds) {
+          var tt = this._hass.callWS({ type: "call_service", domain: "nives", service: "car_pois", return_response: true,
+            service_data: { latitude: c[1], longitude: c[0], radius_km: 3, kinds: kinds } })
+            .then((res) => {
+              var r = (res && res.response) || {};
+              if (!r.ok) throw new Error(r.error || "tomtom");
+              this.poiTT = true;
+              return (r.pois || []).map((q) => ({ id: q.id, kind: q.kind, p: [q.lon, q.lat], label: q.label || "" }));
+            });
+          var sigKinds = this.poiKinds().filter((k) => k === "camera" || k === "signals");
+          var sig = sigKinds.length ? overpassItems(sigKinds).catch(() => []) : Promise.resolve([]);
+          return Promise.all([tt, sig]).then((both) => {
+            if (key !== this.poiKey) return;
+            keep(both[0].concat(both[1]));
+          }).catch(() => { this.poiTT = false; return fromOverpass(); });
+        }
+        return fromOverpass();
       }).catch(() => {
         this.poiFails = (this.poiFails || 0) + 1;
         this.poiNextTry = now + Math.min(240000, 15000 * Math.pow(2, Math.min(this.poiFails, 4)));
@@ -8096,8 +8259,18 @@
     // both (within 60 m) is one camera, with what each says about it.
     rebuildPois() {
       var T = this.poiTiles || {}, all = {}, list = [], cams = [], kinds = this.poiKinds();
-      // Only the kinds wanted (old caches keep the places the base map shows now).
-      Object.keys(T).forEach((k) => (T[k].items || []).forEach((q) => { if (all[q.id] || kinds.indexOf(q.kind) < 0) return; all[q.id] = true; (q.kind === "camera" ? cams : list).push(q); }));
+      // Only the kinds wanted (old caches keep the places the base map shows
+      // now). Two sources tell the same station (TomTom's square reaches into
+      // its neighbours, Overpass's caches return): the one already kept wins,
+      // a place of the same kind within 40 m is the same place.
+      Object.keys(T).forEach((k) => (T[k].items || []).forEach((q) => {
+        if (all[q.id] || kinds.indexOf(q.kind) < 0) return;
+        var near = q.kind === "camera" ? cams : list, dup = false;
+        for (var i = 0; i < near.length && !dup; i++) if (near[i].kind === q.kind && gpsDist(near[i].p, q.p) < 40) dup = true;
+        if (dup) return;
+        all[q.id] = true;
+        near.push(q);
+      }));
       var L = this.layers || {};
       if (L.cameras && L.cameras !== "off") (this.frCams || []).forEach((c) => {
         var same = null;
