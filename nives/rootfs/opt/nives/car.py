@@ -412,15 +412,24 @@ def parse_fuel(body: Any) -> list[dict]:
         f = r.get("fields") if isinstance(r.get("fields"), dict) else r
         if not isinstance(f, dict):
             continue
-        lat, lon = f.get("latitude"), f.get("longitude")
+        # The geom first — the portal's own point. The text latitude/longitude
+        # columns only stand behind it, and they keep the old degrees-times-a-
+        # hundred-thousand ("4716719" for 47.16719°): a latitude above 90 (a
+        # longitude above 180) betrays that format and is brought back down.
+        g = f.get("geom") or r.get("geometry") or {}
+        lat, lon = None, None
+        if isinstance(g, dict):
+            lat, lon = g.get("lat"), g.get("lon")
+            if lat is None and isinstance(g.get("coordinates"), (list, tuple)) and len(g["coordinates"]) == 2:
+                lon, lat = g["coordinates"]
         if lat is None or lon is None:
-            g = f.get("geom") or r.get("geometry") or {}
-            if isinstance(g, dict):
-                lat, lon = g.get("lat"), g.get("lon")
-                if lat is None and isinstance(g.get("coordinates"), (list, tuple)) and len(g["coordinates"]) == 2:
-                    lon, lat = g["coordinates"]
+            lat, lon = f.get("latitude"), f.get("longitude")
         try:
             lat, lon = float(lat), float(lon)
+            if abs(lat) > 90:
+                lat /= 100000.0
+            if abs(lon) > 180:
+                lon /= 100000.0
         except (TypeError, ValueError):
             continue
         prices, maj = {}, {}
