@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.56 — The second hand returns, the words on the badges
+
+- The Ministry's stations draw on the map again, exactly as before 0.38.54: TomTom's squares alone had let motorway aires go (a BP, a Total, gone from the aires) — the flux's orphans are drawn once more, the square's word winning when both tell the same station. The tap-through and the instant prices come back with them.
+- The fuels' pictograms become the pumps' own labels: a badge with the fuel's name in its regulated colours ("Gazole" black on yellow, "SP95" white on green, "SP98" white on coral, "E10" white on green with its blue lacing, "E85" green on yellow, "GPL" white on grey) — told by the words, not the colour alone.
+
 ## 0.38.55 — The fuels' colours
 
 - The fuels' names give way to the pump's own nozzle in its regulated colour (the gazole's black turned amber so the card's night keeps it): in the tap popup, the nozzle stands beside the big figure and each other fuel keeps its nozzle beside its price; in the stations' panel, the nozzle stands before the gazole's price.
