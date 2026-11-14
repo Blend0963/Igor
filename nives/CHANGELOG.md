@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.40 — The ask spelled the proven way
+
+- The prices' ask now uses the portal's own distance function spelled exactly as the prix-carburant integration has proven it (`distance(geom, geom'POINT(lon lat)', Nkm)`, kilometres) — the box on the latitude/longitude columns stays as the spare. The 0.38.39 images carried the guess, not the fact; this one carries the fact.
+
 ## 0.38.39 — The prices that say why they are not
 
 - The ask is spelled the way the prix-carburant integration — fifty contributors, many users — has proven it: `distance(geom, geom'POINT(lon lat)', Nkm)`, the portal's own distance function, kilometres. The plain box on the latitude/longitude columns stays behind as the spare ask. My own first spelling was a guess; theirs is a fact, and the prices should now come.
