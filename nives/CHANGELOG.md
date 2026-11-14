@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.53 — The prices that stood beyond the ask
+
+- The stations' panel asked the flux's prices within 5 km while the stations it lists reach 15 km — in the open country, where the nearest station the ministry knows stands 7 km away, the price column stayed empty for ever. The panel now asks as far as it lists (15 km).
+- The hundred stations the ask keeps are the hundred nearest now (the portal sorts by distance): a dense city holds more stations than an ask keeps, and an arbitrary hundred could leave the car's own neighbours out.
+
 ## 0.38.52 — One pin, the enseigne's word
 
 - No station drawn twice: the fusion of the two hands widens to 150 m — TomTom's pin stands at the entrance, the ministry's geom at the middle of the parcel, and the gap between the two words is now folded into one marker, the square's, which carries the enseigne.

@@ -5250,7 +5250,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.52";
+  var GPS_CARD_VERSION = "0.38.53";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7643,7 +7643,7 @@
         if (r && r.response) { if (r.response.ok) found = r.response.places || []; else fuelErr = r.response.error || ""; }
       } catch (e) { found = null; }
       try {
-        var pr = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_fuel", return_response: true, service_data: { latitude: here[1], longitude: here[0], radius_km: 5 } });
+        var pr = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_fuel", return_response: true, service_data: { latitude: here[1], longitude: here[0], radius_km: 15 } });
         if (pr && pr.response && pr.response.ok) prices = pr.response.stations || [];
       } catch (e) { prices = null; }
       if (!found || !found.length) {
