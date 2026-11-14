@@ -5250,7 +5250,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.55";
+  var GPS_CARD_VERSION = "0.38.56";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6105,9 +6105,10 @@
         ".mappick .mp-prices .big { display: flex; align-items: center; gap: 8px; font-family: 'Chakra Petch', " + MONO + "; font-size: 22px; font-weight: 600; color: #e9e4da; line-height: 1; }" +
         ".mappick .mp-prices .big small { font-family: " + MONO + "; font-size: 11px; font-weight: 400; color: #878c95; letter-spacing: 0.08em; text-transform: uppercase; }" +
         ".mappick .mp-prices .row { display: flex; flex-wrap: wrap; gap: 4px 14px; font-family: " + MONO + "; font-size: 12px; color: #878c95; } .mappick .mp-prices .row b { color: #c9ccd1; font-weight: 500; }" +
-        // The fuels' nozzles: one size everywhere, never wider than the words
-        // they replace, kept on the text's line by the flex's own hand.
-        ".fico { width: 15px; height: 15px; flex: none; opacity: 0.95; }" +
+        // The fuels' badges: the pumps' own labels, one height everywhere,
+        // their width the words' own, kept on the text's line by the flex's
+        // own hand.
+        ".fico { height: 13px; width: auto; flex: none; opacity: 0.95; border-radius: 3px; }" +
         ".mappick .mp-prices .row .fu { display: inline-flex; align-items: center; gap: 5px; }" +
         // The brands' marks: a small light chip behind each, so a dark logo
         // keeps its face on the card's night (the marks come with the add-on).
@@ -6796,7 +6797,7 @@
       if (this.route && (!this.navAt || now - this.navAt > 1000)) { this.navAt = now; this.navTick(now, moving); }
       if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > 500)) { this.limitAt = now; this.limitTick(now, moving); }
       if (!this.alertAt || now - this.alertAt > 500) { this.alertAt = now; this.alertTick(now, speed); }
-      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.trafficTick(now, moving); }
+      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); }
       if (this.follow) {
         var h = this.$("map").clientHeight;
         var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } };
@@ -7506,6 +7507,14 @@
         var pf = (map.getLayer("pois") ? map.queryRenderedFeatures(e.point, { layers: ["pois"] }) : []) || [];
         for (var i = 0; i < pf.length; i++) if (pf[i].properties && pf[i].properties.kind === "fuel") { fuel = pf[i]; break; }
       } catch (err) { fuel = null; }
+      // A station the flux knows but no marker showed (its ask still
+      // travelling): the tapped point itself is asked — a station of the
+      // flux within 50 m of the finger is the station.
+      if (!fuel && this.fluxFuel && this.fluxFuel.length && e.lngLat) {
+        var tapped = [e.lngLat.lng, e.lngLat.lat], nf = null, nd = 50;
+        this.fluxFuel.forEach((s) => { var d = gpsDist(s.p, tapped); if (d < nd) { nd = d; nf = s; } });
+        if (nf) fuel = { geometry: { coordinates: nf.p }, properties: { kind: "fuel", label: nf.label || nf.city || "", brand: nf.brand || "" } };
+      }
       var name = "";
       if (fuel && fuel.properties && fuel.properties.label) name = String(fuel.properties.label).slice(0, 40);
       (map.queryRenderedFeatures(e.point) || []).some((f) => {
@@ -7595,6 +7604,17 @@
       // failure remembered says its own words again, not a shrug.
       var hit = key && this._fuelCache && this._fuelCache[key];
       if (hit && Date.now() - hit.at < (hit.bad ? 30000 : 600000)) { if (hit.s) put(hit.s); else say((hit.err || "prix indisponibles") + " \u00b7 carte v" + GPS_CARD_VERSION); return box; }
+      // The map's own stations carry their prices already (the flux's own
+      // markers): one standing within 500 m is answered at once, no ask.
+      if (at && this.fluxFuel && this.fluxFuel.length) {
+        var nearF = null, nd = 500;
+        this.fluxFuel.forEach((s) => { var d = gpsDist(s.p, at); if (d < nd) { nd = d; nearF = s; } });
+        if (nearF && nearF.prices && Object.keys(nearF.prices).length) {
+          this._fuelCache[key] = { at: Date.now(), s: { prices: nearF.prices } };
+          put(nearF);
+          return box;
+        }
+      }
       if (!at || !this._hass) { say("prix indisponibles"); return box; }
       say("prix…");
       var self = this;
@@ -8186,6 +8206,7 @@
       };
       head("Sur la carte");
       if (this.poiDown) { var down = document.createElement("div"); down.className = "note"; down.textContent = "OpenStreetMap (Overpass) ne répond pas : les lieux manquants reviendront d'eux-mêmes."; list.appendChild(down); }
+      if (this.fuelFailed) { var fdown = document.createElement("div"); fdown.className = "note"; fdown.textContent = "Flux des prix injoignable : les stations reviendront d'elles-mêmes (essai chaque minute)."; list.appendChild(fdown); }
       Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") toggle(k, GPS_POI[k].name, GPS_POI[k].color); });
       if (this.config.traffic !== false) {
         head("Circulation en direct");
@@ -8385,23 +8406,37 @@
     // Every place known: the squares read from OpenStreetMap and, in France,
     // the Ministry of the Interior's own list of cameras; a camera known from
     // both (within 60 m) is one camera, with what each says about it. The
-    // stations come from one hand: the squares' (TomTom, with Overpass as
-    // its fallback when it sleeps). The Ministry's flux never draws here —
-    // it only speaks the prices, at the click and in the stations' list.
+    // stations come from both hands: the squares' (TomTom, Overpass) and the
+    // Ministry's flux — a station the two tell (within 100 m) is drawn once,
+    // the square's word winning (it knows the sign); the flux only adds what
+    // the squares never said (or could not — they sleep sometimes).
     rebuildPois() {
-      var T = this.poiTiles || {}, all = {}, list = [], cams = [], kinds = this.poiKinds();
+      var T = this.poiTiles || {}, all = {}, list = [], cams = [], kinds = this.poiKinds(), tileFuel = [];
       // Only the kinds wanted (old caches keep the places the base map shows
       // now). Two sources tell the same station (TomTom's square reaches into
       // its neighbours, Overpass's caches return): the one already kept wins,
       // a place of the same kind within 40 m is the same place.
       Object.keys(T).forEach((k) => (T[k].items || []).forEach((q) => {
         if (all[q.id] || kinds.indexOf(q.kind) < 0) return;
+        if (q.kind === "fuel") tileFuel.push(q);
         var near = q.kind === "camera" ? cams : list, dup = false;
         for (var i = 0; i < near.length && !dup; i++) if (near[i].kind === q.kind && gpsDist(near[i].p, q.p) < 40) dup = true;
         if (dup) return;
         all[q.id] = true;
         near.push(q);
       }));
+      var L = this.layers || {};
+      if (L.fuel) (this.fluxFuel || []).forEach((s) => {
+        // A station the squares already draw is not drawn twice: the square's
+        // pin stands at the entrance, the ministry's geom at the middle of
+        // the parcel, and the gap between the two words runs to a hundred and
+        // fifty metres — within that, one marker, the square's (it carries
+        // the enseigne). The flux's only adds what the squares never said,
+        // said by its address when it has no enseigne to say.
+        for (var i = 0; i < tileFuel.length; i++) if (gpsDist(tileFuel[i].p, s.p) < 150) return;
+        if (!s.label) s.label = (s.brand || s.address || s.city || "").slice(0, 24).trim();
+        list.push(s);
+      });
       var L = this.layers || {};
       if (L.cameras && L.cameras !== "off") (this.frCams || []).forEach((c) => {
         var same = null;
@@ -8433,6 +8468,39 @@
         })
         .catch(() => { this.frFailed = true; })
         .then(() => { this.frBusy = false; });
+    },
+    // France's stations with their prices (the Ministry of Energy's instant
+    // flux): the one source that never goes on strike — Overpass sleeps,
+    // TomTom asks a key; the State answers. Asked again every 6 km, like the
+    // cameras; its stations are the map's only fuel markers (the squares no
+    // longer ask for them), so one place is never drawn twice.
+    fuelTick(now) {
+      var L = this.layers || {}, p = this.pos;
+      if (!p || !this._hass || !L.fuel || this.fuelBusy) return;
+      if (this.fuelCenter && gpsDist(this.fuelCenter, p) < 6000) return;
+      if (this.fuelAsked && now - this.fuelAsked < (this.fuelFailed ? 60000 : 10000)) return;
+      this.fuelAsked = now;
+      this.fuelBusy = true;
+      var at = p.slice();
+      this._hass.callWS({ type: "call_service", domain: "nives", service: "car_fuel", return_response: true,
+        service_data: { latitude: at[1], longitude: at[0], radius_km: 10 } })
+        .then((res) => {
+          var r = (res && res.response) || {};
+          // A refusal is not an empty country: the flux unreachable is a
+          // failure, believed a minute, asked again — not a silence kept
+          // until the car has driven six kilometres.
+          if (!r.ok) { this.fuelFailed = true; return; }
+          this.fluxFuel = (r.stations || []).map((s) => ({
+            id: "flux" + (s.id || s.lon.toFixed(5) + "," + s.lat.toFixed(5)),
+            kind: "fuel", p: [s.lon, s.lat], label: s.brand || "", brand: s.brand || "",
+            address: s.address || "", city: s.city || "", prices: s.prices || {}
+          }));
+          this.fuelCenter = at;
+          this.fuelFailed = false;
+          this.rebuildPois();
+        })
+        .catch(() => { this.fuelFailed = true; })
+        .then(() => { this.fuelBusy = false; });
     },
     // What the map shows: every place in view; cameras and lights only on the
     // car's way (ahead, on its road or its route), not the streets around.
