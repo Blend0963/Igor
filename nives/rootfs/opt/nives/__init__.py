@@ -1189,6 +1189,8 @@ CAR_NEARBY_SCHEMA = vol.Schema(
     {
         vol.Required("kind"): vol.All(cv.string, vol.Length(max=60)),
         vol.Optional("count", default=3): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
+        vol.Optional("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
+        vol.Optional("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
     }
 )
 CAR_STOP_SCHEMA = vol.Schema(
@@ -1375,6 +1377,12 @@ def _async_register_car(hass: HomeAssistant) -> None:
         if not kind:
             return {"ok": False, "error": "je ne sais pas chercher ça", "kinds": sorted(KINDS)}
         here = _car_position(hass, tracker)
+        # The map's own word wins when it comes: the card follows the tracker
+        # it was given (the phone, a fallback) and knows where the car is
+        # before the configured one says anything — a search refused for a
+        # sleeping tracker was a search refused in the middle of the road.
+        if call.data.get("latitude") is not None and call.data.get("longitude") is not None:
+            here = [float(call.data["longitude"]), float(call.data["latitude"])]
         if not here:
             return {"ok": False, "error": "position de la voiture inconnue"}
         dest = parse_destination(hass.states.get(dest_entity).state)

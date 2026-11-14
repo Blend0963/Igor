@@ -7595,11 +7595,21 @@
       list.innerHTML = "";
       var note = document.createElement("div"); note.className = "note"; note.textContent = "Recherche des stations…"; list.appendChild(note);
       var here = this.pos || (this.fix && this.fix.point);
+      // The map still waking up (the card just appeared) is not a car lost:
+      // the trackers themselves know where it is, and the search goes on
+      // with their word instead of refusing in the middle of the road.
+      if (!here) {
+        var ids = [this.config.entity, this.config.fallback_entity];
+        for (var i = 0; i < ids.length && !here; i++) {
+          var ts = ids[i] && this._hass && this._hass.states[ids[i]], ta = ts && ts.attributes;
+          if (ta && typeof ta.latitude === "number" && typeof ta.longitude === "number") here = [ta.longitude, ta.latitude];
+        }
+      }
       if (!here) { note.textContent = "Position inconnue."; return; }
       var seq = this.fuelSeq = (this.fuelSeq || 0) + 1;
       var found = null, prices = null, fuelErr = "", asked = false;
       try {
-        var r = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_nearby", return_response: true, service_data: { kind: "fuel", count: 8 } });
+        var r = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_nearby", return_response: true, service_data: { kind: "fuel", count: 8, latitude: here[1], longitude: here[0] } });
         asked = true;
         if (r && r.response) { if (r.response.ok) found = r.response.places || []; else fuelErr = r.response.error || ""; }
       } catch (e) { found = null; }

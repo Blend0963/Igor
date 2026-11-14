@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.43 — The search knows where the car is
+
+- The stations' panel sends the card's own position with its ask: the search no longer depends on the tracker configured in the integration (« La position de la voiture »), which slept while the phone was driving — « position de la voiture inconnue » in the middle of a road is gone.
+- A card whose map is still waking falls back on the trackers themselves (main, then fallback) instead of refusing with « Position inconnue ».
+
 ## 0.38.42 — The server's words kept
 
 - When the stations' server answers and finds nothing, its own reason now stands in the panel (« recherche impossible pour l'instant (service OpenStreetMap occupé…) · carte v… »): the generic « pas d'internet ? » is kept only for a call that never came back — the server's words were swallowed before.
