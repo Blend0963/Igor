@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.38.35 — The stations' button, the prices of the pump
+
+- A new button beside the destination's (the pump): a touch, and the panel lists the stations around, each with its gazole price at the right and the minutes it costs to reach — the detour it adds when a trip is under way, the ride otherwise. A touch on a row sends the car there or puts it on the way as a stop.
+- The tap on a station of the map now says its prices: the gazole large, the other fuels in a whisper under it (SP98, SP95, E10, E85, GPLc). The prices come from the Ministry's own instant flux (data.economie.gouv.fr, free, without a key, ten minutes old); asked once and kept ten minutes; a station the flux does not know says « prix indisponibles ».
+- The map's places now come from TomTom first (the same network as the roads, the brands, the stations that are truly there) when a key is set, OpenStreetMap's Overpass staying behind as the spare — the squares are read four at a time instead of two, and a square without places is remembered as empty, so a quiet country road does not ask again. The same squares kept 30 days, the same spare when the key is missing or TomTom stays silent.
+- Two stations told twice (TomTom's square reaching into its neighbour's, an old cache returning) are one on the map: the same kind within 40 m is the same place.
+
 ## 0.38.34 — The dot that climbs the jam
 
 - In the jam bar, the car's dot now lives on the jam's own scale: it enters at the foot of the bar when the jam begins and climbs to its top as the jam ends. It used to be nailed to the bottom of the bar for the whole jam — a gauge whose needle never moved.

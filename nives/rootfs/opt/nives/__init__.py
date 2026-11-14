@@ -86,6 +86,8 @@ from .const import (
     SERVICE_CAR_CAMERAS,
     SERVICE_CAR_LIMIT,
     SERVICE_CAR_STATUS,
+    SERVICE_CAR_POIS,
+    SERVICE_CAR_FUEL,
     CONF_CAR_USERS,
 )
 
@@ -1186,7 +1188,7 @@ CAR_GO_SCHEMA = vol.Schema(
 CAR_NEARBY_SCHEMA = vol.Schema(
     {
         vol.Required("kind"): vol.All(cv.string, vol.Length(max=60)),
-        vol.Optional("count", default=3): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
+        vol.Optional("count", default=3): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
     }
 )
 CAR_STOP_SCHEMA = vol.Schema(
@@ -1220,6 +1222,21 @@ CAR_LIMIT_SCHEMA = vol.Schema(
         vol.Optional("heading"): vol.All(vol.Coerce(float), vol.Range(min=0, max=360)),
     }
 )
+CAR_POIS_SCHEMA = vol.Schema(
+    {
+        vol.Required("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
+        vol.Required("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
+        vol.Optional("radius_km", default=3): vol.All(vol.Coerce(float), vol.Range(min=0.5, max=20)),
+        vol.Optional("kinds", default="fuel,rest"): vol.All(cv.string, vol.Length(max=120)),
+    }
+)
+CAR_FUEL_SCHEMA = vol.Schema(
+    {
+        vol.Required("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
+        vol.Required("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
+        vol.Optional("radius_km", default=3): vol.All(vol.Coerce(float), vol.Range(min=0.5, max=20)),
+    }
+)
 CAR_RADARS_KEY = "nives_car_radars"
 CAR_LAST_KEY = "nives_car_last"
 CAR_GO_KEY = "nives_car_go"
@@ -1236,7 +1253,7 @@ def _async_register_car(hass: HomeAssistant) -> None:
     from homeassistant.util import dt as dt_util
 
     from .car import (
-        HOME_WORDS, KINDS, RADARS_URL, SMALL_WORDS, Car, fold, format_destination, kind_of, parse_destination, parse_radars, pick_place, radars_near,
+        HOME_WORDS, KINDS, RADARS_URL, SMALL_WORDS, TOMTOM_KINDS, Car, fold, format_destination, kind_of, parse_destination, parse_radars, pick_place, radars_near,
     )
     from .car import haversine_m as car_haversine
 
@@ -1559,6 +1576,50 @@ def _async_register_car(hass: HomeAssistant) -> None:
         near = radars_near(items, call.data["latitude"], call.data["longitude"], call.data["radius_km"] * 1000)
         return {"ok": True, "source": "securite-routiere.gouv.fr", "known": len(items), "cameras": near[:400]}
 
+    async def _pois(call: ServiceCall) -> ServiceResponse:
+        """The places of a few kinds around a point, TomTom's (the map's own
+        source, the same network as the roads drawn): one ask a kind, nothing
+        when the key is missing — the card then reads OpenStreetMap itself."""
+        key = _traffic_key(hass)
+        if not key:
+            return {"ok": False, "error": "pas de clé TomTom"}
+        lat, lon = call.data["latitude"], call.data["longitude"]
+        radius = int(call.data["radius_km"] * 1000)
+        asked = [k.strip() for k in str(call.data.get("kinds") or "").split(",") if k.strip()]
+        kinds = [k for k in asked if k in TOMTOM_KINDS][:6]
+        out = []
+        for k in kinds:
+            try:
+                found = await car.tomtom_near(k, [lon, lat], key, radius=radius, limit=30)
+            except Exception:  # noqa: BLE001 - busy, refused: this kind stays silent
+                found = []
+            for p in found:
+                out.append({"id": "tt" + str(p.get("id") or f"{p['lat']:.5f},{p['lon']:.5f}"), "kind": k,
+                            "lat": p["lat"], "lon": p["lon"], "label": str(p.get("brand") or p.get("name") or "")[:18]})
+        return {"ok": True, "source": "tomtom", "kinds": kinds, "pois": out}
+
+    fuel_cache: dict[tuple, tuple[float, list]] = {}
+
+    async def _fuel(call: ServiceCall) -> ServiceResponse:
+        """The fuel prices of the stations around a point, from the Ministry's
+        instant flux (data.economie.gouv.fr, free, no key): kept ten minutes,
+        the flux itself is only ten minutes old."""
+        lat, lon = call.data["latitude"], call.data["longitude"]
+        radius = int(call.data["radius_km"] * 1000)
+        where = (round(lat, 3), round(lon, 3), radius)
+        now = time.monotonic()
+        hit = fuel_cache.get(where)
+        if hit and now - hit[0] < 600:
+            return {"ok": True, "source": "data.economie.gouv.fr", "stations": hit[1]}
+        try:
+            stations = await car.fuel(lat, lon, radius)
+        except Exception:  # noqa: BLE001 - portal busy, moved, unreachable
+            return {"ok": False, "error": "prix des carburants indisponibles"}
+        if len(fuel_cache) > 200:
+            fuel_cache.clear()
+        fuel_cache[where] = (now, stations)
+        return {"ok": True, "source": "data.economie.gouv.fr", "stations": stations}
+
     for name, handler, schema in (
         (SERVICE_CAR_SEARCH, _search, CAR_SEARCH_SCHEMA),
         (SERVICE_CAR_CAMERAS, _cameras, CAR_CAMERAS_SCHEMA),
@@ -1567,6 +1628,8 @@ def _async_register_car(hass: HomeAssistant) -> None:
         (SERVICE_CAR_STATUS, _status, vol.Schema({})),
         (SERVICE_CAR_NEARBY, _nearby, CAR_NEARBY_SCHEMA),
         (SERVICE_CAR_STOP, _stop, CAR_STOP_SCHEMA),
+        (SERVICE_CAR_POIS, _pois, CAR_POIS_SCHEMA),
+        (SERVICE_CAR_FUEL, _fuel, CAR_FUEL_SCHEMA),
     ):
         _async_register_car_service(hass, name, handler, schema)
 

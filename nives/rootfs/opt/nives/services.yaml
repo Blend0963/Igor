@@ -211,7 +211,7 @@ car_nearby:
       selector:
         number:
           min: 1
-          max: 5
+          max: 10
 car_stop:
   fields:
     choice:
@@ -301,4 +301,54 @@ car_limit:
         number:
           min: 0
           max: 360
+car_pois:
+  fields:
+    latitude:
+      required: true
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: any
+    longitude:
+      required: true
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any
+    radius_km:
+      default: 3
+      selector:
+        number:
+          min: 0.5
+          max: 20
+          step: any
+    kinds:
+      default: fuel,rest
+      selector:
+        text:
+car_fuel:
+  fields:
+    latitude:
+      required: true
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: any
+    longitude:
+      required: true
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any
+    radius_km:
+      default: 3
+      selector:
+        number:
+          min: 0.5
+          max: 20
+          step: any
 car_status:

@@ -44,6 +44,9 @@ RADAR_KINDS = {
 SETTLEMENTS = {"city", "town", "village", "municipality", "hamlet", "suburb", "administrative"}
 TOMTOM_ALONG = "https://api.tomtom.com/search/2/searchAlongRoute/{q}.json"
 TOMTOM_NEARBY = "https://api.tomtom.com/search/2/categorySearch/{q}.json"
+# France's fuel prices, the Ministry's instant flux (data.economie.gouv.fr):
+# free, no key, a row a station, its fuels in columns, read every ten minutes.
+FUEL_URL = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records"
 # With the TomTom key: TomTom's places (brands, opening hours, the detour it
 # works out itself), the words it searches and its category ids where known.
 TOMTOM_KINDS: dict[str, tuple[str, str]] = {
@@ -392,9 +395,51 @@ def parse_tomtom_search(body: Any) -> list[dict]:
         street = " ".join(x for x in (str(addr.get("streetNumber") or ""), str(addr.get("streetName") or "")) if x)
         name = str(poi.get("name") or street or addr.get("municipality") or full.split(",")[0])
         kind = str(r.get("resultType") or r.get("type") or "").upper()
-        out.append({"lat": lat, "lon": lon, "name": name[:60], "address": full[:160],
+        out.append({"id": str(r.get("id") or ""), "brand": str(poi.get("brand") or "")[:40],
+                    "lat": lat, "lon": lon, "name": name[:60], "address": full[:160],
                     "type": kinds.get(kind, "geo" if kind in towns else "other"),
                     "city": str(addr.get("municipality") or "")[:60]})
+    return out
+
+
+def parse_fuel(body: Any) -> list[dict]:
+    """The Ministry's fuel prices (data.economie.gouv.fr): one row a station,
+    its fuels in columns (gazole_prix, sp98_prix…) since the v2 rework — read
+    with care, the portal's columns have moved before, and a station without
+    a reading is still a station (it simply says nothing)."""
+    out = []
+    for r in (body or {}).get("results") or []:
+        f = r.get("fields") if isinstance(r.get("fields"), dict) else r
+        if not isinstance(f, dict):
+            continue
+        lat, lon = f.get("latitude"), f.get("longitude")
+        if lat is None or lon is None:
+            g = f.get("geom") or r.get("geometry") or {}
+            if isinstance(g, dict):
+                lat, lon = g.get("lat"), g.get("lon")
+                if lat is None and isinstance(g.get("coordinates"), (list, tuple)) and len(g["coordinates"]) == 2:
+                    lon, lat = g["coordinates"]
+        try:
+            lat, lon = float(lat), float(lon)
+        except (TypeError, ValueError):
+            continue
+        prices, maj = {}, {}
+        for k in ("gazole", "sp95", "sp98", "e10", "e85", "gplc"):
+            v, m = f.get(k + "_prix"), f.get(k + "_maj")
+            if v is None and isinstance(f.get("prix"), list):
+                for p in f["prix"]:
+                    if isinstance(p, dict) and fold(p.get("@nom") or p.get("nom") or "") == k:
+                        v, m = p.get("@valeur") or p.get("valeur"), p.get("@maj") or p.get("maj")
+            try:
+                prices[k] = round(float(v), 3)
+            except (TypeError, ValueError):
+                continue
+            if m:
+                maj[k] = str(m)[:16]
+        out.append({"lat": round(lat, 6), "lon": round(lon, 6),
+                    "address": str(f.get("adresse") or f.get("address") or "")[:80],
+                    "city": str(f.get("ville") or f.get("city") or "")[:60],
+                    "prices": prices, "maj": maj})
     return out
 
 
@@ -520,12 +565,26 @@ class Car:
         body = {"route": {"points": [{"lat": p[1], "lon": p[0]} for p in line]}}
         return parse_tomtom(await self.fetch("POST", TOMTOM_ALONG.format(q=q.replace(" ", "%20")), params, None, body))
 
-    async def tomtom_near(self, kind: str, car: Sequence[float], key: str) -> list[dict]:
+    async def tomtom_near(self, kind: str, car: Sequence[float], key: str, radius: int = 15000, limit: int = 10) -> list[dict]:
         q, cat = TOMTOM_KINDS[kind]
-        params = {"key": key, "lat": f"{car[1]:.6f}", "lon": f"{car[0]:.6f}", "radius": "15000", "limit": "10", "language": "fr-FR"}
+        params = {"key": key, "lat": f"{car[1]:.6f}", "lon": f"{car[0]:.6f}", "radius": str(radius), "limit": str(limit), "language": "fr-FR"}
         if cat:
             params["categorySet"] = cat
         return parse_tomtom(await self.fetch("GET", TOMTOM_NEARBY.format(q=q.replace(" ", "%20")), params, None))
+
+    async def fuel(self, lat: float, lon: float, radius_m: int = 3000) -> list[dict]:
+        """The fuel prices of the stations around a point, from the Ministry's
+        instant flux. The portal's distance filter is asked twice, its spelling
+        having moved before; a miss raises, the caller decides."""
+        point = f"point({lon:.6f} {lat:.6f})"
+        last: Exception | None = None
+        for where in (f"within_distance(geom, GEOMETRY('{point}'), {int(radius_m)})",
+                      f'within_distance(geom, GEOMETRY("{point}"), {int(radius_m)})'):
+            try:
+                return parse_fuel(await self.fetch("GET", FUEL_URL, {"where": where, "limit": "30"}, None))
+            except Exception as err:  # noqa: BLE001 - the other spelling, then the caller
+                last = err
+        raise last or RuntimeError("fuel prices unreachable")
 
     async def overpass(self, query: str) -> Any:
         last: Exception | None = None
@@ -633,7 +692,7 @@ class Car:
                     cands.append({**p, "along_m": along, "off_m": off, "area": area, "motorway": motorway})
                 cands.sort(key=lambda c: (c["along_m"] + 4 * c["off_m"]))
                 out = []
-                for c in cands[: count * 2]:
+                for c in cands[: count + 3]:
                     via = await self.route([car, [c["lon"], c["lat"]], *target], steps=False)
                     detour = max(0.0, ((via or {}).get("duration", 0) - base.get("duration", 0)) / 60) if via else None
                     out.append(self._place(c, detour, base))
@@ -656,7 +715,7 @@ class Car:
                 break
         places.sort(key=lambda p: haversine_m(car, (p["lon"], p["lat"])))
         out = []
-        for p in places[: count * 2]:
+        for p in places[: count + 3]:
             r = await self.route([car, [p["lon"], p["lat"]]], steps=False)
             area = in_area(p, areas)
             out.append({
