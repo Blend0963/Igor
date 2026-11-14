@@ -5204,8 +5204,9 @@
   //   snap: 20                              # metres within which the arrow sits on the nearest road; 0: off
   //   theme: sombre                         # sombre, clair, or auto (light by day, dark at night)
   //   hide_attribution: false
-  //   style: <a MapLibre style URL>         # another base map (used only when the TomTom key is absent: the base map is
-  //                                         # TomTom Orbis conduite, its buildings standing up on ask)
+  //   style: <a MapLibre style URL>         # another base map (the layers' button's choice wins when it is a TomTom one)
+  //                                         # the layers' button also chooses the base map: Igor (CARTO, the theme's)
+  //                                         # or TomTom Orbis conduite (a TomTom key needed), its buildings standing up on ask
   //   destination: input_text.car_destination  # « lat,lon;Nom »: guidance there (set it from a phone, or the card's flag)
   //   favorites:                            # the flag's quick places
   //     - { name: Maison, zone: zone.home }
@@ -5215,8 +5216,8 @@
   //   auto_zoom: true                       # farther out the faster, closer before a turn (false: the zoom stays)
   //   cameras_official: true                # in France, the Ministry of the Interior's list of cameras too (false: OpenStreetMap only)
   //   cameras: zone                         # zone (danger zones, as the law asks in France), radar (each camera, its distance), off
-  //   pois: [signals]                       # the lights shown on the map at first (the layers button changes it on this
-  //                                         # screen); the places come with the Orbis base map itself
+  //   pois: [signals, fuel, rest]           # shown on the map at first (the layers button changes it on this screen):
+  //                                         #   signals, fuel, charging, parking, rest, toilets, hospital
   //   street_names: true                    # the road where the car is, at the bottom (false: off)
   //   fps: 20                               # the map drawn that many times a second while moving (lower: lighter)
   //   buildings: true                       # false: the map without its buildings (lighter on a head unit)
@@ -5642,13 +5643,18 @@
   window.__igorGpsNav = { tomtom: gpsTomTomStep, step: gpsStep, metres: gpsMetres, parse: gpsParseDest, format: gpsFormatDest, limit: gpsWayLimit, directions: gpsDirections, refs: gpsRefs };
   // ----- what is around the car: OpenStreetMap's points (Overpass) -----
   // Each kind: its colour on the map and in the layers' list, its name there.
-  // Only what the base map does not already show: the lights and the cameras.
-  // The places (stations, parkings, toilets…) are the Orbis base map's own.
+  // Each kind: its colour on the map and in the layers' list, its name there.
   var GPS_POI = {
     signals: { color: "#e5323b", name: "Feux tricolores" },
-    camera: { color: "#e5323b", name: "Radars" }
+    camera: { color: "#e5323b", name: "Radars" },
+    fuel: { color: "#d9a441", name: "Stations-service" },
+    charging: { color: "#5cc28f", name: "Bornes de recharge" },
+    parking: { color: "#3b8cff", name: "Parkings" },
+    rest: { color: "#5cc28f", name: "Aires de repos" },
+    toilets: { color: "#9aa0a8", name: "Toilettes" },
+    hospital: { color: "#e9e4da", name: "Hôpitaux" }
   };
-  var GPS_POI_DEFAULT = ["signals"];
+  var GPS_POI_DEFAULT = ["signals", "fuel", "rest"];
   // A road number → its shield's colour (French signs: A and N red, D yellow, E green, M blue).
   function gpsShield(ref) {
     var c = String(ref || "").trim().charAt(0).toUpperCase();
@@ -5696,10 +5702,12 @@
     (elements || []).forEach(function (e) {
       var t = e.tags || {}, lat = e.lat != null ? e.lat : e.center && e.center.lat, lon = e.lon != null ? e.lon : e.center && e.center.lon;
       if (typeof lat !== "number" || typeof lon !== "number") return;
-      var kind = t.highway === "traffic_signals" ? "signals" : t.highway === "speed_camera" ? "camera" : null;
+      var kind = t.highway === "traffic_signals" ? "signals" : t.highway === "speed_camera" ? "camera"
+        : t.amenity === "fuel" ? "fuel" : t.amenity === "charging_station" ? "charging" : t.amenity === "parking" ? "parking"
+        : t.highway === "rest_area" || t.highway === "services" ? "rest" : t.amenity === "toilets" ? "toilets" : t.amenity === "hospital" ? "hospital" : null;
       if (!kind) return;
       var limit = kind === "camera" ? gpsLimitValue(t.maxspeed) : null;
-      var label = kind === "camera" ? (limit ? String(limit) : "") : "";
+      var label = kind === "camera" ? (limit ? String(limit) : "") : kind === "fuel" ? String(t.brand || t.name || "").slice(0, 18) : "";
       // Only what is used is kept (thousands of lights over a drive).
       out.push(kind === "camera" ? { id: e.type + e.id, kind: kind, p: [lon, lat], tags: { direction: t.direction, "camera:direction": t["camera:direction"] }, limit: limit, label: label }
         : { id: e.type + e.id, kind: kind, p: [lon, lat], label: label });
@@ -5732,6 +5740,12 @@
     var parts = [];
     if (kinds.indexOf("signals") >= 0) parts.push("node" + at(Math.min(radius, 2500)) + "[highway=traffic_signals];");
     if (kinds.indexOf("camera") >= 0) parts.push("node" + at(Math.max(radius, 5000)) + "[highway=speed_camera];");
+    if (kinds.indexOf("fuel") >= 0) parts.push("nwr" + at(radius * 2) + "[amenity=fuel];");
+    if (kinds.indexOf("charging") >= 0) parts.push("nwr" + at(radius * 2) + "[amenity=charging_station];");
+    if (kinds.indexOf("parking") >= 0) parts.push("nwr" + at(Math.min(radius, 1500)) + '[amenity=parking][access!~"^(private|no|customers)$"];');
+    if (kinds.indexOf("rest") >= 0) parts.push("nwr" + at(radius * 3) + '[highway~"^(rest_area|services)$"];');
+    if (kinds.indexOf("toilets") >= 0) parts.push("nwr" + at(radius) + "[amenity=toilets];");
+    if (kinds.indexOf("hospital") >= 0) parts.push("nwr" + at(radius * 3) + "[amenity=hospital];");
     return parts.length ? "[out:json][timeout:15];(" + parts.join("") + ");out center tags 600;" : "";
   }
   // Overpass, the free service behind all of it, is often busy: the next
@@ -5766,6 +5780,12 @@
     var parts = [], has = function (k) { return kinds.indexOf(k) >= 0; };
     if (has("signals")) parts.push("node[highway=traffic_signals];");
     if (has("camera")) parts.push("node[highway=speed_camera];");
+    if (has("fuel")) parts.push("nwr[amenity=fuel];");
+    if (has("charging")) parts.push("nwr[amenity=charging_station];");
+    if (has("parking")) parts.push('nwr[amenity=parking][access!~"^(private|no|customers)$"];');
+    if (has("rest")) parts.push('nwr[highway~"^(rest_area|services)$"];');
+    if (has("toilets")) parts.push("nwr[amenity=toilets];");
+    if (has("hospital")) parts.push("nwr[amenity=hospital];");
     if (!parts.length) return "";
     // Many cameras are only mapped as an « enforcement » relation (speed,
     // average speed, red light) whose device is a plain point: read too.
@@ -5875,6 +5895,30 @@
       g.beginPath(); g.moveTo(22, 28); g.lineTo(22, 36); g.moveTo(17.5, 36); g.lineTo(26.5, 36); g.stroke();
       g.fillStyle = "#e5323b";
       g.beginPath(); g.moveTo(24, 11); g.lineTo(27, 11); g.lineTo(25, 14.5); g.lineTo(27.5, 14.5); g.lineTo(22.5, 20); g.lineTo(24.2, 16); g.lineTo(21.8, 16); g.closePath(); g.fill();
+    });
+    draw("fuel", function (g) {
+      disc(g, "#d9a441");
+      g.fillStyle = "#07080a"; g.fillRect(14, 13, 13, 22); g.fillStyle = "#d9a441"; g.fillRect(17, 16, 7, 6);
+      g.strokeStyle = "#07080a"; g.lineWidth = 3; g.beginPath(); g.moveTo(27, 18); g.lineTo(33, 22); g.lineTo(33, 31); g.stroke();
+    });
+    draw("charging", function (g) {
+      disc(g, "#5cc28f");
+      g.fillStyle = "#07080a"; g.beginPath(); g.moveTo(27, 9); g.lineTo(15, 27); g.lineTo(23, 27); g.lineTo(20, 39); g.lineTo(33, 20); g.lineTo(25, 20); g.closePath(); g.fill();
+    });
+    draw("parking", function (g) {
+      g.fillStyle = "#2f6fd6"; g.strokeStyle = "#07080a"; g.lineWidth = 4;
+      g.beginPath(); g.roundRect ? g.roundRect(5, 5, 38, 38, 7) : g.rect(5, 5, 38, 38); g.fill(); g.stroke();
+      letter(g, "P", "#fff", 28);
+    });
+    draw("rest", function (g) {
+      disc(g, "#2f8a3e");
+      g.fillStyle = "#fff"; g.beginPath(); g.moveTo(24, 10); g.lineTo(34, 26); g.lineTo(14, 26); g.closePath(); g.fill(); g.fillRect(22, 26, 4, 10);
+    });
+    draw("toilets", function (g) { disc(g, "#5a5f66"); letter(g, "WC", "#fff", 17); });
+    draw("hospital", function (g) {
+      g.fillStyle = "#2f6fd6"; g.strokeStyle = "#07080a"; g.lineWidth = 4;
+      g.beginPath(); g.roundRect ? g.roundRect(5, 5, 38, 38, 7) : g.rect(5, 5, 38, 38); g.fill(); g.stroke();
+      letter(g, "H", "#fff", 28);
     });
     return out;
   }
@@ -6172,9 +6216,7 @@
     }
     styleUrl() {
       var bm = this.layers && this.layers.basemap;
-      // The Orbis base map is the only one; the theme's CARTO one stays for a
-      // screen set with traffic off (no TomTom key at all).
-      if (bm && GPS_ORBIS[bm] && this.config.traffic !== false) return window.location.origin + "/api/nives/basemap/style?map=" + GPS_ORBIS[bm];
+      if (bm && GPS_ORBIS[bm]) return window.location.origin + "/api/nives/basemap/style?map=" + GPS_ORBIS[bm];
       if (this.config.style) return this.config.style;
       if (this.config.theme === "clair") return GPS_DAY;
       if (this.config.theme === "auto") {
@@ -7706,12 +7748,12 @@
       try { saved = JSON.parse(window.localStorage.getItem("igor-gps-layers") || "null"); } catch (e) { saved = null; }
       var pois = Array.isArray(c.pois) ? c.pois : GPS_POI_DEFAULT;
       var cam = ["radar", "zone", "off"].indexOf(c.cameras) >= 0 ? c.cameras : c.cameras === false ? "off" : "zone";
-      this.layers = { basemap: "dark", bld3d: false, cameras: cam, trafficMap: c.traffic_map === true, incidents: c.traffic !== false };
+      this.layers = { basemap: "igor", bld3d: false, cameras: cam, trafficMap: c.traffic_map === true, incidents: c.traffic !== false };
       Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") this.layers[k] = pois.indexOf(k) >= 0; });
       var had = !!(saved && typeof saved === "object");
       if (had) Object.keys(this.layers).forEach((k) => { if (saved[k] !== undefined) this.layers[k] = saved[k]; });
-      // A base map gone since (the old Igor/CARTO one, "mono", "light"): Orbis is the only one left.
-      if (!GPS_ORBIS[this.layers.basemap]) this.layers.basemap = "dark";
+      // A base map removed since (an old "mono", "light", "satellite") falls back on Route.
+      if (this.layers.basemap && this.layers.basemap !== "igor" && !GPS_ORBIS[this.layers.basemap]) this.layers.basemap = "dark";
       if (c.traffic === false) { this.layers.trafficMap = false; this.layers.incidents = false; }
       this.applyLayers();
       // The browser forgot its own (a head unit's web view clears itself at
@@ -7727,7 +7769,7 @@
               var kept = JSON.parse(v);
               if (!kept || typeof kept !== "object") return;
               Object.keys(card.layers).forEach((k) => { if (kept[k] !== undefined) card.layers[k] = kept[k]; });
-              if (!GPS_ORBIS[card.layers.basemap]) card.layers.basemap = "dark";
+              if (card.layers.basemap && card.layers.basemap !== "igor" && !GPS_ORBIS[card.layers.basemap]) card.layers.basemap = "dark";
               card.applyLayers();
               card.applyBuildings3D();
               if (!card.$("lpanel").hidden) card.openLayers();
@@ -7757,6 +7799,23 @@
       $("lpanel").hidden = false;
       list.innerHTML = "";
       var head = function (txt) { var h = document.createElement("div"); h.className = "note"; h.textContent = txt; list.appendChild(h); };
+      head("Fond de carte");
+      var bmseg = document.createElement("div"); bmseg.className = "seg";
+      [["igor", "Igor"], ["dark", "Route"]].forEach((o) => {
+        var b = document.createElement("button"); b.type = "button"; b.textContent = o[1];
+        b.classList.toggle("on", (L.basemap || "igor") === o[0]);
+        b.addEventListener("click", () => {
+          if (o[0] !== "igor" && this.config.traffic === false) { this.toast("La carte TomTom est désactivée (traffic: false)", 3000); return; }
+          if (o[0] !== "igor" && this.traffic && !this.traffic.enabled && !this.traffic.denied) { this.toast("Ajouter une clé TomTom dans les options d'Igor", 3000); return; }
+          L.basemap = o[0]; this.saveLayers(); this.applyBasemap();
+        });
+        bmseg.appendChild(b);
+      });
+      list.appendChild(bmseg);
+      var bmnote = document.createElement("div"); bmnote.className = "note";
+      bmnote.textContent = L.basemap && L.basemap !== "igor" ? "Fond TomTom Orbis, servi par Home Assistant (la clé reste sur le serveur)"
+        : "Le fond du thème Igor (CARTO). Les fonds TomTom demandent une clé TomTom dans les options d'Igor.";
+      list.appendChild(bmnote);
       head("Bâtiments en 3D");
       var d3seg = document.createElement("div"); d3seg.className = "seg";
       [[false, "Non"], [true, "Oui"]].forEach((o) => {
@@ -7767,7 +7826,7 @@
       });
       list.appendChild(d3seg);
       var d3note = document.createElement("div"); d3note.className = "note";
-      d3note.textContent = "Les immeubles se dressent sur la carte (TomTom Orbis). Plus lourd à dessiner sur un autoradio.";
+      d3note.textContent = "Sur le fond Route (TomTom Orbis) : les immeubles se dressent. Plus lourd à dessiner sur un autoradio.";
       list.appendChild(d3note);
       head("Contrôles de vitesse");
       var seg = document.createElement("div"); seg.className = "seg";
@@ -7793,9 +7852,6 @@
       head("Sur la carte");
       if (this.poiDown) { var down = document.createElement("div"); down.className = "note"; down.textContent = "OpenStreetMap (Overpass) ne répond pas : les lieux manquants reviendront d'eux-mêmes."; list.appendChild(down); }
       Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") toggle(k, GPS_POI[k].name, GPS_POI[k].color); });
-      var pnote = document.createElement("div"); pnote.className = "note";
-      pnote.textContent = "Les stations, parkings et autres lieux sont ceux de la carte (TomTom Orbis).";
-      list.appendChild(pnote);
       if (this.config.traffic !== false) {
         head("Circulation en direct");
         var why = this.traffic && this.traffic.denied ? "Ce compte n'y a pas accès : le choisir dans les options d'Igor (« The car's screen »)"
@@ -7804,6 +7860,15 @@
         toggle("incidents", "Routes fermées, travaux, accidents", "#e5323b", why);
       }
     },
+    // A base map chosen in the layers' panel: the style is swapped (the
+    // style.load handler puts the route, the trail and the rest back on it).
+    applyBasemap() {
+      if (!this.map || !this.styleUrl) return;
+      var url = this.styleUrl();
+      if (this.styleNow === url) return;
+      this.styleNow = url;
+      this.map.setStyle(url, { diff: false });
+    },
     // The buildings standing up (fill-extrusion) on the Orbis base map: their
     // heights are in the tiles already fetched, so no extra request, only
     // more to draw. Off by default, a head unit has better to do.
@@ -7811,7 +7876,7 @@
       var map = this.map;
       if (!map || !map.getStyle) return;
       if (map.getLayer("igor-3d")) map.removeLayer("igor-3d");
-      if (!this.layers.bld3d) return;
+      if (!this.layers.bld3d || !(this.layers.basemap && GPS_ORBIS[this.layers.basemap])) return;
       var src = null, firstSym = null;
       (map.getStyle().layers || []).forEach((l) => {
         if (!firstSym && l.type === "symbol" && l.layout && l.layout["text-field"]) firstSym = l.id;
