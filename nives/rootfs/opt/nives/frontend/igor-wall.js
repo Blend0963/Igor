@@ -5250,7 +5250,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.56";
+  var GPS_CARD_VERSION = "0.38.57";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -5735,7 +5735,9 @@
   function fuelIcon(k, name) {
     var im = document.createElement("img");
     im.className = "fico";
-    im.src = "/nives_static/logos/fuel-" + k + ".svg";
+    // The release in the query: a redrawn badge is not left standing in the
+    // browser's cache under the same address (the kiosk browsers hold on).
+    im.src = "/nives_static/logos/fuel-" + k + ".svg?v=" + GPS_CARD_VERSION;
     im.alt = name || k; im.title = name || k; im.draggable = false;
     im.addEventListener("error", function () {
       var s = document.createElement("small"); s.textContent = name || k;
@@ -6110,6 +6112,10 @@
         // own hand.
         ".fico { height: 13px; width: auto; flex: none; opacity: 0.95; border-radius: 3px; }" +
         ".mappick .mp-prices .row .fu { display: inline-flex; align-items: center; gap: 5px; }" +
+        // The dry tap's word: the small red the road's warnings wear, quiet
+        // in the whisper row, plain in the big line when nothing else flows.
+        ".dry { color: #d9704a; font-family: " + MONO + "; font-size: 12px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }" +
+        ".mappick .mp-prices .big .dry { font-size: 16px; }" +
         // The brands' marks: a small light chip behind each, so a dark logo
         // keeps its face on the card's night (the marks come with the add-on).
         ".mappick .mp-head .mp-logo, .fpanel .row2 button .plogo { height: 20px; max-width: 68px; object-fit: contain; flex: none; background: #f4f1ea; border-radius: 4px; padding: 3px 5px; box-sizing: content-box; }" +
@@ -7577,24 +7583,46 @@
       var say = function (txt) { var n = document.createElement("div"); n.className = "row"; n.textContent = txt; box.appendChild(n); };
       var put = function (s) {
         box.innerHTML = "";
-        var pr = (s && s.prices) || {};
+        var pr = (s && s.prices) || {}, ru = (s && s.rupture) || {};
         var order = ["gazole", "sp98", "sp95", "e10", "e85", "gplc"], names = { gazole: "Gazole", sp98: "Sans plomb 98", sp95: "Sans plomb 95", e10: "E10", e85: "E85 (superéthanol)", gplc: "GPLc" };
+        var dry = order.filter(function (k) { return pr[k] == null && ru[k]; });
         var main = pr.gazole != null ? "gazole" : order.filter(function (k) { return pr[k] != null; })[0];
-        if (!main) { say("prix indisponibles"); return; }
-        var big = document.createElement("div"); big.className = "big";
-        big.appendChild(fuelIcon(main, names[main]));
-        var v = document.createElement("span"); v.textContent = pr[main].toFixed(3).replace('.', ',');
-        big.appendChild(v);
-        var lb = document.createElement("small"); lb.textContent = "€/L";
-        big.appendChild(lb); box.appendChild(big);
+        // The dry taps say themselves: the flux knows a rupture (temporaire
+        // or definitive), the pump's own words stand where the price would
+        // have — "à sec", not a shrug of "indisponible".
         var row = document.createElement("div"); row.className = "row";
         order.forEach(function (k) {
-          if (k === main || pr[k] == null) return;
-          var fu = document.createElement("span"); fu.className = "fu";
-          fu.appendChild(fuelIcon(k, names[k]));
+          if (pr[k] == null) {
+            if (!ru[k]) return;
+            var fu = document.createElement("span"); fu.className = "fu";
+            fu.appendChild(fuelIcon(k, names[k]));
+            var dr = document.createElement("span"); dr.className = "dry";
+            dr.textContent = ru[k] === "definitive" ? "à sec (définitif)" : "à sec";
+            fu.appendChild(dr); row.appendChild(fu);
+            return;
+          }
+          if (k === main) return;
+          var fu2 = document.createElement("span"); fu2.className = "fu";
+          fu2.appendChild(fuelIcon(k, names[k]));
           var b = document.createElement("b"); b.textContent = pr[k].toFixed(3).replace('.', ',');
-          fu.appendChild(b); row.appendChild(fu);
+          fu2.appendChild(b); row.appendChild(fu2);
         });
+        if (!main && dry.length) {
+          var big = document.createElement("div"); big.className = "big";
+          big.appendChild(fuelIcon(dry[0], names[dry[0]]));
+          var v = document.createElement("span"); v.className = "dry";
+          v.textContent = "à sec" + (dry.some(function (k) { return ru[k] === "definitive"; }) ? " (définitif)" : "");
+          big.appendChild(v); box.appendChild(big);
+          if (row.childNodes.length) box.appendChild(row);
+          return;
+        }
+        if (!main) { say("prix indisponibles"); return; }
+        var big2 = document.createElement("div"); big2.className = "big";
+        big2.appendChild(fuelIcon(main, names[main]));
+        var v2 = document.createElement("span"); v2.textContent = pr[main].toFixed(3).replace('.', ',');
+        big2.appendChild(v2);
+        var lb = document.createElement("small"); lb.textContent = "€/L";
+        big2.appendChild(lb); box.appendChild(big2);
         if (row.childNodes.length) box.appendChild(row);
       };
       var at = f && f.geometry && f.geometry.coordinates;
@@ -7728,6 +7756,15 @@
           pc.appendChild(big); pc.appendChild(pu);
           pp.appendChild(pc);
           row.appendChild(pp);
+        } else if (f && f.rupture && f.rupture.gazole) {
+          // A dry tap is said, not shrugged: the badge with the flux's own
+          // word, in the small red the road's warnings wear.
+          var pp2 = document.createElement("span"); pp2.className = "pp";
+          pp2.appendChild(fuelIcon("gazole", "Gazole"));
+          var dr = document.createElement("span"); dr.className = "dry";
+          dr.textContent = f.rupture.gazole === "definitive" ? "à sec (définitif)" : "à sec";
+          pp2.appendChild(dr);
+          row.appendChild(pp2);
         }
         if (this.dest) row.appendChild(this.viaBtn({ lat: lat, lon: lon, name: nm }));
         list.appendChild(row);
@@ -8493,7 +8530,7 @@
           this.fluxFuel = (r.stations || []).map((s) => ({
             id: "flux" + (s.id || s.lon.toFixed(5) + "," + s.lat.toFixed(5)),
             kind: "fuel", p: [s.lon, s.lat], label: s.brand || "", brand: s.brand || "",
-            address: s.address || "", city: s.city || "", prices: s.prices || {}
+            address: s.address || "", city: s.city || "", prices: s.prices || {}, rupture: s.rupture || {}
           }));
           this.fuelCenter = at;
           this.fuelFailed = false;

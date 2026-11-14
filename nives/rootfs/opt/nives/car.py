@@ -432,7 +432,7 @@ def parse_fuel(body: Any) -> list[dict]:
                 lon /= 100000.0
         except (TypeError, ValueError):
             continue
-        prices, maj = {}, {}
+        prices, maj, rupt = {}, {}, {}
         for k in ("gazole", "sp95", "sp98", "e10", "e85", "gplc"):
             v, m = f.get(k + "_prix"), f.get(k + "_maj")
             if v is None and isinstance(f.get("prix"), list):
@@ -442,13 +442,26 @@ def parse_fuel(body: Any) -> list[dict]:
             try:
                 prices[k] = round(float(v), 3)
             except (TypeError, ValueError):
+                # A price that never came may be a dry tap, not a silence: the
+                # flux says so itself (rupture_type temporaire or definitive,
+                # with its begin date) — the words "à sec" stand where the
+                # price would have.
+                if f.get(k + "_rupture_type") or f.get(k + "_rupture_debut"):
+                    rupt[k] = str(f.get(k + "_rupture_type") or "temporaire")[:12]
                 continue
             if m:
                 maj[k] = str(m)[:16]
+        if isinstance(f.get("rupture"), list):
+            for p in f["rupture"]:
+                if not isinstance(p, dict):
+                    continue
+                k = fold(p.get("@nom") or p.get("nom") or "")
+                if k in ("gazole", "sp95", "sp98", "e10", "e85", "gplc") and k not in prices and k not in rupt:
+                    rupt[k] = str(p.get("@type") or p.get("type") or "temporaire")[:12]
         out.append({"lat": round(lat, 6), "lon": round(lon, 6),
                     "address": str(f.get("adresse") or f.get("address") or "")[:80],
                     "city": str(f.get("ville") or f.get("city") or "")[:60],
-                    "prices": prices, "maj": maj})
+                    "prices": prices, "maj": maj, "rupture": rupt})
     # The ministry sometimes says a station twice — two rows, one pin. The
     # same folded address within 100 m is one station: the prices of both
     # are kept, the place said once. Two different addresses (a motorway's
@@ -466,6 +479,8 @@ def parse_fuel(body: Any) -> list[dict]:
                 twin["prices"].setdefault(k, v)
             for k, v in s["maj"].items():
                 twin["maj"].setdefault(k, v)
+            for k, v in s["rupture"].items():
+                twin["rupture"].setdefault(k, v)
             continue
         kept.append(s)
     return kept

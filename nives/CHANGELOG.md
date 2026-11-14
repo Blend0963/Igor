@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.57 — The dry taps say themselves
+
+- A fuel the flux declares in rupture (its own `rupture_type`, temporaire or definitive) no longer hides behind "prix indisponibles": the pump's badge says "à sec" — "à sec (définitif)" when the tap will not flow again — in the tap popup and in the stations' panel.
+- The fuel badges now carry the release in their address (`?v=`): a redrawn badge is no longer left standing in the kiosk browser's cache under the same URL — the nozzle some screens kept is gone for good.
+
 ## 0.38.56 — The second hand returns, the words on the badges
 
 - The Ministry's stations draw on the map again, exactly as before 0.38.54: TomTom's squares alone had let motorway aires go (a BP, a Total, gone from the aires) — the flux's orphans are drawn once more, the square's word winning when both tell the same station. The tap-through and the instant prices come back with them.
