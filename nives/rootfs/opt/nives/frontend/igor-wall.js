@@ -7562,6 +7562,21 @@
         var pr = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_fuel", return_response: true, service_data: { latitude: here[1], longitude: here[0], radius_km: 5 } });
         if (pr && pr.response && pr.response.ok) prices = pr.response.stations || [];
       } catch (e) { prices = null; }
+      if (!found || !found.length) {
+        // The route's server (OSRM, Overpass) can be down while TomTom answers:
+        // the map's own places then carry the list — without the detour's
+        // minutes, but the button still finds a station.
+        try {
+          var pr2 = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_pois", return_response: true,
+            service_data: { latitude: here[1], longitude: here[0], radius_km: 5, kinds: "fuel" } });
+          var r2 = (pr2 && pr2.response) || {};
+          if (r2.ok && (r2.pois || []).length) {
+            found = r2.pois.map((q) => ({ id: q.id, name: q.label || "Station-service", brand: q.label || "", lat: q.lat, lon: q.lon, minutes: null }));
+            found.sort((a, b) => gpsDist(here, [a.lon, a.lat]) - gpsDist(here, [b.lon, b.lat]));
+            fuelErr = "";
+          }
+        } catch (e) { /* the first message stands */ }
+      }
       if (seq !== this.fuelSeq || $("fpanel").hidden) return;
       list.innerHTML = "";
       if (!found || !found.length) {
