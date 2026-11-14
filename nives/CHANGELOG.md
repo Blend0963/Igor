@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.50 — The price that says how far it stands
+
+- The price's reach widens: a station of the flux within 500 m of the tap (was 300 m) answers for its neighbour — TomTom's pin stands at the entrance, the ministry's geom at the middle of the parcel, and the gap between the two words was sometimes wider than the old reach.
+- A station the flux does not know now says a state, not a breakdown: « prix inconnus · la plus proche du flux à 700 m » — near means a shifted pin, far means a station the ministry will never carry. The breakdown's words stay for the flux that does not answer.
+
 ## 0.38.49 — The body of the refusal
 
 - The 400 is ours, not the portal's mood: the spare box ask compared a number against the flux's `latitude`/`longitude` columns — which are text, not numbers — and the portal refused it outright (`IncompatibleTypesInComparisonFilter`), everywhere, every time. The box now draws on the geom itself (`in_bbox`), as the portal accepts it.
