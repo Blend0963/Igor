@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.38.34 — The dot that climbs the jam
+
+- In the jam bar, the car's dot now lives on the jam's own scale: it enters at the foot of the bar when the jam begins and climbs to its top as the jam ends. It used to be nailed to the bottom of the bar for the whole jam — a gauge whose needle never moved.
+- The red left in the bar is the jam still ahead; what the car has already crawled through turns back to blue behind the dot.
+- The distance figure of the right column's warnings fits its tile again (24 figures instead of 30, 18 upright) — it used to spill over the frame.
+- The top banner now stops where the right column begins: the jam bar and the warnings no longer bite into it.
+- The map takes the finger for granted: the touch rules are said in the card's own style sheet, and the arrow (the car, at the screen's centre while guiding) is a picture, not a dead spot — a drag that starts on it moves the map.
+
 ## 0.38.33 — The GPS found again is the truth, the black map comes home alone
 
 - The GPS found again far from where it was lost (a village left under a roof, a valley) is believed at once: the heading it kept was a memory, not a fact — the arrow now faces the new course and nothing holds it back on the road it left. It used to keep the car in the village for as long as the sky stayed closed.
