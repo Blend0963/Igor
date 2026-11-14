@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.38.49 — The body of the refusal
+
+- The 400 is ours, not the portal's mood: the spare box ask compared a number against the flux's `latitude`/`longitude` columns — which are text, not numbers — and the portal refused it outright (`IncompatibleTypesInComparisonFilter`), everywhere, every time. The box now draws on the geom itself (`in_bbox`), as the portal accepts it.
+- A refusal's body is read now, not guessed: the error carries the head of what the portal answered (its JSON names the clause, a gatekeeper's HTML names itself) — in the log and in the card's note.
+- When both asks are refused, the error says both reasons: the box's refusal no longer buries the distance ask's.
+
 ## 0.38.48 — The stations from both hands
 
 - The squares' stations (TomTom, Overpass) are markers again: the Ministry's flux, unreachable from some boxes, had left the map without a single station. The two sources now stand side by side — a station both tell (within 100 m) is drawn once, the square's word winning; the flux only adds what the squares never said.

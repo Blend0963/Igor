@@ -577,25 +577,32 @@ class Car:
         instant flux. The portal's own distance function, spelled the way the
         prix-carburant integration — fifty contributors, many users — has
         proven it: `distance(geom, geom'POINT(lon lat)', Nkm)`, kilometres.
-        The plain box on the latitude/longitude columns stays behind as the
-        spare ask, for the day the portal's function moves again; the log
-        says which of the two answered."""
+        The plain box on the geom stays behind as the spare ask, for the day
+        the portal's function moves again; the log says which of the two
+        answered, and a refusal's body is read, not guessed."""
         km = max(1, round(radius_m / 1000.0))
         geo = f"distance(geom, geom'POINT({lon:.6f} {lat:.6f})', {km}km)"
         dlat = radius_m / 111320.0
         dlon = dlat / max(0.2, math.cos(math.radians(lat)))
-        box = (f"latitude >= {lat - dlat:.6f} and latitude <= {lat + dlat:.6f}"
-               f" and longitude >= {lon - dlon:.6f} and longitude <= {lon + dlon:.6f}")
+        box = (f"in_bbox(geom, {lat + dlat:.6f}, {lon - dlon:.6f},"
+               f" {lat - dlat:.6f}, {lon + dlon:.6f})")
         # The distance ask first; a refused ask (the portal's function moved,
         # a gateway in a mood) falls to the plain box before giving up — the
-        # box is cruder but it is an answer.
+        # box is cruder but it is an answer. When both are refused, the error
+        # carries both reasons: the second must not bury the first.
+        first: Exception | None = None
         try:
             out = parse_fuel(await self.fetch("GET", FUEL_URL, {"where": geo, "limit": "100"}, None))
             if out:
                 return out
-        except Exception:  # noqa: BLE001 - the box is asked before despair
-            pass
-        return parse_fuel(await self.fetch("GET", FUEL_URL, {"where": box, "limit": "100"}, None))
+        except Exception as err:  # noqa: BLE001 - the box is asked before despair
+            first = err
+        try:
+            return parse_fuel(await self.fetch("GET", FUEL_URL, {"where": box, "limit": "100"}, None))
+        except Exception as err:  # noqa: BLE001 - both refused: say both
+            if first is None:
+                raise
+            raise RuntimeError(f"{first} (then the box said: {err})") from None
 
     async def overpass(self, query: str) -> Any:
         last: Exception | None = None
