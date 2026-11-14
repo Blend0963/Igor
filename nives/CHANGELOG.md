@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.38 — The brands' own marks
+
+- The stations now wear their brand's mark: TotalEnergies, Esso, Shell, BP, Leclerc, Intermarché, Carrefour, Super U and thirty more — carried with the add-on (no ask outside, nothing to configure), shown in the stations' panel beside each row and in the tap-on-the-map prices popup beside the name. A brand nobody knows simply says nothing: no generic icon standing where a mark should be.
+- The marks sit on a small light chip, so a dark logo keeps its face on the card's night.
+
 ## 0.38.37 — The button that falls back on the map's own places
 
 - When the stations' search comes back empty or broken, the button now asks the map's own places (TomTom's category search, the same source that paints the squares) before it admits defeat — the list stands even with the route server and Overpass both silent, simply without the minutes of the detour.

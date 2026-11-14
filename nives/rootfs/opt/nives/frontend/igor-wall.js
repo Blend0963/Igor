@@ -5696,6 +5696,35 @@
     var v = Number(limit) || 0;
     return v && v <= 50 ? 300 : v >= 110 ? 4000 : 2000;
   }
+  // The fuel brands' own marks, carried with the add-on (served beside the
+  // cards, no ask outside): a name folded small is matched against them, the
+  // long words anywhere in the name, the short ones only as their own word —
+  // "bp" must not wake inside "albuquerque". An unknown brand says nothing.
+  var GPS_BRAND_LOGOS = [
+    ["total", "TotalEnergies.svg"], ["esso", "Esso.svg"], ["shell", "Shell.svg"],
+    ["leclerc", "Leclerc.svg"], ["intermarche", "Intermarche.svg"], ["maximarche", "Maximarche.png"],
+    ["carrefour", "Carrefour.svg"], ["auchan", "Auchan.svg"], ["avia", "AVIA.svg"],
+    ["dyneff", "Dyneff.svg"], ["vito", "Vito.svg"], ["elan", "ELAN-FR.svg"],
+    ["gulf", "Gulf.svg"], ["lidl", "Lidl.svg"], ["aldi", "Aldi_Nord.svg"],
+    ["netto", "Netto-FR.svg"], ["geant", "Geant_Casino.svg"], ["casino", "Casino.svg"],
+    ["monoprix", "Monoprix.svg"], ["proxi", "Proxi.svg"], ["spar", "Spar.svg"],
+    ["roady", "Roady-white.svg"], ["huit", "8_A_Huit.svg"], ["fulli", "Fulli.svg"],
+    ["leclercdrive", "Leclerc.svg"], ["cora", "Cora.svg"], ["colruyt", "Colruyt.svg"],
+    ["costco", "Costco.svg"], ["match", "Match.svg"], ["atac", "Atac.svg"],
+    ["leader", "Leader_Price.svg"], ["bricomarche", "Bricomarche.svg"], ["rompetrol", "Rompetrol.svg"],
+    ["migrol", "Migrol.svg"], ["renault", "Renault.svg"]
+  ];
+  var GPS_BRAND_WORDS = [["bp", "BP.svg"], ["elf", "ELF.svg"], ["eni", "Eni.svg"], ["agip", "Agip.svg"], ["g20", "G20.svg"]];
+  function brandLogo(brand) {
+    var b = " " + String(brand || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim() + " ";
+    if (b === "  ") return null;
+    // The U: only as its own word (super u, systeme u, utile) — "u" alone
+    // lives in half the words of the language.
+    if (b.indexOf(" u ") >= 0 || b.indexOf("utile ") >= 0 || b.indexOf("systeme u") >= 0) return "/nives_static/logos/Hyper-U.svg";
+    for (var i = 0; i < GPS_BRAND_LOGOS.length; i++) if (b.indexOf(GPS_BRAND_LOGOS[i][0]) >= 0) return "/nives_static/logos/" + GPS_BRAND_LOGOS[i][1];
+    for (var j = 0; j < GPS_BRAND_WORDS.length; j++) if (b.indexOf(" " + GPS_BRAND_WORDS[j][0] + " ") >= 0) return "/nives_static/logos/" + GPS_BRAND_WORDS[j][1];
+    return null;
+  }
   // Overpass' elements → the points the card knows.
   function gpsPois(elements) {
     var out = [];
@@ -5710,7 +5739,7 @@
       var label = kind === "camera" ? (limit ? String(limit) : "") : kind === "fuel" ? String(t.brand || t.name || "").slice(0, 18) : "";
       // Only what is used is kept (thousands of lights over a drive).
       out.push(kind === "camera" ? { id: e.type + e.id, kind: kind, p: [lon, lat], tags: { direction: t.direction, "camera:direction": t["camera:direction"] }, limit: limit, label: label }
-        : { id: e.type + e.id, kind: kind, p: [lon, lat], label: label });
+        : { id: e.type + e.id, kind: kind, p: [lon, lat], label: label, brand: kind === "fuel" ? String(t.brand || "").slice(0, 40) : "" });
     });
     // The enforcement relations' devices: a camera each (or more known about one already there).
     var nodes = {}, byId = {};
@@ -6057,6 +6086,9 @@
         ".mappick .mp-prices .big { font-family: 'Chakra Petch', " + MONO + "; font-size: 22px; font-weight: 600; color: #e9e4da; line-height: 1; }" +
         ".mappick .mp-prices .big small { font-family: " + MONO + "; font-size: 11px; font-weight: 400; color: #878c95; margin-left: 8px; letter-spacing: 0.08em; text-transform: uppercase; }" +
         ".mappick .mp-prices .row { display: flex; flex-wrap: wrap; gap: 4px 14px; font-family: " + MONO + "; font-size: 12px; color: #878c95; } .mappick .mp-prices .row b { color: #c9ccd1; font-weight: 500; }" +
+        // The brands' marks: a small light chip behind each, so a dark logo
+        // keeps its face on the card's night (the marks come with the add-on).
+        ".mappick .mp-head .mp-logo, .fpanel .row2 button .plogo { height: 20px; max-width: 68px; object-fit: contain; flex: none; background: #f4f1ea; border-radius: 4px; padding: 3px 5px; box-sizing: content-box; }" +
         ".snap.dr { color: #d9a441; } .snap { position: absolute; right: 12px; top: 96px; z-index: 2; font-family: " + MONO + "; font-size: 10px; color: #3d454e; letter-spacing: 0.1em; text-transform: uppercase; }" +
         ".noattr .maplibregl-ctrl-attrib, .noattr .maplibregl-ctrl-bottom-right { display: none !important; }" +
         "@media (prefers-reduced-motion: reduce) { .sign.over { animation: none; } }" +
@@ -7463,6 +7495,10 @@
       var el = document.createElement("div");
       el.className = "mappick";
       var head = document.createElement("div"); head.className = "mp-head";
+      if (fuel) {
+        var lg = brandLogo((fuel.properties && (fuel.properties.brand || fuel.properties.label)) || name);
+        if (lg) { var im = document.createElement("img"); im.className = "mp-logo"; im.src = lg; im.alt = ""; head.appendChild(im); }
+      }
       if (name) { var t = document.createElement("div"); t.className = "mp-name"; t.textContent = name; head.appendChild(t); }
       var x = document.createElement("button"); x.type = "button"; x.className = "mp-x"; x.title = "Fermer";
       x.innerHTML = '<ha-icon icon="mdi:close"></ha-icon>';
@@ -7571,7 +7607,7 @@
             service_data: { latitude: here[1], longitude: here[0], radius_km: 5, kinds: "fuel" } });
           var r2 = (pr2 && pr2.response) || {};
           if (r2.ok && (r2.pois || []).length) {
-            found = r2.pois.map((q) => ({ id: q.id, name: q.label || "Station-service", brand: q.label || "", lat: q.lat, lon: q.lon, minutes: null }));
+            found = r2.pois.map((q) => ({ id: q.id, name: q.label || "Station-service", brand: q.brand || q.label || "", lat: q.lat, lon: q.lon, minutes: null }));
             found.sort((a, b) => gpsDist(here, [a.lon, a.lat]) - gpsDist(here, [b.lon, b.lat]));
             fuelErr = "";
           }
@@ -7590,7 +7626,9 @@
         if (isNaN(lat) || isNaN(lon)) return;
         var nm = p.name || p.brand || "Station-service";
         var b = document.createElement("button"); b.type = "button";
-        var i = document.createElement("ha-icon"); i.setAttribute("icon", "mdi:gas-station"); b.appendChild(i);
+        var lg = brandLogo(p.brand || p.name);
+        if (lg) { var im = document.createElement("img"); im.className = "plogo"; im.src = lg; im.alt = ""; b.appendChild(im); }
+        else { var i = document.createElement("ha-icon"); i.setAttribute("icon", "mdi:gas-station"); b.appendChild(i); }
         var t = document.createElement("div"); t.textContent = nm; b.appendChild(t);
         var detour = p.detour_min != null ? "détour +" + p.detour_min + " min" : (p.minutes != null ? p.minutes + " min" : "");
         var sm = document.createElement("small");
@@ -8252,7 +8290,7 @@
               var r = (res && res.response) || {};
               if (!r.ok) throw new Error(r.error || "tomtom");
               this.poiTT = true;
-              return (r.pois || []).map((q) => ({ id: q.id, kind: q.kind, p: [q.lon, q.lat], label: q.label || "" }));
+              return (r.pois || []).map((q) => ({ id: q.id, kind: q.kind, p: [q.lon, q.lat], label: q.label || "", brand: q.brand || "" }));
             });
           var sigKinds = this.poiKinds().filter((k) => k === "camera" || k === "signals");
           var sig = sigKinds.length ? overpassItems(sigKinds).catch(() => []) : Promise.resolve([]);
@@ -8330,7 +8368,7 @@
       if (sig === this.poiShown) return;
       this.poiShown = sig;
       var src = this.map && this.map.getSource("pois");
-      if (src) src.setData({ type: "FeatureCollection", features: shown.map((q) => ({ type: "Feature", geometry: { type: "Point", coordinates: q.p }, properties: { kind: q.kind, label: q.label || "" } })) });
+      if (src) src.setData({ type: "FeatureCollection", features: shown.map((q) => ({ type: "Feature", geometry: { type: "Point", coordinates: q.p }, properties: { kind: q.kind, label: q.label || "", brand: q.brand || "" } })) });
     },
     // The road where the car is (OpenStreetMap's way under it): name and numbers.
     setRoadName(tags) {
