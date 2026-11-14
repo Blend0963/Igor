@@ -5192,7 +5192,7 @@
   // ----- igor-gps-card: the car on its map, as a navigator shows it -----
   //   type: custom:igor-gps-card
   //   entity: device_tracker.car            # the position (companion app), or a sensor with location: [lat, lon]
-  //   fallback_entity: device_tracker.phone # a second position (a phone in the car): used while the first one is late or less precise
+  //   fallback_entity: device_tracker.phone # a second position (the car's own): carries the arrow while the first is silent
   //   speed_entity: sensor.car_speed        # km/h from the car (OBD), better than the GPS's
   //   speed_limit_entity: sensor.speed_limit  # the limit sign, top right
   //   show_speed: true                      # false: no speed box on the map
@@ -6239,11 +6239,17 @@
       if (!fb || fb.attributes.latitude == null) return main;
       if (!main || main.attributes.latitude == null) return fb;
       var age = function (s) { return (Date.now() - (Date.parse(s.last_updated) || 0)) / 1000; };
-      var acc = function (s) { var a = Number(s.attributes.gps_accuracy != null ? s.attributes.gps_accuracy : s.attributes.accuracy); return a > 0 ? a : 50; };
-      var mainOk = age(main) < 4 && (acc(main) <= 30 || acc(main) <= acc(fb) * 1.5), fbOk = age(fb) < 6;
-      // Not back and forth: the source in use is left only when it is clearly the worse.
-      var use = mainOk || !fbOk ? "main" : "phone";
-      if (this.srcNow === "phone" && use === "main" && !(age(main) < 2.5 && acc(main) <= Math.max(20, acc(fb)))) use = "phone";
+      // The fallback is a spare: it carries the arrow only while the primary
+      // is silent (a phone that lost the sky, a logger that stopped). The
+      // primary back and answering, it is the truth again — it used to have
+      // to buy its place back with a better accuracy than the spare's, and a
+      // phone back from a dead zone (25–40 m, what a phone says after a
+      // tunnel) could never pay: the arrow stayed on the spare for good, in
+      // the village it had never left.
+      var use = age(main) < 4 ? "main" : "phone";
+      // Not back and forth: the spare is left after 2.5 s of a primary back
+      // (it is taken after 4 s of one silent — a flapping source helps nobody).
+      if (this.srcNow === "phone" && use === "main" && age(main) >= 2.5) use = "phone";
       if (use !== this.srcNow) {
         this.srcNow = use;
         if (this.srcSeen) this.toast(use === "phone" ? "Position · téléphone" : "Position · autoradio", 3000);
@@ -6336,9 +6342,21 @@
         }
       }
       this.fixBad = 0;
-      this.hstate = this.hstate || { heading: this.fix ? this.heading : null };
-      gpsHeadingStep(this.hstate, { p: p, t: Date.now(), course: course, gpsSpeed: gpsSpeed, speed: this.speedMps(), accuracy: this.accuracy });
-      if (this.hstate.heading != null) this.heading = this.hstate.heading;
+      // The GPS found again far from where it was lost (a village left under
+      // a roof, a valley): the car has really moved — the heading it kept is
+      // a memory, not a fact. It faces the new course (the GPS's own, or the
+      // line from the old point to this one), and the holds that keep the
+      // arrow on its old road are let go (tick does it on its next frame).
+      var gap = this.fix && this.fix.at ? (at - this.fix.at) / 1000 : 0;
+      if (this.fix && gap > 10 && gpsDist(this.fix.point, p) > 150) {
+        this.heading = isFinite(course) && course != null ? course : gpsBearing(this.fix.point, p);
+        this.hstate = { heading: this.heading, hist: [{ p: p, t: Date.now() }] };
+        this.reloc = true;
+      } else {
+        this.hstate = this.hstate || { heading: this.fix ? this.heading : null };
+        gpsHeadingStep(this.hstate, { p: p, t: Date.now(), course: course, gpsSpeed: gpsSpeed, speed: this.speedMps(), accuracy: this.accuracy });
+        if (this.hstate.heading != null) this.heading = this.hstate.heading;
+      }
       this.fix = { point: p, time: performance.now(), gpsSpeed: isFinite(gpsSpeed) ? gpsSpeed : 0, updated: updated, at: at };
     }
     // The trail is drawn on the roads only: each point the arrow takes on a
@@ -6622,6 +6640,10 @@
       var ease = function (k) { return 1 - Math.pow(1 - k, fr); };
       // Driving (not manoeuvring): the car goes where it faces, never back.
       var forward = speed > GPS_FWD;
+      // A relocation (the GPS found again far from where it was lost): the
+      // old path and the old estimate are gone; the arrow goes to the new
+      // point, and nothing holds it back on the road it left.
+      if (this.reloc) { this.reloc = false; this.way = null; this.drPos = null; this.drAt = 0; }
       // Between two fixes: on along the heading, 4 s at most (not when slow:
       // the car may be reversing).
       var elapsed = Math.min((now - this.fix.time) / 1000, GPS_PREDICT_S);
@@ -7792,10 +7814,14 @@
       try { saved = JSON.parse(window.localStorage.getItem("igor-gps-layers") || "null"); } catch (e) { saved = null; }
       var pois = Array.isArray(c.pois) ? c.pois : GPS_POI_DEFAULT;
       var cam = ["radar", "zone", "off"].indexOf(c.cameras) >= 0 ? c.cameras : c.cameras === false ? "off" : "zone";
-      this.layers = { basemap: "igor", bld3d: false, cameras: cam, trafficMap: c.traffic_map === true, incidents: c.traffic !== false };
+      this.layers = { basemap: "igor", bld3d: false, cameras: cam, trafficMap: c.traffic_map === true, incidents: c.traffic !== false, mig: 0 };
       Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") this.layers[k] = pois.indexOf(k) >= 0; });
       var had = !!(saved && typeof saved === "object");
       if (had) Object.keys(this.layers).forEach((k) => { if (saved[k] !== undefined) this.layers[k] = saved[k]; });
+      // Once, marked: the Orbis map failing about every other load — every
+      // screen comes back to the CARTO one, without a finger raised. Choosing
+      // Route after this update keeps (the mark is set, and saved).
+      if (!this.layers.mig) { this.layers.basemap = "igor"; this.layers.mig = 1; this.saveLayers(); }
       // A base map removed since (an old "mono", "light", "satellite") falls back on Route.
       if (this.layers.basemap && this.layers.basemap !== "igor" && !GPS_ORBIS[this.layers.basemap]) this.layers.basemap = "dark";
       if (c.traffic === false) { this.layers.trafficMap = false; this.layers.incidents = false; }
@@ -7813,6 +7839,7 @@
               var kept = JSON.parse(v);
               if (!kept || typeof kept !== "object") return;
               Object.keys(card.layers).forEach((k) => { if (kept[k] !== undefined) card.layers[k] = kept[k]; });
+              if (!card.layers.mig) { card.layers.basemap = "igor"; card.layers.mig = 1; card.saveLayers(); }
               if (card.layers.basemap && card.layers.basemap !== "igor" && !GPS_ORBIS[card.layers.basemap]) card.layers.basemap = "dark";
               card.applyLayers();
               card.applyBuildings3D();
