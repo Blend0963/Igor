@@ -5250,7 +5250,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.41";
+  var GPS_CARD_VERSION = "0.38.45";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6777,7 +6777,7 @@
       if (this.route && (!this.navAt || now - this.navAt > 1000)) { this.navAt = now; this.navTick(now, moving); }
       if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > 500)) { this.limitAt = now; this.limitTick(now, moving); }
       if (!this.alertAt || now - this.alertAt > 500) { this.alertAt = now; this.alertTick(now, speed); }
-      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.trafficTick(now, moving); }
+      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); }
       if (this.follow) {
         var h = this.$("map").clientHeight;
         var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } };
@@ -7563,8 +7563,22 @@
       };
       var at = f && f.geometry && f.geometry.coordinates;
       var key = at ? at[0].toFixed(3) + "," + at[1].toFixed(3) : "";
+      // A price is kept ten minutes; a failure only half a minute — a
+      // network's brief silence must not stick to the station for ten. And a
+      // failure remembered says its own words again, not a shrug.
       var hit = key && this._fuelCache && this._fuelCache[key];
-      if (hit && Date.now() - hit.at < 600000) { put(hit.s); return box; }
+      if (hit && Date.now() - hit.at < (hit.bad ? 30000 : 600000)) { if (hit.s) put(hit.s); else say(hit.err || "prix indisponibles"); return box; }
+      // The map's own stations carry their prices already (the flux's own
+      // markers): one standing within 300 m is answered at once, no ask.
+      if (at && this.fluxFuel && this.fluxFuel.length) {
+        var nearF = null, nd = 300;
+        this.fluxFuel.forEach((s) => { var d = gpsDist(s.p, at); if (d < nd) { nd = d; nearF = s; } });
+        if (nearF && nearF.prices && Object.keys(nearF.prices).length) {
+          this._fuelCache[key] = { at: Date.now(), s: { prices: nearF.prices } };
+          put(nearF);
+          return box;
+        }
+      }
       if (!at || !this._hass) { say("prix indisponibles"); return box; }
       say("prix…");
       var self = this;
@@ -7576,12 +7590,12 @@
           (r.stations || []).forEach(function (s) { var d = gpsDist([s.lon, s.lat], at); if (d < bd) { bd = d; best = s; } });
           // The reason stands when the prices do not: the flux unreachable is
           // not the station unknown to it — the words say which.
-          if (!best && !r.ok) r = { err: r.error || "flux des prix injoignable" };
+          if (!best && !r.ok) r = { err: r.error || "flux des prix injoignable", bad: true };
           else if (!best) r = { err: (r.stations || []).length ? "station inconnue du flux" : "aucune station du flux dans le coin" };
-          self._fuelCache[key] = { at: Date.now(), s: best, err: best ? "" : r.err };
+          self._fuelCache[key] = { at: Date.now(), s: best, err: best ? "" : r.err, bad: !best && !!r.bad };
           if (self._pick) { if (best) put(best); else say(r.err); }
         })
-        .catch(function () { self._fuelCache[key] = { at: Date.now(), s: null, err: "flux des prix injoignable" }; if (self._pick) say("flux des prix injoignable"); });
+        .catch(function () { self._fuelCache[key] = { at: Date.now(), s: null, err: "flux des prix injoignable", bad: true }; if (self._pick) say("flux des prix injoignable"); });
       return box;
     },
     // The stations around: Waze's button. Igor's `car_nearby` says which are
@@ -8240,7 +8254,7 @@
         if (seen[k]) return;
         seen[k] = true;
         var b = gpsTileBox(x, y, z), d = gpsDist(p, [(b.w + b.e) / 2, (b.n + b.s) / 2]);
-        if (d < 6000) want.push({ k: k, b: b, d: d });
+        want.push({ k: k, b: b, d: d });
       };
       var me = gpsTileOf(p, z);
       for (var dx = -1; dx <= 1; dx++) for (var dy = -1; dy <= 1; dy++) add(me[0] + dx, me[1] + dy);
@@ -8253,7 +8267,10 @@
         var r = gpsRelative(p, [(t.b.w + t.b.e) / 2, (t.b.n + t.b.s) / 2], this.heading);
         t.d = r.d - Math.max(0, r.ahead) * 0.5;
       });
-      want.sort((u, v) => u.d - v.d);
+      // The eye leads: the squares looked at are asked for, near the car or
+      // far (a wander of the finger fills the zone it moves to) — twelve at
+      // most, the closest first, so the small machine is never flooded.
+      want = want.sort((u, v) => u.d - v.d).slice(0, 12);
       var T = this.poiTiles || (this.poiTiles = {});
       var busy = this.poiBusy || (this.poiBusy = {});
       // TomTom answers lightly (four squares at once); Overpass, free and
@@ -8274,11 +8291,15 @@
         this.poiFails = 0;
         this.poiNextTry = 0;
         this.poiDown = false;
-        // Squares far behind are let go (more than 12 km).
-        var p = this.pos, z = GPS_TILE_Z, T = this.poiTiles;
+        // Squares far behind are let go (more than 12 km) — unless the eye
+        // rests on them: what is looked at stays, wherever the car is.
+        var p = this.pos, z = GPS_TILE_Z, T = this.poiTiles, view = null;
+        try { view = this.map && this.map.getBounds(); } catch (e) { view = null; }
         Object.keys(T).forEach((k) => {
           var xy = k.split("/"), b = gpsTileBox(Number(xy[0]), Number(xy[1]), z);
-          if (gpsDist(p, [(b.w + b.e) / 2, (b.n + b.s) / 2]) > 12000) delete T[k];
+          var far = gpsDist(p, [(b.w + b.e) / 2, (b.n + b.s) / 2]) > 12000;
+          if (far && view && b.e > view.getWest() && b.w < view.getEast() && b.n > view.getSouth() && b.s < view.getNorth()) far = false;
+          if (far) delete T[k];
         });
         this.rebuildPois();
       };
@@ -8287,7 +8308,7 @@
         if (!q) return Promise.resolve([]);
         return gpsOverpass(this.config, q).then((jj) => gpsPois(jj.elements));
       };
-      var fromOverpass = () => overpassItems(this.poiKinds()).then((items) => { if (key === this.poiKey) keep(items); });
+      var fromOverpass = () => overpassItems(this.poiKinds().filter((k) => k !== "fuel")).then((items) => { if (key === this.poiKey) keep(items); });
       gpsStoreGet("poi/" + t.k).then((saved) => {
         if (key !== this.poiKey) return;
         if (saved && Array.isArray(saved.items) && Date.now() - saved.at < GPS_KEEP_MS) {
@@ -8304,7 +8325,7 @@
         // a light ask, nodes only, the same square. No key, or TomTom silent:
         // the whole square from Overpass, as before.
         var c = [(t.b.w + t.b.e) / 2, (t.b.n + t.b.s) / 2];
-        var kinds = this.poiKinds().filter((k) => k !== "camera" && k !== "signals").join(",");
+        var kinds = this.poiKinds().filter((k) => k !== "camera" && k !== "signals" && k !== "fuel").join(",");
         if (this._hass && this.config.tomtom_pois !== false && kinds) {
           var tt = this._hass.callWS({ type: "call_service", domain: "nives", service: "car_pois", return_response: true,
             service_data: { latitude: c[1], longitude: c[0], radius_km: 3, kinds: kinds } })
@@ -8331,21 +8352,36 @@
     },
     // Every place known: the squares read from OpenStreetMap and, in France,
     // the Ministry of the Interior's own list of cameras; a camera known from
-    // both (within 60 m) is one camera, with what each says about it.
+    // both (within 60 m) is one camera, with what each says about it. The
+    // stations are the Ministry of Energy's alone (the squares' own are only
+    // asked for the sign they carry) — one place is never drawn twice.
     rebuildPois() {
-      var T = this.poiTiles || {}, all = {}, list = [], cams = [], kinds = this.poiKinds();
+      var T = this.poiTiles || {}, all = {}, list = [], cams = [], kinds = this.poiKinds(), tileFuel = [];
       // Only the kinds wanted (old caches keep the places the base map shows
       // now). Two sources tell the same station (TomTom's square reaches into
       // its neighbours, Overpass's caches return): the one already kept wins,
       // a place of the same kind within 40 m is the same place.
       Object.keys(T).forEach((k) => (T[k].items || []).forEach((q) => {
         if (all[q.id] || kinds.indexOf(q.kind) < 0) return;
+        // The squares' fuel places are not markers any more; they stand by
+        // only to lend a brand to the flux's stations, which say no sign.
+        if (q.kind === "fuel") { tileFuel.push(q); return; }
         var near = q.kind === "camera" ? cams : list, dup = false;
         for (var i = 0; i < near.length && !dup; i++) if (near[i].kind === q.kind && gpsDist(near[i].p, q.p) < 40) dup = true;
         if (dup) return;
         all[q.id] = true;
         near.push(q);
       }));
+      var L = this.layers || {};
+      if (L.fuel) (this.fluxFuel || []).forEach((s) => {
+        if (!s.brand) {
+          for (var i = 0; i < tileFuel.length; i++) {
+            if (gpsDist(tileFuel[i].p, s.p) < 100) { s.brand = tileFuel[i].brand || tileFuel[i].label || ""; break; }
+          }
+        }
+        if (!s.label) s.label = s.brand || s.city || "";
+        list.push(s);
+      });
       var L = this.layers || {};
       if (L.cameras && L.cameras !== "off") (this.frCams || []).forEach((c) => {
         var same = null;
@@ -8377,6 +8413,35 @@
         })
         .catch(() => { this.frFailed = true; })
         .then(() => { this.frBusy = false; });
+    },
+    // France's stations with their prices (the Ministry of Energy's instant
+    // flux): the one source that never goes on strike — Overpass sleeps,
+    // TomTom asks a key; the State answers. Asked again every 6 km, like the
+    // cameras; its stations are the map's only fuel markers (the squares no
+    // longer ask for them), so one place is never drawn twice.
+    fuelTick(now) {
+      var L = this.layers || {}, p = this.pos;
+      if (!p || !this._hass || !L.fuel || this.fuelBusy) return;
+      if (this.fuelCenter && gpsDist(this.fuelCenter, p) < 6000) return;
+      if (this.fuelAsked && now - this.fuelAsked < (this.fuelFailed ? 300000 : 10000)) return;
+      this.fuelAsked = now;
+      this.fuelBusy = true;
+      var at = p.slice();
+      this._hass.callWS({ type: "call_service", domain: "nives", service: "car_fuel", return_response: true,
+        service_data: { latitude: at[1], longitude: at[0], radius_km: 10 } })
+        .then((res) => {
+          var r = (res && res.response) || {};
+          this.fluxFuel = (r.stations || []).map((s) => ({
+            id: "flux" + (s.id || s.lon.toFixed(5) + "," + s.lat.toFixed(5)),
+            kind: "fuel", p: [s.lon, s.lat], label: s.brand || "", brand: s.brand || "",
+            address: s.address || "", city: s.city || "", prices: s.prices || {}
+          }));
+          this.fuelCenter = at;
+          this.fuelFailed = false;
+          this.rebuildPois();
+        })
+        .catch(() => { this.fuelFailed = true; })
+        .then(() => { this.fuelBusy = false; });
     },
     // What the map shows: every place in view; cameras and lights only on the
     // car's way (ahead, on its road or its route), not the streets around.
