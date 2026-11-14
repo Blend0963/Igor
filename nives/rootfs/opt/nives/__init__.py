@@ -1267,7 +1267,14 @@ def _async_register_car(hass: HomeAssistant) -> None:
             timeout=aiohttp.ClientTimeout(total=25),
         ) as r:
             if r.status != 200:
-                raise RuntimeError(f"{url} answered {r.status}")
+                # A refusal says why in its body — the portal's JSON names the
+                # clause, a gatekeeper's HTML names itself. Read it before the
+                # with closes the response, and carry the head of it along.
+                try:
+                    body = (await r.text())[:200].replace("\n", " ").strip()
+                except Exception:  # noqa: BLE001 - a body that will not read
+                    body = ""
+                raise RuntimeError(f"{url} answered {r.status}: {body}")
             return await r.json(content_type=None)
 
     car = Car(_fetch, lambda: _traffic_key(hass))
