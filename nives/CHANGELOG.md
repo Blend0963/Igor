@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.47 — The reason behind the address
+
+- The flux's failure said its address and nothing else — the portal's URL is exactly the hundred and twenty characters the log kept, the reason stood behind it, unseen. Now the log keeps it whole and the card receives the tail: « flux des prix injoignable (…answered 403) » says what the portal answered.
+- A refused distance ask falls to the plain box before giving up (the box is cruder but it is an answer).
+
 ## 0.38.46 — The layer that slept for nothing
 
 - A refusal of the flux is no longer taken for an empty country: the stations' ask is failed, believed a minute, asked again — one network's silence at startup no longer leaves the whole ride without stations.
