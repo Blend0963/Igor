@@ -5250,7 +5250,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.47";
+  var GPS_CARD_VERSION = "0.38.48";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -8323,7 +8323,7 @@
         if (!q) return Promise.resolve([]);
         return gpsOverpass(this.config, q).then((jj) => gpsPois(jj.elements));
       };
-      var fromOverpass = () => overpassItems(this.poiKinds().filter((k) => k !== "fuel")).then((items) => { if (key === this.poiKey) keep(items); });
+      var fromOverpass = () => overpassItems(this.poiKinds()).then((items) => { if (key === this.poiKey) keep(items); });
       gpsStoreGet("poi/" + t.k).then((saved) => {
         if (key !== this.poiKey) return;
         if (saved && Array.isArray(saved.items) && Date.now() - saved.at < GPS_KEEP_MS) {
@@ -8340,7 +8340,7 @@
         // a light ask, nodes only, the same square. No key, or TomTom silent:
         // the whole square from Overpass, as before.
         var c = [(t.b.w + t.b.e) / 2, (t.b.n + t.b.s) / 2];
-        var kinds = this.poiKinds().filter((k) => k !== "camera" && k !== "signals" && k !== "fuel").join(",");
+        var kinds = this.poiKinds().filter((k) => k !== "camera" && k !== "signals").join(",");
         if (this._hass && this.config.tomtom_pois !== false && kinds) {
           var tt = this._hass.callWS({ type: "call_service", domain: "nives", service: "car_pois", return_response: true,
             service_data: { latitude: c[1], longitude: c[0], radius_km: 3, kinds: kinds } })
@@ -8368,8 +8368,10 @@
     // Every place known: the squares read from OpenStreetMap and, in France,
     // the Ministry of the Interior's own list of cameras; a camera known from
     // both (within 60 m) is one camera, with what each says about it. The
-    // stations are the Ministry of Energy's alone (the squares' own are only
-    // asked for the sign they carry) — one place is never drawn twice.
+    // stations come from both hands: the squares' (TomTom, Overpass) and the
+    // Ministry's flux — a station the two tell (within 100 m) is drawn once,
+    // the square's word winning (it knows the sign); the flux only adds what
+    // the squares never said (or could not — they sleep sometimes).
     rebuildPois() {
       var T = this.poiTiles || {}, all = {}, list = [], cams = [], kinds = this.poiKinds(), tileFuel = [];
       // Only the kinds wanted (old caches keep the places the base map shows
@@ -8378,9 +8380,7 @@
       // a place of the same kind within 40 m is the same place.
       Object.keys(T).forEach((k) => (T[k].items || []).forEach((q) => {
         if (all[q.id] || kinds.indexOf(q.kind) < 0) return;
-        // The squares' fuel places are not markers any more; they stand by
-        // only to lend a brand to the flux's stations, which say no sign.
-        if (q.kind === "fuel") { tileFuel.push(q); return; }
+        if (q.kind === "fuel") tileFuel.push(q);
         var near = q.kind === "camera" ? cams : list, dup = false;
         for (var i = 0; i < near.length && !dup; i++) if (near[i].kind === q.kind && gpsDist(near[i].p, q.p) < 40) dup = true;
         if (dup) return;
@@ -8389,6 +8389,9 @@
       }));
       var L = this.layers || {};
       if (L.fuel) (this.fluxFuel || []).forEach((s) => {
+        // A station the squares already draw (within 100 m) is not drawn
+        // twice; the flux's only adds what they never said.
+        for (var i = 0; i < tileFuel.length; i++) if (gpsDist(tileFuel[i].p, s.p) < 100) return;
         if (!s.brand) {
           for (var i = 0; i < tileFuel.length; i++) {
             if (gpsDist(tileFuel[i].p, s.p) < 100) { s.brand = tileFuel[i].brand || tileFuel[i].label || ""; break; }
