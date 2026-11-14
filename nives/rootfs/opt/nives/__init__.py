@@ -1595,7 +1595,8 @@ def _async_register_car(hass: HomeAssistant) -> None:
                 found = []
             for p in found:
                 out.append({"id": "tt" + str(p.get("id") or f"{p['lat']:.5f},{p['lon']:.5f}"), "kind": k,
-                            "lat": p["lat"], "lon": p["lon"], "label": str(p.get("brand") or p.get("name") or "")[:18]})
+                            "lat": p["lat"], "lon": p["lon"], "label": str(p.get("brand") or p.get("name") or "")[:18],
+                            "brand": str(p.get("brand") or "")[:40]})
         return {"ok": True, "source": "tomtom", "kinds": kinds, "pois": out}
 
     fuel_cache: dict[tuple, tuple[float, list]] = {}
