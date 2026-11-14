@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.41 — The card that says which card it is
+
+- When the stations' search or the place search fails, the note now carries the card's own release (« … · carte v0.38.41 »): a screen that kept an old script — the kiosk browsers do — says so itself, and « old » stops being a guess.
+
 ## 0.38.40 — The ask spelled the proven way
 
 - The prices' ask now uses the portal's own distance function spelled exactly as the prix-carburant integration has proven it (`distance(geom, geom'POINT(lon lat)', Nkm)`, kilometres) — the box on the latitude/longitude columns stays as the spare. The 0.38.39 images carried the guess, not the fact; this one carries the fact.
