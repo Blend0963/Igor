@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.32 — The hour at the flag
+
+- The trip tells its hours. In the flag's panel, each stop shows the hour it is reached (the big figures' hand), the destination the arrival in the small muted one. In the arrival bar, when the trip has stops, the hour that stood there — the end's — becomes the next stop's, and the end's moves under it, smaller: « étape Maison · 14:32 », then « puis Dijon · arrivée 15:05 ». Without stops, nothing changed.
+- The hours come from the stop's place along the route (it sits on it), its share of the way, the way's share of the time — the same share the arrival bar already uses; no extra call to anyone.
+
 ## 0.38.31 — The arrow that does not turn round, the point that cannot teleport
 
 - No more abrupt U-turns at speed. TomTom reads a vehicle's heading for trucks only — for a car it plans the recalculation from the exact point, which can start by crossing over and going back (the sudden U-turn on a motorway). When driving faster than 10 km/h, the departure is now put a couple of seconds ahead (up to 80 m), where the car will actually be. The route read backwards is also refused above 10 km/h (it was above 3), and the arrow does not adopt a road's direction under 9 km/h — a car below that may be manoeuvring.

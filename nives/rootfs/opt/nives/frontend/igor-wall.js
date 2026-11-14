@@ -6060,6 +6060,7 @@
         // Each figure on one line with its unit; the arrival takes what is left.
         ".eta b { font-family: 'Chakra Petch', " + MONO + "; font-size: 22px; font-weight: 500; white-space: nowrap; flex: none; }" +
         ".eta b small { font-size: 13px; font-weight: 400; color: #878c95; margin-left: 3px; }" +
+        ".eta span small { display: block; font-size: 11px; margin-top: 1px; }" +
         ".eta span { flex: 1; min-width: 0; color: #878c95; font-size: 12px; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; border-left: 1px solid #22262c; padding-left: 14px; }" +
         ".eta span i { font-style: normal; color: #e9e4da; font-size: 15px; display: block; }" +
         // A road's shield in the bar: its own small size, never stretched like the bar's spans.
@@ -6082,6 +6083,8 @@
         ".trow .tt { flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
         ".trow .tt small { display: block; color: #878c95; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }" +
         ".trow .del { flex: none; width: 36px; height: 36px; min-height: 0; padding: 0; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #878c95; cursor: pointer; display: grid; place-items: center; --mdc-icon-size: 20px; }" +
+        ".trow .tat { flex: none; margin-left: auto; font-family: 'Chakra Petch', " + MONO + "; font-size: 16px; font-weight: 500; color: #e9e4da; }" +
+        ".trow .tat.fin { font-family: " + MONO + "; font-size: 11px; font-weight: 400; color: #878c95; text-transform: uppercase; letter-spacing: 0.08em; }" +
         ".alttag { padding: 3px 9px; border-radius: 12px; background: rgba(7,8,10,0.92); border: 1px solid #3d454e; color: #878c95; font-family: " + MONO + "; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }" +
         ".alttag.win { color: #5cc28f; border-color: #5cc28f; } .alttag.lose { color: #f08c1a; border-color: #f08c1a; }" +
         ".eur { color: #e0a33a; font-weight: 700; margin-right: 6px; }" +
@@ -6920,6 +6923,25 @@
       var R = this.route;
       return { type: "Feature", geometry: { type: "LineString", coordinates: R ? (R.smooth || (R.smooth = gpsSmoothed(R.coords))) : [] } };
     },
+    // The hours of the trip: a stop sits on the route (it was placed there),
+    // so its place along the line gives its share of the way, and the way's
+    // share of the time — the same share the arrival bar already uses. The
+    // stops' places are kept on the route (they do not move; only the car
+    // does, and the hours follow it).
+    viaTimes() {
+      var R = this.route, d = this.dest;
+      if (!R || !R.coords || !R.total || !R.duration || !d || !d.via || !d.via.length) return null;
+      var alongs = R.viaAlong;
+      if (!alongs || alongs.length !== d.via.length) {
+        alongs = R.viaAlong = d.via.map((v) => {
+          var o = gpsOnLine([v.lon, v.lat], R.coords);
+          return o ? R.cum[o.seg - 1] + gpsDist(R.coords[o.seg - 1], o.point) : null;
+        });
+      }
+      var car = R.cum[Math.max(0, Math.min((this.seg || 1) - 1, R.cum.length - 1))] || 0;
+      return { stops: d.via.map((v, i) => alongs[i] == null ? null : hhmm(new Date(Date.now() + R.duration * Math.max(0, alongs[i] - car) / R.total * 1000))),
+        fin: hhmm(new Date(Date.now() + R.duration * Math.max(0, R.total - car) / R.total * 1000)) };
+    },
     openPanel() {
       var $ = this.$;
       $("panel").hidden = false;
@@ -6931,8 +6953,9 @@
       trip.hidden = !this.dest;
       if (this.dest) {
         var d = this.dest;
-        trip.appendChild(this.tripRow("mdi:flag-checkered", d.name || "destination", "destination", null));
-        (d.via || []).forEach((v, i) => trip.appendChild(this.tripRow("mdi:flag-variant", v.name || "étape", "étape", () => this.removeVia(i))));
+        var vt = this.viaTimes();
+        trip.appendChild(this.tripRow("mdi:flag-checkered", d.name || "destination", "destination", null, vt && vt.fin, true));
+        (d.via || []).forEach((v, i) => trip.appendChild(this.tripRow("mdi:flag-variant", v.name || "étape", "étape", () => this.removeVia(i), vt && vt.stops[i])));
       }
       var fav = $("pfav");
       fav.innerHTML = "";
@@ -6987,13 +7010,21 @@
       });
       return b;
     },
-    tripRow(icon, name, kind, remove) {
+    tripRow(icon, name, kind, remove, time, fin) {
       var row = document.createElement("div");
       row.className = "trow" + (kind === "étape" ? " via" : "");
       var i = document.createElement("ha-icon"); i.setAttribute("icon", icon); row.appendChild(i);
       var t = document.createElement("div"); t.className = "tt"; t.textContent = name;
       var s = document.createElement("small"); s.textContent = kind; t.appendChild(s);
       row.appendChild(t);
+      // The hour on the right: the stops' in the big figures' hand, the end's
+      // in the small muted one — the eye scans the stops, the end whispers.
+      if (time) {
+        var tat = document.createElement(fin ? "small" : "b");
+        tat.className = "tat" + (fin ? " fin" : "");
+        tat.textContent = fin ? "arrivée " + time : time;
+        row.appendChild(tat);
+      }
       if (remove) {
         var x = document.createElement("button"); x.type = "button"; x.className = "del"; x.title = "Retirer l'étape";
         var xi = document.createElement("ha-icon"); xi.setAttribute("icon", "mdi:close"); x.appendChild(xi);
@@ -7731,10 +7762,23 @@
       if (secs >= 3600) fig(Math.floor(secs / 3600) + " h " + String(Math.round((secs % 3600) / 60)).padStart(2, "0"), "");
       else fig(String(Math.max(1, Math.round(secs / 60))), "min");
       var sp2 = document.createElement("span");
-      var at = document.createElement("i"); at.textContent = "arrivée " + hhmm(eta); sp2.appendChild(at);
+      var at = document.createElement("i");
       var jamMin = R.source === "tomtom" && R.delay >= 60 ? Math.round(R.delay / 60) : 0;
+      // A stop first: its hour stands where the arrival's was, the end's
+      // after, smaller under it — the eye reads the next goal, the end is a
+      // whisper. No stop: the arrival, as it always was.
+      var vt = d && d.via && d.via.length ? this.viaTimes() : null;
+      if (vt && vt.stops[0]) {
+        at.textContent = "étape " + (d.via[0].name || "") + " · " + vt.stops[0];
+        sp2.appendChild(at);
+        var fin = document.createElement("small");
+        fin.textContent = "puis " + (d.name && d.name !== "destination" ? d.name + " · " : "") + "arrivée " + hhmm(eta);
+        sp2.appendChild(fin);
+      } else {
+        at.textContent = "arrivée " + hhmm(eta); sp2.appendChild(at);
+        if (d && d.name !== "destination") sp2.appendChild(document.createTextNode(d.name + (d.via && d.via.length ? " · étape " + d.via[0].name : "")));
+      }
       if (jamMin) at.textContent += " · dont " + jamMin + " min de bouchons";
-      if (d && d.name !== "destination") sp2.appendChild(document.createTextNode(d.name + (d.via && d.via.length ? " · étape " + d.via[0].name : "")));
       e.appendChild(sp2);
       // The road where the car is, at the end of the line.
       if (this.roadName && this.config.street_names !== false) { var stn = document.createElement("div"); stn.className = "st"; this.fillRoad(stn); e.appendChild(stn); }
