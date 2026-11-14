@@ -574,17 +574,15 @@ class Car:
 
     async def fuel(self, lat: float, lon: float, radius_m: int = 3000) -> list[dict]:
         """The fuel prices of the stations around a point, from the Ministry's
-        instant flux. The portal's distance filter is asked twice, its spelling
-        having moved before; a miss raises, the caller decides."""
-        point = f"point({lon:.6f} {lat:.6f})"
-        last: Exception | None = None
-        for where in (f"within_distance(geom, GEOMETRY('{point}'), {int(radius_m)})",
-                      f'within_distance(geom, GEOMETRY("{point}"), {int(radius_m)})'):
-            try:
-                return parse_fuel(await self.fetch("GET", FUEL_URL, {"where": where, "limit": "30"}, None))
-            except Exception as err:  # noqa: BLE001 - the other spelling, then the caller
-                last = err
-        raise last or RuntimeError("fuel prices unreachable")
+        instant flux. A plain box on the dataset's own latitude/longitude
+        columns — the portal's distance functions have moved before, a box on
+        two plain columns cannot; the caller matches the stations it knows
+        (within 300 m), a box a little generous only widens the net."""
+        dlat = radius_m / 111320.0
+        dlon = dlat / max(0.2, math.cos(math.radians(lat)))
+        where = (f"latitude >= {lat - dlat:.6f} and latitude <= {lat + dlat:.6f}"
+                 f" and longitude >= {lon - dlon:.6f} and longitude <= {lon + dlon:.6f}")
+        return parse_fuel(await self.fetch("GET", FUEL_URL, {"where": where, "limit": "100"}, None))
 
     async def overpass(self, query: str) -> Any:
         last: Exception | None = None
@@ -664,10 +662,18 @@ class Car:
         """The places of a kind the driver can reach: along the route when
         guided (in order, with the minutes each adds), else the nearest by road."""
         label = KINDS[kind][0]
+        # The route the detours are measured against. OSRM's free server is
+        # the flakiest piece of the chain: when it stays silent the list is
+        # still given (TomTom's places, the prices), simply without the
+        # minutes of the detour — a list without figures beats no list.
+        base = None
         if dest:
             target = [[v["lon"], v["lat"]] for v in dest.get("via") or []] + [[dest["lon"], dest["lat"]]]
-            base = await self.route([car, *target])
-            if base:
+            try:
+                base = await self.route([car, *target])
+            except Exception:  # noqa: BLE001 - OSRM down, busy: the plain list
+                base = None
+        if base:
                 coords, cum = route_points(base)
                 total = cum[-1] if cum else 0
                 line = thin(coords, cum, min(total, 150000))
@@ -680,8 +686,13 @@ class Car:
                         tt = None
                     if tt:
                         return self._tomtom_result(tt, kind, label, dest, coords, cum, spans, base, count)
-                body = await self.overpass(poi_query(kind, line=line, radius=1500))
-                places, areas = parse_places(body, kind)
+                places, areas = [], []
+                overpass_down = False
+                try:
+                    body = await self.overpass(poi_query(kind, line=line, radius=1500))
+                    places, areas = parse_places(body, kind)
+                except Exception:  # noqa: BLE001 - Overpass down: TomTom already answered
+                    overpass_down = True
                 cands = []
                 for p in places:
                     along, off = locate((p["lon"], p["lat"]), coords, cum)
@@ -693,10 +704,15 @@ class Car:
                 cands.sort(key=lambda c: (c["along_m"] + 4 * c["off_m"]))
                 out = []
                 for c in cands[: count + 3]:
-                    via = await self.route([car, [c["lon"], c["lat"]], *target], steps=False)
+                    try:
+                        via = await self.route([car, [c["lon"], c["lat"]], *target], steps=False)
+                    except Exception:  # noqa: BLE001 - OSRM down: the place stays, mute
+                        via = None
                     detour = max(0.0, ((via or {}).get("duration", 0) - base.get("duration", 0)) / 60) if via else None
                     out.append(self._place(c, detour, base))
                 out.sort(key=lambda c: (c["detour_min"] is None, c["detour_min"] > 5 if c["detour_min"] is not None else True, c["distance_km"]))
+                if not out and overpass_down:
+                    return {"ok": False, "error": "recherche impossible pour l'instant (service OpenStreetMap occupé ou pas d'internet)"}
                 return {"ok": True, "kind": label, "guided": True, "destination": dest["name"],
                         "places": out[:count], "note": _note(out[:count], label)}
         # Not guided: around the car, nearest by road (TomTom's places first).
@@ -708,15 +724,23 @@ class Car:
                 places = await self.tomtom_near(kind, car, key)
             except Exception:  # noqa: BLE001
                 places = []
+        overpass_down = False
         for radius in (5000, 15000, 40000) if not places else ():
-            body = await self.overpass(poi_query(kind, center=car, radius=radius))
+            try:
+                body = await self.overpass(poi_query(kind, center=car, radius=radius))
+            except Exception:  # noqa: BLE001 - both mirrors refused: no list from Overpass
+                overpass_down = True
+                break
             places, areas = parse_places(body, kind)
             if places:
                 break
         places.sort(key=lambda p: haversine_m(car, (p["lon"], p["lat"])))
         out = []
         for p in places[: count + 3]:
-            r = await self.route([car, [p["lon"], p["lat"]]], steps=False)
+            try:
+                r = await self.route([car, [p["lon"], p["lat"]]], steps=False)
+            except Exception:  # noqa: BLE001 - OSRM down: the distance as the crow flies
+                r = None
             area = in_area(p, areas)
             out.append({
                 "name": p["name"], "brand": p["brand"], "lat": p["lat"], "lon": p["lon"],
@@ -726,6 +750,8 @@ class Car:
                 "opening_hours": p["opening_hours"] or None, "city": p["city"] or None,
             })
         out.sort(key=lambda c: (c["minutes"] is None, c["minutes"] or 0, c["distance_km"]))
+        if not out and overpass_down:
+            return {"ok": False, "error": "recherche impossible pour l'instant (service OpenStreetMap occupé ou pas d'internet)"}
         return {"ok": True, "kind": label, "guided": False, "places": out[:count],
                 "note": f"aucun(e) {label} trouvé(e) à 40 km" if not out else ""}
 

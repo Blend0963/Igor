@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.38.36 — The list that survives a bad night
+
+- The stations' button no longer dies with the free services: OSRM's route server or Overpass staying silent, the list is still given (TomTom's places, the prices), simply without the minutes of the detour — a list without figures beats no list. Only when every source is silent does it say so, with the reason.
+- The fuel prices are asked with a plain box on the dataset's own latitude/longitude columns, instead of the portal's distance function whose spelling moves — the box cannot miss.
+- The panel says what went wrong (« recherche impossible pour l'instant… ») instead of a generic « pas d'internet ? » when the server itself named the trouble.
+
 ## 0.38.35 — The stations' button, the prices of the pump
 
 - A new button beside the destination's (the pump): a touch, and the panel lists the stations around, each with its gazole price at the right and the minutes it costs to reach — the detour it adds when a trip is under way, the ride otherwise. A touch on a row sends the car there or puts it on the way as a stop.

@@ -7553,10 +7553,10 @@
       var here = this.pos || (this.fix && this.fix.point);
       if (!here) { note.textContent = "Position inconnue."; return; }
       var seq = this.fuelSeq = (this.fuelSeq || 0) + 1;
-      var found = null, prices = null;
+      var found = null, prices = null, fuelErr = "";
       try {
         var r = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_nearby", return_response: true, service_data: { kind: "fuel", count: 8 } });
-        if (r && r.response && r.response.ok) found = r.response.places || [];
+        if (r && r.response) { if (r.response.ok) found = r.response.places || []; else fuelErr = r.response.error || ""; }
       } catch (e) { found = null; }
       try {
         var pr = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_fuel", return_response: true, service_data: { latitude: here[1], longitude: here[0], radius_km: 5 } });
@@ -7566,7 +7566,7 @@
       list.innerHTML = "";
       if (!found || !found.length) {
         var none = document.createElement("div"); none.className = "note";
-        none.textContent = found === null ? "Recherche impossible (pas d'internet ?)" : "Aucune station trouvée autour.";
+        none.textContent = found === null ? "Recherche impossible (pas d'internet ?)" : (fuelErr || "Aucune station trouvée autour.");
         list.appendChild(none);
         return;
       }
