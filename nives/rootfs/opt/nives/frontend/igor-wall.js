@@ -5250,7 +5250,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.48";
+  var GPS_CARD_VERSION = "0.38.50";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7549,7 +7549,7 @@
       if (this._pick) { try { this._pick.remove(); } catch (e) { /* gone */ } this._pick = null; }
     },
     // The station's prices, read from the Ministry's instant flux (Igor asks
-    // data.economie.gouv.fr, the station nearest the tap within 300 m): the
+    // data.economie.gouv.fr, the station nearest the tap within 500 m): the
     // gazole large, the other fuels in a whisper. Asked once and kept ten
     // minutes — the flux itself is only ten minutes old.
     fuelPrices(f) {
@@ -7577,9 +7577,9 @@
       var hit = key && this._fuelCache && this._fuelCache[key];
       if (hit && Date.now() - hit.at < (hit.bad ? 30000 : 600000)) { if (hit.s) put(hit.s); else say((hit.err || "prix indisponibles") + " \u00b7 carte v" + GPS_CARD_VERSION); return box; }
       // The map's own stations carry their prices already (the flux's own
-      // markers): one standing within 300 m is answered at once, no ask.
+      // markers): one standing within 500 m is answered at once, no ask.
       if (at && this.fluxFuel && this.fluxFuel.length) {
-        var nearF = null, nd = 300;
+        var nearF = null, nd = 500;
         this.fluxFuel.forEach((s) => { var d = gpsDist(s.p, at); if (d < nd) { nd = d; nearF = s; } });
         if (nearF && nearF.prices && Object.keys(nearF.prices).length) {
           this._fuelCache[key] = { at: Date.now(), s: { prices: nearF.prices } };
@@ -7594,12 +7594,19 @@
       this._hass.callWS({ type: "call_service", domain: "nives", service: "car_fuel", return_response: true,
         service_data: { latitude: at[1], longitude: at[0], radius_km: 1 } })
         .then(function (res) {
-          var r = (res && res.response) || {}, best = null, bd = 300;
+          var r = (res && res.response) || {}, best = null, bd = 500;
           (r.stations || []).forEach(function (s) { var d = gpsDist([s.lon, s.lat], at); if (d < bd) { bd = d; best = s; } });
           // The reason stands when the prices do not: the flux unreachable is
-          // not the station unknown to it — the words say which.
+          // a breakdown, but a station it does not know is only a state — a
+          // square on the map that the ministry was never told of. The words
+          // say which, and the nearest known distance says more: near means a
+          // shifted pin, far means a station the flux will never carry.
           if (!best && !r.ok) r = { err: r.error || "flux des prix injoignable", bad: true };
-          else if (!best) r = { err: (r.stations || []).length ? "station inconnue du flux" : "aucune station du flux dans le coin" };
+          else if (!best) {
+            var nd2 = null;
+            (r.stations || []).forEach(function (s) { var d = gpsDist([s.lon, s.lat], at); if (nd2 == null || d < nd2) nd2 = d; });
+            r = { err: (r.stations || []).length ? "prix inconnus · la plus proche du flux à " + gpsMetres(nd2) : "prix inconnus · aucune station du flux dans le coin" };
+          }
           self._fuelCache[key] = { at: Date.now(), s: best, err: best ? "" : r.err, bad: !best && !!r.bad };
           if (self._pick) { if (best) put(best); else say(r.err + " \u00b7 carte v" + GPS_CARD_VERSION); }
         })
@@ -7696,7 +7703,7 @@
       });
     },
     nearestFuel(stations, lat, lon) {
-      var best = null, bd = 300;
+      var best = null, bd = 500;
       (stations || []).forEach((s) => { var d = gpsDist([s.lon, s.lat], [lon, lat]); if (d < bd) { bd = d; best = s; } });
       return best;
     },
