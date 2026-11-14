@@ -610,6 +610,10 @@ class Car:
         answered, and a refusal's body is read, not guessed."""
         km = max(1, round(radius_m / 1000.0))
         geo = f"distance(geom, geom'POINT({lon:.6f} {lat:.6f})', {km}km)"
+        # The hundred kept are the hundred nearest: a dense city holds more
+        # stations than the ask keeps, and an arbitrary hundred would leave
+        # the car's own neighbours out.
+        order = f"distance(geom, geom'POINT({lon:.6f} {lat:.6f})')"
         dlat = radius_m / 111320.0
         dlon = dlat / max(0.2, math.cos(math.radians(lat)))
         box = (f"in_bbox(geom, {lat + dlat:.6f}, {lon - dlon:.6f},"
@@ -620,13 +624,13 @@ class Car:
         # carries both reasons: the second must not bury the first.
         first: Exception | None = None
         try:
-            out = parse_fuel(await self.fetch("GET", FUEL_URL, {"where": geo, "limit": "100"}, None))
+            out = parse_fuel(await self.fetch("GET", FUEL_URL, {"where": geo, "order_by": order, "limit": "100"}, None))
             if out:
                 return out
         except Exception as err:  # noqa: BLE001 - the box is asked before despair
             first = err
         try:
-            return parse_fuel(await self.fetch("GET", FUEL_URL, {"where": box, "limit": "100"}, None))
+            return parse_fuel(await self.fetch("GET", FUEL_URL, {"where": box, "order_by": order, "limit": "100"}, None))
         except Exception as err:  # noqa: BLE001 - both refused: say both
             if first is None:
                 raise

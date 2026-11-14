@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.38.55 — The fuels' colours
+
+- The fuels' names give way to the pump's own nozzle in its regulated colour (the gazole's black turned amber so the card's night keeps it): in the tap popup, the nozzle stands beside the big figure and each other fuel keeps its nozzle beside its price; in the stations' panel, the nozzle stands before the gazole's price.
+- One size everywhere (15 px), held on the text's line by flex; the full name stays in the tooltip; a pictogram that failed says its name instead — never an empty frame. Six hand-drawn SVGs shipped with the add-on, no request beyond the add-on.
+
+## 0.38.54 — One hand on the map
+
+- The map's fuel markers are TomTom's alone (Overpass still answers when TomTom sleeps): the Ministry's flux no longer draws any marker, so no more stations labelled by their address where the enseigne was missing. Nothing else moves — the prices are still the Ministry's, spoken at the click and in the stations' panel.
+- The flux's instant cache and its tap-through (a station the flux knew but no marker showed) leave with the markers: a click on a station is a click on a drawn station.
+
+## 0.38.53 — The prices that stood beyond the ask
+
+- The stations' panel asked the flux's prices within 5 km while the stations it lists reach 15 km — in the open country, where the nearest station the ministry knows stands 7 km away, the price column stayed empty for ever. The panel now asks as far as it lists (15 km).
+- The hundred stations the ask keeps are the hundred nearest now (the portal sorts by distance): a dense city holds more stations than an ask keeps, and an arbitrary hundred could leave the car's own neighbours out.
+
 ## 0.38.52 — One pin, the enseigne's word
 
 - No station drawn twice: the fusion of the two hands widens to 150 m — TomTom's pin stands at the entrance, the ministry's geom at the middle of the parcel, and the gap between the two words is now folded into one marker, the square's, which carries the enseigne.
