@@ -1614,8 +1614,10 @@ def _async_register_car(hass: HomeAssistant) -> None:
             return {"ok": True, "source": "data.economie.gouv.fr", "stations": hit[1]}
         try:
             stations = await car.fuel(lat, lon, radius)
-        except Exception:  # noqa: BLE001 - portal busy, moved, unreachable
-            return {"ok": False, "error": "prix des carburants indisponibles"}
+        except Exception as err:  # noqa: BLE001 - portal busy, moved, unreachable
+            _LOGGER.warning("car_fuel: the Ministry's flux failed around %.3f,%.3f: %s", lat, lon, str(err)[:120])
+            return {"ok": False, "error": "flux des prix injoignable (" + str(err)[:80] + ")"}
+        _LOGGER.info("car_fuel: box %.3f,%.3f r=%dm -> %d station(s)", lat, lon, radius, len(stations))
         if len(fuel_cache) > 200:
             fuel_cache.clear()
         fuel_cache[where] = (now, stations)

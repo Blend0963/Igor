@@ -577,12 +577,19 @@ class Car:
         instant flux. A plain box on the dataset's own latitude/longitude
         columns — the portal's distance functions have moved before, a box on
         two plain columns cannot; the caller matches the stations it knows
-        (within 300 m), a box a little generous only widens the net."""
+        (within 300 m), a box a little generous only widens the net. A box
+        that comes back empty asks again on the geometry itself (the portal's
+        own distance function, whose spelling may move): one of the two
+        worded asks answers, and the log says which."""
         dlat = radius_m / 111320.0
         dlon = dlat / max(0.2, math.cos(math.radians(lat)))
         where = (f"latitude >= {lat - dlat:.6f} and latitude <= {lat + dlat:.6f}"
                  f" and longitude >= {lon - dlon:.6f} and longitude <= {lon + dlon:.6f}")
-        return parse_fuel(await self.fetch("GET", FUEL_URL, {"where": where, "limit": "100"}, None))
+        out = parse_fuel(await self.fetch("GET", FUEL_URL, {"where": where, "limit": "100"}, None))
+        if out:
+            return out
+        geo = f'within_distance(geom, GEOMETRY("point",{lon:.6f},{lat:.6f}),{radius_m})'
+        return parse_fuel(await self.fetch("GET", FUEL_URL, {"where": geo, "limit": "100"}, None))
 
     async def overpass(self, query: str) -> Any:
         last: Exception | None = None

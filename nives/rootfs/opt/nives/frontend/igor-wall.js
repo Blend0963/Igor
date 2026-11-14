@@ -7570,10 +7570,14 @@
         .then(function (res) {
           var r = (res && res.response) || {}, best = null, bd = 300;
           (r.stations || []).forEach(function (s) { var d = gpsDist([s.lon, s.lat], at); if (d < bd) { bd = d; best = s; } });
-          self._fuelCache[key] = { at: Date.now(), s: best };
-          if (self._pick) put(best);
+          // The reason stands when the prices do not: the flux unreachable is
+          // not the station unknown to it — the words say which.
+          if (!best && !r.ok) r = { err: r.error || "flux des prix injoignable" };
+          else if (!best) r = { err: (r.stations || []).length ? "station inconnue du flux" : "aucune station du flux dans le coin" };
+          self._fuelCache[key] = { at: Date.now(), s: best, err: best ? "" : r.err };
+          if (self._pick) { if (best) put(best); else say(r.err); }
         })
-        .catch(function () { self._fuelCache[key] = { at: Date.now(), s: null }; if (self._pick) put(null); });
+        .catch(function () { self._fuelCache[key] = { at: Date.now(), s: null, err: "flux des prix injoignable" }; if (self._pick) say("flux des prix injoignable"); });
       return box;
     },
     // The stations around: Waze's button. Igor's `car_nearby` says which are
@@ -7640,6 +7644,7 @@
         // The gazole's price at the right, the fuel's name under it; a station
         // the flux does not know simply says nothing there.
         var f = this.nearestFuel(prices, lat, lon);
+        if (f && f.prices && !Object.keys(f.prices).length) f = null;
         if (f && f.prices && f.prices.gazole != null) {
           var pp = document.createElement("span"); pp.className = "pp";
           var big = document.createElement("b"); big.textContent = f.prices.gazole.toFixed(3).replace('.', ',');

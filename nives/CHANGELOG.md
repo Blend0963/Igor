@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.39 — The prices that say why they are not
+
+- When the prices do not come, the card no longer shrugs (\u00ab prix indisponibles \u00bb): it says which of the three troubles it is \u2014 the Ministry's flux unreachable (with the reason it gave), no station of the flux in the coin, or the station unknown to the flux. Three silences, three words.
+- An empty box on the dataset's latitude/longitude columns asks again on the geometry itself (the portal's own distance function): one of the two worded asks answers, and the add-on's log says which \u2014 with the station count at every ask.
+
 ## 0.38.38 — The brands' own marks
 
 - The stations now wear their brand's mark: TotalEnergies, Esso, Shell, BP, Leclerc, Intermarché, Carrefour, Super U and thirty more — carried with the add-on (no ask outside, nothing to configure), shown in the stations' panel beside each row and in the tap-on-the-map prices popup beside the name. A brand nobody knows simply says nothing: no generic icon standing where a mark should be.
