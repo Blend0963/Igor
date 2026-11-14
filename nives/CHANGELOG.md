@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.30 — The map that comes back, the places that come with it
+
+- The Igor (CARTO) base map is back in the layers' panel, next to Route (TomTom Orbis) — Orbis has been failing about every other load lately, and a map that answers beats a map that knows the jams. It is the default again for a fresh screen; a screen that had chosen Route keeps it (one touch on « Igor » in the layers to come back).
+- The places are back with it: stations-service, bornes de recharge, parkings, aires de repos, toilettes, hôpitaux — drawn by the card from OpenStreetMap (Overpass) again, each with its colour and its toggle in the layers' panel.
+
 ## 0.38.29 — The arrow that keeps up, the word that never had to be said
 
 - The incident pop ("Trafic coupé · 2,4 km", the yellow box at the top right) is gone: the jams live in the side bar, a closed road asks for its detour by itself, and the incidents stay drawn on the map. The radar and danger-zone warnings keep their place.
