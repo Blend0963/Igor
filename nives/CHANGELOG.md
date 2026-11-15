@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.60 — The word in its place
+
+- "Prix indisponible" gives way to "Non communiqué" — the ministry's own register for a price no declarant sent, shorter, and the same voice as "rupture".
+- The word stands in the panel's price column box now (the price's and the rupture's own), so it ends where they end instead of leaning against the button.
+
 ## 0.38.59 — The word that fits every case
 
 - The stations' panel says "rupture" like the popup does — a station the flux declares dry had been thrown away by the panel's own filter, its column standing mute; it speaks now.
