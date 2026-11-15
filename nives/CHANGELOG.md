@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.58 — One fuel a line, the trade's own word
+
+- The tap popup's prices stand one fuel a line now — gazole first, all the same size (no fuel a favourite above the others), each with its own "€/L".
+- "À sec" gives way to the trade's own word: "rupture", "rupture définitive" when the tap will not flow again — the ministry's vocabulary, in the popup and in the stations' panel.
+
 ## 0.38.57 — The dry taps say themselves
 
 - A fuel the flux declares in rupture (its own `rupture_type`, temporaire or definitive) no longer hides behind "prix indisponibles": the pump's badge says "à sec" — "à sec (définitif)" when the tap will not flow again — in the tap popup and in the stations' panel.
