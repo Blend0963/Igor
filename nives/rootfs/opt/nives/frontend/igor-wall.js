@@ -5250,7 +5250,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.57";
+  var GPS_CARD_VERSION = "0.38.59";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6101,21 +6101,20 @@
         ".fpanel .pp .pc { display: flex; flex-direction: column; align-items: flex-end; }" +
         ".fpanel .pp small { display: block; margin-top: 2px; font-family: " + MONO + "; font-size: 10px; font-weight: 400; color: #878c95; letter-spacing: 0.08em; text-transform: uppercase; }" +
         ".fpanel .pp.nop { font-family: " + MONO + "; font-size: 11px; font-weight: 400; color: #878c95; align-self: center; }" +
-        // The station's prices in the tap popup: the gazole large, the other
-        // fuels in a whisper on one line under it.
-        ".mappick .mp-prices { display: flex; flex-direction: column; gap: 4px; padding: 2px 4px 10px; }" +
-        ".mappick .mp-prices .big { display: flex; align-items: center; gap: 8px; font-family: 'Chakra Petch', " + MONO + "; font-size: 22px; font-weight: 600; color: #e9e4da; line-height: 1; }" +
-        ".mappick .mp-prices .big small { font-family: " + MONO + "; font-size: 11px; font-weight: 400; color: #878c95; letter-spacing: 0.08em; text-transform: uppercase; }" +
+        // The station's prices in the tap popup: one fuel a line, all the
+        // same size — no fuel a favourite above the others — each with its
+        // unit; a rupture says the trade's own word in the small red.
+        ".mappick .mp-prices { display: flex; flex-direction: column; gap: 5px; padding: 2px 4px 10px; }" +
+        ".mappick .mp-prices .fl { display: flex; align-items: center; gap: 8px; font-family: 'Chakra Petch', " + MONO + "; font-size: 16px; font-weight: 600; color: #e9e4da; line-height: 1; }" +
+        ".mappick .mp-prices .fl small { font-family: " + MONO + "; font-size: 11px; font-weight: 400; color: #878c95; letter-spacing: 0.08em; text-transform: uppercase; }" +
         ".mappick .mp-prices .row { display: flex; flex-wrap: wrap; gap: 4px 14px; font-family: " + MONO + "; font-size: 12px; color: #878c95; } .mappick .mp-prices .row b { color: #c9ccd1; font-weight: 500; }" +
         // The fuels' badges: the pumps' own labels, one height everywhere,
         // their width the words' own, kept on the text's line by the flex's
         // own hand.
         ".fico { height: 13px; width: auto; flex: none; opacity: 0.95; border-radius: 3px; }" +
-        ".mappick .mp-prices .row .fu { display: inline-flex; align-items: center; gap: 5px; }" +
-        // The dry tap's word: the small red the road's warnings wear, quiet
-        // in the whisper row, plain in the big line when nothing else flows.
+        // The dry tap's word: the small red the road's warnings wear.
         ".dry { color: #d9704a; font-family: " + MONO + "; font-size: 12px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }" +
-        ".mappick .mp-prices .big .dry { font-size: 16px; }" +
+        ".np { color: #878c95; font-family: " + MONO + "; font-size: 12px; font-weight: 400; }" +
         // The brands' marks: a small light chip behind each, so a dark logo
         // keeps its face on the card's night (the marks come with the add-on).
         ".mappick .mp-head .mp-logo, .fpanel .row2 button .plogo { height: 20px; max-width: 68px; object-fit: contain; flex: none; background: #f4f1ea; border-radius: 4px; padding: 3px 5px; box-sizing: content-box; }" +
@@ -7585,45 +7584,25 @@
         box.innerHTML = "";
         var pr = (s && s.prices) || {}, ru = (s && s.rupture) || {};
         var order = ["gazole", "sp98", "sp95", "e10", "e85", "gplc"], names = { gazole: "Gazole", sp98: "Sans plomb 98", sp95: "Sans plomb 95", e10: "E10", e85: "E85 (superéthanol)", gplc: "GPLc" };
-        var dry = order.filter(function (k) { return pr[k] == null && ru[k]; });
-        var main = pr.gazole != null ? "gazole" : order.filter(function (k) { return pr[k] != null; })[0];
-        // The dry taps say themselves: the flux knows a rupture (temporaire
-        // or definitive), the pump's own words stand where the price would
-        // have — "à sec", not a shrug of "indisponible".
-        var row = document.createElement("div"); row.className = "row";
-        order.forEach(function (k) {
-          if (pr[k] == null) {
-            if (!ru[k]) return;
-            var fu = document.createElement("span"); fu.className = "fu";
-            fu.appendChild(fuelIcon(k, names[k]));
+        var have = order.filter(function (k) { return pr[k] != null || ru[k]; });
+        if (!have.length) { var np = document.createElement("div"); np.className = "np"; np.textContent = "Prix indisponible"; box.appendChild(np); return; }
+        // One fuel a line, all the same size — no fuel a favourite above the
+        // others, each with its unit; a rupture says the trade's own word.
+        have.forEach(function (k) {
+          var line = document.createElement("div"); line.className = "fl";
+          line.appendChild(fuelIcon(k, names[k]));
+          if (pr[k] != null) {
+            var b = document.createElement("b"); b.textContent = pr[k].toFixed(3).replace('.', ',');
+            line.appendChild(b);
+            var lb = document.createElement("small"); lb.textContent = "€/L";
+            line.appendChild(lb);
+          } else {
             var dr = document.createElement("span"); dr.className = "dry";
-            dr.textContent = ru[k] === "definitive" ? "à sec (définitif)" : "à sec";
-            fu.appendChild(dr); row.appendChild(fu);
-            return;
+            dr.textContent = ru[k] === "definitive" ? "rupture définitive" : "rupture";
+            line.appendChild(dr);
           }
-          if (k === main) return;
-          var fu2 = document.createElement("span"); fu2.className = "fu";
-          fu2.appendChild(fuelIcon(k, names[k]));
-          var b = document.createElement("b"); b.textContent = pr[k].toFixed(3).replace('.', ',');
-          fu2.appendChild(b); row.appendChild(fu2);
+          box.appendChild(line);
         });
-        if (!main && dry.length) {
-          var big = document.createElement("div"); big.className = "big";
-          big.appendChild(fuelIcon(dry[0], names[dry[0]]));
-          var v = document.createElement("span"); v.className = "dry";
-          v.textContent = "à sec" + (dry.some(function (k) { return ru[k] === "definitive"; }) ? " (définitif)" : "");
-          big.appendChild(v); box.appendChild(big);
-          if (row.childNodes.length) box.appendChild(row);
-          return;
-        }
-        if (!main) { say("prix indisponibles"); return; }
-        var big2 = document.createElement("div"); big2.className = "big";
-        big2.appendChild(fuelIcon(main, names[main]));
-        var v2 = document.createElement("span"); v2.textContent = pr[main].toFixed(3).replace('.', ',');
-        big2.appendChild(v2);
-        var lb = document.createElement("small"); lb.textContent = "€/L";
-        big2.appendChild(lb); box.appendChild(big2);
-        if (row.childNodes.length) box.appendChild(row);
       };
       var at = f && f.geometry && f.geometry.coordinates;
       var key = at ? at[0].toFixed(3) + "," + at[1].toFixed(3) : "";
@@ -7631,19 +7610,19 @@
       // network's brief silence must not stick to the station for ten. And a
       // failure remembered says its own words again, not a shrug.
       var hit = key && this._fuelCache && this._fuelCache[key];
-      if (hit && Date.now() - hit.at < (hit.bad ? 30000 : 600000)) { if (hit.s) put(hit.s); else say((hit.err || "prix indisponibles") + " \u00b7 carte v" + GPS_CARD_VERSION); return box; }
+      if (hit && Date.now() - hit.at < (hit.bad ? 30000 : 600000)) { if (hit.s) put(hit.s); else say(hit.err || "Prix indisponible"); return box; }
       // The map's own stations carry their prices already (the flux's own
       // markers): one standing within 500 m is answered at once, no ask.
       if (at && this.fluxFuel && this.fluxFuel.length) {
         var nearF = null, nd = 500;
         this.fluxFuel.forEach((s) => { var d = gpsDist(s.p, at); if (d < nd) { nd = d; nearF = s; } });
-        if (nearF && nearF.prices && Object.keys(nearF.prices).length) {
-          this._fuelCache[key] = { at: Date.now(), s: { prices: nearF.prices } };
+        if (nearF && nearF.prices && (Object.keys(nearF.prices).length || Object.keys(nearF.rupture || {}).length)) {
+          this._fuelCache[key] = { at: Date.now(), s: { prices: nearF.prices, rupture: nearF.rupture || {} } };
           put(nearF);
           return box;
         }
       }
-      if (!at || !this._hass) { say("prix indisponibles"); return box; }
+      if (!at || !this._hass) { say("Prix indisponible"); return box; }
       say("prix…");
       var self = this;
       this._fuelCache = this._fuelCache || {};
@@ -7657,16 +7636,12 @@
           // square on the map that the ministry was never told of. The words
           // say which, and the nearest known distance says more: near means a
           // shifted pin, far means a station the flux will never carry.
-          if (!best && !r.ok) r = { err: r.error || "flux des prix injoignable", bad: true };
-          else if (!best) {
-            var nd2 = null;
-            (r.stations || []).forEach(function (s) { var d = gpsDist([s.lon, s.lat], at); if (nd2 == null || d < nd2) nd2 = d; });
-            r = { err: (r.stations || []).length ? "prix inconnus · la plus proche du flux à " + gpsMetres(nd2) : "prix inconnus · aucune station du flux dans le coin" };
-          }
+          if (!best && !r.ok) r = { err: "Prix indisponible", bad: true };
+          else if (!best) r = { err: "Prix indisponible" };
           self._fuelCache[key] = { at: Date.now(), s: best, err: best ? "" : r.err, bad: !best && !!r.bad };
-          if (self._pick) { if (best) put(best); else say(r.err + " \u00b7 carte v" + GPS_CARD_VERSION); }
+          if (self._pick) { if (best) put(best); else say(r.err); }
         })
-        .catch(function () { self._fuelCache[key] = { at: Date.now(), s: null, err: "flux des prix injoignable", bad: true }; if (self._pick) say("flux des prix injoignable \u00b7 carte v" + GPS_CARD_VERSION); });
+        .catch(function () { self._fuelCache[key] = { at: Date.now(), s: null, err: "Prix indisponible", bad: true }; if (self._pick) say("Prix indisponible"); });
       return box;
     },
     // The stations around: Waze's button. Igor's `car_nearby` says which are
@@ -7743,10 +7718,11 @@
         var row = document.createElement("div"); row.className = "row2";
         b.addEventListener("click", () => { this.chooseNext = true; this.setDestination({ lat: lat, lon: lon, name: nm }, true); $("fpanel").hidden = true; });
         row.appendChild(b);
-        // The gazole's price at the right, the fuel's name under it; a station
-        // the flux does not know simply says nothing there.
+        // The gazole's price at the right, the fuel's name under it; a
+        // rupture says the flux's own word, a station the flux does not know
+        // says the one professional word — never nothing.
         var f = this.nearestFuel(prices, lat, lon);
-        if (f && f.prices && !Object.keys(f.prices).length) f = null;
+        if (f && f.prices && !Object.keys(f.prices).length && !(f.rupture && Object.keys(f.rupture).length)) f = null;
         if (f && f.prices && f.prices.gazole != null) {
           var pp = document.createElement("span"); pp.className = "pp";
           pp.appendChild(fuelIcon("gazole", "Gazole"));
@@ -7762,9 +7738,12 @@
           var pp2 = document.createElement("span"); pp2.className = "pp";
           pp2.appendChild(fuelIcon("gazole", "Gazole"));
           var dr = document.createElement("span"); dr.className = "dry";
-          dr.textContent = f.rupture.gazole === "definitive" ? "à sec (définitif)" : "à sec";
+          dr.textContent = f.rupture.gazole === "definitive" ? "rupture définitive" : "rupture";
           pp2.appendChild(dr);
           row.appendChild(pp2);
+        } else {
+          var np = document.createElement("span"); np.className = "np"; np.textContent = "Prix indisponible";
+          row.appendChild(np);
         }
         if (this.dest) row.appendChild(this.viaBtn({ lat: lat, lon: lon, name: nm }));
         list.appendChild(row);
