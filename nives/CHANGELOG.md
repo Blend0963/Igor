@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.59 — The word that fits every case
+
+- The stations' panel says "rupture" like the popup does — a station the flux declares dry had been thrown away by the panel's own filter, its column standing mute; it speaks now.
+- A station whose price is simply not known says "Prix indisponible" — one professional word, no arithmetic of distances, in the popup as in the panel.
+
 ## 0.38.58 — One fuel a line, the trade's own word
 
 - The tap popup's prices stand one fuel a line now — gazole first, all the same size (no fuel a favourite above the others), each with its own "€/L".
