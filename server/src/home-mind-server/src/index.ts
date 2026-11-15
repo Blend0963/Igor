@@ -431,6 +431,12 @@ app.get("/", (_req, res) => {
   });
 });
 
+// Lightweight liveness probe, no auth, no dependencies: answers even when
+// Shodh or Home Assistant are down, unlike /api/health.
+app.get("/api/ping", (_req, res) => {
+  res.json({ status: "ok", version, uptime: process.uptime(), timestamp: Date.now() });
+});
+
 // Errors that reach Express (a malformed or oversized body): a short JSON
 // answer, never a stack trace.
 app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
