@@ -5250,7 +5250,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.59";
+  var GPS_CARD_VERSION = "0.38.60";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7585,7 +7585,7 @@
         var pr = (s && s.prices) || {}, ru = (s && s.rupture) || {};
         var order = ["gazole", "sp98", "sp95", "e10", "e85", "gplc"], names = { gazole: "Gazole", sp98: "Sans plomb 98", sp95: "Sans plomb 95", e10: "E10", e85: "E85 (superéthanol)", gplc: "GPLc" };
         var have = order.filter(function (k) { return pr[k] != null || ru[k]; });
-        if (!have.length) { var np = document.createElement("div"); np.className = "np"; np.textContent = "Prix indisponible"; box.appendChild(np); return; }
+        if (!have.length) { var np = document.createElement("div"); np.className = "np"; np.textContent = "Non communiqu\u00e9"; box.appendChild(np); return; }
         // One fuel a line, all the same size — no fuel a favourite above the
         // others, each with its unit; a rupture says the trade's own word.
         have.forEach(function (k) {
@@ -7610,7 +7610,7 @@
       // network's brief silence must not stick to the station for ten. And a
       // failure remembered says its own words again, not a shrug.
       var hit = key && this._fuelCache && this._fuelCache[key];
-      if (hit && Date.now() - hit.at < (hit.bad ? 30000 : 600000)) { if (hit.s) put(hit.s); else say(hit.err || "Prix indisponible"); return box; }
+      if (hit && Date.now() - hit.at < (hit.bad ? 30000 : 600000)) { if (hit.s) put(hit.s); else say(hit.err || "Non communiqu\u00e9"); return box; }
       // The map's own stations carry their prices already (the flux's own
       // markers): one standing within 500 m is answered at once, no ask.
       if (at && this.fluxFuel && this.fluxFuel.length) {
@@ -7622,7 +7622,7 @@
           return box;
         }
       }
-      if (!at || !this._hass) { say("Prix indisponible"); return box; }
+      if (!at || !this._hass) { say("Non communiqu\u00e9"); return box; }
       say("prix…");
       var self = this;
       this._fuelCache = this._fuelCache || {};
@@ -7636,12 +7636,12 @@
           // square on the map that the ministry was never told of. The words
           // say which, and the nearest known distance says more: near means a
           // shifted pin, far means a station the flux will never carry.
-          if (!best && !r.ok) r = { err: "Prix indisponible", bad: true };
-          else if (!best) r = { err: "Prix indisponible" };
+          if (!best && !r.ok) r = { err: "Non communiqu\u00e9", bad: true };
+          else if (!best) r = { err: "Non communiqu\u00e9" };
           self._fuelCache[key] = { at: Date.now(), s: best, err: best ? "" : r.err, bad: !best && !!r.bad };
           if (self._pick) { if (best) put(best); else say(r.err); }
         })
-        .catch(function () { self._fuelCache[key] = { at: Date.now(), s: null, err: "Prix indisponible", bad: true }; if (self._pick) say("Prix indisponible"); });
+        .catch(function () { self._fuelCache[key] = { at: Date.now(), s: null, err: "Non communiqu\u00e9", bad: true }; if (self._pick) say("Non communiqu\u00e9"); });
       return box;
     },
     // The stations around: Waze's button. Igor's `car_nearby` says which are
@@ -7742,8 +7742,10 @@
           pp2.appendChild(dr);
           row.appendChild(pp2);
         } else {
-          var np = document.createElement("span"); np.className = "np"; np.textContent = "Prix indisponible";
-          row.appendChild(np);
+          var pp3 = document.createElement("span"); pp3.className = "pp";
+          var np = document.createElement("span"); np.className = "np"; np.textContent = "Non communiqu\u00e9";
+          pp3.appendChild(np);
+          row.appendChild(pp3);
         }
         if (this.dest) row.appendChild(this.viaBtn({ lat: lat, lon: lon, name: nm }));
         list.appendChild(row);
