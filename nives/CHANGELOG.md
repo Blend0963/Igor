@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.38.61 — The price over the pump, the finger that asks
+
+- The gazole's price stands over its station now — a small tag the eye reads without a finger: the enseigne's logo when the card has one, the price, or the ministry's own "rupture" / "rupture définitive" when the tap is dry; a station nothing is known of stands bare. The tags follow the layers' button (all taken down when the fuel layer is off).
+- The tap popup's fuel-price block is gone — the vignette says it all; tapping a station opens the same popup as every other point of interest: « Nouvel itinéraire » or « Ajouter une étape ».
+- A plain tap on the empty map no longer opens anything; choosing a route or a stop by the finger asks a long press now (about 0.6 s) — the popup then names the spot « Ce point ».
+- A new `compact: true` for the card standing small in a dashboard's view: the left buttons are hidden, and a tap anywhere on the card opens it full screen.
+- Full screen keeps the Igor bar (the ticker with the hour and the date) above the map, and the left buttons come back bigger (56 px, their icons 28 px), aligned as they were.
 ## 0.38.60 — The word in its place
 
 - "Prix indisponible" gives way to "Non communiqué" — the ministry's own register for a price no declarant sent, shorter, and the same voice as "rupture".
