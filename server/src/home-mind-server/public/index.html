@@ -48,8 +48,10 @@
   .brand { font-weight: 600; font-size: 16px; letter-spacing: 0.5px; }
   #btn-new { background: rgba(var(--accent-rgb),0.15); color: var(--link); border: 1px solid rgba(var(--accent-rgb),0.4); padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
   #btn-new:hover { background: rgba(var(--accent-rgb),0.3); }
-  #btn-code { background: rgba(var(--accent-rgb),0.15); color: var(--link); border: 1px solid rgba(var(--accent-rgb),0.4); padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
-  #btn-code:hover { background: rgba(var(--accent-rgb),0.3); }
+  .mode-switch { display: inline-flex; border: 1px solid rgba(var(--accent-rgb),0.4); border-radius: 8px; overflow: hidden; font-size: 12px; }
+  .mode-switch button { background: transparent; color: var(--muted); border: 0; padding: 5px 10px; cursor: pointer; font-weight: 600; }
+  .mode-switch button.active { background: rgba(var(--accent-rgb),0.22); color: var(--link); }
+  .mode-switch button:hover:not(.active) { background: rgba(var(--accent-rgb),0.12); }
   .code-badge { font-size: 11px; color: var(--link); background: rgba(var(--accent-rgb),0.12); border: 1px solid rgba(var(--accent-rgb),0.35); border-radius: 6px; padding: 1px 6px; margin-left: 8px; vertical-align: middle; font-weight: 600; }
   .tool-run { margin: 6px 0 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--code-bg, rgba(0,0,0,0.04)); font-size: 12px; }
   .tool-run summary { cursor: pointer; padding: 5px 10px; font-family: ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
@@ -559,7 +561,10 @@
     <div class="side-head">
       <span class="brand wordmark"><svg class="wm-bow" viewBox="0 0 256 256" aria-hidden="true"><rect x="107" y="20" width="44" height="216" fill="#e9e4da"/><circle class="eye-ring" cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle class="eye-pupil" cx="128" cy="96" r="16" fill="#e5323b"/></svg>Igor</span>
       <button id="btn-new" type="button">+ Nouveau fil</button>
-      <button id="btn-code" type="button" title="Nouveau fil Igor Code : développement sur la VM sandbox">⚡ Igor Code</button>
+      <div class="mode-switch" role="tablist" aria-label="Mode du panneau">
+        <button id="mode-classic" type="button" role="tab" title="Fils classiques : maison, quotidien, documents">Classique</button>
+        <button id="mode-code" type="button" role="tab" title="Fils code : développement sur la VM sandbox">⚡ Code</button>
+      </div>
       <button id="btn-close-side" type="button" title="Fermer" aria-label="Fermer la liste"><svg class="svg-ic" style="width:18px;height:18px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
     <div class="side-tools">
@@ -733,10 +738,22 @@
   }
 
   // Favourites (★) first, under their own heading; then the rest, newest first.
+  var LS_UIMODE = "igorUiMode";
+  function uiMode() { try { return localStorage.getItem(LS_UIMODE) === "code" ? "code" : "classic"; } catch (e) { return "classic"; } }
+  function setUiMode(m) {
+    try { localStorage.setItem(LS_UIMODE, m); } catch (e) {}
+    el("mode-classic").classList.toggle("active", m !== "code");
+    el("mode-code").classList.toggle("active", m === "code");
+    el("mode-classic").setAttribute("aria-selected", m !== "code" ? "true" : "false");
+    el("mode-code").setAttribute("aria-selected", m === "code" ? "true" : "false");
+    refreshThreads();
+  }
   function renderThreads(threads) {
     var nav = el("threads");
     nav.textContent = "";
     if (state.projectFilter) threads = threads.filter(function (t) { return t.projectId === state.projectFilter; });
+    var mode = uiMode();
+    threads = threads.filter(function (t) { return (isCodeThread(t.conversationId) ? "code" : "classic") === mode; });
     if (state.searching && el("search").value.trim().length >= 2) return;
     var pinned = threads.filter(function (t) { return t.pinned; });
     var others = threads.filter(function (t) { return !t.pinned; });
@@ -2625,8 +2642,11 @@
   }
   el("input").addEventListener("input", autoGrow);
 
-  el("btn-new").addEventListener("click", newThread);
-  el("btn-code").addEventListener("click", newCodeThread);
+  el("mode-classic").addEventListener("click", function () { setUiMode("classic"); });
+  el("mode-code").addEventListener("click", function () { setUiMode("code"); });
+  el("btn-new").addEventListener("click", function () { if (uiMode() === "code") newCodeThread(); else newThread(); });
+  el("btn-new-top").addEventListener("click", function () { if (uiMode() === "code") newCodeThread(); else newThread(); });
+  setUiMode(uiMode());
   // ----- thread list on a phone -----
   //
   // Below 700 px the list slides in over the conversation. The header that
@@ -2651,7 +2671,6 @@
   });
   el("btn-close-side").addEventListener("click", closeSide);
   el("backdrop").addEventListener("click", closeSide);
-  el("btn-new-top").addEventListener("click", newThread);
   narrow.addEventListener("change", function () { if (!narrow.matches) closeSide(); });
   // On a phone the welcome screen has nothing to do; the list is what the
   // person came for.
@@ -2908,6 +2927,9 @@
   function newCodeThread() {
     newThread();
     markCodeThread(state.current);
+    try { localStorage.setItem(LS_UIMODE, "code"); } catch (e) {}
+    el("mode-classic").classList.remove("active");
+    el("mode-code").classList.add("active");
     writePick(state.current, { model: IGOR_CODE_MODEL, reasoning: "high" });
     showPick();
     el("chat-title").textContent = "Nouveau fil";
