@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.38.71 — The screen's law
+
+- The places obey the screen now, a video game's own law: a place the eye does not see is neither asked nor drawn — the view's rectangle (a quarter of itself wider, so the arrival stays fluid) is the only land the map reads, the car's own square excepted, and the squares the eye leaves are let go. Less network, less memory, the same map where it matters.
+- The zoom has its word too: the road's furniture (stations, bornes, parkings, aires, hôpitaux, aéroports, parcs) stands from far away; the leisure places (hôtels, campings, musées, cinémas, zoos, plages, gares, toilettes) wait for the middle zooms; the shops (boulangeries, banques, postes, restaurants, cafés, pharmacies and their kind) only come when the streets are near.
+- Places piled on the same pixels (an aire's café, toilets and fuel; a station and its lavage) stand in a row instead, centred on the pile's own place, and take their true seat back once the zoom parts them — the row rides with the map (screen pixels), the zoom re-sorts it. The names stand down: the tap's popup says who is who; the cameras keep their limit under the radar.
+- The layers' word is kept by the house now: the panel's choice is written in Home Assistant itself (as the voice's is), so a screen reset, an emptied browser or an app closed elsewhere forgets nothing. The screen's own copy stays, for the instant read.
+
 ## 0.38.70 — The map stands up again
 
 - Recentering gives the map back its tilt: the view the card takes when it holds the wheel again (by the button, or by itself once the finger's pause is gone) carries the pitch of the config with it — a map the finger laid flat does not stay flat for ever, it stands up again the moment the car comes back to its place. The finger's own flat or tilted map keeps its law while it holds the map; only the recentered view is the navigator's.
