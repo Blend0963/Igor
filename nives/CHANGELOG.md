@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.38.63 — The name, the finger, the hand, the banner, the bar
+
+- The stations carry their enseigne now: the flux's own word for it (`pop`, the point of sale's usual name) is read and stands where the address stood — the ministry's paperwork no longer answers for the brand. A twin merged from two rows takes the name whichever row carried it.
+- The long press survives the trembling finger: a held finger is never still, so a few pixels of tremble no longer cancel the ask — only a real move (more than eight) does. Choosing a route or a stop by holding the map works again, on the radio as on the phone.
+- The map no longer fights the hand while rolling: while a finger rests on it, the fixes that follow the car hold their breath — the map stays where the hand put it until the finger lifts (or the recenter button brings the following back).
+- Full screen, the guidance's banner steps aside: the bigger buttons (56 px) no longer hide its first words.
+- Full screen, the Igor bar is back above the map: the inline top that lifts the card below the ticker now stands on the `ha-card` — the element that is actually fixed — where it was set on the host, which heard nothing.
+
 ## 0.38.62 — The whole board, the list that follows
 
 - The stations' panel lists every station around the car now (15 asked, the schema's own ceiling raised to match), and the best stands on top — the backend's own mix: the least detour first, the nearest when the detours tie.
