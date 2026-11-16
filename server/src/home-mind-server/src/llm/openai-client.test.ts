@@ -534,6 +534,52 @@ describe("OpenAIChatEngine", () => {
       expect(body.max_completion_tokens ?? body.max_tokens).toBe(16384);
     });
 
+    it("runs unlimited tool rounds in a thread — never disables tools past 8 iterations", async () => {
+      const toolDelta = (toolCall: object, finish_reason: string | null = null) => ({
+        choices: [{ delta: { tool_calls: [toolCall] }, finish_reason }],
+      });
+      const rounds = 12; // well past the voice cap of 8
+      for (let i = 0; i < rounds; i++) {
+        mockCreate.mockResolvedValueOnce(
+          makeStream([
+            toolDelta({ index: 0, id: `call-${i}`, function: { name: "get_state", arguments: "{}" } }, "tool_calls"),
+          ])
+        );
+      }
+      mockCreate.mockResolvedValueOnce(
+        makeStream([{ choices: [{ delta: { content: "fini" }, finish_reason: "stop" }] }])
+      );
+
+      const result = await engine.chat({ message: "x", userId: "user-1", conversationId: thread });
+
+      // One opening request plus one per tool round; no call ever got tool_choice "none".
+      expect(mockCreate).toHaveBeenCalledTimes(rounds + 1);
+      for (const call of mockCreate.mock.calls) {
+        expect(call[0]).not.toHaveProperty("tool_choice");
+      }
+      expect(result.response).toBe("fini");
+      expect(result.toolsUsed).toHaveLength(rounds);
+    });
+
+    it("keeps the 8-round cap outside threads (voice included)", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const toolDelta = (toolCall: object, finish_reason: string | null = null) => ({
+        choices: [{ delta: { tool_calls: [toolCall] }, finish_reason }],
+      });
+      mockCreate.mockImplementation(async () =>
+        makeStream([
+          toolDelta({ index: 0, id: "call-1", function: { name: "get_state", arguments: "{}" } }, "stop"),
+        ])
+      );
+
+      await engine.chat({ message: "x", userId: "user-1", isVoice: true });
+
+      // One opening request plus eight tool rounds; the last one may not call tools.
+      expect(mockCreate).toHaveBeenCalledTimes(9);
+      expect(mockCreate.mock.calls[8][0].tool_choice).toBe("none");
+      expect(mockCreate.mock.calls[7][0]).not.toHaveProperty("tool_choice");
+    });
+
     it("keeps thinking chunks out of the answer and says it is thinking", async () => {
       config.threadReasoning = "high";
       mockCreate.mockResolvedValue(
