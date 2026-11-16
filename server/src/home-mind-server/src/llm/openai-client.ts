@@ -8,6 +8,7 @@ import { TopologyScanner } from "../ha/topology-scanner.js";
 import { formatScriptSection } from "../ha/script-catalog.js";
 import { buildSystemPromptText, formatDateTimeWithOffset } from "./prompts.js";
 import { toolsForMode, toOpenAITools } from "./tool-definitions.js";
+import { filterTools, type TurnPolicy } from "./tool-policy.js";
 import { listFromEnv, mistralKey } from "./mistral-platform.js";
 import { isActionCommand, isSimpleRequest, mayBeOrder, selectThreadReasoning } from "./model-router.js";
 import { formatLiveState } from "./live-state.js";

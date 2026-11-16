@@ -6,6 +6,7 @@ import {
   toAnthropicTools,
   toOpenAITools,
 } from "./tool-definitions.js";
+import { SANDBOX_TOOLS } from "./sandbox-tools.js";
 
 describe("TOOL_DEFINITIONS", () => {
   it("has 12 tools", () => {
@@ -131,8 +132,9 @@ describe("toolsForMode", () => {
   it("adds the home tools everywhere, the configuration tools to written styles, and create_file to threads, without a Mistral key", () => {
     const home = HOME_EXTRA_TOOLS.map((t) => t.name);
     const cfg = CONFIG_TOOLS.map((t) => t.name);
-    expect(names(toolsForMode("thread", off))).toEqual([...names(TOOL_DEFINITIONS), ...home, ...cfg, "create_file"]);
-    expect(names(toolsForMode("text", off))).toEqual([...names(TOOL_DEFINITIONS), ...home, ...cfg]);
+    const sandbox = SANDBOX_TOOLS.map((t) => t.name);
+    expect(names(toolsForMode("thread", off))).toEqual([...names(TOOL_DEFINITIONS), ...home, ...cfg, ...sandbox, "create_file"]);
+    expect(names(toolsForMode("text", off))).toEqual([...names(TOOL_DEFINITIONS), ...home, ...cfg, ...sandbox]);
     process.env.LEAN_MODE = "off";
     expect(names(toolsForMode("voice", off))).toEqual([...names(TOOL_DEFINITIONS), ...home]);
     delete process.env.LEAN_MODE;
