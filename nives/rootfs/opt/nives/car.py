@@ -75,8 +75,23 @@ TOMTOM_KINDS: dict[str, tuple[str, str]] = {
     "supermarket": ("supermarket", "7332005"),
     "toilets": ("toilets", ""),
     "parking": ("parking", "7313,7369"),
-    "car_wash": ("car wash", ""),
+    "car_wash": ("car wash", "9155"),
     "car_repair": ("car repair", "7310"),
+    "hotel": ("hotel", "7314"),
+    "camping": ("camping", "7360"),
+    "bakery": ("bakery", "9361018"),
+    "bank": ("bank", "7328"),
+    "post": ("post office", "7324"),
+    "police": ("police station", "7322"),
+    "attraction": ("tourist attraction", "7376"),
+    "museum": ("museum", "7317"),
+    "cinema": ("cinema", "7342"),
+    "theme_park": ("amusement park", "9902"),
+    "zoo": ("zoo", "9927"),
+    "beach": ("beach", "9357"),
+    "station": ("railroad station", "7380"),
+    "airport": ("airport", "7383"),
+    "car_rental": ("rent-a-car", "7312"),
 }
 MAX_TEXT = 120
 
@@ -95,6 +110,21 @@ KINDS: dict[str, tuple[str, list[str]]] = {
     "cafe": ("café", ['nwr["amenity"="cafe"]']),
     "car_wash": ("station de lavage", ['nwr["amenity"="car_wash"]']),
     "car_repair": ("garage", ['nwr["shop"="car_repair"]']),
+    "hotel": ("h\u00f4tel", ['nwr["tourism"~"^(hotel|motel|guest_house)$"]']),
+    "camping": ("camping", ['nwr["tourism"~"^(camp_site|caravan_site)$"]']),
+    "bakery": ("boulangerie", ['nwr["shop"="bakery"]']),
+    "bank": ("banque", ['nwr["amenity"="bank"]']),
+    "post": ("poste", ['nwr["amenity"="post_office"]']),
+    "police": ("police", ['nwr["amenity"="police"]']),
+    "attraction": ("attraction", ['nwr["tourism"="attraction"]']),
+    "museum": ("mus\u00e9e", ['nwr["tourism"="museum"]']),
+    "cinema": ("cin\u00e9ma", ['nwr["amenity"="cinema"]']),
+    "theme_park": ("parc d'attractions", ['nwr["tourism"="theme_park"]']),
+    "zoo": ("zoo", ['nwr["tourism"="zoo"]']),
+    "beach": ("plage", ['nwr["natural"="beach"]']),
+    "station": ("gare", ['nwr["railway"~"^(station|halt)$"]']),
+    "airport": ("a\u00e9roport", ['nwr["aeroway"="aerodrome"]']),
+    "car_rental": ("location de voitures", ['nwr["amenity"="car_rental"]']),
 }
 # Words a driver says → the kind.
 KIND_WORDS = {
@@ -107,6 +137,13 @@ KIND_WORDS = {
     "pharmacie": "pharmacy", "distributeur": "atm", "banque": "atm", "dab": "atm",
     "supermarche": "supermarket", "courses": "supermarket", "manger": "restaurant", "restaurant": "restaurant",
     "cafe": "cafe", "lavage": "car_wash", "garage": "car_repair", "parking": "parking",
+    "hotel": "hotel", "dormir": "hotel", "nuit": "hotel",
+    "camping": "camping", "caravane": "camping",
+    "boulangerie": "bakery", "pain": "bakery",
+    "poste": "post", "police": "police", "gendarmerie": "police",
+    "musee": "museum", "cinema": "cinema", "film": "cinema",
+    "plage": "beach", "gare": "station", "train": "station",
+    "aeroport": "airport", "avion": "airport", "zoo": "zoo",
 }
 HOME_WORDS = {"maison", "domicile", "home", "chez moi", "a la maison", "chez nous", "la maison"}
 # The words that carry no place of their own (« à », « vers », « la »): a name

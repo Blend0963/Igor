@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.69 — The whole drawer, and the hand that sorts it
+
+- Every place TomTom knows is a drawer of the map now: the hôtels, the campings, the boulangeries, the banques, the postes, the police, the attractions, the musées, the cinémas, the parcs d'attractions, the zoos, the plages, the gares, the aéroports and the locations de voitures join the thirteen already there — each its colour, its drawn icon (the bed, the tent, the loaf, the pediment, the envelope, the shield, the star, the letter, the clap, the wheel, the paw, the parasol, the train, the plane, the car) and its own ask, on TomTom's squares (their category codes, attested ones only — the lavage gains its number 9155) as on OpenStreetMap's. The new drawers stand shut by default: the road's usual places keep the map as it was.
+- The layers' button is back, for the places only: a touch, and a small panel opens beside the buttons — one line a kind, its colour beside its name, the radars first. A touch on a line shows or hides its kind at once, and the word is kept by the screen itself (the panel's own memory), so the next drive reads the same map. The traffic, the incidents and the guidance keep their own law, nothing to switch there.
+
 ## 0.38.68 — The right drawer
 
 - The TomTom asks carry their official category codes now: the restaurants ask for the fast foods too, the cafés, the supermarchés, the parkings (garage and open air) and the garages say their number where their words alone stood, and the pharmacies say the documented code (7326) where an undocumented one stood — a wrong number never answers an error, only an empty square, so only the codes known good stand there. The lavages and the toilettes keep their words alone: no number is known good for them.

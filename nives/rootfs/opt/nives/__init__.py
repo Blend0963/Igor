@@ -1403,7 +1403,7 @@ def _async_register_car(hass: HomeAssistant) -> None:
         lat, lon = call.data["latitude"], call.data["longitude"]
         radius = int(call.data["radius_km"] * 1000)
         asked = [k.strip() for k in str(call.data.get("kinds") or "").split(",") if k.strip()]
-        # Every kind asked is served (thirteen today): one small ask a kind,
+        # Every kind asked is served (twenty-eight today): one small ask a kind,
         # TomTom answers lightly.
         kinds = [k for k in asked if k in TOMTOM_KINDS]
         out = []
