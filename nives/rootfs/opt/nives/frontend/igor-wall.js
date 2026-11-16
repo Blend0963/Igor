@@ -5244,7 +5244,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.71";
+  var GPS_CARD_VERSION = "0.38.72";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -8416,14 +8416,11 @@
     applyLayers() {
       var map = this.map;
       if (!map || !map.getLayer || !map.getLayer("pois")) return;
-      // The zoom's law joins the layers' law: the road's furniture stands
-      // far, the shops wait for the streets to be near.
-      var zk = [];
-      Object.keys(GPS_POI).forEach((k) => { zk.push(k, GPS_POI[k].z == null ? 0 : GPS_POI[k].z); });
-      map.setFilter("pois", ["all",
-        ["in", ["get", "kind"], ["literal", this.poiKinds()]],
-        [">=", ["zoom"], ["match", ["get", "kind"]].concat(zk).concat([0])]
-      ]);
+      // maplibre weighs a filter's zoom when the square is loaded, not when
+      // the finger moves: a zoom law inside the filter keeps the zoom of its
+      // birth (a square caught far keeps its far law; none is ever hidden
+      // again). So the filter keeps the kinds' law only - the zoom's law
+      // lives in refreshPois, judged live, on the screen itself.
       ["incidents", "incidents-closed", "incidents-pt"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible"); });
       // The tags over the pumps follow the map's word too.
       this.refreshFuelTags();
@@ -8480,7 +8477,8 @@
       // The screen's law again: only the squares the view touches (a quarter
       // of itself wider, so the edges fill before they are seen) and the
       // car's own square, whatever the eye does (the warnings read it).
-      // Nothing off-screen is asked, and the eye's centre leads the queue —
+      // Nothing off-screen is asked, and the car leads the queue (the
+      // pitched view's centre lies far ahead, pushed toward the horizon) -
       // sixteen squares at most, so the small machine is never flooded.
       var want = [], seen = {}, z = GPS_TILE_Z;
       var add = (x, y) => {
@@ -8498,8 +8496,7 @@
       }
       var me = gpsTileOf(p, z);
       add(me[0], me[1]);
-      var at = bb ? [(bb.getWest() + bb.getEast()) / 2, (bb.getSouth() + bb.getNorth()) / 2] : p;
-      want.forEach((t) => { t.d = gpsDist(at, [(t.b.w + t.b.e) / 2, (t.b.n + t.b.s) / 2]); });
+      want.forEach((t) => { t.d = gpsDist(p, [(t.b.w + t.b.e) / 2, (t.b.n + t.b.s) / 2]); });
       want = want.sort((u, v) => u.d - v.d).slice(0, 16);
       var T = this.poiTiles || (this.poiTiles = {});
       var busy = this.poiBusy || (this.poiBusy = {});
@@ -8687,12 +8684,20 @@
     // car's way (ahead, on its road or its route), not the streets around.
     refreshPois() {
       var map = this.map, ids = [], shown = [];
-      // The screen's law (a video game's own): a place the eye does not see
-      // is not drawn - the view's rectangle, a quarter of itself wider so the
-      // arrival stays fluid. The cameras keep their own law: the car's way
-      // (the warnings read them whether they stand in view or not).
+      // The screen's law (a video game's own), judged live and in pixels:
+      // the zoom's gate is read at this very instant (not the zoom a square
+      // was born with), and a place is drawn only where the eye sees it -
+      // projected on the screen, a hand's width (120 px) past the edges so
+      // the arrival stays fluid. A NaN projection means "never seen": the
+      // pattern of !(...) keeps it out. The cheap box first (the view's
+      // bounds hold the whole pitched screen), the true pixels then. The
+      // cameras keep their own law: the car's way, whether the eye rests
+      // there or not.
+      var zoom = map && map.getZoom ? map.getZoom() : 0;
+      var M = 120, cw = 0, ch = 0;
+      try { cw = map.getContainer().clientWidth; ch = map.getContainer().clientHeight; } catch (err) { cw = 0; ch = 0; }
       var bb = null;
-      try { bb = map && map.getBounds ? map.getBounds() : null; } catch (e) { bb = null; }
+      try { bb = map && map.getBounds ? map.getBounds() : null; } catch (err) { bb = null; }
       var w = 0, e = 0, s = 0, n = 0;
       if (bb) {
         w = bb.getWest(); e = bb.getEast(); s = bb.getSouth(); n = bb.getNorth();
@@ -8701,10 +8706,17 @@
       }
       (this.pois || []).forEach((q) => {
         if (q.kind === "camera") { if (!this.onMap || !this.onMap[q.id]) return; }
-        else if (bb && (q.p[0] < w || q.p[0] > e || q.p[1] < s || q.p[1] > n)) return;
+        else {
+          var gate = GPS_POI[q.kind] && GPS_POI[q.kind].z != null ? GPS_POI[q.kind].z : 0;
+          if (zoom < gate) return;
+          if (bb && (q.p[0] < w || q.p[0] > e || q.p[1] < s || q.p[1] > n)) return;
+          var px = null;
+          try { px = map.project(q.p); } catch (err) { px = null; }
+          if (!(px && px.x >= -M && px.x <= cw + M && px.y >= -M && px.y <= ch + M)) return;
+        }
         ids.push(q.id); shown.push(q);
       });
-      var zb = map && map.getZoom ? Math.round(map.getZoom() * 2) : 0;
+      var zb = Math.round(zoom * 4);
       var sig = ids.join(",") + "@" + zb;
       if (sig === this.poiShown) return;
       this.poiShown = sig;
