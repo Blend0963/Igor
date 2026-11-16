@@ -1031,7 +1031,7 @@ CAR_POIS_SCHEMA = vol.Schema(
         vol.Required("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
         vol.Required("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
         vol.Optional("radius_km", default=3): vol.All(vol.Coerce(float), vol.Range(min=0.5, max=20)),
-        vol.Optional("kinds", default="fuel,rest"): vol.All(cv.string, vol.Length(max=120)),
+        vol.Optional("kinds", default="fuel,rest"): vol.All(cv.string, vol.Length(max=400)),
     }
 )
 CAR_FUEL_SCHEMA = vol.Schema(

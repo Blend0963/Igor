@@ -8527,7 +8527,7 @@
         // TomTom only partly answered is asked again within ten minutes -
         // such a square is not written to the screen's store at all.
         this.poiTiles[t.k] = { at: now, items: items, empty: !items.length, partial: !!partial };
-        if (!partial) gpsStorePut("poi/" + t.k, { at: Date.now(), items: items });
+        if (!partial) gpsStorePut("poi/" + key + "/" + t.k, { at: Date.now(), items: items });
         this.poiFails = 0;
         this.poiNextTry = 0;
         // Squares far behind are let go (more than 12 km) — unless the eye
@@ -8548,7 +8548,7 @@
         return gpsOverpass(this.config, q).then((jj) => gpsPois(jj.elements));
       };
       var fromOverpass = () => overpassItems(this.poiKinds()).then((items) => { if (key === this.poiKey) keep(items); });
-      gpsStoreGet("poi/" + t.k).then((saved) => {
+      gpsStoreGet("poi/" + key + "/" + t.k).then((saved) => {
         if (key !== this.poiKey) return;
         if (saved && Array.isArray(saved.items) && Date.now() - saved.at < (saved.items.length ? GPS_KEEP_MS : GPS_EMPTY_KEEP)) {
           this.poiTiles[t.k] = { at: now, items: saved.items };
