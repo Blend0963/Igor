@@ -151,4 +151,3 @@ export interface IFactExtractor {
   ): Promise<ExtractedFact[]>;
 }
 
-repo://Blend0963/Igor/sha/4fd42b7b49c1d8818f9b692e29e6c7113b85737e/contents/server/src/home-mind-server/src/api/routes.ts
