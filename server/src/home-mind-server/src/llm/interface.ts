@@ -118,6 +118,17 @@ export interface ChatStreamEvents {
    * reply and never stored; a caller may show it and move on.
    */
   onStatus?: (text: string) => void;
+  /**
+   * A tool call finished: name, arguments, duration and (truncated) result.
+   * Lets a caller show what the model actually ran, Vibe Code style.
+   */
+  onTool?: (event: {
+    name: string;
+    args: Record<string, unknown>;
+    ms: number;
+    error?: boolean;
+    result?: string;
+  }) => void;
 }
 
 export function toStreamEvents(
@@ -139,3 +150,5 @@ export interface IFactExtractor {
     existingFacts?: Fact[]
   ): Promise<ExtractedFact[]>;
 }
+
+repo://Blend0963/Igor/sha/4fd42b7b49c1d8818f9b692e29e6c7113b85737e/contents/server/src/home-mind-server/src/api/routes.ts
