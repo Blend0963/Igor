@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.38.66 — The end of the road
+
+- Arriving ends the guidance, at once: the banner and the word stay, but the route, the alternates, the destination (written empty in the house) and the recalculations are gone the moment the car reaches the point — no more fifteen seconds of grace during which slipping out of the thirty metres would have brought the guidance back to life. The flag is re-armed for the next trip the moment a new destination is set.
+
+## 0.38.65 — The traffic on the line, the board that keeps its word
+
+- The traffic lives on the itinerary now, and nowhere else: the raster flow over every street of the map is gone (layer, tile proxy, and the `TrafficTileView` that served it) — the route's own blue line turns orange where it slows, red where it is jammed, as before. The incidents (accidents, works, closures) stay on the map.
+- The routes' board keeps its word: every way is offered again each time a destination is set — the fastest, the shortest (a new ask, TomTom's `routeType=shortest` through `nives.route`'s `route_type`), without motorways, without tolls, without the ZFE. Only after the first choice is made do the grey alternates keep their law: plainly faster, or as fast and plainly shorter, or silent.
+- The Orbis serving machinery is retired with the map: the style and proxy views (`BasemapStyleView`, `BasemapProxyView`) and their helpers are gone — one base map, fetched straight from its home.
+
 ## 0.38.64 — The screen that decides
 
 - The layers' panel is gone: no more button, no more switches. The card decides now, and decides once — every place of the house on the map by default (stations, bornes, parkings, aires, toilettes, hôpitaux), the radars always shown and each warned at its approach (the old « zones de danger » mode with it), the live traffic and its incidents drawn whenever TomTom answers. The traffic lights, that filled the towns in red, are off the map for good, query, icon and all.
