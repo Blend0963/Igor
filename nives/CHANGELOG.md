@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.38.62 — The whole board, the list that follows
+
+- The stations' panel lists every station around the car now (15 asked, the schema's own ceiling raised to match), and the best stands on top — the backend's own mix: the least detour first, the nearest when the detours tie.
+- Each station shows its whole board: every fuel a line (the nozzle's pictogram, the price with its €/L, or the flux's « rupture » / « rupture définitive », or « Non communiqué » when the declarant said nothing) — a station the flux ignores altogether says it once, not six times. The lines are small and right-aligned so six of them fit a row and nothing overflows.
+- The panel left open follows the car: gone 400 m from where it last asked (never twice within ten seconds), it asks again — the list stays the stations around the car, not the ones around where it stood.
+
+## 0.38.61 — The price over the pump, the finger that asks
+
+- The gazole's price stands over its station now — a small tag the eye reads without a finger: the enseigne's logo when the card has one, the price, or the ministry's own "rupture" / "rupture définitive" when the tap is dry; a station nothing is known of stands bare. The tags follow the layers' button (all taken down when the fuel layer is off).
+- The tap popup's fuel-price block is gone — the vignette says it all; tapping a station opens the same popup as every other point of interest: « Nouvel itinéraire » or « Ajouter une étape ».
+- A plain tap on the empty map no longer opens anything; choosing a route or a stop by the finger asks a long press now (about 0.6 s) — the popup then names the spot « Ce point ».
+- A new `compact: true` for the card standing small in a dashboard's view: the left buttons are hidden, and a tap anywhere on the card opens it full screen.
+- Full screen keeps the Igor bar (the ticker with the hour and the date) above the map, and the left buttons come back bigger (56 px, their icons 28 px), aligned as they were.
 ## 0.38.60 — The word in its place
 
 - "Prix indisponible" gives way to "Non communiqué" — the ministry's own register for a price no declarant sent, shorter, and the same voice as "rupture".
