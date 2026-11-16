@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.76 — Every checked layer is drawn
+
+- POI tile cache keyed by the active kinds: a tile cached with only fuel no longer hides the other checked layers for 30 days — each combination of layers gets its own cache entry (`igor-wall.js`).
+- The `nives.car_pois` backend accepts up to 400 characters of `kinds`, so checking all 28 layers no longer fails validation silently (`__init__.py`).
+
 ## 0.38.75 — No more cut-off turns in the chat panel
 
 - The panel's threads no longer stop mid-turn after 8 tool round-trips. `MAX_TOOL_ITERATIONS` used to force a final answer after 8 iterations in every mode, which cut long sandbox/dev sessions in the middle of a command chain. Threads (`mado-thread:*`) now run unlimited rounds — the panel has no client timeout to fall back on — while voice/Assist keeps the 8-round cap, so a spoken answer still ends quickly within Home Assistant's 120 s client timeout. Runaway protection is unchanged: SpokenGuard (`runaway.ts`) and the output caps (`usage.ts`) still stop a real loop in every mode.
