@@ -5251,7 +5251,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.62";
+  var GPS_CARD_VERSION = "0.38.63";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6015,6 +6015,9 @@
         ".btns { position: absolute; top: 10px; left: 10px; display: flex; flex-direction: column; gap: 8px; z-index: 2; }" +
         ".compact:not(.full) .btns { display: none; }" +
         ".full .btns button { width: 56px; height: 56px; --mdc-icon-size: 28px; }" +
+        // Full, the buttons are bigger: the guidance's banner steps aside, it
+        // no longer hides behind them.
+        ".full .nav { left: 76px; }" +
         ".btns button { width: 44px; height: 44px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; cursor: pointer; background: rgba(7,8,10,0.85); color: #e9e4da; display: grid; place-items: center; --mdc-icon-size: 22px; }" +
         ".btns button[hidden] { display: none; }" +
         // The card as the whole screen: the dashboard's bar and neighbours lie
@@ -6295,13 +6298,16 @@
     setFull(on) {
       // Full, the card covers the screen; the wall's own bar (the hour, the
       // date) keeps its place above — the card starts where the bar ends.
+      // The fixed one is the ha-card inside, not the host: the inline top
+      // that beats the inset's must stand on it, or the bar stays covered.
+      var card = this.$("card");
       try {
         var root = this.getRootNode && this.getRootNode();
         var tk = root && root.querySelector && root.querySelector(".ticker");
-        this.style.top = on && tk ? Math.max(0, tk.getBoundingClientRect().bottom) + "px" : "";
-      } catch (e) { this.style.top = ""; }
+        card.style.top = on && tk ? Math.max(0, tk.getBoundingClientRect().bottom) + "px" : "";
+      } catch (e) { card.style.top = ""; }
       this.full = !!on;
-      this.$("card").classList.toggle("full", this.full);
+      card.classList.toggle("full", this.full);
       // A card set without a speed box still shows it when it takes the whole
       // screen (the car's dashboard reads the OBD speed only in fullscreen);
       // the eta bar steps aside to leave it room.
@@ -6600,16 +6606,24 @@
       map.on("click", (e) => this.mapPick(e));
       // The held finger is a question: where the plain tap now stays quiet,
       // keeping the finger down a moment asks the map what the place can do.
+      // The finger on the map also stills the car's view: while it is down,
+      // the fixes no longer jump the map under it — moving the map while
+      // rolling was a fight against every new fix landing. The recenter
+      // button (or the pause gone by) brings the following back.
       var lp = null, lx = 0, ly = 0;
       var lpCancel = () => { if (lp) { clearTimeout(lp); lp = null; } };
-      var lpStart = (e) => { lpCancel(); if (!e || !e.point) return; lx = e.point.x; ly = e.point.y;
+      var lpStart = (e) => { this.grabbed = true; lpCancel(); if (!e || !e.point) return; lx = e.point.x; ly = e.point.y;
         lp = setTimeout(() => { lp = null; this._lpFired = performance.now(); this.mapPick(e, true); }, 600); };
+      var lpEnd = () => { this.grabbed = false; lpCancel(); };
       map.on("mousedown", lpStart);
       map.on("touchstart", lpStart);
       map.on("mousemove", (e) => { if (lp && e && e.point && (Math.abs(e.point.x - lx) > 8 || Math.abs(e.point.y - ly) > 8)) lpCancel(); });
-      map.on("touchmove", lpCancel);
-      map.on("mouseup", lpCancel);
-      map.on("touchend", lpCancel);
+      // A held finger is never still: it trembles a few pixels — only a
+      // real move (more than eight, as the mouse's) says the finger meant
+      // something else. The touch's own coordinates tell how far it went.
+      map.on("touchmove", (e) => { if (lp && e && e.point && (Math.abs(e.point.x - lx) > 8 || Math.abs(e.point.y - ly) > 8)) lpCancel(); });
+      map.on("mouseup", lpEnd);
+      map.on("touchend", lpEnd);
       map.on("dragstart", lpCancel);
       // The fingers on the map are the map's (not the page's scroll or swipe).
       this.$("map").style.touchAction = "none";
@@ -6841,7 +6855,7 @@
         this.fuelRefAt = now;
         if (!this.$("fpanel").hidden && this.pos && this.fuelHere && gpsDist(this.fuelHere, this.pos) > 400) this.openFuel(true);
       }
-      if (this.follow) {
+      if (this.follow && !this.grabbed) {
         var h = this.$("map").clientHeight;
         var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } };
         // As a navigator: farther out the faster (more road ahead), closer

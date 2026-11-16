@@ -461,6 +461,11 @@ def parse_fuel(body: Any) -> list[dict]:
         out.append({"lat": round(lat, 6), "lon": round(lon, 6),
                     "address": str(f.get("adresse") or f.get("address") or "")[:80],
                     "city": str(f.get("ville") or f.get("city") or "")[:60],
+                    # The flux's own word for the enseigne (`pop`, the point of
+                    # sale's usual name): without it the map said every station
+                    # by its address, the ministry's paperwork standing where
+                    # the brand's name should.
+                    "brand": str(f.get("pop") or f.get("enseigne") or "")[:40],
                     "prices": prices, "maj": maj, "rupture": rupt})
     # The ministry sometimes says a station twice — two rows, one pin. The
     # same folded address within 100 m is one station: the prices of both
@@ -475,6 +480,8 @@ def parse_fuel(body: Any) -> list[dict]:
                 twin = o
                 break
         if twin:
+            if not twin.get("brand") and s.get("brand"):
+                twin["brand"] = s["brand"]
             for k, v in s["prices"].items():
                 twin["prices"].setdefault(k, v)
             for k, v in s["maj"].items():
