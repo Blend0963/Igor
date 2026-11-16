@@ -43,8 +43,10 @@ export type { ChatRequest, ChatResponse, StreamCallback };
 
 /**
  * Hard cap on tool round-trips per user message — see the matching constant in
- * openai-client.ts. On the last iteration we re-ask with tool_choice "none" so
- * the user gets a written answer rather than a silent timeout.
+ * openai-client.ts. Voice keeps the cap (a spoken turn must end quickly); chat
+ * panel threads run unlimited rounds — the panel has no client timeout to fall
+ * back on, and the runaway guards (repeated-text cutting in runaway.ts, the
+ * output caps in usage.ts) are what protect against a real loop there.
  */
 const MAX_TOOL_ITERATIONS = 8;
 
@@ -269,9 +271,10 @@ export class LLMClient implements IChatEngine {
 
       messages.push({ role: "user", content: toolResults });
 
-      // Continue with streaming for the follow-up response. On the final allowed
-      // iteration, stop the model issuing more calls so it has to answer.
-      const forceAnswer = iterations >= MAX_TOOL_ITERATIONS;
+      // Continue with streaming for the follow-up response. Voice gets a hard
+      // cap (a spoken turn must end); a chat panel thread runs unlimited rounds,
+      // so a long battery of tool calls is never cut short.
+      const forceAnswer = !scope.isThread && iterations >= MAX_TOOL_ITERATIONS;
       if (forceAnswer) {
         console.warn(
           `[llm] tool loop hit ${MAX_TOOL_ITERATIONS} iterations — forcing a final answer`

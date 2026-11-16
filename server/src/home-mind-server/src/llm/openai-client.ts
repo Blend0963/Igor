@@ -128,15 +128,10 @@ export function missingAttachments(text: string, attachments: string[] | undefin
  * the user's OpenRouter allowance until HA's 120s client timeout cuts it off,
  * with nothing to show for it. On the last iteration we re-ask with tool calling
  * disabled so the user still gets a written answer instead of silence.
+ * Chat panel threads are exempt (no client timeout there, and the runaway
+ * guards in runaway.ts / usage.ts cover a real loop): they run unlimited rounds.
  */
 const MAX_TOOL_ITERATIONS = 8;
-/**
- * Threads are where long, multi-step work lives (Igor Code, sandbox runs):
- * eight round-trips cut real jobs short. 24 keeps the runaway guard while
- * leaving room for clone, edit, test, fix, commit, push cycles.
- */
-const MAX_TOOL_ITERATIONS_THREAD = 24;
-
 /**
  * A provider-specific field some OpenAI-compatible endpoints attach to a tool
  * call and require back, unchanged, on the next turn. It is not in the OpenAI
@@ -845,10 +840,10 @@ export class OpenAIChatEngine implements IChatEngine {
           }
         }
 
-        // Continue streaming. On the final allowed iteration, disable tool calling
-        // so the model has to answer in words rather than loop again.
-        const maxIter = scope.isThread ? MAX_TOOL_ITERATIONS_THREAD : MAX_TOOL_ITERATIONS;
-        const forceAnswer = iterations >= maxIter;
+        // Continue streaming. Voice gets a hard cap: on the final allowed
+        // iteration, disable tool calling so the model has to answer in words
+        // rather than loop again. A chat panel thread runs unlimited rounds.
+        const forceAnswer = !scope.isThread && iterations >= MAX_TOOL_ITERATIONS;
         if (forceAnswer) {
           console.warn(
             `[llm] tool loop hit ${maxIter} iterations — forcing a final answer`

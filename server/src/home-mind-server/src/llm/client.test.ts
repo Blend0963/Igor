@@ -213,6 +213,49 @@ describe("LLMClient (Anthropic engine)", () => {
     warn.mockRestore();
   });
 
+  it("lets a panel thread run more than 8 tool rounds without forcing an answer", async () => {
+    const thread = "mado-thread:0f8c1d9e-1111-4a4a-9b9b-222233334444";
+    const toolUse = (n: number) =>
+      finalMessage({
+        content: [{ type: "tool_use", id: `t${n}`, name: "get_state", input: { entity_id: "light.x" } }],
+        stop_reason: "tool_use",
+      });
+    const rounds = 12; // well past the voice cap of 8
+    for (let i = 0; i < rounds; i++) mockStream.mockReturnValueOnce(toolUse(i));
+    mockStream.mockReturnValueOnce(
+      finalMessage({ content: [{ type: "text", text: "fini" }], stop_reason: "end_turn" })
+    );
+
+    const result = await engine.chat({ message: "x", userId: "user-1", conversationId: thread });
+
+    // One opening call plus one per tool round; no call ever got tool_choice "none".
+    expect(mockStream).toHaveBeenCalledTimes(rounds + 1);
+    for (const call of mockStream.mock.calls) {
+      expect(call[0]).not.toHaveProperty("tool_choice");
+    }
+    expect(result.response).toBe("fini");
+  });
+
+  it("still forces a final answer after 8 tool rounds outside a thread (voice)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const toolUse = (n: number) =>
+      finalMessage({
+        content: [{ type: "tool_use", id: `t${n}`, name: "get_state", input: { entity_id: "light.x" } }],
+        stop_reason: "tool_use",
+      });
+    for (let i = 0; i < 8; i++) mockStream.mockReturnValueOnce(toolUse(i));
+    mockStream.mockReturnValueOnce(
+      finalMessage({ content: [{ type: "text", text: "fini" }], stop_reason: "end_turn" })
+    );
+
+    await engine.chat({ message: "x", userId: "user-1", isVoice: true });
+
+    // One opening call plus eight tool rounds; the last one may not call tools.
+    expect(mockStream).toHaveBeenCalledTimes(9);
+    expect(mockStream.mock.calls[8][0].tool_choice).toEqual({ type: "none" });
+    expect(mockStream.mock.calls[7][0]).not.toHaveProperty("tool_choice");
+  });
+
   it("gives a mado-thread: id its own conversation, isolated from Assist", async () => {
     // The thread panel sends "mado-thread:" ids: short-term history must be
     // segmented per thread, or every thread shares one stream.
