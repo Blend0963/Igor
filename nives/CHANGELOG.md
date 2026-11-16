@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.38.72 — The bridge to the sandbox
+
+- The sandbox options (host, port, user, key path, timeout) reach the server now: they were read in the add-on's panel and dropped on the floor, so every `run_on_sandbox` ran with a hardcoded user and a key path that exists nowhere.
+- The image carries the SSH client at last: the command was called, the binary was not there, and the failure read as "the VM is probably off".
+- A missing key file now says so, once, in the add-on's log, instead of hiding behind a generic connection error.
+
 ## 0.38.71 — The screen's law
 
 - The places obey the screen now, a video game's own law: a place the eye does not see is neither asked nor drawn — the view's rectangle (a quarter of itself wider, so the arrival stays fluid) is the only land the map reads, the car's own square excepted, and the squares the eye leaves are let go. Less network, less memory, the same map where it matters.
