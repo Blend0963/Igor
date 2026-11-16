@@ -846,7 +846,7 @@ export class OpenAIChatEngine implements IChatEngine {
         const forceAnswer = !scope.isThread && iterations >= MAX_TOOL_ITERATIONS;
         if (forceAnswer) {
           console.warn(
-            `[llm] tool loop hit ${maxIter} iterations — forcing a final answer`
+            `[llm] tool loop hit ${MAX_TOOL_ITERATIONS} iterations — forcing a final answer`
           );
         }
         events.onTurn?.();
