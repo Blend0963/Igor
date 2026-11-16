@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.38.75 — No more cut-off turns in the chat panel
+
+- The panel's threads no longer stop mid-turn after 8 tool round-trips. `MAX_TOOL_ITERATIONS` used to force a final answer after 8 iterations in every mode, which cut long sandbox/dev sessions in the middle of a command chain. Threads (`mado-thread:*`) now run unlimited rounds — the panel has no client timeout to fall back on — while voice/Assist keeps the 8-round cap, so a spoken answer still ends quickly within Home Assistant's 120 s client timeout. Runaway protection is unchanged: SpokenGuard (`runaway.ts`) and the output caps (`usage.ts`) still stop a real loop in every mode.
+- A dev-mode battery script (`server/src/home-mind-server/scripts/dev-battery.sh`) checks the sandbox environment end to end: 14 checks covering system, git, apt, node 22/npm, vitest, 25 back-to-back commands without a cut, and file writes.
+
 ## 0.38.74 — The data that arrives
 
 - The map no longer freezes in the dense city. The search for the place already kept (two sources telling the same station within 40 m) walked the whole list place by place — a Paris square carries three thousand places, four squares meant millions of distances weighed at every square's arrival, and the small machine froze seconds at a time: a frozen screen neither adds nor drops its points, which looked like "the places stay" and "the new zone stays empty" at once. The near search runs on a grid of fifty-metre cells now: sixteen thousand places weighed in 31 ms where 1157 stood (37 times less), the same word said.
