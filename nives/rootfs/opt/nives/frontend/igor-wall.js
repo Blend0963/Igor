@@ -5251,7 +5251,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.61";
+  var GPS_CARD_VERSION = "0.38.62";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6102,12 +6102,16 @@
         // The layers' list.
         ".lpanel .tg { justify-content: space-between; } .lpanel .tg .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }" +
         ".lpanel .tg.off { opacity: 0.45; } .lpanel .seg { display: flex; gap: 8px; } .lpanel .seg button { flex: 1; justify-content: center; } .lpanel .seg button.on { border-color: #59d0e0; color: #59d0e0; }" +
-        // The stations' panel: each row its price at the right, the nozzle's
-        // pictogram beside it, the unit in the small muted one under.
-        ".fpanel .pp { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; flex: none; font-family: 'Chakra Petch', " + MONO + "; font-size: 18px; font-weight: 600; color: #e9e4da; line-height: 1.05; }" +
-        ".fpanel .pp .pc { display: flex; flex-direction: column; align-items: flex-end; }" +
-        ".fpanel .pp small { display: block; margin-top: 2px; font-family: " + MONO + "; font-size: 10px; font-weight: 400; color: #878c95; letter-spacing: 0.08em; text-transform: uppercase; }" +
-        ".fpanel .pp.nop { font-family: " + MONO + "; font-size: 11px; font-weight: 400; color: #878c95; align-self: center; }" +
+        // The stations' panel: the station's whole board at the right, one
+        // fuel a line (the nozzle's pictogram, the price with its unit, the
+        // rupture's word or the one professional word) — small enough that
+        // six lines fit a row, right-aligned so the figures end together.
+        ".fpanel .pall { display: flex; flex-direction: column; gap: 1px; margin-left: auto; flex: none; align-items: flex-end; }" +
+        ".fpanel .pall .fl { display: flex; align-items: center; gap: 5px; font-family: 'Chakra Petch', " + MONO + "; font-size: 12.5px; font-weight: 600; color: #e9e4da; line-height: 1.25; white-space: nowrap; }" +
+        ".fpanel .pall .fl .fico { height: 11px; }" +
+        ".fpanel .pall .fl b { font-weight: 600; font-variant-numeric: tabular-nums; }" +
+        ".fpanel .pall .fl small { font-family: " + MONO + "; font-size: 9px; font-weight: 400; color: #878c95; }" +
+        ".fpanel .pall .dry { font-size: 10px; } .fpanel .pall .np { font-size: 10px; }" +
         // The station's prices in the tap popup: one fuel a line, all the
         // same size — no fuel a favourite above the others — each with its
         // unit; a rupture says the trade's own word in the small red.
@@ -6829,6 +6833,14 @@
       if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > 500)) { this.limitAt = now; this.limitTick(now, moving); }
       if (!this.alertAt || now - this.alertAt > 500) { this.alertAt = now; this.alertTick(now, speed); }
       if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); }
+      // The stations' panel, left open, follows the car: gone far enough from
+      // where it last asked (400 m, and never twice within ten seconds), it
+      // asks again — the list is the stations around the car, not the ones
+      // around where the car stood when the button was pressed.
+      if (!this.fuelRefAt || now - this.fuelRefAt > 10000) {
+        this.fuelRefAt = now;
+        if (!this.$("fpanel").hidden && this.pos && this.fuelHere && gpsDist(this.fuelHere, this.pos) > 400) this.openFuel(true);
+      }
       if (this.follow) {
         var h = this.$("map").clientHeight;
         var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } };
@@ -7618,12 +7630,17 @@
     // worth the way (the detour each adds when a trip is under way), the
     // Ministry's flux says what the gazole costs; a touch on a row, and the
     // car goes there or stops there.
-    async openFuel() {
+    async openFuel(quiet) {
       var $ = this.$, list = $("flist");
       $("panel").hidden = true; $("rpanel").hidden = true; $("lpanel").hidden = true;
       $("fpanel").hidden = false;
-      list.innerHTML = "";
-      var note = document.createElement("div"); note.className = "note"; note.textContent = "Recherche des stations…"; list.appendChild(note);
+      // A refresh the car itself asked (it moved on while the panel stood
+      // open) does not blank the list: the old stations keep standing until
+      // the new ones replace them.
+      if (!quiet) {
+        list.innerHTML = "";
+        var note = document.createElement("div"); note.className = "note"; note.textContent = "Recherche des stations…"; list.appendChild(note);
+      }
       var here = this.pos || (this.fix && this.fix.point);
       // The map still waking up (the card just appeared) is not a car lost:
       // the trackers themselves know where it is, and the search goes on
@@ -7635,11 +7652,13 @@
           if (ta && typeof ta.latitude === "number" && typeof ta.longitude === "number") here = [ta.longitude, ta.latitude];
         }
       }
-      if (!here) { note.textContent = "Position inconnue."; return; }
+      if (!here) { if (!quiet) note.textContent = "Position inconnue."; return; }
+      // Where the list was asked: the refresh on the move measures from here.
+      this.fuelHere = here;
       var seq = this.fuelSeq = (this.fuelSeq || 0) + 1;
       var found = null, prices = null, fuelErr = "", asked = false;
       try {
-        var r = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_nearby", return_response: true, service_data: { kind: "fuel", count: 8, latitude: here[1], longitude: here[0] } });
+        var r = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_nearby", return_response: true, service_data: { kind: "fuel", count: 15, latitude: here[1], longitude: here[0] } });
         asked = true;
         if (r && r.response) { if (r.response.ok) found = r.response.places || []; else fuelErr = r.response.error || ""; }
       } catch (e) { found = null; }
@@ -7672,6 +7691,10 @@
         list.appendChild(none);
         return;
       }
+      // The trade's own order, the pumps' own labels: the gazole first, then
+      // the Essence Sans Plomb, the ethanol and the gas \u2014 every fuel the
+      // station sells, not the gazole alone.
+      var FUELS = [["gazole", "Gazole"], ["sp95", "SP95"], ["sp98", "SP98"], ["e10", "E10"], ["e85", "E85"], ["gplc", "GPL"]];
       found.forEach((p) => {
         var lat = Number(p.lat), lon = Number(p.lon);
         if (isNaN(lat) || isNaN(lon)) return;
@@ -7681,42 +7704,45 @@
         if (lg) { var im = document.createElement("img"); im.className = "plogo"; im.src = lg; im.alt = ""; b.appendChild(im); }
         else { var i = document.createElement("ha-icon"); i.setAttribute("icon", "mdi:gas-station"); b.appendChild(i); }
         var t = document.createElement("div"); t.textContent = nm; b.appendChild(t);
-        var detour = p.detour_min != null ? "détour +" + p.detour_min + " min" : (p.minutes != null ? p.minutes + " min" : "");
+        var detour = p.detour_min != null ? "d\u00e9tour +" + p.detour_min + " min" : (p.minutes != null ? p.minutes + " min" : "");
         var sm = document.createElement("small");
-        sm.textContent = [p.service_area || p.address || "", here ? gpsMetres(gpsDist(here, [lon, lat])) : "", detour].filter(Boolean).join(" · ");
+        sm.textContent = [p.service_area || p.address || "", here ? gpsMetres(gpsDist(here, [lon, lat])) : "", detour].filter(Boolean).join(" \u00b7 ");
         t.appendChild(sm);
         var row = document.createElement("div"); row.className = "row2";
         b.addEventListener("click", () => { this.chooseNext = true; this.setDestination({ lat: lat, lon: lon, name: nm }, true); $("fpanel").hidden = true; });
         row.appendChild(b);
-        // The gazole's price at the right, the fuel's name under it; a
-        // rupture says the flux's own word, a station the flux does not know
-        // says the one professional word — never nothing.
+        // The whole board of the station, one fuel a line: the price with
+        // its unit, or the flux's own word when the tap is dry, or the one
+        // professional word when the declarant said nothing \u2014 and a station
+        // the flux ignores altogether says it once, not six times.
         var f = this.nearestFuel(prices, lat, lon);
-        if (f && f.prices && !Object.keys(f.prices).length && !(f.rupture && Object.keys(f.rupture).length)) f = null;
-        if (f && f.prices && f.prices.gazole != null) {
-          var pp = document.createElement("span"); pp.className = "pp";
-          pp.appendChild(fuelIcon("gazole", "Gazole"));
-          var pc = document.createElement("span"); pc.className = "pc";
-          var big = document.createElement("b"); big.textContent = f.prices.gazole.toFixed(3).replace('.', ',');
-          var pu = document.createElement("small"); pu.textContent = "€/L";
-          pc.appendChild(big); pc.appendChild(pu);
-          pp.appendChild(pc);
-          row.appendChild(pp);
-        } else if (f && f.rupture && f.rupture.gazole) {
-          // A dry tap is said, not shrugged: the badge with the flux's own
-          // word, in the small red the road's warnings wear.
-          var pp2 = document.createElement("span"); pp2.className = "pp";
-          pp2.appendChild(fuelIcon("gazole", "Gazole"));
-          var dr = document.createElement("span"); dr.className = "dry";
-          dr.textContent = f.rupture.gazole === "definitive" ? "rupture définitive" : "rupture";
-          pp2.appendChild(dr);
-          row.appendChild(pp2);
-        } else {
-          var pp3 = document.createElement("span"); pp3.className = "pp";
-          var np = document.createElement("span"); np.className = "np"; np.textContent = "Non communiqu\u00e9";
-          pp3.appendChild(np);
-          row.appendChild(pp3);
-        }
+        // Known of the flux but saying nothing (no price, no rupture) is the
+        // same as unknown: one professional word, not six.
+        if (f && !(f.prices && Object.keys(f.prices).length) && !(f.rupture && Object.keys(f.rupture).length)) f = null;
+        var pall = document.createElement("div"); pall.className = "pall";
+        if (!f) {
+          var np0 = document.createElement("span"); np0.className = "np"; np0.textContent = "Non communiqu\u00e9";
+          pall.appendChild(np0);
+        } else FUELS.forEach((fu) => {
+          var line = document.createElement("div"); line.className = "fl";
+          line.appendChild(fuelIcon(fu[0], fu[1]));
+          var pr = (f.prices || {})[fu[0]], ru = (f.rupture || {})[fu[0]];
+          if (pr != null) {
+            var pv = document.createElement("b"); pv.textContent = pr.toFixed(3).replace(".", ",");
+            line.appendChild(pv);
+            var pu = document.createElement("small"); pu.textContent = "\u20ac/L";
+            line.appendChild(pu);
+          } else if (ru) {
+            var dr = document.createElement("span"); dr.className = "dry";
+            dr.textContent = ru === "definitive" ? "rupture d\u00e9finitive" : "rupture";
+            line.appendChild(dr);
+          } else {
+            var np = document.createElement("span"); np.className = "np"; np.textContent = "Non communiqu\u00e9";
+            line.appendChild(np);
+          }
+          pall.appendChild(line);
+        });
+        row.appendChild(pall);
         if (this.dest) row.appendChild(this.viaBtn({ lat: lat, lon: lon, name: nm }));
         list.appendChild(row);
       });

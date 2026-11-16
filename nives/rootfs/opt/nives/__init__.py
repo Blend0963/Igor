@@ -1188,7 +1188,7 @@ CAR_GO_SCHEMA = vol.Schema(
 CAR_NEARBY_SCHEMA = vol.Schema(
     {
         vol.Required("kind"): vol.All(cv.string, vol.Length(max=60)),
-        vol.Optional("count", default=3): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
+        vol.Optional("count", default=3): vol.All(vol.Coerce(int), vol.Range(min=1, max=15)),
         vol.Optional("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
         vol.Optional("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
     }

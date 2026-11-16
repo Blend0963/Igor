@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.38.62 — The whole board, the list that follows
+
+- The stations' panel lists every station around the car now (15 asked, the schema's own ceiling raised to match), and the best stands on top — the backend's own mix: the least detour first, the nearest when the detours tie.
+- Each station shows its whole board: every fuel a line (the nozzle's pictogram, the price with its €/L, or the flux's « rupture » / « rupture définitive », or « Non communiqué » when the declarant said nothing) — a station the flux ignores altogether says it once, not six times. The lines are small and right-aligned so six of them fit a row and nothing overflows.
+- The panel left open follows the car: gone 400 m from where it last asked (never twice within ten seconds), it asks again — the list stays the stations around the car, not the ones around where it stood.
+
 ## 0.38.61 — The price over the pump, the finger that asks
 
 - The gazole's price stands over its station now — a small tag the eye reads without a finger: the enseigne's logo when the card has one, the price, or the ministry's own "rupture" / "rupture définitive" when the tap is dry; a station nothing is known of stands bare. The tags follow the layers' button (all taken down when the fuel layer is off).
