@@ -56,20 +56,27 @@ FUEL_URL = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix
 BRANDS_URL = "https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/prix_des_carburants_j_7/records"
 # With the TomTom key: TomTom's places (brands, opening hours, the detour it
 # works out itself), the words it searches and its category ids where known.
+# The categorySet codes are TomTom Search API v2's own numbers (the official
+# examples: 7311 petrol station, 7309 charging, 7321 hospital, 7397 cash
+# dispenser, 7326 pharmacy, 7315 restaurant, 7315015 fast food, 9376 cafe/pub,
+# 7332005 supermarket, 7313 parking garage, 7369 open parking area, 7310
+# repair shop). A kind without one is said by its words alone (the text of
+# the query carries it) - a wrong code would answer an empty square, never
+# an error, so only the codes known good stand here.
 TOMTOM_KINDS: dict[str, tuple[str, str]] = {
     "fuel": ("petrol station", "7311"),
     "charging": ("electric vehicle station", "7309"),
     "rest": ("rest area", "7395"),
     "hospital": ("hospital", "7321"),
-    "pharmacy": ("pharmacy", "9565"),
+    "pharmacy": ("pharmacy", "7326"),
     "atm": ("cash dispenser", "7397"),
-    "restaurant": ("restaurant", "7315"),
-    "cafe": ("cafe", ""),
-    "supermarket": ("supermarket", ""),
+    "restaurant": ("restaurant", "7315,7315015"),
+    "cafe": ("cafe", "9376"),
+    "supermarket": ("supermarket", "7332005"),
     "toilets": ("toilets", ""),
-    "parking": ("parking", ""),
+    "parking": ("parking", "7313,7369"),
     "car_wash": ("car wash", ""),
-    "car_repair": ("car repair", ""),
+    "car_repair": ("car repair", "7310"),
 }
 MAX_TEXT = 120
 

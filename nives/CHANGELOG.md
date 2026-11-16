@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.68 — The right drawer
+
+- The TomTom asks carry their official category codes now: the restaurants ask for the fast foods too, the cafés, the supermarchés, the parkings (garage and open air) and the garages say their number where their words alone stood, and the pharmacies say the documented code (7326) where an undocumented one stood — a wrong number never answers an error, only an empty square, so only the codes known good stand there. The lavages and the toilettes keep their words alone: no number is known good for them.
+
 ## 0.38.67 — Every place of the road
 
 - The map carries every place TomTom knows now: the pharmacies, the distributors (the banks' own too), the restaurants and the fast foods, the cafés, the supermarchés, the lavages and the garages join the stations, the bornes, the parkings, the aires, the toilettes and the hôpitaux — each its colour, its drawn icon (the cross, the euro, the fork and knife, the cup, the trolley, the drop, the wrench) and its name in the tap's window. All on by default, on the TomTom squares as on OpenStreetMap's (the queries and the reading know them all), and the backend serves every kind asked where it cut at six.
