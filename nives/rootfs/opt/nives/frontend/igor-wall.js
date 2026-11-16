@@ -5221,7 +5221,7 @@
   //   buildings: true                       # false: the map without its buildings (lighter on a head unit)
   //   pixel_ratio: 2                        # at most that many device pixels per pixel (1: lighter)
   //   dead_reckoning: true                  # in a tunnel, on at the OBD speed (speed_entity) for 3 min (false: off)
-  //   traffic: true                         # live traffic and incidents once a TomTom key is set in Igor's options (false: never)
+  //   traffic: true                         # the route's jams (orange, red) and the incidents on the map once a TomTom key is set (false: never)
   //   closure_ask: false                    # a closed road on the route (TomTom): round it at once (true: ask first)
   //   compact: true                         # small in a dashboard's view: no buttons, a tap anywhere opens full screen (false: off)
   //   The flag's search then offers up to four routes (fastest, without motorways, without tolls, without low-emission zones) and what to keep off.
@@ -5244,7 +5244,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.64";
+  var GPS_CARD_VERSION = "0.38.65";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6534,21 +6534,6 @@
             this.loading = false; return;
           }
           style = await r.json();
-          // Behind a proxy that ends the TLS, the house writes its own
-          // addresses in http — and a page arrived in https refuses them
-          // (mixed content), which no console will confess. That was the
-          // phone's grey map: the style itself came, its tiles did not. The
-          // card knows the address it really serves; any house link said in
-          // http goes back to its own origin, whatever host the house
-          // believed it was.
-          var mark = "/api/nives/basemap/tomtom/";
-          var fix = function (n) {
-            if (Array.isArray(n)) { for (var i = 0; i < n.length; i++) n[i] = fix(n[i]); return n; }
-            if (n && typeof n === "object") { for (var k in n) n[k] = fix(n[k]); return n; }
-            return typeof n === "string" && n.indexOf("http://") === 0 && n.indexOf(mark) > 0
-              ? window.location.origin + n.slice(n.indexOf(mark)) : n;
-          };
-          style = fix(style);
         } catch (e) {
           this.message(e instanceof SyntaxError
             ? "carte : à la place du style, autre chose a répondu (portail, filtre, proxy) · " + window.location.origin
@@ -7379,9 +7364,9 @@
       me.style.transform = "translateY(50%)";
       tk.appendChild(me);
     },
-    askRoute(d, from, types) {
+    askRoute(d, from, types, routeType) {
       return this._hass.callWS({ type: "call_service", domain: "nives", service: "route", return_response: true,
-        service_data: Object.assign({ from: [from[1], from[0]], to: [d.lat, d.lon], via: (d.via || []).map((v) => [v.lat, v.lon]), avoid: (this.avoid || []).slice(-10), avoid_types: types || [] },
+        service_data: Object.assign({ from: [from[1], from[0]], to: [d.lat, d.lon], via: (d.via || []).map((v) => [v.lat, v.lon]), avoid: (this.avoid || []).slice(-10), avoid_types: types || [], route_type: routeType || "fastest" },
           this.speedMps() > 2 ? { heading: Math.round(this.heading) % 360 } : {}) })
         .then((res) => res && res.response).catch(() => null);
     },
@@ -7782,7 +7767,7 @@
         else this.alts.push({ label: "Avec péage", types: mine.filter((t) => t !== "tollRoads") });
       }
       if (!this.alts.length) return;
-      var got = await Promise.all(this.alts.map((a) => this.askRoute(d, from, a.types || [])));
+      var got = await Promise.all(this.alts.map((a) => this.askRoute(d, from, a.types || [], a.routeType)));
       if (this.dest !== d) return;
       // Only the better deserve the map: an alternate longer than the way
       // already held is noise, and a noise drawn is a driver tempted. Better
@@ -7798,10 +7783,11 @@
       this.useRoute(R0.coords, R0.steps.map((x) => Object.assign(gpsTomTomStep(x), { loc: x.loc })), R0.duration, "tomtom",
         { jams: R0.jams || [], delay: R0.delay || 0, limits: R0.limits || [], lanes: R0.lanes || [], tolls: R0.tolls || [], tunnels: R0.tunnels || [], ferries: R0.ferries || [], lez: R0.lez || [] });
     },
-    // Up to four routes to choose from: the fastest (with what the driver
-    // keeps off), without motorways, without tolls, without the low-emission
-    // zones (the ZFE a vignette may not enter); those that are the same way
-    // are shown once. Not touched for 12 s: the first one starts.
+    // Every way to choose from: the fastest, the shortest, without
+    // motorways, without tolls, without the low-emission zones (the ZFE a
+    // vignette may not enter) - the whole board, each time a destination is
+    // set; those that are the same way are shown once. Not touched for 12 s:
+    // the first one starts.
     async chooseRoute(d, from, keep) {
       // The panel forgets what was chosen before: everything is offered again
       // (except when the chips were just touched — `keep`). What the driver
@@ -7809,27 +7795,21 @@
       // keep it; the panel itself starts from a blank page.
       if (!keep) this.askAvoid = null;
       var mine = this.askAvoid || [], has = (t) => mine.indexOf(t) >= 0;
-      var asks = [{ label: "Le plus rapide", types: mine }];
+      var asks = [{ label: "Le plus rapide", types: mine }, { label: "Le plus court", types: mine, routeType: "shortest" }];
       if (!has("motorways")) asks.push({ label: "Sans autoroute", types: mine.concat(["motorways"]) });
       if (!has("tollRoads")) asks.push({ label: "Sans péage", types: mine.concat(["tollRoads"]) });
       if (!has("lowEmissionZones")) asks.push({ label: "Sans ZFE", types: mine.concat(["lowEmissionZones"]) });
       this.banner("mdi:map-search", "", "Calcul des itinéraires vers " + d.name + "…", "wait");
-      var got = await Promise.all(asks.map((a) => this.askRoute(d, from, a.types)));
+      var got = await Promise.all(asks.map((a) => this.askRoute(d, from, a.types, a.routeType)));
       if (this.dest !== d) return true;
       var opts = [];
       got.forEach((r, i) => {
         if (!r || !r.ok || !r.route) return;
         var R0 = r.route;
         if (opts.some((o) => Math.abs(o.route.distance - R0.distance) < Math.max(200, R0.distance * 0.01) && Math.abs(o.route.duration - R0.duration) < 60)) return;
-        opts.push({ label: asks[i].label, types: asks[i].types, route: R0 });
+        opts.push({ label: asks[i].label, types: asks[i].types, routeType: asks[i].routeType, route: R0 });
       });
       if (!opts.length) return false;
-      // The same law as the grey alternates: a way slower than the fastest
-      // is not a choice, it is a penance - it stays off the board (as fast
-      // and plainly shorter still counts).
-      var best = opts.reduce((b, o) => (o.route.duration < b.route.duration ? o : b), opts[0]);
-      opts = opts.filter((o) => o === best || o.route.duration < best.route.duration - 30 ||
-        (Math.abs(o.route.duration - best.route.duration) <= 30 && o.route.distance < best.route.distance * 0.98));
       var pick = (o) => {
         clearTimeout(this.pickTimer);
         this.$("rpanel").hidden = true;
@@ -7844,7 +7824,7 @@
       var $ = this.$, list = $("rlist");
       list.innerHTML = "";
       $("rtitle").textContent = "vers " + d.name;
-      var COL = ["#3b8cff", "#b48ce0", "#5cc28f"];
+      var COL = ["#3b8cff", "#b48ce0", "#5cc28f", "#e5823b", "#d9a441"];
       opts.forEach((o, i) => {
         var R0 = o.route, b = document.createElement("button");
         b.type = "button"; b.className = "ropt" + (i ? "" : " sel");
@@ -8127,7 +8107,6 @@
       var map = this.map;
       if (!map || !map.getLayer || !map.getLayer("pois")) return;
       map.setFilter("pois", ["in", ["get", "kind"], ["literal", this.poiKinds()]]);
-      if (map.getLayer("traffic")) map.setLayoutProperty("traffic", "visibility", "visible");
       ["incidents", "incidents-closed", "incidents-pt"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible"); });
       // The tags over the pumps follow the map's word too.
       this.refreshFuelTags();
@@ -8142,7 +8121,6 @@
       // A font the base map has (its labels'), for the cameras' limits.
       var font = null;
       (map.getStyle().layers || []).some((l) => { var f = l.layout && l.layout["text-font"]; if (Array.isArray(f) && typeof f[0] === "string") { font = f; return true; } return false; });
-      if (this.trafficOn()) this.addTrafficLayer();
       map.addSource("incidents", { type: "geojson", data: this.incidentData() });
       map.addLayer({ id: "incidents", type: "line", source: "incidents", filter: ["all", [">", ["get", "n"], 1], ["!", ["get", "closed"]]], layout: { "line-cap": "round" },
         paint: { "line-color": ["get", "color"], "line-width": GPS_ALT_W, "line-opacity": 0.85 } }, "route-case");
@@ -8649,7 +8627,6 @@
           var was = this.trafficOn();
           this.traffic = { enabled: !!r.enabled, incidents: Array.isArray(r.incidents) ? r.incidents : [], error: r.error || "" };
           this.trafficCenter = at;
-          if (this.trafficOn() && !was) this.addTrafficLayer();
           // A route drawn before the key was known: again, with the traffic.
           if (this.trafficOn() && !was && this.route && this.route.source === "osrm" && this.dest) this.routeTo();
           var src = this.map && this.map.getSource("incidents");
@@ -8658,14 +8635,6 @@
         // Refused: this screen's account is not one the car's services are open to.
         .catch((e) => { this.traffic = { enabled: false, incidents: [], denied: /unauthori[sz]ed|not allowed|admin/i.test(String((e && (e.code || e.message)) || "")) }; })
         .then(() => { this.trafficBusy = false; });
-    },
-    addTrafficLayer() {
-      var map = this.map;
-      if (!map || map.getSource("traffic") || !map.getLayer("route-case")) return;
-      map.addSource("traffic", { type: "raster", tileSize: 256, minzoom: 6, maxzoom: 18,
-        tiles: [window.location.origin + "/api/nives/traffic_tile/{z}/{x}/{y}"], attribution: "Trafic © TomTom" });
-      map.addLayer({ id: "traffic", type: "raster", source: "traffic", paint: { "raster-opacity": 0.85 } }, "route-case");
-      this.applyLayers();
     },
     incidentData() {
       var inc = (this.traffic && this.traffic.incidents) || [];

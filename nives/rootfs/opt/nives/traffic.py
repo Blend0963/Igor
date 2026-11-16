@@ -18,7 +18,6 @@ import math
 from typing import Any
 
 INCIDENTS_URL = "https://api.tomtom.com/traffic/services/5/incidentDetails"
-FLOW_TILE_URL = "https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png"
 FIELDS = (
     "{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,"
     "events{description,code},startTime,endTime,from,to,length,delay,roadNumbers}}}"
@@ -124,15 +123,6 @@ def parse_incidents(body: Any) -> list[dict[str, Any]]:
     return out[:MAX_INCIDENTS]
 
 
-def tile_ok(z: int, x: int, y: int) -> bool:
-    """A real tile of the flow map (TomTom serves zoom 0 to 22)."""
-    return 0 <= z <= 22 and 0 <= x < 2 ** z and 0 <= y < 2 ** z
-
-
-def flow_tile_url(z: int, x: int, y: int) -> str:
-    return FLOW_TILE_URL.format(z=z, x=x, y=y)
-
-
 # ----- a route that knows the traffic: TomTom Routing (same key) -----
 ROUTE_URL = "https://api.tomtom.com/routing/1/calculateRoute/{a}:{b}/json"
 MAX_AVOID = 10
@@ -147,14 +137,14 @@ SECTION_TYPES = ("traffic", "speedLimit", "lanes", "tollRoad", "tunnel", "ferry"
 
 
 def route_params(
-    key: str, heading: float | None, avoid: list[str] | tuple = (), alternatives: int = 0
+    key: str, heading: float | None, avoid: list[str] | tuple = (), alternatives: int = 0, route_type: str = "fastest"
 ) -> list[tuple[str, str]]:
     """The query as pairs (sectionType and avoid repeat)."""
     params = [
         ("key", key),
         ("traffic", "true"),
         ("travelMode", "car"),
-        ("routeType", "fastest"),
+        ("routeType", route_type if route_type in ("fastest", "shortest") else "fastest"),
         ("instructionsType", "text"),
         ("language", "fr-FR"),
         ("routeRepresentation", "polyline"),
