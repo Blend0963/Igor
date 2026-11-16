@@ -5244,7 +5244,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.66";
+  var GPS_CARD_VERSION = "0.38.69";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -5648,9 +5648,31 @@
     parking: { color: "#3b8cff", name: "Parkings" },
     rest: { color: "#5cc28f", name: "Aires de repos" },
     toilets: { color: "#9aa0a8", name: "Toilettes" },
-    hospital: { color: "#e9e4da", name: "Hôpitaux" }
+    hospital: { color: "#e9e4da", name: "Hôpitaux" },
+    pharmacy: { color: "#2fbf71", name: "Pharmacies" },
+    atm: { color: "#8d7bf0", name: "Distributeurs" },
+    restaurant: { color: "#e0784a", name: "Restaurants" },
+    cafe: { color: "#a9714b", name: "Caf\u00e9s" },
+    supermarket: { color: "#39b8c4", name: "Supermarch\u00e9s" },
+    car_wash: { color: "#5aa9e6", name: "Lavages" },
+    car_repair: { color: "#a8434a", name: "Garages" },
+    hotel: { color: "#7e57c2", name: "H\u00f4tels" },
+    camping: { color: "#7cb342", name: "Campings" },
+    bakery: { color: "#f2c14e", name: "Boulangeries" },
+    bank: { color: "#5c6bc0", name: "Banques" },
+    post: { color: "#f4d35e", name: "Postes" },
+    police: { color: "#2646a8", name: "Police" },
+    attraction: { color: "#d81b60", name: "Attractions" },
+    museum: { color: "#8d6e63", name: "Mus\u00e9es" },
+    cinema: { color: "#5e35b1", name: "Cin\u00e9mas" },
+    theme_park: { color: "#f4511e", name: "Parcs d'attractions" },
+    zoo: { color: "#9ccc65", name: "Zoos" },
+    beach: { color: "#00acc1", name: "Plages" },
+    station: { color: "#78909c", name: "Gares" },
+    airport: { color: "#607d8b", name: "A\u00e9roports" },
+    car_rental: { color: "#a1887f", name: "Locations de voitures" }
   };
-  var GPS_POI_DEFAULT = ["fuel", "charging", "parking", "rest", "toilets", "hospital"];
+  var GPS_POI_DEFAULT = ["fuel", "charging", "parking", "rest", "toilets", "hospital", "pharmacy", "atm", "restaurant", "cafe", "supermarket", "car_wash", "car_repair"];
   // The pumps' own order: the gazole first, then the Sans Plomb, the ethanol
   // and the gas — the board every station's window reads in this order.
   var GPS_FUELS = [["gazole", "Gazole"], ["sp95", "SP95"], ["sp98", "SP98"], ["e10", "E10"], ["e85", "E85"], ["gplc", "GPL"]];
@@ -5742,10 +5764,18 @@
       if (typeof lat !== "number" || typeof lon !== "number") return;
       var kind = t.highway === "speed_camera" ? "camera"
         : t.amenity === "fuel" ? "fuel" : t.amenity === "charging_station" ? "charging" : t.amenity === "parking" ? "parking"
-        : t.highway === "rest_area" || t.highway === "services" ? "rest" : t.amenity === "toilets" ? "toilets" : t.amenity === "hospital" ? "hospital" : null;
+        : t.highway === "rest_area" || t.highway === "services" ? "rest" : t.amenity === "toilets" ? "toilets" : t.amenity === "hospital" ? "hospital"
+        : t.amenity === "pharmacy" ? "pharmacy" : t.amenity === "atm" || (t.amenity === "bank" && t.atm === "yes") ? "atm"
+        : t.amenity === "restaurant" || t.amenity === "fast_food" ? "restaurant" : t.amenity === "cafe" ? "cafe"
+        : t.shop === "supermarket" ? "supermarket" : t.amenity === "car_wash" ? "car_wash" : t.shop === "car_repair" ? "car_repair"
+        : t.tourism === "hotel" || t.tourism === "motel" || t.tourism === "guest_house" ? "hotel" : t.tourism === "camp_site" || t.tourism === "caravan_site" ? "camping"
+        : t.shop === "bakery" ? "bakery" : t.amenity === "bank" ? "bank" : t.amenity === "post_office" ? "post" : t.amenity === "police" ? "police"
+        : t.tourism === "attraction" ? "attraction" : t.tourism === "museum" ? "museum" : t.amenity === "cinema" ? "cinema"
+        : t.tourism === "theme_park" ? "theme_park" : t.tourism === "zoo" ? "zoo" : t.natural === "beach" ? "beach"
+        : t.railway === "station" || t.railway === "halt" ? "station" : t.aeroway === "aerodrome" ? "airport" : t.amenity === "car_rental" ? "car_rental" : null;
       if (!kind) return;
       var limit = kind === "camera" ? gpsLimitValue(t.maxspeed) : null;
-      var label = kind === "camera" ? (limit ? String(limit) : "") : kind === "fuel" ? String(t.brand || t.name || "").slice(0, 18) : "";
+      var label = kind === "camera" ? (limit ? String(limit) : "") : kind === "fuel" ? String(t.brand || t.name || "").slice(0, 18) : String(t.name || t.brand || "").slice(0, 18);
       // Only what is used is kept (thousands of lights over a drive).
       out.push(kind === "camera" ? { id: e.type + e.id, kind: kind, p: [lon, lat], tags: { direction: t.direction, "camera:direction": t["camera:direction"] }, limit: limit, label: label }
         : { id: e.type + e.id, kind: kind, p: [lon, lat], label: label, brand: kind === "fuel" ? String(t.brand || "").slice(0, 40) : "" });
@@ -5783,6 +5813,28 @@
     if (kinds.indexOf("rest") >= 0) parts.push("nwr" + at(radius * 3) + '[highway~"^(rest_area|services)$"];');
     if (kinds.indexOf("toilets") >= 0) parts.push("nwr" + at(radius) + "[amenity=toilets];");
     if (kinds.indexOf("hospital") >= 0) parts.push("nwr" + at(radius * 3) + "[amenity=hospital];");
+    if (kinds.indexOf("pharmacy") >= 0) parts.push("nwr" + at(radius * 2) + "[amenity=pharmacy];");
+    if (kinds.indexOf("atm") >= 0) parts.push("nwr" + at(radius) + "[amenity=atm];", "nwr" + at(radius) + '[amenity=bank][atm="yes"];');
+    if (kinds.indexOf("restaurant") >= 0) parts.push("nwr" + at(radius * 2) + '[amenity~"^(restaurant|fast_food)$"];');
+    if (kinds.indexOf("cafe") >= 0) parts.push("nwr" + at(radius) + "[amenity=cafe];");
+    if (kinds.indexOf("supermarket") >= 0) parts.push("nwr" + at(radius * 2) + "[shop=supermarket];");
+    if (kinds.indexOf("car_wash") >= 0) parts.push("nwr" + at(radius * 2) + "[amenity=car_wash];");
+    if (kinds.indexOf("car_repair") >= 0) parts.push("nwr" + at(radius * 2) + "[shop=car_repair];");
+    if (kinds.indexOf("hotel") >= 0) parts.push("nwr" + at(radius * 2) + '[tourism~"^(hotel|motel|guest_house)$"];');
+    if (kinds.indexOf("camping") >= 0) parts.push("nwr" + at(radius * 3) + '[tourism~"^(camp_site|caravan_site)$"];');
+    if (kinds.indexOf("bakery") >= 0) parts.push("nwr" + at(radius) + "[shop=bakery];");
+    if (kinds.indexOf("bank") >= 0) parts.push("nwr" + at(radius) + "[amenity=bank];");
+    if (kinds.indexOf("post") >= 0) parts.push("nwr" + at(radius) + "[amenity=post_office];");
+    if (kinds.indexOf("police") >= 0) parts.push("nwr" + at(radius * 2) + "[amenity=police];");
+    if (kinds.indexOf("attraction") >= 0) parts.push("nwr" + at(radius * 3) + "[tourism=attraction];");
+    if (kinds.indexOf("museum") >= 0) parts.push("nwr" + at(radius * 2) + "[tourism=museum];");
+    if (kinds.indexOf("cinema") >= 0) parts.push("nwr" + at(radius * 2) + "[amenity=cinema];");
+    if (kinds.indexOf("theme_park") >= 0) parts.push("nwr" + at(radius * 5) + "[tourism=theme_park];");
+    if (kinds.indexOf("zoo") >= 0) parts.push("nwr" + at(radius * 5) + "[tourism=zoo];");
+    if (kinds.indexOf("beach") >= 0) parts.push("nwr" + at(radius * 5) + "[natural=beach];");
+    if (kinds.indexOf("station") >= 0) parts.push("nwr" + at(radius * 3) + '[railway~"^(station|halt)$"];');
+    if (kinds.indexOf("airport") >= 0) parts.push("nwr" + at(radius * 8) + "[aeroway=aerodrome];");
+    if (kinds.indexOf("car_rental") >= 0) parts.push("nwr" + at(radius * 2) + "[amenity=car_rental];");
     return parts.length ? "[out:json][timeout:15];(" + parts.join("") + ");out center tags 600;" : "";
   }
   // Overpass, the free service behind all of it, is often busy: the next
@@ -5822,6 +5874,28 @@
     if (has("rest")) parts.push('nwr[highway~"^(rest_area|services)$"];');
     if (has("toilets")) parts.push("nwr[amenity=toilets];");
     if (has("hospital")) parts.push("nwr[amenity=hospital];");
+    if (has("pharmacy")) parts.push("nwr[amenity=pharmacy];");
+    if (has("atm")) parts.push("nwr[amenity=atm];", 'nwr[amenity=bank][atm="yes"];');
+    if (has("restaurant")) parts.push('nwr[amenity~"^(restaurant|fast_food)$"];');
+    if (has("cafe")) parts.push("nwr[amenity=cafe];");
+    if (has("supermarket")) parts.push("nwr[shop=supermarket];");
+    if (has("car_wash")) parts.push("nwr[amenity=car_wash];");
+    if (has("car_repair")) parts.push("nwr[shop=car_repair];");
+    if (has("hotel")) parts.push('nwr[tourism~"^(hotel|motel|guest_house)$"];');
+    if (has("camping")) parts.push('nwr[tourism~"^(camp_site|caravan_site)$"];');
+    if (has("bakery")) parts.push("nwr[shop=bakery];");
+    if (has("bank")) parts.push("nwr[amenity=bank];");
+    if (has("post")) parts.push("nwr[amenity=post_office];");
+    if (has("police")) parts.push("nwr[amenity=police];");
+    if (has("attraction")) parts.push("nwr[tourism=attraction];");
+    if (has("museum")) parts.push("nwr[tourism=museum];");
+    if (has("cinema")) parts.push("nwr[amenity=cinema];");
+    if (has("theme_park")) parts.push("nwr[tourism=theme_park];");
+    if (has("zoo")) parts.push("nwr[tourism=zoo];");
+    if (has("beach")) parts.push("nwr[natural=beach];");
+    if (has("station")) parts.push('nwr[railway~"^(station|halt)$"];');
+    if (has("airport")) parts.push("nwr[aeroway=aerodrome];");
+    if (has("car_rental")) parts.push("nwr[amenity=car_rental];");
     if (!parts.length) return "";
     // Many cameras are only mapped as an « enforcement » relation (speed,
     // average speed, red light) whose device is a plain point: read too.
@@ -5951,6 +6025,147 @@
       g.beginPath(); g.roundRect ? g.roundRect(5, 5, 38, 38, 7) : g.rect(5, 5, 38, 38); g.fill(); g.stroke();
       letter(g, "H", "#fff", 28);
     });
+    draw("pharmacy", function (g) {
+      disc(g, "#2fbf71");
+      g.fillStyle = "#fff"; g.fillRect(20, 12, 8, 24); g.fillRect(12, 20, 24, 8);
+    });
+    draw("atm", function (g) { disc(g, "#8d7bf0"); letter(g, "\u20ac", "#fff", 26); });
+    draw("restaurant", function (g) {
+      disc(g, "#e0784a");
+      g.strokeStyle = "#fff"; g.lineWidth = 2.5;
+      g.beginPath(); g.moveTo(17, 11); g.lineTo(17, 17); g.moveTo(21, 11); g.lineTo(21, 17); g.moveTo(25, 11); g.lineTo(25, 17); g.moveTo(21, 17); g.lineTo(21, 36); g.stroke();
+      g.beginPath(); g.moveTo(31, 36); g.lineTo(31, 11); g.quadraticCurveTo(36, 17, 31, 22); g.stroke();
+    });
+    draw("cafe", function (g) {
+      disc(g, "#a9714b");
+      g.fillStyle = "#fff"; g.beginPath(); g.roundRect ? g.roundRect(13, 17, 15, 12, 2) : g.rect(13, 17, 15, 12); g.fill();
+      g.strokeStyle = "#fff"; g.lineWidth = 2.5; g.beginPath(); g.arc(30, 22, 4, -Math.PI / 2, Math.PI / 2); g.stroke();
+      g.beginPath(); g.moveTo(11, 34); g.lineTo(34, 34); g.stroke();
+    });
+    draw("supermarket", function (g) {
+      disc(g, "#39b8c4");
+      g.strokeStyle = "#fff"; g.lineWidth = 2.5;
+      g.beginPath(); g.moveTo(9, 12); g.lineTo(14, 12); g.lineTo(18, 28); g.lineTo(33, 28); g.lineTo(36, 17); g.lineTo(16, 17); g.stroke();
+      g.fillStyle = "#fff"; g.beginPath(); g.arc(20, 34, 2.5, 0, Math.PI * 2); g.fill(); g.beginPath(); g.arc(31, 34, 2.5, 0, Math.PI * 2); g.fill();
+    });
+    draw("car_wash", function (g) {
+      disc(g, "#5aa9e6");
+      g.fillStyle = "#fff"; g.beginPath(); g.moveTo(24, 10); g.bezierCurveTo(29, 18, 32, 23, 32, 27); g.arc(24, 27, 8, 0, Math.PI); g.bezierCurveTo(16, 23, 19, 18, 24, 10); g.closePath(); g.fill();
+    });
+    draw("car_repair", function (g) {
+      disc(g, "#a8434a");
+      g.strokeStyle = "#fff"; g.lineWidth = 5;
+      g.beginPath(); g.arc(16, 16, 6, Math.PI * 0.25, Math.PI * 1.75); g.stroke();
+      g.beginPath(); g.moveTo(20, 20); g.lineTo(33, 33); g.stroke();
+    });
+    draw("hotel", function (g) {
+      disc(g, "#7e57c2");
+      g.fillStyle = "#fff";
+      g.beginPath(); g.arc(15, 20, 3.5, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.roundRect ? g.roundRect(11, 24, 26, 7, 2) : g.rect(11, 24, 26, 7); g.fill();
+      g.fillRect(11, 31, 3, 6); g.fillRect(34, 31, 3, 6);
+    });
+    draw("camping", function (g) {
+      disc(g, "#7cb342");
+      g.fillStyle = "#fff";
+      g.beginPath(); g.moveTo(24, 11); g.lineTo(38, 35); g.lineTo(10, 35); g.closePath(); g.fill();
+      g.fillStyle = "#7cb342";
+      g.beginPath(); g.moveTo(24, 20); g.lineTo(30, 35); g.lineTo(18, 35); g.closePath(); g.fill();
+    });
+    draw("bakery", function (g) {
+      disc(g, "#f2c14e");
+      g.fillStyle = "#fff";
+      g.beginPath(); g.ellipse ? g.ellipse(24, 25, 13, 8, 0, 0, Math.PI * 2) : g.arc(24, 25, 10, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#f2c14e"; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(17, 20); g.lineTo(20, 30); g.moveTo(24, 18); g.lineTo(24, 32); g.moveTo(31, 20); g.lineTo(28, 30); g.stroke();
+    });
+    draw("bank", function (g) {
+      disc(g, "#5c6bc0");
+      g.fillStyle = "#fff";
+      g.beginPath(); g.moveTo(24, 9); g.lineTo(37, 17); g.lineTo(11, 17); g.closePath(); g.fill();
+      g.fillRect(13, 19, 4, 13); g.fillRect(22, 19, 4, 13); g.fillRect(31, 19, 4, 13);
+      g.fillRect(11, 33, 26, 3);
+    });
+    draw("post", function (g) {
+      disc(g, "#f4d35e");
+      g.fillStyle = "#fff"; g.fillRect(11, 15, 26, 18);
+      g.strokeStyle = "#07080a"; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(12, 16); g.lineTo(24, 26); g.lineTo(36, 16); g.stroke();
+    });
+    draw("police", function (g) {
+      disc(g, "#2646a8");
+      g.fillStyle = "#fff";
+      g.beginPath();
+      g.moveTo(24, 10); g.lineTo(35, 14); g.lineTo(35, 24);
+      g.quadraticCurveTo(35, 32, 24, 38);
+      g.quadraticCurveTo(13, 32, 13, 24);
+      g.lineTo(13, 14); g.closePath(); g.fill();
+    });
+    draw("attraction", function (g) {
+      disc(g, "#d81b60");
+      g.fillStyle = "#fff"; g.beginPath();
+      for (var si = 0; si < 10; si++) {
+        var sr = si % 2 ? 5.5 : 13, sa = -Math.PI / 2 + si * Math.PI / 5;
+        var sx = 24 + sr * Math.cos(sa), sy = 25 + sr * Math.sin(sa);
+        si ? g.lineTo(sx, sy) : g.moveTo(sx, sy);
+      }
+      g.closePath(); g.fill();
+    });
+    draw("museum", function (g) { disc(g, "#8d6e63"); letter(g, "M", "#fff", 26); });
+    draw("cinema", function (g) {
+      disc(g, "#5e35b1");
+      g.fillStyle = "#fff";
+      g.fillRect(11, 22, 26, 13);
+      g.beginPath(); g.moveTo(11, 21); g.lineTo(35, 14); g.lineTo(37, 20); g.lineTo(13, 27); g.closePath(); g.fill();
+      g.strokeStyle = "#5e35b1"; g.lineWidth = 2.5;
+      g.beginPath(); g.moveTo(17, 19); g.lineTo(19, 25); g.moveTo(25, 17); g.lineTo(27, 23); g.moveTo(33, 15); g.lineTo(35, 21); g.stroke();
+    });
+    draw("theme_park", function (g) {
+      disc(g, "#f4511e");
+      g.strokeStyle = "#fff"; g.lineWidth = 2.5;
+      g.beginPath(); g.arc(24, 21, 11, 0, Math.PI * 2); g.stroke();
+      for (var wi = 0; wi < 6; wi++) {
+        var wa = wi * Math.PI / 3;
+        g.beginPath(); g.moveTo(24, 21); g.lineTo(24 + 11 * Math.cos(wa), 21 + 11 * Math.sin(wa)); g.stroke();
+      }
+      g.beginPath(); g.moveTo(24, 32); g.lineTo(19, 38); g.moveTo(24, 32); g.lineTo(29, 38); g.moveTo(24, 32); g.lineTo(24, 21); g.stroke();
+    });
+    draw("zoo", function (g) {
+      disc(g, "#9ccc65");
+      g.fillStyle = "#fff";
+      g.beginPath(); g.ellipse ? g.ellipse(24, 29, 7, 5.5, 0, 0, Math.PI * 2) : g.arc(24, 29, 6, 0, Math.PI * 2); g.fill();
+      [[15, 20, 3], [21, 15, 3], [27, 15, 3], [33, 20, 3]].forEach(function (t) { g.beginPath(); g.arc(t[0], t[1], t[2], 0, Math.PI * 2); g.fill(); });
+    });
+    draw("beach", function (g) {
+      disc(g, "#00acc1");
+      g.fillStyle = "#fff";
+      g.beginPath(); g.arc(24, 21, 12, Math.PI, 0); g.closePath(); g.fill();
+      g.strokeStyle = "#fff"; g.lineWidth = 2.5;
+      g.beginPath(); g.moveTo(24, 21); g.lineTo(24, 38); g.stroke();
+    });
+    draw("station", function (g) {
+      disc(g, "#78909c");
+      g.fillStyle = "#fff";
+      g.beginPath(); g.roundRect ? g.roundRect(15, 9, 18, 23, 5) : g.rect(15, 9, 18, 23); g.fill();
+      g.fillStyle = "#78909c";
+      g.fillRect(18, 13, 12, 6); g.fillRect(18, 22, 12, 5);
+      g.fillStyle = "#fff";
+      g.beginPath(); g.arc(19, 36, 2, 0, Math.PI * 2); g.fill(); g.beginPath(); g.arc(29, 36, 2, 0, Math.PI * 2); g.fill();
+    });
+    draw("airport", function (g) {
+      disc(g, "#607d8b");
+      g.fillStyle = "#fff";
+      g.beginPath();
+      g.moveTo(24, 8); g.lineTo(27, 20); g.lineTo(38, 28); g.lineTo(38, 31); g.lineTo(27, 28); g.lineTo(26, 34); g.lineTo(30, 37); g.lineTo(30, 39); g.lineTo(24, 37); g.lineTo(18, 39); g.lineTo(18, 37); g.lineTo(22, 34); g.lineTo(21, 28); g.lineTo(10, 31); g.lineTo(10, 28); g.lineTo(21, 20); g.closePath(); g.fill();
+    });
+    draw("car_rental", function (g) {
+      disc(g, "#a1887f");
+      g.fillStyle = "#fff";
+      g.beginPath();
+      g.moveTo(10, 29); g.lineTo(12, 23); g.lineTo(18, 23); g.lineTo(22, 16); g.lineTo(31, 16); g.lineTo(35, 23); g.lineTo(38, 23); g.lineTo(38, 29); g.closePath(); g.fill();
+      g.fillStyle = "#a1887f";
+      g.beginPath(); g.arc(16, 29, 3, 0, Math.PI * 2); g.fill(); g.beginPath(); g.arc(31, 29, 3, 0, Math.PI * 2); g.fill();
+    });
     return out;
   }
   // The traffic's kinds: their colour and icon in the alert.
@@ -6001,6 +6216,16 @@
         ".full .nav { left: 76px; }" +
         ".btns button { width: 44px; height: 44px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; cursor: pointer; background: rgba(7,8,10,0.85); color: #e9e4da; display: grid; place-items: center; --mdc-icon-size: 22px; }" +
         ".btns button[hidden] { display: none; }" +
+        // The layers' panel: one switch a kind, the driver's own map. It
+        // opens beside the buttons' column and follows them when full.
+        ".lpanel { position: absolute; top: 10px; left: 64px; z-index: 3; background: rgba(7,8,10,0.94); border: 1px solid #22262c; border-radius: var(--igor-radius, 3px); padding: 12px 14px; display: grid; gap: 8px; max-height: 80%; overflow-y: auto; font-family: " + MONO + "; }" +
+        ".lpanel[hidden] { display: none; }" +
+        ".full .lpanel { left: 96px; }" +
+        ".lpanel b { color: #878c95; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: normal; }" +
+        ".lpanel label { display: flex; align-items: center; gap: 9px; color: #e9e4da; font-size: 15px; cursor: pointer; white-space: nowrap; }" +
+        ".lpanel .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px #07080a; }" +
+        ".lpanel input { width: 16px; height: 16px; margin: 0; accent-color: #59d0e0; }" +
+        ".portrait .lpanel { left: 56px; }" +
         // The card as the whole screen: the dashboard's bar and neighbours lie
         // beneath it, while its own panels, toasts and popups (its children)
         // keep their place above the map. The map refits through the observer.
@@ -6178,6 +6403,7 @@
         '<button id="fuel" title="Stations-service"><ha-icon icon="mdi:gas-station"></ha-icon></button>' +
         '<button id="voice" title="Voix du guidage"><ha-icon icon="mdi:volume-high"></ha-icon></button>' +
         '<button id="overview" title="Choisir l’itinéraire" hidden><ha-icon icon="mdi:map-search"></ha-icon></button>' +
+        '<button id="layers" title="Couches"><ha-icon icon="mdi:layers"></ha-icon></button>' +
         '<button id="full" title="Plein écran"><ha-icon icon="mdi:fullscreen"></ha-icon></button></div>' +
         '<div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div style="min-width:0"><div class="d" id="navD"></div><div class="t" id="navT"></div><div class="x" id="navX" hidden></div><div class="l" id="navL" hidden></div></div></div>' +
         '<div class="glow" id="glow" hidden></div>' +
@@ -6188,6 +6414,7 @@
         '<div class="ask" id="ask" hidden><ha-icon icon="mdi:road-variant"></ha-icon><div class="q"><b>Route fermée sur votre itinéraire</b><div id="askS"></div></div><div class="bt"><button class="yes" id="askYes">Éviter</button><button id="askNo">Ignorer</button></div></div>' +
         '<div class="panel rpanel" id="rpanel" hidden><div class="ph"><span id="rtitle">itinéraires</span><button id="rclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="rlist"></div><div class="seg" id="rchips"></div></div>' +
         '<div class="panel fpanel" id="fpanel" hidden><div class="ph"><span>stations-service</span><button id="fclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="flist"></div></div>' +
+        '<div class="lpanel" id="lpanel" hidden></div>' +
         '<div class="pprice" id="pprice" hidden><div class="pp-card"><div class="pph"><span id="ppName"></span><button id="ppClose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="pp-addr" id="ppAddr"></div><div class="pp-list" id="ppList"></div></div></div>' +
         '<div class="eta" id="eta" hidden></div>' +
         '<div class="panel" id="panel" hidden><div class="ph"><span>destination</span><button id="pclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
@@ -6240,6 +6467,7 @@
       document.addEventListener("pointerdown", unlock, true);
       $("overview").addEventListener("click", () => this.overview());
       $("full").addEventListener("click", () => this.setFull(!this.full));
+      $("layers").addEventListener("click", () => this.openLayers());
       $("pclose").addEventListener("click", () => { $("panel").hidden = true; });
       // Closed without choosing: a trip under way stays as it was; only a
       // trip asked for and not yet on the road (no route yet) is dropped.
@@ -8088,15 +8316,59 @@
   Object.assign(IgorGpsCard.prototype, {
     // ----- what the card shows: kept by this screen -----
     loadLayers() {
-      // The screen decides now, and decides once: every place of the house
-      // on the map, the radars watching at the approach, the traffic and its
-      // wounds drawn whenever TomTom answers. What was a panel of switches
-      // is the card's own judgement - fewer questions, fewer bytes, a map
-      // that asks nothing of the driver.
-      var c = this.config, pois = Array.isArray(c.pois) ? c.pois : GPS_POI_DEFAULT;
-      this.layers = { cameras: "radar" };
-      Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") this.layers[k] = pois.indexOf(k) >= 0; });
+      // The screen keeps its own word: what the driver showed last time
+      // comes back (this screen's localStorage), the card's judgement under
+      // it - the usual places of the road wide open, the new drawers shut
+      // until the layers' panel opens them.
+      var c = this.config, saved = null;
+      try { saved = JSON.parse(window.localStorage.getItem("igor-gps-layers") || "null"); } catch (e) { saved = null; }
+      var pois = Array.isArray(c.pois) ? c.pois : GPS_POI_DEFAULT;
+      this.layers = { cameras: saved ? (saved.cameras ? "radar" : false) : "radar" };
+      Object.keys(GPS_POI).forEach((k) => {
+        if (k === "camera") return;
+        if (saved && k in saved) this.layers[k] = !!saved[k];
+        else this.layers[k] = pois.indexOf(k) >= 0;
+      });
       this.applyLayers();
+    },
+
+    // The layers' word is written on the screen, so the next drive reads it
+    // again (a silent write: a screen without storage just forgets).
+    saveLayers() {
+      try { window.localStorage.setItem("igor-gps-layers", JSON.stringify(this.layers)); } catch (e) { /* no storage */ }
+    },
+
+    // The layers' panel: one line a kind, its colour beside its name, the
+    // cameras first. A touch on the button opens or closes it; a touch on a
+    // line re-draws the map at once and keeps the word.
+    openLayers() {
+      var p = this.$("lpanel");
+      if (!p) return;
+      if (!p.hidden) { p.hidden = true; return; }
+      p.innerHTML = "";
+      var head = document.createElement("b");
+      head.textContent = "Couches";
+      p.appendChild(head);
+      Object.keys(GPS_POI).forEach((k) => {
+        var row = document.createElement("label");
+        var box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = k === "camera" ? !!(this.layers.cameras && this.layers.cameras !== "off") : !!this.layers[k];
+        box.addEventListener("change", () => {
+          if (k === "camera") this.layers.cameras = box.checked ? "radar" : false;
+          else this.layers[k] = box.checked;
+          this.saveLayers();
+          this.applyLayers();
+        });
+        var dot = document.createElement("span");
+        dot.className = "dot";
+        dot.style.background = GPS_POI[k].color;
+        var name = document.createElement("span");
+        name.textContent = GPS_POI[k].name;
+        row.appendChild(box); row.appendChild(dot); row.appendChild(name);
+        p.appendChild(row);
+      });
+      p.hidden = false;
     },
 
     // The kinds asked from OpenStreetMap: those shown, and the cameras when warned about.
