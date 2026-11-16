@@ -5244,7 +5244,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.66";
+  var GPS_CARD_VERSION = "0.38.67";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -5648,9 +5648,16 @@
     parking: { color: "#3b8cff", name: "Parkings" },
     rest: { color: "#5cc28f", name: "Aires de repos" },
     toilets: { color: "#9aa0a8", name: "Toilettes" },
-    hospital: { color: "#e9e4da", name: "Hôpitaux" }
+    hospital: { color: "#e9e4da", name: "Hôpitaux" },
+    pharmacy: { color: "#2fbf71", name: "Pharmacies" },
+    atm: { color: "#8d7bf0", name: "Distributeurs" },
+    restaurant: { color: "#e0784a", name: "Restaurants" },
+    cafe: { color: "#a9714b", name: "Caf\u00e9s" },
+    supermarket: { color: "#39b8c4", name: "Supermarch\u00e9s" },
+    car_wash: { color: "#5aa9e6", name: "Lavages" },
+    car_repair: { color: "#a8434a", name: "Garages" }
   };
-  var GPS_POI_DEFAULT = ["fuel", "charging", "parking", "rest", "toilets", "hospital"];
+  var GPS_POI_DEFAULT = ["fuel", "charging", "parking", "rest", "toilets", "hospital", "pharmacy", "atm", "restaurant", "cafe", "supermarket", "car_wash", "car_repair"];
   // The pumps' own order: the gazole first, then the Sans Plomb, the ethanol
   // and the gas — the board every station's window reads in this order.
   var GPS_FUELS = [["gazole", "Gazole"], ["sp95", "SP95"], ["sp98", "SP98"], ["e10", "E10"], ["e85", "E85"], ["gplc", "GPL"]];
@@ -5742,10 +5749,13 @@
       if (typeof lat !== "number" || typeof lon !== "number") return;
       var kind = t.highway === "speed_camera" ? "camera"
         : t.amenity === "fuel" ? "fuel" : t.amenity === "charging_station" ? "charging" : t.amenity === "parking" ? "parking"
-        : t.highway === "rest_area" || t.highway === "services" ? "rest" : t.amenity === "toilets" ? "toilets" : t.amenity === "hospital" ? "hospital" : null;
+        : t.highway === "rest_area" || t.highway === "services" ? "rest" : t.amenity === "toilets" ? "toilets" : t.amenity === "hospital" ? "hospital"
+        : t.amenity === "pharmacy" ? "pharmacy" : t.amenity === "atm" || (t.amenity === "bank" && t.atm === "yes") ? "atm"
+        : t.amenity === "restaurant" || t.amenity === "fast_food" ? "restaurant" : t.amenity === "cafe" ? "cafe"
+        : t.shop === "supermarket" ? "supermarket" : t.amenity === "car_wash" ? "car_wash" : t.shop === "car_repair" ? "car_repair" : null;
       if (!kind) return;
       var limit = kind === "camera" ? gpsLimitValue(t.maxspeed) : null;
-      var label = kind === "camera" ? (limit ? String(limit) : "") : kind === "fuel" ? String(t.brand || t.name || "").slice(0, 18) : "";
+      var label = kind === "camera" ? (limit ? String(limit) : "") : kind === "fuel" ? String(t.brand || t.name || "").slice(0, 18) : String(t.name || t.brand || "").slice(0, 18);
       // Only what is used is kept (thousands of lights over a drive).
       out.push(kind === "camera" ? { id: e.type + e.id, kind: kind, p: [lon, lat], tags: { direction: t.direction, "camera:direction": t["camera:direction"] }, limit: limit, label: label }
         : { id: e.type + e.id, kind: kind, p: [lon, lat], label: label, brand: kind === "fuel" ? String(t.brand || "").slice(0, 40) : "" });
@@ -5783,6 +5793,13 @@
     if (kinds.indexOf("rest") >= 0) parts.push("nwr" + at(radius * 3) + '[highway~"^(rest_area|services)$"];');
     if (kinds.indexOf("toilets") >= 0) parts.push("nwr" + at(radius) + "[amenity=toilets];");
     if (kinds.indexOf("hospital") >= 0) parts.push("nwr" + at(radius * 3) + "[amenity=hospital];");
+    if (kinds.indexOf("pharmacy") >= 0) parts.push("nwr" + at(radius * 2) + "[amenity=pharmacy];");
+    if (kinds.indexOf("atm") >= 0) parts.push("nwr" + at(radius) + "[amenity=atm];", "nwr" + at(radius) + '[amenity=bank][atm="yes"];');
+    if (kinds.indexOf("restaurant") >= 0) parts.push("nwr" + at(radius * 2) + '[amenity~"^(restaurant|fast_food)$"];');
+    if (kinds.indexOf("cafe") >= 0) parts.push("nwr" + at(radius) + "[amenity=cafe];");
+    if (kinds.indexOf("supermarket") >= 0) parts.push("nwr" + at(radius * 2) + "[shop=supermarket];");
+    if (kinds.indexOf("car_wash") >= 0) parts.push("nwr" + at(radius * 2) + "[amenity=car_wash];");
+    if (kinds.indexOf("car_repair") >= 0) parts.push("nwr" + at(radius * 2) + "[shop=car_repair];");
     return parts.length ? "[out:json][timeout:15];(" + parts.join("") + ");out center tags 600;" : "";
   }
   // Overpass, the free service behind all of it, is often busy: the next
@@ -5822,6 +5839,13 @@
     if (has("rest")) parts.push('nwr[highway~"^(rest_area|services)$"];');
     if (has("toilets")) parts.push("nwr[amenity=toilets];");
     if (has("hospital")) parts.push("nwr[amenity=hospital];");
+    if (has("pharmacy")) parts.push("nwr[amenity=pharmacy];");
+    if (has("atm")) parts.push("nwr[amenity=atm];", 'nwr[amenity=bank][atm="yes"];');
+    if (has("restaurant")) parts.push('nwr[amenity~"^(restaurant|fast_food)$"];');
+    if (has("cafe")) parts.push("nwr[amenity=cafe];");
+    if (has("supermarket")) parts.push("nwr[shop=supermarket];");
+    if (has("car_wash")) parts.push("nwr[amenity=car_wash];");
+    if (has("car_repair")) parts.push("nwr[shop=car_repair];");
     if (!parts.length) return "";
     // Many cameras are only mapped as an « enforcement » relation (speed,
     // average speed, red light) whose device is a plain point: read too.
@@ -5950,6 +5974,39 @@
       g.fillStyle = "#2f6fd6"; g.strokeStyle = "#07080a"; g.lineWidth = 4;
       g.beginPath(); g.roundRect ? g.roundRect(5, 5, 38, 38, 7) : g.rect(5, 5, 38, 38); g.fill(); g.stroke();
       letter(g, "H", "#fff", 28);
+    });
+    draw("pharmacy", function (g) {
+      disc(g, "#2fbf71");
+      g.fillStyle = "#fff"; g.fillRect(20, 12, 8, 24); g.fillRect(12, 20, 24, 8);
+    });
+    draw("atm", function (g) { disc(g, "#8d7bf0"); letter(g, "\u20ac", "#fff", 26); });
+    draw("restaurant", function (g) {
+      disc(g, "#e0784a");
+      g.strokeStyle = "#fff"; g.lineWidth = 2.5;
+      g.beginPath(); g.moveTo(17, 11); g.lineTo(17, 17); g.moveTo(21, 11); g.lineTo(21, 17); g.moveTo(25, 11); g.lineTo(25, 17); g.moveTo(21, 17); g.lineTo(21, 36); g.stroke();
+      g.beginPath(); g.moveTo(31, 36); g.lineTo(31, 11); g.quadraticCurveTo(36, 17, 31, 22); g.stroke();
+    });
+    draw("cafe", function (g) {
+      disc(g, "#a9714b");
+      g.fillStyle = "#fff"; g.beginPath(); g.roundRect ? g.roundRect(13, 17, 15, 12, 2) : g.rect(13, 17, 15, 12); g.fill();
+      g.strokeStyle = "#fff"; g.lineWidth = 2.5; g.beginPath(); g.arc(30, 22, 4, -Math.PI / 2, Math.PI / 2); g.stroke();
+      g.beginPath(); g.moveTo(11, 34); g.lineTo(34, 34); g.stroke();
+    });
+    draw("supermarket", function (g) {
+      disc(g, "#39b8c4");
+      g.strokeStyle = "#fff"; g.lineWidth = 2.5;
+      g.beginPath(); g.moveTo(9, 12); g.lineTo(14, 12); g.lineTo(18, 28); g.lineTo(33, 28); g.lineTo(36, 17); g.lineTo(16, 17); g.stroke();
+      g.fillStyle = "#fff"; g.beginPath(); g.arc(20, 34, 2.5, 0, Math.PI * 2); g.fill(); g.beginPath(); g.arc(31, 34, 2.5, 0, Math.PI * 2); g.fill();
+    });
+    draw("car_wash", function (g) {
+      disc(g, "#5aa9e6");
+      g.fillStyle = "#fff"; g.beginPath(); g.moveTo(24, 10); g.bezierCurveTo(29, 18, 32, 23, 32, 27); g.arc(24, 27, 8, 0, Math.PI); g.bezierCurveTo(16, 23, 19, 18, 24, 10); g.closePath(); g.fill();
+    });
+    draw("car_repair", function (g) {
+      disc(g, "#a8434a");
+      g.strokeStyle = "#fff"; g.lineWidth = 5;
+      g.beginPath(); g.arc(16, 16, 6, Math.PI * 0.25, Math.PI * 1.75); g.stroke();
+      g.beginPath(); g.moveTo(20, 20); g.lineTo(33, 33); g.stroke();
     });
     return out;
   }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.67 — Every place of the road
+
+- The map carries every place TomTom knows now: the pharmacies, the distributors (the banks' own too), the restaurants and the fast foods, the cafés, the supermarchés, the lavages and the garages join the stations, the bornes, the parkings, the aires, the toilettes and the hôpitaux — each its colour, its drawn icon (the cross, the euro, the fork and knife, the cup, the trolley, the drop, the wrench) and its name in the tap's window. All on by default, on the TomTom squares as on OpenStreetMap's (the queries and the reading know them all), and the backend serves every kind asked where it cut at six.
+
 ## 0.38.66 — The end of the road
 
 - Arriving ends the guidance, at once: the banner and the word stay, but the route, the alternates, the destination (written empty in the house) and the recalculations are gone the moment the car reaches the point — no more fifteen seconds of grace during which slipping out of the thirty metres would have brought the guidance back to life. The flag is re-armed for the next trip the moment a new destination is set.
