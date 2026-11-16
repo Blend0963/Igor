@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.38.73 — The bridge to the sandbox
+
+- The sandbox options (host, port, user, key path, timeout) reach the server now: they were read in the add-on's panel and dropped on the floor, so every `run_on_sandbox` ran with a hardcoded user and a key path that exists nowhere.
+- The image carries the SSH client at last: the command was called, the binary was not there, and the failure read as "the VM is probably off".
+- A missing key file now says so, once, in the add-on's log, instead of hiding behind a generic connection error.
+
 ## 0.38.72 — The zoom judged live
 
 - The places come back, and they leave when they must. The fault was maplibre's own law: a filter that reads the zoom is weighed when the square is loaded, not when the finger moves — so the places kept the zoom of their birth (squares caught far away kept their far law, and only the stations, whose gate is low, passed), and none was ever hidden again once shown. The zoom's law leaves the filter: it is judged live now, at each tick, on the true zoom of the instant — far, the shops and the leisure places stand down; near, they come back.
