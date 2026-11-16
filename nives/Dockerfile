@@ -113,6 +113,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xz-utils \
     jq \
     openssl \
+    openssh-client \
     procps \
     libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
