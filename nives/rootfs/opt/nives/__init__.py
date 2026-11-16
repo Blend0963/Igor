@@ -1406,17 +1406,24 @@ def _async_register_car(hass: HomeAssistant) -> None:
         # Every kind asked is served (twenty-eight today): one small ask a kind,
         # TomTom answers lightly.
         kinds = [k for k in asked if k in TOMTOM_KINDS]
-        out = []
+        out, failed = [], 0
         for k in kinds:
             try:
                 found = await car.tomtom_near(k, [lon, lat], key, radius=radius, limit=30)
             except Exception:  # noqa: BLE001 - busy, refused: this kind stays silent
+                failed += 1
                 found = []
             for p in found:
                 out.append({"id": "tt" + str(p.get("id") or f"{p['lat']:.5f},{p['lon']:.5f}"), "kind": k,
                             "lat": p["lat"], "lon": p["lon"], "label": str(p.get("brand") or p.get("name") or "")[:18],
                             "brand": str(p.get("brand") or "")[:40]})
-        return {"ok": True, "source": "tomtom", "kinds": kinds, "pois": out}
+        # Every kind refused is not an empty square: said so (ok False), the
+        # card reads OpenStreetMap itself instead of keeping a month of
+        # nothing; some kinds refused is said too (failed), and the card asks
+        # the square again within the ten minutes.
+        if kinds and failed == len(kinds):
+            return {"ok": False, "error": "TomTom a refusé les %d genres demandés" % failed}
+        return {"ok": True, "source": "tomtom", "kinds": kinds, "failed": failed, "pois": out}
 
     fuel_cache: dict[tuple, tuple[float, list]] = {}
 

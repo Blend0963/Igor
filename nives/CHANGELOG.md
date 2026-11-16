@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.38.74 — The data that arrives
+
+- The map no longer freezes in the dense city. The search for the place already kept (two sources telling the same station within 40 m) walked the whole list place by place — a Paris square carries three thousand places, four squares meant millions of distances weighed at every square's arrival, and the small machine froze seconds at a time: a frozen screen neither adds nor drops its points, which looked like "the places stay" and "the new zone stays empty" at once. The near search runs on a grid of fifty-metre cells now: sixteen thousand places weighed in 31 ms where 1157 stood (37 times less), the same word said.
+- An empty square is believed six hours, not a month. A silent moment of the network (TomTom's rate met, Overpass asleep) used to be written in the screen's store like a truth for thirty days — the square stayed empty a season. The empty square is asked again within six hours; what was read stays thirty days as before.
+- TomTom's refusals are said, not swallowed. When every kind asked is refused, the square is said failed: the card reads OpenStreetMap itself instead of keeping nothing; when some kinds are refused, the square is asked again within the ten minutes (and such a half answer is not written to the store at all).
+- The squares are asked two at a time, whatever the source: a burst of four squares à thirteen kinds met the key's own rate and came home with kinds missing.
+
 ## 0.38.73 — The bridge to the sandbox
 
 - The sandbox options (host, port, user, key path, timeout) reach the server now: they were read in the add-on's panel and dropped on the floor, so every `run_on_sandbox` ran with a hardcoded user and a key path that exists nowhere.

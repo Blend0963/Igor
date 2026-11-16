@@ -5244,7 +5244,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.72";
+  var GPS_CARD_VERSION = "0.38.74";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -5936,6 +5936,9 @@
   }
   // The screen's own store (IndexedDB): the squares read, for 30 days.
   var gpsDb = null, GPS_KEEP_MS = 30 * 86400000;
+  // An empty square is believed six hours only: a network's silent moment
+  // must not starve a square of its places for a month.
+  var GPS_EMPTY_KEEP = 6 * 3600000;
   function gpsStore() {
     if (gpsDb) return gpsDb;
     gpsDb = new Promise(function (resolve) {
@@ -8500,10 +8503,16 @@
       want = want.sort((u, v) => u.d - v.d).slice(0, 16);
       var T = this.poiTiles || (this.poiTiles = {});
       var busy = this.poiBusy || (this.poiBusy = {});
-      // TomTom answers lightly (four squares at once); Overpass, free and
-      // busy, is asked two at a time only — the card knows which it reads.
-      for (var n = 0; n < (this.poiTT === false ? 2 : 4); n++) {
-        var next = want.find((t) => (!T[t.k] || (T[t.k].failed && now - T[t.k].at > 15000)) && !busy[t.k]);
+      // Both sources are asked two squares at a time: TomTom's key has its
+      // rate (a burst of four squares a thirteen kinds a piece met its
+      // refusal, and a refused kind came home empty), Overpass is free and
+      // busy. An empty square waits six hours, a partly answered one ten
+      // minutes, a failed one fifteen seconds.
+      for (var n = 0; n < 2; n++) {
+        var next = want.find((t) => (!T[t.k]
+          || (T[t.k].failed && now - T[t.k].at > 15000)
+          || (T[t.k].empty && now - T[t.k].at > GPS_EMPTY_KEEP)
+          || (T[t.k].partial && now - T[t.k].at > 600000)) && !busy[t.k]);
         if (!next) break;
         busy[next.k] = true;
         this.askPoi(next, key, now);
@@ -8511,13 +8520,16 @@
     },
     askPoi(t, key, now) {
       var busy = this.poiBusy, done = () => { delete busy[t.k]; };
-      var keep = (items) => {
+      var keep = (items, partial) => {
         if (key !== this.poiKey) return;
-        this.poiTiles[t.k] = { at: now, items: items };
-        gpsStorePut("poi/" + t.k, { at: Date.now(), items: items });
+        // An empty square is believed six hours, not a month (a network's
+        // silent moment must not starve the map for a season), and a square
+        // TomTom only partly answered is asked again within ten minutes -
+        // such a square is not written to the screen's store at all.
+        this.poiTiles[t.k] = { at: now, items: items, empty: !items.length, partial: !!partial };
+        if (!partial) gpsStorePut("poi/" + t.k, { at: Date.now(), items: items });
         this.poiFails = 0;
         this.poiNextTry = 0;
-        this.poiDown = false;
         // Squares far behind are let go (more than 12 km) — unless the eye
         // rests on them: what is looked at stays, wherever the car is.
         var p = this.pos, z = GPS_TILE_Z, T = this.poiTiles, view = null;
@@ -8538,7 +8550,7 @@
       var fromOverpass = () => overpassItems(this.poiKinds()).then((items) => { if (key === this.poiKey) keep(items); });
       gpsStoreGet("poi/" + t.k).then((saved) => {
         if (key !== this.poiKey) return;
-        if (saved && Array.isArray(saved.items) && Date.now() - saved.at < GPS_KEEP_MS) {
+        if (saved && Array.isArray(saved.items) && Date.now() - saved.at < (saved.items.length ? GPS_KEEP_MS : GPS_EMPTY_KEEP)) {
           this.poiTiles[t.k] = { at: now, items: saved.items };
           this.rebuildPois();
           return;
@@ -8554,19 +8566,21 @@
         var c = [(t.b.w + t.b.e) / 2, (t.b.n + t.b.s) / 2];
         var kinds = this.poiKinds().filter((k) => k !== "camera").join(",");
         if (this._hass && this.config.tomtom_pois !== false && kinds) {
+        var ttFailed = 0;
           var tt = this._hass.callWS({ type: "call_service", domain: "nives", service: "car_pois", return_response: true,
             service_data: { latitude: c[1], longitude: c[0], radius_km: 3, kinds: kinds } })
             .then((res) => {
               var r = (res && res.response) || {};
               if (!r.ok) throw new Error(r.error || "tomtom");
               this.poiTT = true;
+              ttFailed = r.failed || 0;
               return (r.pois || []).map((q) => ({ id: q.id, kind: q.kind, p: [q.lon, q.lat], label: q.label || "", brand: q.brand || "" }));
             });
           var sigKinds = this.poiKinds().filter((k) => k === "camera");
           var sig = sigKinds.length ? overpassItems(sigKinds).catch(() => []) : Promise.resolve([]);
           return Promise.all([tt, sig]).then((both) => {
             if (key !== this.poiKey) return;
-            keep(both[0].concat(both[1]));
+            keep(both[0].concat(both[1]), ttFailed > 0);
           }).catch(() => { this.poiTT = false; return fromOverpass(); });
         }
         return fromOverpass();
@@ -8574,7 +8588,6 @@
         this.poiFails = (this.poiFails || 0) + 1;
         this.poiNextTry = now + Math.min(240000, 15000 * Math.pow(2, Math.min(this.poiFails, 4)));
         this.poiTiles[t.k] = { at: now, failed: true };
-        if (this.poiFails >= 2) this.poiDown = true;
       }).then(done);
     },
     // Every place known: the squares read from OpenStreetMap and, in France,
@@ -8589,15 +8602,33 @@
       // Only the kinds wanted (old caches keep the places the base map shows
       // now). Two sources tell the same station (TomTom's square reaches into
       // its neighbours, Overpass's caches return): the one already kept wins,
-      // a place of the same kind within 40 m is the same place.
+      // a place of the same kind within 40 m is the same place. The near
+      // search runs on a grid of fifty-metre cells: a city square carries
+      // thousands of places, and the line searched place by place weighed
+      // millions of distances a rebuild - the small machine froze seconds at
+      // every square's arrival, and a frozen screen neither adds nor drops
+      // its points.
+      var grid = {};
+      var near40 = (kind, p) => {
+        var gx = Math.round(p[0] * 1250), gy = Math.round(p[1] * 2000);
+        for (var ox = -1; ox <= 1; ox++) for (var oy = -1; oy <= 1; oy++) {
+          var bucket = grid[(gx + ox) + "/" + (gy + oy)];
+          if (!bucket) continue;
+          for (var i = 0; i < bucket.length; i++) if (bucket[i].kind === kind && gpsDist(bucket[i].p, p) < 40) return bucket[i];
+        }
+        return null;
+      };
+      var nearPut = (q) => {
+        var k2 = Math.round(q.p[0] * 1250) + "/" + Math.round(q.p[1] * 2000);
+        (grid[k2] = grid[k2] || []).push(q);
+      };
       Object.keys(T).forEach((k) => (T[k].items || []).forEach((q) => {
         if (all[q.id] || kinds.indexOf(q.kind) < 0) return;
         if (q.kind === "fuel") tileFuel.push(q);
-        var near = q.kind === "camera" ? cams : list, dup = false;
-        for (var i = 0; i < near.length && !dup; i++) if (near[i].kind === q.kind && gpsDist(near[i].p, q.p) < 40) dup = true;
-        if (dup) return;
+        if (near40(q.kind, q.p)) return;
         all[q.id] = true;
-        near.push(q);
+        if (q.kind === "camera") cams.push(q);
+        else { nearPut(q); list.push(q); }
       }));
       var L = this.layers || {};
       if (L.fuel) (this.fluxFuel || []).forEach((s) => {
