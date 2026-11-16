@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.70 — The map stands up again
+
+- Recentering gives the map back its tilt: the view the card takes when it holds the wheel again (by the button, or by itself once the finger's pause is gone) carries the pitch of the config with it — a map the finger laid flat does not stay flat for ever, it stands up again the moment the car comes back to its place. The finger's own flat or tilted map keeps its law while it holds the map; only the recentered view is the navigator's.
+
 ## 0.38.69 — The whole drawer, and the hand that sorts it
 
 - Every place TomTom knows is a drawer of the map now: the hôtels, the campings, the boulangeries, the banques, the postes, the police, the attractions, the musées, the cinémas, the parcs d'attractions, the zoos, the plages, the gares, the aéroports and the locations de voitures join the thirteen already there — each its colour, its drawn icon (the bed, the tent, the loaf, the pediment, the envelope, the shield, the star, the letter, the clap, the wheel, the paw, the parasol, the train, the plane, the car) and its own ask, on TomTom's squares (their category codes, attested ones only — the lavage gains its number 9155) as on OpenStreetMap's. The new drawers stand shut by default: the road's usual places keep the map as it was.

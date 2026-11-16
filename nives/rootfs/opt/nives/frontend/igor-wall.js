@@ -5244,7 +5244,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.69";
+  var GPS_CARD_VERSION = "0.38.70";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7036,7 +7036,10 @@
       }
       if (this.follow && !this.grabbed) {
         var h = this.$("map").clientHeight;
-        var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } };
+        // The recentered view is the navigator's own: the car back at its
+        // place, the road ahead, and the tilt with it — a map the finger
+        // laid flat stands up again the moment the card takes the wheel back.
+        var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, pitch: Number(this.config.pitch) || 45, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } };
         // As a navigator: farther out the faster (more road ahead), closer
         // before a turn, back out after it; eased, never a jump.
         if (this.config.auto_zoom !== false) {
