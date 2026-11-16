@@ -51,6 +51,10 @@
   #btn-code { background: rgba(var(--accent-rgb),0.15); color: var(--link); border: 1px solid rgba(var(--accent-rgb),0.4); padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
   #btn-code:hover { background: rgba(var(--accent-rgb),0.3); }
   .code-badge { font-size: 11px; color: var(--link); background: rgba(var(--accent-rgb),0.12); border: 1px solid rgba(var(--accent-rgb),0.35); border-radius: 6px; padding: 1px 6px; margin-left: 8px; vertical-align: middle; font-weight: 600; }
+  .tool-run { margin: 6px 0 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--code-bg, rgba(0,0,0,0.04)); font-size: 12px; }
+  .tool-run summary { cursor: pointer; padding: 5px 10px; font-family: ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+  .tool-run.tool-err summary { color: var(--danger, #c0392b); }
+  .tool-run pre { margin: 0; padding: 8px 10px; border-top: 1px solid var(--border); font-family: ui-monospace, monospace; font-size: 11.5px; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
   #threads { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
   .thread { display: flex; align-items: center; gap: 6px; padding: 8px; border-radius: 8px; cursor: pointer; margin-bottom: 2px; }
   .thread:hover { background: var(--hover); }
@@ -969,6 +973,31 @@
     setStatus("");
     closeSide();
     el("input").focus();
+  }
+
+  // One executed tool call, shown the way Vibe Code shows commands: a
+  // collapsible block under the reply, command and result truncated.
+  function addToolBlock(box, t) {
+    var det = document.createElement("details");
+    det.className = "tool-run" + (t.error ? " tool-err" : "");
+    var sum = document.createElement("summary");
+    var cmd = "";
+    if (t.args && typeof t.args === "object") {
+      cmd = t.args.command || t.args.commande || (t.args.repo ? t.args.repo + " " : "") ||
+        Object.entries(t.args).filter(function (e) { return typeof e[1] === "string" || typeof e[1] === "number"; })
+          .slice(0, 3).map(function (e) { return e[0] + "=" + e[1]; }).join(" ");
+    }
+    sum.textContent = "⚡ " + t.name + (cmd ? " · " + String(cmd).slice(0, 120) : "") +
+      " · " + ((t.ms || 0) / 1000).toFixed(1) + "s" + (t.error ? " · erreur" : "");
+    var pre = document.createElement("pre");
+    var out = (t.result || "").slice(0, 2000);
+    if (cmd) out = "$ " + cmd + "\n" + out;
+    pre.textContent = out || "(aucune sortie)";
+    det.appendChild(sum);
+    det.appendChild(pre);
+    box.appendChild(det);
+    scrollDown();
+    return det;
   }
 
   function addBubble(role, text, images, actions) {
@@ -2209,6 +2238,7 @@
       }
       else if (eventName === "title") { setThreadTitle(threadId, payload.title); }
       else if (eventName === "status") { if (payload.text) busyHint(payload.text); }
+      else if (eventName === "tool") { if (state.liveFor === threadId) addToolBlock(ensureBubble(), payload); }
       else if (eventName === "error") { streamError = payload.error || "Erreur"; setStatus(streamError, true); }
       else if (eventName === "done") { finalResponse = payload; }
       else if (eventName === "ocr_confirm") { ocrQuestion = payload; setStatus(""); }

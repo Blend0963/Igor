@@ -1,4 +1,3 @@
-import { Router, Request, Response } from "express";
 import { z } from "zod";
 import multer from "multer";
 import type { IChatEngine } from "../llm/interface.js";
@@ -477,6 +476,7 @@ export function createRouter(
       //   chunk  — text of the current message
       //   status — the server's heads-up before a long batch of tool calls;
       //            shown to the person waiting, never part of the reply
+      //   tool   — a tool call finished (name, args, duration, truncated result)
       //   ocr_confirm — a scanned PDF needs paid OCR: the price to accept,
       //            sent instead of a reply (the request is resent with ocr)
       // followed by `done` with the complete response as /api/chat returns it.
@@ -514,6 +514,7 @@ export function createRouter(
             onTurn: () => { live?.newTurn(); send("turn", {}); },
             onChunk: (chunk: string) => { live?.chunk(chunk); send("chunk", { text: chunk }); },
             onStatus: (text: string) => { live?.status(text); send("status", { text }); },
+            onTool: (t) => { send("tool", t); },
           }
         );
       } finally {
@@ -1087,3 +1088,5 @@ export function createRouter(
 
   return router;
 }
+
+repo://Blend0963/Igor/sha/4fd42b7b49c1d8818f9b692e29e6c7113b85737e/contents/server/src/home-mind-server/src/llm/openai-client.ts

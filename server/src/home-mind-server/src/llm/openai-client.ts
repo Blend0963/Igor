@@ -1,4 +1,3 @@
-import { filterTools, type TurnPolicy } from "./tool-policy.js";
 import OpenAI from "openai";
 import type { Config } from "../config.js";
 import type { IMemoryStore } from "../memory/interface.js";
@@ -130,6 +129,12 @@ export function missingAttachments(text: string, attachments: string[] | undefin
  * disabled so the user still gets a written answer instead of silence.
  */
 const MAX_TOOL_ITERATIONS = 8;
+/**
+ * Threads are where long, multi-step work lives (Igor Code, sandbox runs):
+ * eight round-trips cut real jobs short. 24 keeps the runaway guard while
+ * leaving room for clone, edit, test, fix, commit, push cycles.
+ */
+const MAX_TOOL_ITERATIONS_THREAD = 24;
 
 /**
  * A provider-specific field some OpenAI-compatible endpoints attach to a tool
@@ -802,6 +807,15 @@ export class OpenAIChatEngine implements IChatEngine {
             trace.push({ step: "ha", detail: traceDetail(tc.function.name, args) + (failed ? " · échec" : ""), ms: Date.now() - toolStart, where: "local" });
           }
           done.push({ name: tc.function.name, input: args, result: toolResult });
+          const failed =
+            toolResult && typeof toolResult === "object" && "error" in (toolResult as object);
+          events.onTool?.({
+            name: tc.function.name,
+            args,
+            ms: Date.now() - toolStart,
+            ...(failed ? { error: true } : {}),
+            result: JSON.stringify(toolResult).slice(0, 2000),
+          });
           return {
             role: "tool" as const,
             tool_call_id: tc.id,
@@ -832,10 +846,11 @@ export class OpenAIChatEngine implements IChatEngine {
 
         // Continue streaming. On the final allowed iteration, disable tool calling
         // so the model has to answer in words rather than loop again.
-        const forceAnswer = iterations >= MAX_TOOL_ITERATIONS;
+        const maxIter = scope.isThread ? MAX_TOOL_ITERATIONS_THREAD : MAX_TOOL_ITERATIONS;
+        const forceAnswer = iterations >= maxIter;
         if (forceAnswer) {
           console.warn(
-            `[llm] tool loop hit ${MAX_TOOL_ITERATIONS} iterations — forcing a final answer`
+            `[llm] tool loop hit ${maxIter} iterations — forcing a final answer`
           );
         }
         events.onTurn?.();
@@ -1460,3 +1475,4 @@ export function traceDetail(name: string, args: Record<string, unknown>): string
   const what = target(args.entity_id) || (typeof args.query === "string" ? `« ${args.query} »` : "");
   return `${name}${what ? ` ${what}` : ""}`.slice(0, 120);
 }
+
