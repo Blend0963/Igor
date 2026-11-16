@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.66 — The end of the road
+
+- Arriving ends the guidance, at once: the banner and the word stay, but the route, the alternates, the destination (written empty in the house) and the recalculations are gone the moment the car reaches the point — no more fifteen seconds of grace during which slipping out of the thirty metres would have brought the guidance back to life. The flag is re-armed for the next trip the moment a new destination is set.
+
 ## 0.38.65 — The traffic on the line, the board that keeps its word
 
 - The traffic lives on the itinerary now, and nowhere else: the raster flow over every street of the map is gone (layer, tile proxy, and the `TrafficTileView` that served it) — the route's own blue line turns orange where it slows, red where it is jammed, as before. The incidents (accidents, works, closures) stay on the map.

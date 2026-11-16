@@ -5244,7 +5244,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.65";
+  var GPS_CARD_VERSION = "0.38.66";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7221,6 +7221,7 @@
       this.altCycle = 0;
       if (d) this.remember(d);
       this.spoken = {};
+      this.arrived = false;
       this.offCount = 0;
       this.tripAvoid = d && d.avoid && d.avoid.length ? d.avoid : null;
       this.routeLimit = null;
@@ -8016,9 +8017,10 @@
           this.arrived = true;
           this.banner("mdi:flag-checkered", "", "Vous êtes arrivé" + (d && d.name !== "destination" ? " : " + d.name : ""), "arrived");
           this.$("eta").hidden = true;
-          this.$("card").classList.toggle("guiding", false);
-          this.say("Vous êtes arrivé", "nav");
-          setTimeout(() => { if (this.arrived) { this.arrived = false; this.setDestination(null, true); } }, 15000);
+          // The trip is over: the guidance is cut at once - the route, the
+          // alternates, the destination (written empty in the house) and the
+          // recalculations. The banner stays; the guidance does not.
+          this.setDestination(null, true);
         }
         return;
       }
