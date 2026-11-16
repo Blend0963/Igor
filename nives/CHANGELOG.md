@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.38.72 — The zoom judged live
+
+- The places come back, and they leave when they must. The fault was maplibre's own law: a filter that reads the zoom is weighed when the square is loaded, not when the finger moves — so the places kept the zoom of their birth (squares caught far away kept their far law, and only the stations, whose gate is low, passed), and none was ever hidden again once shown. The zoom's law leaves the filter: it is judged live now, at each tick, on the true zoom of the instant — far, the shops and the leisure places stand down; near, they come back.
+- The screen's law is judged in pixels now: the pitched map's bounding box lied (it holds the whole tilted screen, kilometres of land the eye never sees), so places well off the screen stayed drawn. Each place is projected on the screen itself — what falls outside, a hand's width (120 px) past the edges, is not drawn; what the eye sees, stays.
+- The squares are queued by the car's distance now, not the view's centre: the tilted view's centre lies far ahead, pushed toward the horizon, and asked for squares the car will never read first.
+
 ## 0.38.71 — The screen's law
 
 - The places obey the screen now, a video game's own law: a place the eye does not see is neither asked nor drawn — the view's rectangle (a quarter of itself wider, so the arrival stays fluid) is the only land the map reads, the car's own square excepted, and the squares the eye leaves are let go. Less network, less memory, the same map where it matters.
