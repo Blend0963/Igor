@@ -28,6 +28,7 @@ import { asksToRemember, extractionGateReason, memoryLearningExplicit } from "..
 import { handlePlatformTool, PLATFORM_TOOL_NAMES } from "./platform-tools.js";
 import { createFile, type FileSpec } from "../files/create.js";
 import { getConfigDir, handleHomeTool, HOME_TOOL_NAMES } from "./home-tools.js";
+import { handleSandboxTool, SANDBOX_TOOL_NAMES } from "./sandbox-tools.js";
 import { toolRefusal } from "./tool-policy.js";
 import { applyConfigWrite, prepareConfigWrite, revertConfigWrite } from "../ha/config-files.js";
 import { getMediaStore, mediaLink } from "./media-store.js";
@@ -220,6 +221,17 @@ export async function handleToolCall(
         result = { error: `create_file failed: ${error instanceof Error ? error.message : "unknown error"}` };
       }
       console.log(`[tool] create_file completed in ${Date.now() - start}ms`);
+      return result;
+    }
+
+    if (SANDBOX_TOOL_NAMES.has(toolName)) {
+      try {
+        result = await handleSandboxTool(toolName, input);
+      } catch (error) {
+        console.warn(`[tool] ${toolName} failed:`, error instanceof Error ? error.message : error);
+        result = { error: `${toolName} failed: ${error instanceof Error ? error.message.slice(0, 300) : "unknown error"}. Tell the user; do not retry more than once.` };
+      }
+      console.log(`[tool] ${toolName} completed in ${Date.now() - start}ms`);
       return result;
     }
 
@@ -877,3 +889,4 @@ function gateSensitiveService(
     },
   };
 }
+
