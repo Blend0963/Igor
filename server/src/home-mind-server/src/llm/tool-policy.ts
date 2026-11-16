@@ -27,6 +27,7 @@ const NEEDS_A_PERSON = new Set([
   "cancel_scheduled_task",
   "notify_when",
   "use_connector",
+  "run_on_sandbox",
 ]);
 
 let configEdits: ConfigEdits = "automations";

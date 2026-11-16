@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { leanMode, VOICE_LEAN_DROPPED } from "./lean.js";
+import { SANDBOX_TOOLS } from "./sandbox-tools.js";
 import type OpenAI from "openai";
 
 export interface ToolDefinition {
@@ -660,6 +661,7 @@ export function toolsForMode(mode: "voice" | "text" | "thread", platform: Platfo
   const extra: ToolDefinition[] = [
     ...HOME_EXTRA_TOOLS,
     ...(mode === "voice" ? [] : CONFIG_TOOLS),
+    ...(mode === "voice" ? [] : SANDBOX_TOOLS),
     ...(mode === "thread" ? [CREATE_FILE_TOOL] : []),
   ];
   if (!platform.enabled) return leanVoice(mode, [...TOOL_DEFINITIONS, ...extra]);
@@ -698,3 +700,5 @@ export function toOpenAITools(
     },
   }));
 }
+
+repo://Blend0963/Igor/sha/4fd42b7b49c1d8818f9b692e29e6c7113b85737e/contents/server/src/home-mind-server/src/llm/tool-handler.ts
