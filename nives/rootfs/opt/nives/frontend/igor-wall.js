@@ -5204,9 +5204,7 @@
   //   snap: 20                              # metres within which the arrow sits on the nearest road; 0: off
   //   theme: sombre                         # sombre, clair, or auto (light by day, dark at night)
   //   hide_attribution: false
-  //   style: <a MapLibre style URL>         # another base map (the layers' button's choice wins when it is a TomTom one)
-  //                                         # the layers' button also chooses the base map: Igor (CARTO, the theme's)
-  //                                         # or TomTom Orbis conduite (a TomTom key needed), its buildings standing up on ask
+  //   style: <a MapLibre style URL>         # another base map (the theme's CARTO one by default)
   //   destination: input_text.car_destination  # « lat,lon;Nom »: guidance there (set it from a phone, or the card's flag)
   //   favorites:                            # the flag's quick places
   //     - { name: Maison, zone: zone.home }
@@ -5215,9 +5213,9 @@
   //   speed_limits: true                    # the limit sign from OpenStreetMap when speed_limit_entity says nothing (false: off)
   //   auto_zoom: true                       # farther out the faster, closer before a turn (false: the zoom stays)
   //   cameras_official: true                # in France, the Ministry of the Interior's list of cameras too (false: OpenStreetMap only)
-  //   cameras: zone                         # zone (danger zones, as the law asks in France), radar (each camera, its distance), off
-  //   pois: [signals, fuel, rest]           # shown on the map at first (the layers button changes it on this screen):
-  //                                         #   signals, fuel, charging, parking, rest, toilets, hospital
+  //   (the radars are always on the map, each warned at its approach; the old layers' panel is gone)
+  //   pois: [fuel, rest]                    # the places shown (all of them by default, the lights no more):
+  //                                         #   fuel, charging, parking, rest, toilets, hospital
   //   street_names: true                    # the road where the car is, at the bottom (false: off)
   //   fps: 20                               # the map drawn that many times a second while moving (lower: lighter)
   //   buildings: true                       # false: the map without its buildings (lighter on a head unit)
@@ -5227,7 +5225,6 @@
   //   closure_ask: false                    # a closed road on the route (TomTom): round it at once (true: ask first)
   //   compact: true                         # small in a dashboard's view: no buttons, a tap anywhere opens full screen (false: off)
   //   The flag's search then offers up to four routes (fastest, without motorways, without tolls, without low-emission zones) and what to keep off.
-  //   traffic_map: false                    # the traffic over the whole map too (default: only the route, orange where it slows, red where it is jammed)
   //   overpass: https://overpass-api.de/api/interpreter
   //   router: https://router.project-osrm.org  # OSRM (the route); self-hosted possible
   //   geocoder: https://nominatim.openstreetmap.org  # the address search
@@ -5240,10 +5237,6 @@
   var GPS_MAPLIBRE = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl";
   var GPS_DARK = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
   var GPS_DAY = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
-  // The TomTom Orbis base map kept in the layers' panel (the « Route » one):
-  // the style and its tiles come from Home Assistant (the key stays on the
-  // server), a TomTom key in Igor's options is needed.
-  var GPS_ORBIS = { dark: "basic_street-dark-driving" };
   var GPS_R = 6378137, GPS_PREDICT_S = 4, GPS_MOVING = 0.8, GPS_TRAIL = 600;
   // The drawn lines breathe with the zoom: thin on the overview (they must not
   // smother the map), road-wide at the zooms one drives at. Pure paint — the
@@ -5251,7 +5244,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.63";
+  var GPS_CARD_VERSION = "0.38.64";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -5647,10 +5640,8 @@
   }
   window.__igorGpsNav = { tomtom: gpsTomTomStep, step: gpsStep, metres: gpsMetres, parse: gpsParseDest, format: gpsFormatDest, limit: gpsWayLimit, directions: gpsDirections, refs: gpsRefs };
   // ----- what is around the car: OpenStreetMap's points (Overpass) -----
-  // Each kind: its colour on the map and in the layers' list, its name there.
-  // Each kind: its colour on the map and in the layers' list, its name there.
+  // Each kind: its colour on the map, its name.
   var GPS_POI = {
-    signals: { color: "#e5323b", name: "Feux tricolores" },
     camera: { color: "#e5323b", name: "Radars" },
     fuel: { color: "#d9a441", name: "Stations-service" },
     charging: { color: "#5cc28f", name: "Bornes de recharge" },
@@ -5659,7 +5650,10 @@
     toilets: { color: "#9aa0a8", name: "Toilettes" },
     hospital: { color: "#e9e4da", name: "Hôpitaux" }
   };
-  var GPS_POI_DEFAULT = ["signals", "fuel", "rest"];
+  var GPS_POI_DEFAULT = ["fuel", "charging", "parking", "rest", "toilets", "hospital"];
+  // The pumps' own order: the gazole first, then the Sans Plomb, the ethanol
+  // and the gas — the board every station's window reads in this order.
+  var GPS_FUELS = [["gazole", "Gazole"], ["sp95", "SP95"], ["sp98", "SP98"], ["e10", "E10"], ["e85", "E85"], ["gplc", "GPL"]];
   // A road number → its shield's colour (French signs: A and N red, D yellow, E green, M blue).
   function gpsShield(ref) {
     var c = String(ref || "").trim().charAt(0).toUpperCase();
@@ -5694,12 +5688,6 @@
     if (dir == null || heading == null) return true;
     var t = gpsTurn(dir, heading);
     return t <= 55 || t >= 125;
-  }
-  // The length of a danger zone, as France's navigators show them: 300 m in
-  // town, 2 km on other roads, 4 km on motorways.
-  function gpsZoneLength(limit) {
-    var v = Number(limit) || 0;
-    return v && v <= 50 ? 300 : v >= 110 ? 4000 : 2000;
   }
   // The fuel brands' own marks, carried with the add-on (served beside the
   // cards, no ask outside): a name folded small is matched against them, the
@@ -5752,7 +5740,7 @@
     (elements || []).forEach(function (e) {
       var t = e.tags || {}, lat = e.lat != null ? e.lat : e.center && e.center.lat, lon = e.lon != null ? e.lon : e.center && e.center.lon;
       if (typeof lat !== "number" || typeof lon !== "number") return;
-      var kind = t.highway === "traffic_signals" ? "signals" : t.highway === "speed_camera" ? "camera"
+      var kind = t.highway === "speed_camera" ? "camera"
         : t.amenity === "fuel" ? "fuel" : t.amenity === "charging_station" ? "charging" : t.amenity === "parking" ? "parking"
         : t.highway === "rest_area" || t.highway === "services" ? "rest" : t.amenity === "toilets" ? "toilets" : t.amenity === "hospital" ? "hospital" : null;
       if (!kind) return;
@@ -5788,7 +5776,6 @@
   function gpsPoiQuery(p, radius, kinds) {
     var at = function (r) { return "(around:" + Math.round(r) + "," + p[1].toFixed(6) + "," + p[0].toFixed(6) + ")"; };
     var parts = [];
-    if (kinds.indexOf("signals") >= 0) parts.push("node" + at(Math.min(radius, 2500)) + "[highway=traffic_signals];");
     if (kinds.indexOf("camera") >= 0) parts.push("node" + at(Math.max(radius, 5000)) + "[highway=speed_camera];");
     if (kinds.indexOf("fuel") >= 0) parts.push("nwr" + at(radius * 2) + "[amenity=fuel];");
     if (kinds.indexOf("charging") >= 0) parts.push("nwr" + at(radius * 2) + "[amenity=charging_station];");
@@ -5828,7 +5815,6 @@
   // The points' query for one square: every kind asked, nothing cut off.
   function gpsPoiTileQuery(b, kinds) {
     var parts = [], has = function (k) { return kinds.indexOf(k) >= 0; };
-    if (has("signals")) parts.push("node[highway=traffic_signals];");
     if (has("camera")) parts.push("node[highway=speed_camera];");
     if (has("fuel")) parts.push("nwr[amenity=fuel];");
     if (has("charging")) parts.push("nwr[amenity=charging_station];");
@@ -5913,7 +5899,7 @@
     var d = gpsDist(from, to), ahead = gpsAhead(from, to, heading);
     return { d: d, ahead: ahead, side: Math.sqrt(Math.max(0, d * d - ahead * ahead)) };
   }
-  window.__igorGpsPoi = { tileOf: gpsTileOf, tileBox: gpsTileBox, tileQuery: gpsPoiTileQuery, parse: gpsPois, query: gpsPoiQuery, watches: gpsCameraWatches, zone: gpsZoneLength, direction: gpsTagDirection, shield: gpsShield, relative: gpsRelative };
+  window.__igorGpsPoi = { tileOf: gpsTileOf, tileBox: gpsTileBox, tileQuery: gpsPoiTileQuery, parse: gpsPois, query: gpsPoiQuery, watches: gpsCameraWatches, direction: gpsTagDirection, shield: gpsShield, relative: gpsRelative };
   // The points' icons, drawn once (no image to load, nothing to host).
   function gpsPoiIcons() {
     // Drawn at twice their size (sharp when shown large on the map).
@@ -5928,11 +5914,6 @@
     };
     var disc = function (g, fill, ring) { g.beginPath(); g.arc(24, 24, 20, 0, Math.PI * 2); g.fillStyle = fill; g.fill(); g.lineWidth = 4; g.strokeStyle = ring || "#07080a"; g.stroke(); };
     var letter = function (g, txt, color, size) { g.fillStyle = color; g.font = "700 " + (size || 24) + "px Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(txt, 24, 25); };
-    draw("signals", function (g) {
-      g.fillStyle = "#07080a"; g.strokeStyle = "#e9e4da"; g.lineWidth = 3;
-      g.beginPath(); g.roundRect ? g.roundRect(14, 3, 20, 42, 6) : g.rect(14, 3, 20, 42); g.fill(); g.stroke();
-      [["#e5323b", 12], ["#d9a441", 24], ["#5cc28f", 36]].forEach(function (l) { g.beginPath(); g.arc(24, l[1], 5, 0, Math.PI * 2); g.fillStyle = l[0]; g.fill(); });
-    });
     // The radar as the house draws it: a dark tile, the camera in a thin
     // off-white line, one red spark — the red stays the alert's alone.
     draw("camera", function (g) {
@@ -6041,7 +6022,6 @@
         ".portrait .hud.sp { bottom: 51px; } .portrait.guiding .hud.sp { bottom: 101px; }" +
         ".portrait .speed { width: 72px; min-width: 72px; height: 72px; padding: 0; } .portrait .speed b { font-size: 26px; white-space: nowrap; }" +
         ".portrait .toast { left: 10px; right: 10px; transform: none; max-width: none; bottom: 51px; white-space: normal; } .portrait.withspeed .toast { left: 90px; } .portrait.guiding .toast { bottom: 101px; }" +
-        ".portrait .lost { left: 10px; right: 10px; transform: none; max-width: none; bottom: 129px; } .portrait.guiding .lost { bottom: 179px; }" +
         ".portrait .eta { left: 10px; right: 10px; gap: 10px; padding: 6px 10px; } .portrait .eta b { font-size: 18px; } .portrait .eta span { font-size: 11px; } .portrait.withspeed .eta { left: 10px; }" +
         ".portrait .ask { bottom: 240px; }" +
         ".hud { position: absolute; z-index: 2; pointer-events: none; }" +
@@ -6090,7 +6070,6 @@
         ".toast { position: absolute; z-index: 3; left: 50%; bottom: 96px; transform: translateX(-50%); max-width: 80%; padding: 8px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.94); border: 1px solid #f08c1a; border-left: 4px solid #f08c1a; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }" +
         // The phone that stopped answering: said once, then a band that stays
         // while it lasts — a toast of 5 s is missed, driving blind is worse.
-        ".lost { position: absolute; z-index: 3; left: 50%; bottom: 140px; transform: translateX(-50%); max-width: 70%; display: flex; gap: 10px; align-items: center; padding: 8px 14px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.94); border: 1px solid #f08c1a; border-left: 4px solid #f08c1a; color: #e9e4da; font-family: " + MONO + "; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; } .lost[hidden] { display: none; } .lost ha-icon { color: #f08c1a; flex: none; }" +
         ".toast[hidden] { display: none; } .toast b { color: #f08c1a; font-weight: 500; } .toast button { font: inherit; margin-left: 12px; background: none; border: 1px solid #22262c; color: #878c95; padding: 2px 8px; border-radius: 2px; cursor: pointer; }" +
         ".shield { display: inline-block; padding: 1px 6px; margin-right: 8px; border-radius: 3px; font-family: 'Barlow Condensed', 'Roboto Condensed', 'Arial Narrow', sans-serif; font-weight: 700; font-size: 0.86em; line-height: 1.25; letter-spacing: 0.02em; vertical-align: 1px; white-space: nowrap; background: #e9e4da; color: #111; box-shadow: inset 0 0 0 1.5px currentColor; }" +
         ".shield.a, .shield.n { background: #d33; color: #fff; } .shield.e { background: #2f8a3e; color: #fff; } .shield.d { background: #f2c200; color: #111; } .shield.m { background: #2a9fd6; color: #fff; }" +
@@ -6102,19 +6081,29 @@
         ".rpanel .seg { display: flex; gap: 8px; margin-top: auto; } .rpanel .seg button { flex: 1; justify-content: center; font-size: 13px; padding: 10px 6px; } .rpanel .seg button.on { border-color: #59d0e0; color: #59d0e0; }" +
         ".nav .l { display: flex; gap: 4px; margin-top: 6px; } .nav .l[hidden] { display: none; } .nav .l span { min-width: 26px; height: 30px; padding: 0 3px; display: grid; place-items: center; border: 1px solid #3d454e; border-radius: 2px; color: #5a5f66; font-size: 18px; line-height: 1; }" +
         ".nav .l span.go { border-color: #59d0e0; color: #07080a; background: #59d0e0; }" +
-        // The layers' list.
-        ".lpanel .tg { justify-content: space-between; } .lpanel .tg .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }" +
-        ".lpanel .tg.off { opacity: 0.45; } .lpanel .seg { display: flex; gap: 8px; } .lpanel .seg button { flex: 1; justify-content: center; } .lpanel .seg button.on { border-color: #59d0e0; color: #59d0e0; }" +
-        // The stations' panel: the station's whole board at the right, one
-        // fuel a line (the nozzle's pictogram, the price with its unit, the
-        // rupture's word or the one professional word) — small enough that
-        // six lines fit a row, right-aligned so the figures end together.
-        ".fpanel .pall { display: flex; flex-direction: column; gap: 1px; margin-left: auto; flex: none; align-items: flex-end; }" +
-        ".fpanel .pall .fl { display: flex; align-items: center; gap: 5px; font-family: 'Chakra Petch', " + MONO + "; font-size: 12.5px; font-weight: 600; color: #e9e4da; line-height: 1.25; white-space: nowrap; }" +
-        ".fpanel .pall .fl .fico { height: 11px; }" +
-        ".fpanel .pall .fl b { font-weight: 600; font-variant-numeric: tabular-nums; }" +
-        ".fpanel .pall .fl small { font-family: " + MONO + "; font-size: 9px; font-weight: 400; color: #878c95; }" +
-        ".fpanel .pall .dry { font-size: 10px; } .fpanel .pall .np { font-size: 10px; }" +
+        // The stations' panel: the list stays a list (a name, a place, a
+        // detour); the prices live behind each row's « Voir prix », in their
+        // own window — the list breathes, the figures stand where the eye
+        // is sent for them.
+        ".fpanel .vp { flex: none; width: auto; min-width: 0; padding: 0 12px; display: flex; align-items: center; gap: 6px; justify-content: center; font-size: 12px; letter-spacing: 0.04em; color: #59d0e0; border-color: #2a545c; white-space: nowrap; }" +
+        ".fpanel .vp ha-icon { --mdc-icon-size: 16px; color: #59d0e0; }" +
+        // The prices' window: a card over the map, the station's whole board
+        // — one fuel a line, the badge on the left, the figure and its unit
+        // on the right, the ruptures' word where a price would stand.
+        ".pprice { position: absolute; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; background: rgba(4,5,7,0.6); padding: 18px; }" +
+        ".pprice[hidden] { display: none; }" +
+        ".pprice .pp-card { width: min(340px, 100%); max-height: 82%; overflow: auto; background: rgba(10,12,15,0.97); border: 1px solid #22262c; border-radius: var(--igor-radius, 3px); padding: 12px 14px; box-sizing: border-box; }" +
+        ".pprice .pph { display: flex; justify-content: space-between; align-items: center; gap: 8px; }" +
+        ".pprice .pph span { font-family: 'Chakra Petch', " + MONO + "; font-size: 15px; font-weight: 600; color: #e9e4da; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
+        ".pprice .pph .ic { width: 30px; height: 30px; min-height: 0; padding: 0; justify-content: center; flex: none; }" +
+        ".pprice .pp-addr { color: #878c95; font-family: " + MONO + "; font-size: 11.5px; margin: 3px 0 8px; }" +
+        ".pprice .pp-list { display: flex; flex-direction: column; }" +
+        ".pprice .pp-list .fl { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid #1a1e24; font-family: 'Chakra Petch', " + MONO + "; font-size: 15px; font-weight: 600; color: #e9e4da; }" +
+        ".pprice .pp-list .fl:first-child { border-top: none; }" +
+        ".pprice .pp-list .fl .fico { height: 14px; }" +
+        ".pprice .pp-list .fl b { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }" +
+        ".pprice .pp-list .fl small { font-family: " + MONO + "; font-size: 10px; font-weight: 400; color: #878c95; }" +
+        ".pprice .pp-list .fl .dry, .pprice .pp-list .fl .np { margin-left: auto; }" +
         // The station's prices in the tap popup: one fuel a line, all the
         // same size — no fuel a favourite above the others — each with its
         // unit; a rupture says the trade's own word in the small red.
@@ -6188,7 +6177,6 @@
         '<button id="dest" title="Destination"><ha-icon icon="mdi:flag-checkered"></ha-icon></button>' +
         '<button id="fuel" title="Stations-service"><ha-icon icon="mdi:gas-station"></ha-icon></button>' +
         '<button id="voice" title="Voix du guidage"><ha-icon icon="mdi:volume-high"></ha-icon></button>' +
-        '<button id="layers" title="Sur la carte"><ha-icon icon="mdi:layers-outline"></ha-icon></button>' +
         '<button id="overview" title="Choisir l’itinéraire" hidden><ha-icon icon="mdi:map-search"></ha-icon></button>' +
         '<button id="full" title="Plein écran"><ha-icon icon="mdi:fullscreen"></ha-icon></button></div>' +
         '<div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div style="min-width:0"><div class="d" id="navD"></div><div class="t" id="navT"></div><div class="x" id="navX" hidden></div><div class="l" id="navL" hidden></div></div></div>' +
@@ -6197,11 +6185,10 @@
         '<div class="tbar" id="tbar" hidden><span class="top" id="tbTop"></span><div class="tk" id="tbTrack"></div><b id="tbMain"></b><span id="tbSub"></span></div></div>' +
         '<div class="street" id="street" hidden></div>' +
         '<div class="toast" id="toast" hidden></div>' +
-        '<div class="lost" id="lost" hidden><ha-icon icon="mdi:cellphone-off"></ha-icon><span id="lostS"></span></div>' +
         '<div class="ask" id="ask" hidden><ha-icon icon="mdi:road-variant"></ha-icon><div class="q"><b>Route fermée sur votre itinéraire</b><div id="askS"></div></div><div class="bt"><button class="yes" id="askYes">Éviter</button><button id="askNo">Ignorer</button></div></div>' +
         '<div class="panel rpanel" id="rpanel" hidden><div class="ph"><span id="rtitle">itinéraires</span><button id="rclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="rlist"></div><div class="seg" id="rchips"></div></div>' +
-        '<div class="panel lpanel" id="lpanel" hidden><div class="ph"><span>sur la carte</span><button id="lclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="llist"></div></div>' +
         '<div class="panel fpanel" id="fpanel" hidden><div class="ph"><span>stations-service</span><button id="fclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="flist"></div></div>' +
+        '<div class="pprice" id="pprice" hidden><div class="pp-card"><div class="pph"><span id="ppName"></span><button id="ppClose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="pp-addr" id="ppAddr"></div><div class="pp-list" id="ppList"></div></div></div>' +
         '<div class="eta" id="eta" hidden></div>' +
         '<div class="panel" id="panel" hidden><div class="ph"><span>destination</span><button id="pclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
         '<div class="list" id="ptrip" hidden></div>' +
@@ -6219,7 +6206,9 @@
       // The fuel, Waze's way: a touch, the stations around, each with its
       // gazole price and its detour; a touch on one, and the car goes.
       $("fuel").addEventListener("click", () => this.openFuel());
-      $("fclose").addEventListener("click", () => { $("fpanel").hidden = true; });
+      $("fclose").addEventListener("click", () => { $("fpanel").hidden = true; this.closeFuelPrices(); });
+      $("ppClose").addEventListener("click", (ev) => { ev.stopPropagation(); this.closeFuelPrices(); });
+      $("pprice").addEventListener("click", (ev) => { if (ev.target === this.$("pprice")) this.closeFuelPrices(); });
       // The voice, three ways, a touch to change: everything (each turn, as a
       // navigator), the warnings only (cameras, jams, detours), nothing. Kept
       // by Home Assistant for this user (and by the screen, to know it at once).
@@ -6252,8 +6241,6 @@
       $("overview").addEventListener("click", () => this.overview());
       $("full").addEventListener("click", () => this.setFull(!this.full));
       $("pclose").addEventListener("click", () => { $("panel").hidden = true; });
-      $("layers").addEventListener("click", () => this.openLayers());
-      $("lclose").addEventListener("click", () => { $("lpanel").hidden = true; });
       // Closed without choosing: a trip under way stays as it was; only a
       // trip asked for and not yet on the road (no route yet) is dropped.
       $("rclose").addEventListener("click", () => { clearTimeout(this.pickTimer); $("rpanel").hidden = true; if (!this.route) this.setDestination(null, true); });
@@ -6319,8 +6306,6 @@
       this.$("full").title = this.full ? "Réduire" : "Plein écran";
     }
     styleUrl() {
-      var bm = this.layers && this.layers.basemap;
-      if (bm && GPS_ORBIS[bm]) return window.location.origin + "/api/nives/basemap/style?map=" + GPS_ORBIS[bm];
       if (this.config.style) return this.config.style;
       if (this.config.theme === "clair") return GPS_DAY;
       if (this.config.theme === "auto") {
@@ -6353,28 +6338,21 @@
       if (this.srcNow === "phone" && use === "main" && age(main) >= 2.5) use = "phone";
       if (use !== this.srcNow) {
         this.srcNow = use;
-        if (this.srcSeen) this.toast(use === "phone" ? "Position · téléphone" : "Position · autoradio", 3000);
         this.srcSeen = true;
       }
       return use === "phone" ? fb : main;
     }
     // The primary GPS that stopped answering: the arbitration has already
-    // switched to the fallback (or the entity is gone); say it once, then let
-    // a band stand while it lasts. Voice only where a voice is welcome.
+    // switched to the fallback (or the entity is gone) — and says nothing.
+    // The change of source is the card's own housekeeping: a band, a toast,
+    // a spoken word for it had the driver look up at nothing. Only the
+    // arrow's steady walk tells that all is well.
     lostCheck() {
       var fbId = this.config.fallback_entity;
       if (!fbId || !this._hass) return;
       var main = this._hass.states[this.config.entity];
-      var fb = this._hass.states[fbId];
-      var fbAlive = fb && ["unavailable", "unknown"].indexOf(fb.state) < 0 && fb.attributes.latitude != null;
       var lost = !main || ["unavailable", "unknown"].indexOf(main.state) >= 0 || this.srcNow === "phone";
-      if (lost === this.lost) return;
       this.lost = lost;
-      this.$("lost").hidden = !lost;
-      if (!lost) return;
-      this.$("lostS").textContent = fbAlive ? "téléphone introuvable · GPS de la voiture en secours" : "téléphone introuvable";
-      this.toast("Téléphone introuvable", 5000);
-      this.say(fbAlive ? "Téléphone introuvable, j'utilise le GPS de la voiture" : "Téléphone introuvable", "alert");
     }
     read() {
       var st = this.pickSource();
@@ -6603,28 +6581,17 @@
       // Each touch (its start, its moves, its end) holds the map and restarts the wait.
       ["dragstart", "zoomstart", "rotatestart", "pitchstart", "drag", "zoom", "dragend", "zoomend", "rotateend", "pitchend"].forEach((ev) => map.on(ev, (e) => { if (e.originalEvent) this.setFollow(false); }));
       // A tap on the map asks what to do with the place under the finger.
-      map.on("click", (e) => this.mapPick(e));
-      // The held finger is a question: where the plain tap now stays quiet,
-      // keeping the finger down a moment asks the map what the place can do.
+      // (The held finger was tried twice for the same ask; twice the radio's
+      // browsers kept the question to themselves. The plain tap answers.)
       // The finger on the map also stills the car's view: while it is down,
       // the fixes no longer jump the map under it — moving the map while
       // rolling was a fight against every new fix landing. The recenter
       // button (or the pause gone by) brings the following back.
-      var lp = null, lx = 0, ly = 0;
-      var lpCancel = () => { if (lp) { clearTimeout(lp); lp = null; } };
-      var lpStart = (e) => { this.grabbed = true; lpCancel(); if (!e || !e.point) return; lx = e.point.x; ly = e.point.y;
-        lp = setTimeout(() => { lp = null; this._lpFired = performance.now(); this.mapPick(e, true); }, 600); };
-      var lpEnd = () => { this.grabbed = false; lpCancel(); };
-      map.on("mousedown", lpStart);
-      map.on("touchstart", lpStart);
-      map.on("mousemove", (e) => { if (lp && e && e.point && (Math.abs(e.point.x - lx) > 8 || Math.abs(e.point.y - ly) > 8)) lpCancel(); });
-      // A held finger is never still: it trembles a few pixels — only a
-      // real move (more than eight, as the mouse's) says the finger meant
-      // something else. The touch's own coordinates tell how far it went.
-      map.on("touchmove", (e) => { if (lp && e && e.point && (Math.abs(e.point.x - lx) > 8 || Math.abs(e.point.y - ly) > 8)) lpCancel(); });
-      map.on("mouseup", lpEnd);
-      map.on("touchend", lpEnd);
-      map.on("dragstart", lpCancel);
+      map.on("mousedown", () => { this.grabbed = true; });
+      map.on("touchstart", () => { this.grabbed = true; });
+      map.on("mouseup", () => { this.grabbed = false; });
+      map.on("touchend", () => { this.grabbed = false; });
+      map.on("click", (e) => this.mapPick(e));
       // The fingers on the map are the map's (not the page's scroll or swipe).
       this.$("map").style.touchAction = "none";
       map.on("style.load", () => {
@@ -6653,7 +6620,6 @@
         if (this.config.buildings === false) (map.getStyle().layers || []).forEach((l) => {
           if (/building/i.test(l.id + " " + (l["source-layer"] || ""))) map.setLayoutProperty(l.id, "visibility", "none");
         });
-        this.applyBuildings3D();
         this.styleLayers();
         this.msgShown = null;
         this.message("");
@@ -6694,7 +6660,7 @@
       var lines = [];
       feats.forEach((f) => {
         var g = f.geometry, props = f.properties || {};
-        // OpenMapTiles says class/subclass; TomTom Orbis says roadClass/roadFunction.
+        // OpenMapTiles says class/subclass; a TomTom style, roadClass/roadFunction.
         var cls = String(props.class || props.subclass || props.roadClass || props.roadFunction || "");
         // Only where a car drives: no railway, path, footway, cycleway, ferry.
         if (!g || /rail|transit|path|footway|pedestrian|cycle|bicycle|bridleway|steps|track|ferry|cable|aerial|pier/.test(cls)) return;
@@ -6869,11 +6835,9 @@
           while (zst > 0 && kmh < edges[zst - 1] - 4) zst--;
           this.zStage = zst;
           var tz = base + [0.3, 0, -0.8, -1.6, -2.3][zst];
-          // Closer before a turn: 20 seconds ahead (250 m to 1 km); a crossing
-          // with lights just ahead, a little.
+          // Closer before a turn: 20 seconds ahead (250 m to 1 km).
           var near = Math.max(250, Math.min(1000, speed * 20));
           if (this.route && this.nextDist != null && this.nextDist < near) tz = Math.max(tz, Math.min(base + 0.6, tz + 1.4));
-          else if (this.signalAhead != null && this.signalAhead < 150) tz = Math.min(base + 0.5, tz + 0.4);
           this.zoomNow = this.zoomNow == null ? tz : this.zoomNow + (tz - this.zoomNow) * ease(0.02);
           view.zoom = this.zoomNow;
         }
@@ -7556,10 +7520,9 @@
     // dashboard's small frame (compact), any tap opens the card full: the
     // buttons live there, the map here is only a window to look through. On a
     // grey route, the tap picks it.
-    mapPick(e, long) {
+    mapPick(e) {
       var map = this.map;
       if (!map || !e || !e.point || !window.maplibregl) return;
-      if (this._lpFired && performance.now() - this._lpFired < 500) return;
       if (this.config.compact && !this.full) { this.setFull(true); return; }
       if (map.getLayer("alts") && map.queryRenderedFeatures(e.point, { layers: ["alts"] }).length) return;
       // A station of the map's own layer: its prices first, then the two ways.
@@ -7590,7 +7553,9 @@
         if (n && String(n).trim() && String(n) !== "null") { name = String(n).trim().slice(0, 40); return true; }
         return false;
       });
-      if (!fuel && !name && !long) return;
+      // Any tap asks: a place says its name, the empty map says « Ce point »
+      // — the two ways (a new route, a stop) stand under it either way.
+      if (!name) name = "Ce point";
       this.closePick();
       var el = document.createElement("div");
       el.className = "mappick";
@@ -7600,7 +7565,6 @@
         if (lg) { var im = document.createElement("img"); im.className = "mp-logo"; im.src = lg; im.alt = ""; head.appendChild(im); }
       }
       if (name) { var t = document.createElement("div"); t.className = "mp-name"; t.textContent = name; head.appendChild(t); }
-      else if (long) { var t2 = document.createElement("div"); t2.className = "mp-name"; t2.textContent = "Ce point"; head.appendChild(t2); }
       var x = document.createElement("button"); x.type = "button"; x.className = "mp-x"; x.title = "Fermer";
       x.innerHTML = '<ha-icon icon="mdi:close"></ha-icon>';
       x.addEventListener("click", (ev) => { ev.stopPropagation(); this.closePick(); });
@@ -7646,7 +7610,7 @@
     // car goes there or stops there.
     async openFuel(quiet) {
       var $ = this.$, list = $("flist");
-      $("panel").hidden = true; $("rpanel").hidden = true; $("lpanel").hidden = true;
+      $("panel").hidden = true; $("rpanel").hidden = true;
       $("fpanel").hidden = false;
       // A refresh the car itself asked (it moved on while the panel stood
       // open) does not blank the list: the old stations keep standing until
@@ -7671,6 +7635,7 @@
       this.fuelHere = here;
       var seq = this.fuelSeq = (this.fuelSeq || 0) + 1;
       var found = null, prices = null, fuelErr = "", asked = false;
+      this.fuelPrices = null;
       try {
         var r = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_nearby", return_response: true, service_data: { kind: "fuel", count: 15, latitude: here[1], longitude: here[0] } });
         asked = true;
@@ -7680,6 +7645,7 @@
         var pr = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_fuel", return_response: true, service_data: { latitude: here[1], longitude: here[0], radius_km: 15 } });
         if (pr && pr.response && pr.response.ok) prices = pr.response.stations || [];
       } catch (e) { prices = null; }
+      this.fuelPrices = prices;
       if (!found || !found.length) {
         // The route's server (OSRM, Overpass) can be down while TomTom answers:
         // the map's own places then carry the list — without the detour's
@@ -7705,10 +7671,6 @@
         list.appendChild(none);
         return;
       }
-      // The trade's own order, the pumps' own labels: the gazole first, then
-      // the Essence Sans Plomb, the ethanol and the gas \u2014 every fuel the
-      // station sells, not the gazole alone.
-      var FUELS = [["gazole", "Gazole"], ["sp95", "SP95"], ["sp98", "SP98"], ["e10", "E10"], ["e85", "E85"], ["gplc", "GPL"]];
       found.forEach((p) => {
         var lat = Number(p.lat), lon = Number(p.lon);
         if (isNaN(lat) || isNaN(lon)) return;
@@ -7723,44 +7685,60 @@
         sm.textContent = [p.service_area || p.address || "", here ? gpsMetres(gpsDist(here, [lon, lat])) : "", detour].filter(Boolean).join(" \u00b7 ");
         t.appendChild(sm);
         var row = document.createElement("div"); row.className = "row2";
-        b.addEventListener("click", () => { this.chooseNext = true; this.setDestination({ lat: lat, lon: lon, name: nm }, true); $("fpanel").hidden = true; });
+        b.addEventListener("click", () => { this.chooseNext = true; this.setDestination({ lat: lat, lon: lon, name: nm }, true); this.closeFuelPrices(); $("fpanel").hidden = true; });
         row.appendChild(b);
-        // The whole board of the station, one fuel a line: the price with
-        // its unit, or the flux's own word when the tap is dry, or the one
-        // professional word when the declarant said nothing \u2014 and a station
-        // the flux ignores altogether says it once, not six times.
-        var f = this.nearestFuel(prices, lat, lon);
-        // Known of the flux but saying nothing (no price, no rupture) is the
-        // same as unknown: one professional word, not six.
-        if (f && !(f.prices && Object.keys(f.prices).length) && !(f.rupture && Object.keys(f.rupture).length)) f = null;
-        var pall = document.createElement("div"); pall.className = "pall";
-        if (!f) {
-          var np0 = document.createElement("span"); np0.className = "np"; np0.textContent = "Non communiqu\u00e9";
-          pall.appendChild(np0);
-        } else FUELS.forEach((fu) => {
-          var line = document.createElement("div"); line.className = "fl";
-          line.appendChild(fuelIcon(fu[0], fu[1]));
-          var pr = (f.prices || {})[fu[0]], ru = (f.rupture || {})[fu[0]];
-          if (pr != null) {
-            var pv = document.createElement("b"); pv.textContent = pr.toFixed(3).replace(".", ",");
-            line.appendChild(pv);
-            var pu = document.createElement("small"); pu.textContent = "\u20ac/L";
-            line.appendChild(pu);
-          } else if (ru) {
-            var dr = document.createElement("span"); dr.className = "dry";
-            dr.textContent = ru === "definitive" ? "rupture d\u00e9finitive" : "rupture";
-            line.appendChild(dr);
-          } else {
-            var np = document.createElement("span"); np.className = "np"; np.textContent = "Non communiqu\u00e9";
-            line.appendChild(np);
-          }
-          pall.appendChild(line);
-        });
-        row.appendChild(pall);
+        // The prices stand behind their own door: the row stays a row (a
+        // name, a place, a detour), and « Voir prix » opens the station's
+        // whole board \u2014 one fuel a line, in a window of their own.
+        var vp = document.createElement("button"); vp.type = "button"; vp.className = "vp";
+        vp.title = "Voir les prix";
+        vp.innerHTML = '<ha-icon icon="mdi:fuel"></ha-icon><span>Voir prix</span>';
+        vp.addEventListener("click", (ev) => { ev.stopPropagation(); this.openFuelPrices(nm, p, lat, lon); });
+        row.appendChild(vp);
         if (this.dest) row.appendChild(this.viaBtn({ lat: lat, lon: lon, name: nm }));
         list.appendChild(row);
       });
     },
+    // The station's whole board, in a window of its own: one fuel a line \u2014
+    // the badge, the price with its unit, or the flux's own word when the
+    // tap is dry, or the one professional word when the declarant said
+    // nothing. A station the flux ignores altogether says it once, not six
+    // times.
+    openFuelPrices(nm, p, lat, lon) {
+      var $ = this.$, list = $("ppList");
+      var f = this.nearestFuel(this.fuelPrices, lat, lon);
+      // Known of the flux but saying nothing (no price, no rupture) is the
+      // same as unknown: one professional word, not six.
+      if (f && !(f.prices && Object.keys(f.prices).length) && !(f.rupture && Object.keys(f.rupture).length)) f = null;
+      $("ppName").textContent = nm || "Station-service";
+      $("ppAddr").textContent = [p.service_area || p.address || "", p.city || ""].filter(Boolean).join(", ") || "\u2014";
+      list.innerHTML = "";
+      if (!f) {
+        var np0 = document.createElement("span"); np0.className = "np"; np0.textContent = "Non communiqu\u00e9";
+        var l0 = document.createElement("div"); l0.className = "fl"; l0.appendChild(np0);
+        list.appendChild(l0);
+      } else GPS_FUELS.forEach((fu) => {
+        var line = document.createElement("div"); line.className = "fl";
+        line.appendChild(fuelIcon(fu[0], fu[1]));
+        var pr = (f.prices || {})[fu[0]], ru = (f.rupture || {})[fu[0]];
+        if (pr != null) {
+          var pv = document.createElement("b"); pv.textContent = pr.toFixed(3).replace(".", ",");
+          line.appendChild(pv);
+          var pu = document.createElement("small"); pu.textContent = "\u20ac/L";
+          line.appendChild(pu);
+        } else if (ru) {
+          var dr = document.createElement("span"); dr.className = "dry";
+          dr.textContent = ru === "definitive" ? "rupture d\u00e9finitive" : "rupture";
+          line.appendChild(dr);
+        } else {
+          var np = document.createElement("span"); np.className = "np"; np.textContent = "Non communiqu\u00e9";
+          line.appendChild(np);
+        }
+        list.appendChild(line);
+      });
+      $("pprice").hidden = false;
+    },
+    closeFuelPrices() { this.$("pprice").hidden = true; },
     nearestFuel(stations, lat, lon) {
       var best = null, bd = 500;
       (stations || []).forEach((s) => { var d = gpsDist([s.lon, s.lat], [lon, lat]); if (d < bd) { bd = d; best = s; } });
@@ -7806,7 +7784,14 @@
       if (!this.alts.length) return;
       var got = await Promise.all(this.alts.map((a) => this.askRoute(d, from, a.types || [])));
       if (this.dest !== d) return;
-      got.forEach((r, i) => { if (r && r.ok && r.route && this.alts[i]) this.alts[i].route = r.route; });
+      // Only the better deserve the map: an alternate longer than the way
+      // already held is noise, and a noise drawn is a driver tempted. Better
+      // means plainly faster (half a minute at least), or as fast and
+      // plainly shorter (two per cent at least).
+      var ref = this.route;
+      var better = (r) => !!ref && (r.duration < ref.duration - 30 ||
+        (Math.abs(r.duration - ref.duration) <= 30 && r.distance < ref.distance * 0.98));
+      got.forEach((r, i) => { if (r && r.ok && r.route && this.alts[i]) this.alts[i].route = better(r.route) ? r.route : null; });
       this.drawAlts();
     },
     useTomTom(R0) {
@@ -7839,6 +7824,12 @@
         opts.push({ label: asks[i].label, types: asks[i].types, route: R0 });
       });
       if (!opts.length) return false;
+      // The same law as the grey alternates: a way slower than the fastest
+      // is not a choice, it is a penance - it stays off the board (as fast
+      // and plainly shorter still counts).
+      var best = opts.reduce((b, o) => (o.route.duration < b.route.duration ? o : b), opts[0]);
+      opts = opts.filter((o) => o === best || o.route.duration < best.route.duration - 30 ||
+        (Math.abs(o.route.duration - best.route.duration) <= 30 && o.route.distance < best.route.distance * 0.98));
       var pick = (o) => {
         clearTimeout(this.pickTimer);
         this.$("rpanel").hidden = true;
@@ -8115,178 +8106,33 @@
   Object.assign(IgorGpsCard.prototype, {
     // ----- what the card shows: kept by this screen -----
     loadLayers() {
-      var c = this.config, saved = null;
-      try { saved = JSON.parse(window.localStorage.getItem("igor-gps-layers") || "null"); } catch (e) { saved = null; }
-      var pois = Array.isArray(c.pois) ? c.pois : GPS_POI_DEFAULT;
-      var cam = ["radar", "zone", "off"].indexOf(c.cameras) >= 0 ? c.cameras : c.cameras === false ? "off" : "zone";
-      this.layers = { basemap: "igor", bld3d: false, cameras: cam, trafficMap: c.traffic_map === true, incidents: c.traffic !== false, mig: 0 };
+      // The screen decides now, and decides once: every place of the house
+      // on the map, the radars watching at the approach, the traffic and its
+      // wounds drawn whenever TomTom answers. What was a panel of switches
+      // is the card's own judgement - fewer questions, fewer bytes, a map
+      // that asks nothing of the driver.
+      var c = this.config, pois = Array.isArray(c.pois) ? c.pois : GPS_POI_DEFAULT;
+      this.layers = { cameras: "radar" };
       Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") this.layers[k] = pois.indexOf(k) >= 0; });
-      var had = !!(saved && typeof saved === "object");
-      if (had) Object.keys(this.layers).forEach((k) => { if (saved[k] !== undefined) this.layers[k] = saved[k]; });
-      // Once, marked: the stations' layer slept while its only live source
-      // was dead — a switch nobody had a reason to touch (an old `pois:` in
-      // the YAML, a state saved before the flux existed) stays off for
-      // nothing. The flux's arrival wakes it, this once; turned off after,
-      // it stays off.
-      if (!this.layers.mig2) { this.layers.fuel = true; this.layers.mig2 = 1; }
-      // Once, marked: the Orbis map failing about every other load — every
-      // screen comes back to the CARTO one, without a finger raised. Choosing
-      // Route after this update keeps (the mark is set, and saved).
-      if (!this.layers.mig) { this.layers.basemap = "igor"; this.layers.mig = 1; this.saveLayers(); }
-      // A base map removed since (an old "mono", "light", "satellite") falls back on Route.
-      if (this.layers.basemap && this.layers.basemap !== "igor" && !GPS_ORBIS[this.layers.basemap]) this.layers.basemap = "dark";
-      if (c.traffic === false) { this.layers.trafficMap = false; this.layers.incidents = false; }
       this.applyLayers();
-      // The browser forgot its own (a head unit's web view clears itself at
-      // each start): the house remembers — its .storage keeps the settings
-      // (the nives.gps_layers service). When the browser knew, its word wins.
-      if (!had) {
-        var card = this;
-        try {
-          this._hass.callWS({ type: "call_service", domain: "nives", service: "gps_layers", service_data: {}, return_response: true })
-            .then((r) => {
-              var v = r && r.response && r.response.value;
-              if (!v) return;
-              var kept = JSON.parse(v);
-              if (!kept || typeof kept !== "object") return;
-              Object.keys(card.layers).forEach((k) => { if (kept[k] !== undefined) card.layers[k] = kept[k]; });
-              if (!card.layers.mig) { card.layers.basemap = "igor"; card.layers.mig = 1; card.saveLayers(); }
-              if (card.layers.basemap && card.layers.basemap !== "igor" && !GPS_ORBIS[card.layers.basemap]) card.layers.basemap = "dark";
-              card.applyLayers();
-              card.applyBuildings3D();
-              if (!card.$("lpanel").hidden) card.openLayers();
-            })
-            .catch(function (e) { /* no service yet: the defaults stand */ });
-        } catch (e) { /* no connection yet */ }
-      }
     },
-    saveLayers() {
-      try { window.localStorage.setItem("igor-gps-layers", JSON.stringify(this.layers)); } catch (e) { /* no storage */ }
-      try {
-        this._hass.callWS({ type: "call_service", domain: "nives", service: "gps_layers",
-          service_data: { value: JSON.stringify(this.layers) }, return_response: true }).catch(function (e) { /* no service */ });
-      } catch (e) { /* no connection yet */ }
-      this.poiDirty = true;
-      this.applyLayers();
-      this.openLayers();
-    },
+
     // The kinds asked from OpenStreetMap: those shown, and the cameras when warned about.
     poiKinds() {
       var L = this.layers || {}, out = [];
       Object.keys(GPS_POI).forEach((k) => { if (k === "camera" ? L.cameras && L.cameras !== "off" : L[k]) out.push(k); });
       return out;
     },
-    openLayers() {
-      var $ = this.$, L = this.layers, list = $("llist");
-      $("fpanel").hidden = true;
-      $("lpanel").hidden = false;
-      list.innerHTML = "";
-      var head = function (txt) { var h = document.createElement("div"); h.className = "note"; h.textContent = txt; list.appendChild(h); };
-      head("Fond de carte");
-      var bmseg = document.createElement("div"); bmseg.className = "seg";
-      [["igor", "Igor"], ["dark", "Route"]].forEach((o) => {
-        var b = document.createElement("button"); b.type = "button"; b.textContent = o[1];
-        b.classList.toggle("on", (L.basemap || "igor") === o[0]);
-        b.addEventListener("click", () => {
-          if (o[0] !== "igor" && this.config.traffic === false) { this.toast("La carte TomTom est désactivée (traffic: false)", 3000); return; }
-          if (o[0] !== "igor" && this.traffic && !this.traffic.enabled && !this.traffic.denied) { this.toast("Ajouter une clé TomTom dans les options d'Igor", 3000); return; }
-          L.basemap = o[0]; this.saveLayers(); this.applyBasemap();
-        });
-        bmseg.appendChild(b);
-      });
-      list.appendChild(bmseg);
-      var bmnote = document.createElement("div"); bmnote.className = "note";
-      bmnote.textContent = L.basemap && L.basemap !== "igor" ? "Fond TomTom Orbis, servi par Home Assistant (la clé reste sur le serveur)"
-        : "Le fond du thème Igor (CARTO). Les fonds TomTom demandent une clé TomTom dans les options d'Igor.";
-      list.appendChild(bmnote);
-      head("Bâtiments en 3D");
-      var d3seg = document.createElement("div"); d3seg.className = "seg";
-      [[false, "Non"], [true, "Oui"]].forEach((o) => {
-        var b = document.createElement("button"); b.type = "button"; b.textContent = o[1];
-        b.classList.toggle("on", !!L.bld3d === o[0]);
-        b.addEventListener("click", () => { L.bld3d = o[0]; this.saveLayers(); this.applyBuildings3D(); });
-        d3seg.appendChild(b);
-      });
-      list.appendChild(d3seg);
-      var d3note = document.createElement("div"); d3note.className = "note";
-      d3note.textContent = "Sur le fond Route (TomTom Orbis) : les immeubles se dressent. Plus lourd à dessiner sur un autoradio.";
-      list.appendChild(d3note);
-      head("Contrôles de vitesse");
-      var seg = document.createElement("div"); seg.className = "seg";
-      [["zone", "Zones de danger"], ["radar", "Radars"], ["off", "Aucun"]].forEach((o) => {
-        var b = document.createElement("button"); b.type = "button"; b.textContent = o[1];
-        b.classList.toggle("on", L.cameras === o[0]);
-        b.addEventListener("click", () => { L.cameras = o[0]; this.camSpoken = {}; this.saveLayers(); });
-        seg.appendChild(b);
-      });
-      list.appendChild(seg);
-      head(L.cameras === "radar" ? "Chaque radar, à 500 m (1 km sur route rapide). En France, la loi n'autorise que les zones de danger." :
-        L.cameras === "zone" ? "Une zone de 300 m en ville, 2 km sur route, 4 km sur autoroute, sans montrer le radar." : "Aucune alerte de contrôle.");
-      var toggle = (key, name, color, note) => {
-        var b = document.createElement("button"); b.type = "button"; b.className = "tg" + (L[key] ? "" : " off");
-        var dot = document.createElement("span"); dot.className = "dot"; dot.style.background = color; b.appendChild(dot);
-        var txt = document.createElement("div"); txt.style.flex = "1"; txt.textContent = name;
-        if (note) { var sm = document.createElement("small"); sm.textContent = note; txt.appendChild(sm); }
-        b.appendChild(txt);
-        var ic = document.createElement("ha-icon"); ic.setAttribute("icon", L[key] ? "mdi:eye-outline" : "mdi:eye-off-outline"); b.appendChild(ic);
-        b.addEventListener("click", () => { L[key] = !L[key]; this.saveLayers(); });
-        list.appendChild(b);
-      };
-      head("Sur la carte");
-      if (this.poiDown) { var down = document.createElement("div"); down.className = "note"; down.textContent = "OpenStreetMap (Overpass) ne répond pas : les lieux manquants reviendront d'eux-mêmes."; list.appendChild(down); }
-      if (this.fuelFailed) { var fdown = document.createElement("div"); fdown.className = "note"; fdown.textContent = "Flux des prix injoignable : les stations reviendront d'elles-mêmes (essai chaque minute)."; list.appendChild(fdown); }
-      Object.keys(GPS_POI).forEach((k) => { if (k !== "camera") toggle(k, GPS_POI[k].name, GPS_POI[k].color); });
-      if (this.config.traffic !== false) {
-        head("Circulation en direct");
-        var why = this.traffic && this.traffic.denied ? "Ce compte n'y a pas accès : le choisir dans les options d'Igor (« The car's screen »)"
-          : !this.trafficOn() ? "Ajouter une clé TomTom dans les options d'Igor" : this.traffic.error || "";
-        toggle("trafficMap", "Trafic sur toute la carte", "#e5823b", why || "Sinon, seulement sur l'itinéraire : orange ralenti, rouge bouché");
-        toggle("incidents", "Routes fermées, travaux, accidents", "#e5323b", why);
-      }
-    },
-    // A base map chosen in the layers' panel: the style is swapped (the
-    // style.load handler puts the route, the trail and the rest back on it).
-    applyBasemap() {
-      if (!this.map || !this.styleUrl) return;
-      var url = this.styleUrl();
-      if (this.styleNow === url) return;
-      this.styleNow = url;
-      this.map.setStyle(url, { diff: false });
-    },
-    // The buildings standing up (fill-extrusion) on the Orbis base map: their
-    // heights are in the tiles already fetched, so no extra request, only
-    // more to draw. Off by default, a head unit has better to do.
-    applyBuildings3D() {
-      var map = this.map;
-      if (!map || !map.getStyle) return;
-      if (map.getLayer("igor-3d")) map.removeLayer("igor-3d");
-      if (!this.layers.bld3d || !(this.layers.basemap && GPS_ORBIS[this.layers.basemap])) return;
-      var src = null, firstSym = null;
-      (map.getStyle().layers || []).forEach((l) => {
-        if (!firstSym && l.type === "symbol" && l.layout && l.layout["text-field"]) firstSym = l.id;
-        if (!src && /^building/i.test(String(l["source-layer"] || ""))) src = l.source;
-      });
-      if (!src) {
-        var vec = Object.keys(map.getStyle().sources || {}).filter((n) => map.getStyle().sources[n] && map.getStyle().sources[n].type === "vector");
-        if (vec.length === 1) src = vec[0];
-      }
-      if (!src) return;
-      map.addLayer({ id: "igor-3d", type: "fill-extrusion", source: src, "source-layer": "buildings", minzoom: 14,
-        paint: { "fill-extrusion-color": "#22262e", "fill-extrusion-opacity": 0.92,
-          "fill-extrusion-height": ["coalesce", ["get", "building_height"], ["get", "height"], ["get", "render_height"], 12],
-          "fill-extrusion-base": ["coalesce", ["get", "building_ground_height"], ["get", "min_height"], ["get", "render_min_height"], 0] } }, firstSym);
-    },
     applyLayers() {
       var map = this.map;
       if (!map || !map.getLayer || !map.getLayer("pois")) return;
-      var kinds = this.poiKinds().filter((k) => k !== "camera" || this.layers.cameras === "radar");
-      map.setFilter("pois", ["in", ["get", "kind"], ["literal", kinds.filter((k) => k !== "signals")]]);
-      map.setFilter("pois-sig", ["in", ["get", "kind"], ["literal", kinds.indexOf("signals") >= 0 ? ["signals"] : []]]);
-      if (map.getLayer("traffic")) map.setLayoutProperty("traffic", "visibility", this.layers.trafficMap ? "visible" : "none");
-      ["incidents", "incidents-closed", "incidents-pt"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", this.layers.incidents ? "visible" : "none"); });
-      // The tags over the pumps follow the layers' word too.
+      map.setFilter("pois", ["in", ["get", "kind"], ["literal", this.poiKinds()]]);
+      if (map.getLayer("traffic")) map.setLayoutProperty("traffic", "visibility", "visible");
+      ["incidents", "incidents-closed", "incidents-pt"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible"); });
+      // The tags over the pumps follow the map's word too.
       this.refreshFuelTags();
     },
+
     // The card's layers on the base map (again after a change of style).
     styleLayers() {
       var map = this.map;
@@ -8308,12 +8154,10 @@
       map.addSource("pois", { type: "geojson", data: this.poiData() });
       this.poiShown = null;
       var layout = { "icon-image": ["concat", "igor-", ["get", "kind"]], "icon-size": ["interpolate", ["linear"], ["zoom"], 12, ["match", ["get", "kind"], "camera", 1.6, 1.1], 16, ["match", ["get", "kind"], "camera", 2.5, 1.7]], "icon-allow-overlap": true,
-        "symbol-sort-key": ["match", ["get", "kind"], "camera", 0, "signals", 2, 1] };
+        "symbol-sort-key": ["match", ["get", "kind"], "camera", 0, 1] };
       if (font) Object.assign(layout, { "text-field": ["get", "label"], "text-font": font, "text-size": 16, "text-offset": [0, 1.7], "text-anchor": "top", "text-optional": true });
       var paint = font ? { "text-color": "#e9e4da", "text-halo-color": "#07080a", "text-halo-width": 1.5 } : {};
       map.addLayer({ id: "pois", type: "symbol", source: "pois", layout: layout, paint: paint });
-      // The lights ahead, under the rest.
-      map.addLayer({ id: "pois-sig", type: "symbol", source: "pois", minzoom: 12, layout: layout, paint: paint });
       this.applyLayers();
       this.refreshPois();
     },
@@ -8408,7 +8252,7 @@
         // a light ask, nodes only, the same square. No key, or TomTom silent:
         // the whole square from Overpass, as before.
         var c = [(t.b.w + t.b.e) / 2, (t.b.n + t.b.s) / 2];
-        var kinds = this.poiKinds().filter((k) => k !== "camera" && k !== "signals").join(",");
+        var kinds = this.poiKinds().filter((k) => k !== "camera").join(",");
         if (this._hass && this.config.tomtom_pois !== false && kinds) {
           var tt = this._hass.callWS({ type: "call_service", domain: "nives", service: "car_pois", return_response: true,
             service_data: { latitude: c[1], longitude: c[0], radius_km: 3, kinds: kinds } })
@@ -8418,7 +8262,7 @@
               this.poiTT = true;
               return (r.pois || []).map((q) => ({ id: q.id, kind: q.kind, p: [q.lon, q.lat], label: q.label || "", brand: q.brand || "" }));
             });
-          var sigKinds = this.poiKinds().filter((k) => k === "camera" || k === "signals");
+          var sigKinds = this.poiKinds().filter((k) => k === "camera");
           var sig = sigKinds.length ? overpassItems(sigKinds).catch(() => []) : Promise.resolve([]);
           return Promise.all([tt, sig]).then((both) => {
             if (key !== this.poiKey) return;
@@ -8536,12 +8380,12 @@
         .catch(() => { this.fuelFailed = true; })
         .then(() => { this.fuelBusy = false; });
     },
-    // What the map shows: every place in view; cameras and lights only on the
+    // What the map shows: every place in view; the cameras only on the
     // car's way (ahead, on its road or its route), not the streets around.
     refreshPois() {
       var ids = [], shown = [];
       (this.pois || []).forEach((q) => {
-        if (q.kind === "camera" || q.kind === "signals") { if (!this.onMap || !this.onMap[q.id]) return; }
+        if (q.kind === "camera") { if (!this.onMap || !this.onMap[q.id]) return; }
         ids.push(q.id); shown.push(q);
       });
       var sig = ids.join(",");
@@ -8680,17 +8524,15 @@
       if (!this.pos) return;
       this.closureTick();
       var kmh = speed * 3.6;
-      this.signalAhead = null;
-      var cam = null, L = this.layers || {}, onWay = {};
-      // What is drawn: only the lights and cameras on my way — the route
+      var cam = null, onWay = {};
+      // What is drawn: only the cameras on my way: the route
       // while navigating, else the road under the car. Never the road beside:
-      // the three levels of onMyWay decide. The nearest eighty only (the line
-      // is searched segment by segment; a city has hundreds of lights).
+      // the way under the car decides. The nearest eighty only (the line
+      // is searched segment by segment).
       var onMap = {}, near = [];
       (this.pois || []).forEach((q) => {
-        if (q.kind !== "signals" && q.kind !== "camera") return;
+        if (q.kind !== "camera") return;
         if (gpsDist(this.pos, q.p) > 5000) return;
-        if (q.kind === "camera" && (!L.cameras || L.cameras === "off")) return;
         near.push(q);
       });
       near.sort((u, v) => gpsDist(this.pos, u.p) - gpsDist(this.pos, v.p)).slice(0, 80).forEach((q) => {
@@ -8698,15 +8540,8 @@
       });
       this.onMap = onMap;
       (this.pois || []).forEach((q) => {
-        if (q.kind !== "signals" && q.kind !== "camera") return;
+        if (q.kind !== "camera") return;
         if (gpsDist(this.pos, q.p) > 5000) return;
-        if (q.kind === "signals") {
-          var r = gpsRelative(this.pos, q.p, this.heading);
-          if (r.ahead > -20 && r.ahead < 1200 && r.side < 25) onWay[q.id] = true;
-          if (r.ahead > 0 && r.side < 25 && (this.signalAhead == null || r.d < this.signalAhead)) this.signalAhead = r.d;
-          return;
-        }
-        if (!L.cameras || L.cameras === "off") return;
         if (!gpsCameraWatches(q.tags, this.heading)) return;
         var d = this.meets(q.p, 25);
         if (d != null) onWay[q.id] = true;
@@ -8717,28 +8552,7 @@
       var wkey = Object.keys(onMap).sort().join(",");
       if (wkey !== this.onWayKey || this.poiShown == null) { this.onWayKey = wkey; this.refreshPois(); }
       var limitNow = this.lastLimit ? this.lastLimit.v : NaN;
-      if (L.cameras === "zone") {
-        // The zone: from 3/4 of its length before the camera to 1/4 after,
-        // so the camera's place is not told. Kept while the car is in it.
-        var z = this.zone;
-        if (cam) {
-          var len = gpsZoneLength(cam.q.limit || limitNow);
-          if (cam.d <= len * 0.75 && (!z || z.id !== cam.q.id)) z = this.zone = { id: cam.q.id, p: cam.q.p, len: len, limit: cam.q.noSpeed ? null : cam.q.limit };
-        }
-        if (z) {
-          var rz = gpsRelative(this.pos, z.p, this.heading), past = rz.ahead < 0 ? rz.d : 0;
-          var stillIn = rz.ahead >= 0 ? rz.d <= z.len * 0.75 + 50 : past <= z.len * 0.25;
-          if (!stillIn) { this.zone = z = null; }
-        }
-        if (z) {
-          var done = rz.ahead >= 0 ? z.len * 0.75 - rz.d : z.len * 0.75 + past;
-          var lim = z.limit || limitNow;
-          this.showAlert({ key: "zone" + z.id, icon: "mdi:alert", title: "Zone de danger" + (lim ? " · " + lim : ""), big: gpsMetres(Math.max(0, z.len - done)), flash: true, sub: "sur " + gpsMetres(z.len) + (lim ? " · limitée à " + lim : ""),
-            cls: lim && kmh <= lim + 2 ? "ok" : "", bar: Math.max(0, Math.min(1, done / z.len)),
-            voice: "Attention, zone de danger" + (lim ? ", limitée à " + lim : "") });
-          return;
-        }
-      } else if (L.cameras === "radar" && cam) {
+      if (cam) {
         var reach = kmh > 90 ? 1000 : 500;
         if (cam.d <= reach) {
           // Its kind when known (red light, average speed…); a red light or a

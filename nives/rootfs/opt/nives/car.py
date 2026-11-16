@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 import re
+import time
 import unicodedata
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
@@ -47,6 +48,12 @@ TOMTOM_NEARBY = "https://api.tomtom.com/search/2/categorySearch/{q}.json"
 # France's fuel prices, the Ministry's instant flux (data.economie.gouv.fr):
 # free, no key, a row a station, its fuels in columns, read every ten minutes.
 FUEL_URL = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records"
+# The flux says no word of the enseigne (its `pop` is only the road the
+# station stands on: A motorway, R route). The brands come from the daily
+# dataset an Opendatasoft portal enriches the same ministry system with:
+# same station ids, a marque a row, read once and kept a week (a brand is
+# not a price: it does not move).
+BRANDS_URL = "https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/prix_des_carburants_j_7/records"
 # With the TomTom key: TomTom's places (brands, opening hours, the detour it
 # works out itself), the words it searches and its category ids where known.
 TOMTOM_KINDS: dict[str, tuple[str, str]] = {
@@ -461,11 +468,7 @@ def parse_fuel(body: Any) -> list[dict]:
         out.append({"lat": round(lat, 6), "lon": round(lon, 6),
                     "address": str(f.get("adresse") or f.get("address") or "")[:80],
                     "city": str(f.get("ville") or f.get("city") or "")[:60],
-                    # The flux's own word for the enseigne (`pop`, the point of
-                    # sale's usual name): without it the map said every station
-                    # by its address, the ministry's paperwork standing where
-                    # the brand's name should.
-                    "brand": str(f.get("pop") or f.get("enseigne") or "")[:40],
+                    "id": str(f.get("id") or r.get("recordid") or "")[:16],
                     "prices": prices, "maj": maj, "rupture": rupt})
     # The ministry sometimes says a station twice — two rows, one pin. The
     # same folded address within 100 m is one station: the prices of both
@@ -605,6 +608,12 @@ class Car:
         self.fetch = fetch
         self.tomtom_key = tomtom_key or (lambda: None)
         self.last_source = "osm"
+        # The stations' enseignes, read once from the enriched daily dataset
+        # and kept a week; a failed read is retried an hour later, not every
+        # fuel ask.
+        self.brands: dict[str, str] = {}
+        self.brands_at: float | None = None
+        self.brands_backoff = 0.0
 
     async def tomtom_along(self, kind: str, line: list, key: str) -> list[dict]:
         """TomTom's places along the route (at most 15 minutes of detour)."""
@@ -621,6 +630,46 @@ class Car:
         if cat:
             params["categorySet"] = cat
         return parse_tomtom(await self.fetch("GET", TOMTOM_NEARBY.format(q=q.replace(" ", "%20")), params, None))
+
+    async def fuel_brands(self, ids: Sequence[str]) -> dict[str, str]:
+        """The enseignes of the stations asked, by the ministry's own station
+        id, from the enriched daily dataset (same ids, a marque a row). The
+        whole map is kept a week and only the unknown ids are asked for; a
+        read that fails is retried an hour later — a name missing is a
+        station said by its address, never a price lost."""
+        now = time.monotonic()
+        if now < self.brands_backoff:
+            return self.brands
+        missing = sorted({i for i in ids if i and i not in self.brands})
+        if missing and self.brands_at is not None and now - self.brands_at < 604800:
+            missing = []  # the week's map stands; unknown ids stay unknown
+        if not missing:
+            return self.brands
+        idkeys = ("id", "id_station", "idstation", "identifiant_station", "identifiant")
+        brkeys = ("marque", "Marque", "brand", "enseigne")
+        nmkeys = ("nom", "Nom", "name")
+        # A hundred a ask (the portal's own page): the flux never says more
+        # stations than that around a car.
+        for i in range(0, len(missing), 100):
+            chunk = missing[i:i + 100]
+            where = "id IN (" + ",".join('"%s"' % x for x in chunk) + ")"
+            try:
+                body = await self.fetch("GET", BRANDS_URL, {"where": where, "limit": "100"}, None)
+            except Exception:  # noqa: BLE001 - a name is a bonus, not a need
+                self.brands_backoff = now + 3600
+                return self.brands
+            for r in (body or {}).get("results") or []:
+                f = r.get("fields") if isinstance(r.get("fields"), dict) else r
+                if not isinstance(f, dict):
+                    continue
+                rid = next((str(f[k]) for k in idkeys if f.get(k) not in (None, "")), "")
+                br = next((str(f[k]).strip() for k in brkeys if f.get(k) not in (None, "")), "")
+                if not br:
+                    br = next((str(f[k]).strip() for k in nmkeys if f.get(k) not in (None, "")), "")
+                if rid and br:
+                    self.brands[rid] = br[:40]
+        self.brands_at = now
+        return self.brands
 
     async def fuel(self, lat: float, lon: float, radius_m: int = 3000) -> list[dict]:
         """The fuel prices of the stations around a point, from the Ministry's
@@ -648,15 +697,30 @@ class Car:
         try:
             out = parse_fuel(await self.fetch("GET", FUEL_URL, {"where": geo, "order_by": order, "limit": "100"}, None))
             if out:
-                return out
+                return await self.fuel_named(out)
         except Exception as err:  # noqa: BLE001 - the box is asked before despair
             first = err
         try:
-            return parse_fuel(await self.fetch("GET", FUEL_URL, {"where": box, "order_by": order, "limit": "100"}, None))
+            out = parse_fuel(await self.fetch("GET", FUEL_URL, {"where": box, "order_by": order, "limit": "100"}, None))
+            return await self.fuel_named(out)
         except Exception as err:  # noqa: BLE001 - both refused: say both
             if first is None:
                 raise
             raise RuntimeError(f"{first} (then the box said: {err})") from None
+
+    async def fuel_named(self, stations: list[dict]) -> list[dict]:
+        """The stations given their enseigne, where the brands' map knows one:
+        the ministry's own rows stay nameless (its `pop` is the road, not the
+        name), the enriched dataset speaks for them."""
+        try:
+            brands = await self.fuel_brands([s.get("id", "") for s in stations])
+        except Exception:  # noqa: BLE001 - a name is a bonus, not a need
+            return stations
+        for s in stations:
+            b = brands.get(s.get("id", ""))
+            if b and not s.get("brand"):
+                s["brand"] = b
+        return stations
 
     async def overpass(self, query: str) -> Any:
         last: Exception | None = None

@@ -24,11 +24,6 @@ journal:
         number:
           min: 1
           max: 200
-gps_layers:
-  fields:
-    value:
-      selector:
-        text:
 notifications:
   fields:
     limit:
