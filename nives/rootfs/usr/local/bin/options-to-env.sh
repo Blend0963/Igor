@@ -113,6 +113,13 @@ LAYOUT_DOMAINS=$(jq -r '.layout_domains // ""' "$OPTIONS")
 MEMORY_TOKEN_LIMIT=$(jq -r '.memory_token_limit // ""' "$OPTIONS")
 LOG_LEVEL=$(jq -r '.log_level // "info"' "$OPTIONS")
 
+# --- Sandbox VM (run_on_sandbox tool, utils/vmSsh.ts) ---
+VM_SSH_HOST=$(jq -r '.vm_ssh_host // ""' "$OPTIONS")
+VM_SSH_PORT=$(jq -r '.vm_ssh_port // ""' "$OPTIONS")
+VM_SSH_USER=$(jq -r '.vm_ssh_user // ""' "$OPTIONS")
+VM_SSH_KEY_PATH=$(jq -r '.vm_ssh_key_path // ""' "$OPTIONS")
+VM_SSH_TIMEOUT_SEC=$(jq -r '.vm_ssh_timeout_sec // ""' "$OPTIONS")
+
 # --- LLM configuration: bring your own provider key ---
 write_env "LLM_MODE" "byok"
 # BYOK mode: user provides their own API key
@@ -341,5 +348,10 @@ write_env "MISTRAL_API_KEY" "$MISTRAL_API_KEY"
 [ -n "$TOOLS_FROM_EXPOSED" ] && write_env "TOOLS_FROM_EXPOSED" "$TOOLS_FROM_EXPOSED"
 [ -n "$LAYOUT_DOMAINS" ] && write_env "LAYOUT_DOMAINS" "$LAYOUT_DOMAINS"
 [ -n "$MEMORY_TOKEN_LIMIT" ] && write_env "MEMORY_TOKEN_LIMIT" "$MEMORY_TOKEN_LIMIT"
+[ -n "$VM_SSH_HOST" ] && write_env "VM_SSH_HOST" "$VM_SSH_HOST"
+[ -n "$VM_SSH_PORT" ] && write_env "VM_SSH_PORT" "$VM_SSH_PORT"
+[ -n "$VM_SSH_USER" ] && write_env "VM_SSH_USER" "$VM_SSH_USER"
+[ -n "$VM_SSH_KEY_PATH" ] && write_env "VM_SSH_KEY_PATH" "$VM_SSH_KEY_PATH"
+[ -n "$VM_SSH_TIMEOUT_SEC" ] && write_env "VM_SSH_TIMEOUT_SEC" "$VM_SSH_TIMEOUT_SEC"
 
 echo "[init] Environment configured (mode=${LLM_MODE}, provider=${LLM_PROVIDER:-cloud}, max_output_tokens=${MAX_OUTPUT_TOKENS:-default}, reasoning_effort=${REASONING_EFFORT:-default})"

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 
 export interface VmExecResult {
   ok: boolean;
@@ -12,6 +13,7 @@ const MAX_OUTPUT = 20_000; // caractères max renvoyés au LLM
 
 export interface VmSshOptions {
   host: string;
+  port: number;
   user: string;
   keyPath: string;
   timeoutSec: number;
@@ -20,11 +22,19 @@ export interface VmSshOptions {
 export function getVmSshOptionsFromEnv(): VmSshOptions {
   return {
     host: process.env.VM_SSH_HOST ?? "10.45.100.1",
+    port: clampPort(Number(process.env.VM_SSH_PORT ?? 22)),
     user: process.env.VM_SSH_USER ?? "agent",
     keyPath: process.env.VM_SSH_KEY_PATH ?? "/run/secrets/vm_ssh_key",
     timeoutSec: clampTimeout(Number(process.env.VM_SSH_TIMEOUT_SEC ?? 120)),
   };
 }
+
+function clampPort(v: number): number {
+  if (!Number.isInteger(v) || v < 1 || v > 65535) return 22;
+  return v;
+}
+
+const warnedMissingKeys = new Set<string>();
 
 function clampTimeout(v: number): number {
   if (!Number.isFinite(v) || v <= 0) return 120;
@@ -36,6 +46,14 @@ export function runVmCommand(command: string, timeoutSec?: number): Promise<VmEx
   const timeout = clampTimeout(timeoutSec ?? opts.timeoutSec);
   const started = Date.now();
 
+  if (!existsSync(opts.keyPath) && !warnedMissingKeys.has(opts.keyPath)) {
+    warnedMissingKeys.add(opts.keyPath);
+    console.warn(
+      `[vmSsh] Clé SSH introuvable : ${opts.keyPath}. Dépose la clé privée dans /config ` +
+        `et règle vm_ssh_key_path dans la configuration de l'add-on.`
+    );
+  }
+
   return new Promise((resolve) => {
     // execFile = pas de shell local : la commande n'est jamais réinterprétée côté serveur
     execFile(
@@ -46,6 +64,7 @@ export function runVmCommand(command: string, timeoutSec?: number): Promise<VmEx
         "-o", "StrictHostKeyChecking=accept-new",
         "-o", "ConnectTimeout=10",
         "-o", "ServerAliveInterval=15",
+        "-p", String(opts.port),
         `${opts.user}@${opts.host}`,
         command,                              // exécutée par le shell distant (voulu)
       ],
