@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.38.64 — The screen that decides
+
+- The layers' panel is gone: no more button, no more switches. The card decides now, and decides once — every place of the house on the map by default (stations, bornes, parkings, aires, toilettes, hôpitaux), the radars always shown and each warned at its approach (the old « zones de danger » mode with it), the live traffic and its incidents drawn whenever TomTom answers. The traffic lights, that filled the towns in red, are off the map for good, query, icon and all.
+- The TomTom Orbis base map is gone with the panel: the theme's CARTO map (or the card's own `style:`) is the only road again — one style, one fetch, nothing to swap mid-drive. The 3D buildings went with it (never on by default, never asked for), and the `nives.gps_layers` service that kept the panel's word in `.storage` is retired.
+- The alternates mind their manners: an itinerary longer than the one already held is no longer drawn on the map, and the routes' board no longer offers a slower way — only plainly faster (half a minute at least), or as fast and plainly shorter (two per cent at least).
+- The limit sign keeps its law, unchanged and now alone in its kind: the street's own limit from OpenStreetMap under the car, with or without an itinerary — the route's limit only speaks when the route is actually driven.
+
 ## 0.38.63 — The name, the finger, the hand, the banner, the bar
 
 - The stations carry their enseigne now: the flux's own word for it (`pop`, the point of sale's usual name) is read and stands where the address stood — the ministry's paperwork no longer answers for the brand. A twin merged from two rows takes the name whichever row carried it.
