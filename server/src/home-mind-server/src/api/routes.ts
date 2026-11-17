@@ -96,6 +96,8 @@ export const ChatRequestSchema = z.object({
     .transform((v) => v ?? undefined),
   isVoice: z.boolean().default(false),
   customPrompt: z.string().max(CHAT_LIMITS.customPrompt).optional(),
+  // The panel's Igor/Code switch: false = classic Igor thread (no code tools).
+  codeMode: z.boolean().optional(),
   // The caller's UI language (e.g. "sl", "en-US") — in the add-on this is the
   // Assist pipeline's language. A tie-breaker hint only: the language of the
   // user's actual words always wins.

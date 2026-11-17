@@ -809,7 +809,7 @@
       if (isCodeThread(t.conversationId)) {
         var cbadge = document.createElement("span");
         cbadge.className = "code-badge";
-        cbadge.textContent = "⚡ code";
+        cbadge.textContent = "</> code";
         title.appendChild(cbadge);
       }
       var date = document.createElement("div");
@@ -1006,6 +1006,7 @@
   // One executed tool call, shown the way Vibe Code shows commands: a
   // collapsible block under the reply, command and result truncated.
   function addToolBlock(box, t) {
+    if (!isCodeThread(state.current)) return null; // mode Igor: pas d'affichage des commandes
     var det = document.createElement("details");
     det.className = "tool-run" + (t.error ? " tool-err" : "");
     var sum = document.createElement("summary");
@@ -1015,7 +1016,7 @@
         Object.entries(t.args).filter(function (e) { return typeof e[1] === "string" || typeof e[1] === "number"; })
           .slice(0, 3).map(function (e) { return e[0] + "=" + e[1]; }).join(" ");
     }
-    sum.textContent = "⚡ " + t.name + (cmd ? " · " + String(cmd).slice(0, 120) : "") +
+    sum.textContent = "</> " + t.name + (cmd ? " · " + String(cmd).slice(0, 120) : "") +
       " · " + ((t.ms || 0) / 1000).toFixed(1) + "s" + (t.error ? " · erreur" : "");
     var pre = document.createElement("pre");
     var out = (t.result || "").slice(0, 2000);
@@ -2283,6 +2284,7 @@
     if (docs && docs.length) payload.documents = docs;
     if (ocr) payload.ocr = ocr;
     var pick = pickFor(threadId);
+    payload.codeMode = isCodeThread(threadId);
     if (isCodeThread(threadId)) {
       payload.customPrompt = IGOR_CODE_PROMPT;
       if (!pick.model) pick = { model: IGOR_CODE_MODEL, reasoning: pick.reasoning || "" };
@@ -2961,7 +2963,7 @@
     el("chat-title").textContent = "Nouveau fil";
     var badge = document.createElement("span");
     badge.className = "code-badge";
-    badge.textContent = "⚡ Igor Code";
+    badge.textContent = "</>";
     el("chat-title").appendChild(badge);
     el("chat-title").classList.remove("untitled");
     setStatus("Sandbox : les commandes s'exécutent sur la VM de test (run_on_sandbox). La VM doit être démarrée.");

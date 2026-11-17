@@ -40,8 +40,13 @@ export function getConfigEdits(): ConfigEdits {
   return configEdits;
 }
 
+/** Tools only a "code" thread may use; a classic Igor thread never gets them. */
+const CODE_ONLY_TOOLS = new Set(["run_on_sandbox", "run_code", "use_connector", "write_config_file"]);
+
 export interface TurnPolicy {
   unattended?: boolean;
+  /** false = classic Igor thread: no code/sandbox tools. undefined = not a panel thread. */
+  codeMode?: boolean;
   /** A thread without long-term memory (thread_memory "off"): nothing to forget. */
   noMemory?: boolean;
 }
@@ -56,6 +61,9 @@ export function toolRefusal(name: string, turn: TurnPolicy = {}): string | undef
   }
   if (turn.noMemory && name === "forget_memory") {
     return "This chat thread has no long-term memory: memories are kept and forgotten by voice (Assist).";
+  }
+  if (turn.codeMode === false && CODE_ONLY_TOOLS.has(name)) {
+    return "This is a classic Igor thread (mode Igor): code and sandbox tools are only available in mode Code.";
   }
   if (turn.unattended && NEEDS_A_PERSON.has(name)) {
     return "This run has nobody to confirm with (a scheduled task or an automatic request), so this tool is not available. Report what should be done instead; the user can ask for it in a conversation.";

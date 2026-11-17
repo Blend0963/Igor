@@ -77,6 +77,8 @@ export interface ToolContext {
   isThread?: boolean;
   /** Nobody is there to confirm (llm/tool-policy.ts). */
   unattended?: boolean;
+  /** false = classic Igor thread: code/sandbox tools are refused. */
+  codeMode?: boolean;
   /** What this turn really changed, for the panel's chips (llm/action-chips.ts). */
   actions?: ActionChip[];
 }
@@ -182,7 +184,7 @@ export async function handleToolCall(
   try {
     let result: unknown;
 
-    const refusal = toolRefusal(toolName, { unattended: ctx?.unattended, noMemory: ctx?.noLongTermMemory });
+    const refusal = toolRefusal(toolName, { unattended: ctx?.unattended, noMemory: ctx?.noLongTermMemory, codeMode: ctx?.codeMode });
     if (refusal) {
       console.log(`[tool] ${toolName} refused: ${refusal}`);
       return { error: refusal };

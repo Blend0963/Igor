@@ -1,3 +1,9 @@
+## 0.38.79
+
+- **Real Igor/Code separation (server-enforced).** The panel sends `codeMode` with each chat; a classic Igor thread (`codeMode: false`) never receives `run_on_sandbox`, `run_code`, `use_connector` or `write_config_file` — refused both in the offered tool list and in the handler (llm/tool-policy.ts). Code threads keep full access (sandbox, cross-thread project work).
+- **UI:** the ⚡ icon is replaced by `</>` everywhere (thread badge, chat banner, executed-command lines).
+- **UI:** in classic Igor mode, executed command blocks are no longer displayed (plain reply only — documents, tables, charts as usual). Code mode still shows every executed command.
+
 # Changelog
 
 ## 0.38.76 — Every checked layer is drawn

@@ -74,3 +74,22 @@ describe("sensitive services", () => {
     expect(client.callService).not.toHaveBeenCalled();
   });
 });
+
+describe("code mode (Igor vs Igor Code)", () => {
+  it("a classic Igor thread (codeMode false) never gets code/sandbox tools", () => {
+    for (const name of ["run_on_sandbox", "run_code", "use_connector"]) {
+      expect(toolRefusal(name, { codeMode: false })).toMatch(/classic Igor thread/);
+    }
+    // write_config_file is refused in classic mode too (config_edits rule fires first)
+    expect(toolRefusal("write_config_file", { codeMode: false })).toBeTruthy();
+    expect(toolRefusal("get_state", { codeMode: false })).toBeUndefined();
+  });
+  it("a code thread (codeMode true) and non-panel turns keep them", () => {
+    expect(toolRefusal("run_on_sandbox", { codeMode: true })).toBeUndefined();
+    expect(toolRefusal("run_on_sandbox", {})).toBeUndefined();
+  });
+  it("filterTools drops them from the offered list in classic mode", () => {
+    const tools = [{ name: "run_on_sandbox" }, { name: "get_state" }];
+    expect(filterTools(tools, { codeMode: false }).map((t) => t.name)).toEqual(["get_state"]);
+  });
+});
