@@ -1,3 +1,8 @@
+## 0.38.84 — ```svg and ```css fences also get an Aperçu button
+
+- The panel's artifact route now covers `svg` and `css` fences, not only `html`/`artifact` (this is why the first preview test showed plain code blocks for those languages). A bare SVG is wrapped in a minimal dark full-screen document, a bare CSS in a stub page that applies the rules, so the sandboxed preview shows something meaningful; the code shown and copied stays the raw fence content.
+- Service worker shell bumped to `igor-shell-v7` so installed panels drop the cached page; add-on version 0.38.84 (a PR that touches `public/` MUST bump `version:` in `nives/config.yaml`, otherwise the build workflow never publishes the image — that was the 16:04 incident with 0.38.82).
+
 ## 0.38.83 — Thread code mode is a property of the thread, stored on the server
 
 - The code/classic mode of a chat thread is no longer kept only in the browser's localStorage (which made threads flip back to classic after a HA restart or when switching client, PC to phone): it is persisted server-side, per thread and per user (`conversation_modes` table in SQLite, `codeMode` flag in the in-memory store).
