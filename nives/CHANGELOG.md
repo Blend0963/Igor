@@ -1,3 +1,12 @@
+## 0.38.81 — The POI always match the view, instantly
+
+- **No signature early-return in `refreshPois()`.** The screen's box (bounds + 120 px, pixel test) is re-weighed at every call and the source is always `setData`'d, so a POI never lingers where it should have gone and never stays missing where it should be — the old `if (sig === this.poiShown) return;` was the "hard to refresh" bug.
+- **`rebuildPois()` no longer forces `poiShown = null`**: squares arriving redraw on their own, without resetting the whole map.
+- **Live refresh during the gesture**: `move` and `zoom` handlers join `moveend`/`zoomend`/`pitchend`, so during a pan or a pinch the icons appear and vanish in step with the finger instead of waiting for the gesture's end. Nothing is kept off-screen in memory: only what the view touches is drawn (the car's square is still always read), so the small radio CPU is not flooded.
+- **The POI queue is led by the eye, not the car** (`poiTick`): squares are sorted by distance to the view's centre, so panning far from the vehicle loads the looked-at squares first instead of leaving the far view empty behind sixteen squares around the car. The car's square stays in the set (warnings read it).
+- **A render cap on wide views**: below zoom 14 at most ~4 icons per 40 px screen cell are drawn (nearest to the view's centre first); at zoom 14+ the cap is off and every POI in the screen box is drawn. Nothing off-screen is ever kept or drawn.
+- `GPS_CARD_VERSION` and the add-on version bumped to 0.38.81 so the kiosks drop the cached old script.
+
 ## 0.38.80 — Checked places are always on the map
 
 - **No zoom gate on the POI any more.** Each kind used to carry a zoom threshold (`GPS_POI[kind].z`) weighed live in `refreshPois()`: below it the kind was hidden, and the whole view was re-weighed at every `moveend` with a signature carrying the zoom — the source of the flickering icons some saw. A checked layer is now drawn wherever the eye rests, at every zoom; only the screen box (bounds + 120 px) decides, and the re-render signature carries the ids alone (`igor-wall.js`).

@@ -5244,7 +5244,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.80";
+  var GPS_CARD_VERSION = "0.38.81";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6799,7 +6799,10 @@
       ["dragstart", "zoomstart", "rotatestart", "pitchstart", "drag", "zoom", "dragend", "zoomend", "rotateend", "pitchend"].forEach((ev) => map.on(ev, (e) => { if (e.originalEvent) this.setFollow(false); }));
       // The screen's moves rebuild the points: what the eye leaves is let
       // go, what it finds is drawn, and the zoom re-sorts the piled ones.
+      map.on("move", () => this.refreshPois());
       map.on("moveend", () => this.refreshPois());
+      map.on("zoom", () => this.refreshPois());
+      map.on("zoomend", () => this.refreshPois());
       map.on("pitchend", () => this.refreshPois());
       // A tap on the map asks what to do with the place under the finger.
       // (The held finger was tried twice for the same ask; twice the radio's
@@ -8460,7 +8463,6 @@
       var paint = font ? { "text-color": "#e9e4da", "text-halo-color": "#07080a", "text-halo-width": 1.5 } : {};
       map.addLayer({ id: "pois", type: "symbol", source: "pois", layout: layout, paint: paint });
       this.applyLayers();
-      this.refreshPois();
     },
     poiData() { return { type: "FeatureCollection", features: [] }; },
     // OpenStreetMap's points, square by square (about 3 km), over all the map
@@ -8498,7 +8500,13 @@
       }
       var me = gpsTileOf(p, z);
       add(me[0], me[1]);
-      want.forEach((t) => { t.d = gpsDist(p, [(t.b.w + t.b.e) / 2, (t.b.n + t.b.s) / 2]); });
+      // The queue is led by the EYE, not the car: when the finger pans far
+      // from the vehicle, the squares being looked at must be asked first,
+      // or they would wait behind sixteen squares around the car and the
+      // far-off view would stay empty. The car's own square is always in
+      // the set (the warnings read it) but no longer jumps the queue.
+      var eye = bb ? [(bb.getWest() + bb.getEast()) / 2, (bb.getSouth() + bb.getNorth()) / 2] : p;
+      want.forEach((t) => { t.d = gpsDist(eye, [(t.b.w + t.b.e) / 2, (t.b.n + t.b.s) / 2]); });
       want = want.sort((u, v) => u.d - v.d).slice(0, 16);
       var T = this.poiTiles || (this.poiTiles = {});
       var busy = this.poiBusy || (this.poiBusy = {});
@@ -8653,7 +8661,6 @@
         cams.push(c);
       });
       this.pois = list.concat(cams);
-      this.poiShown = null;
       this.refreshPois();
     },
     // France's cameras around the car (Igor's integration keeps the official
@@ -8722,6 +8729,15 @@
       // the car's way, whether the eye rests there or not.
       var M = 120, cw = 0, ch = 0;
       try { cw = map.getContainer().clientWidth; ch = map.getContainer().clientHeight; } catch (err) { cw = 0; ch = 0; }
+      // A render cap for the wide views, so a dezoomed map never floods the
+      // small radio with thousands of icons: about four icons per 40 px
+      // cell of the screen (an 800x480 radio caps near 960), and none at all
+      // at driving zoom — there the screen box alone decides, so every POI
+      // in view is always drawn. The kept ones are the nearest to the
+      // view's centre.
+      var zoom = 0;
+      try { zoom = map && map.getZoom ? map.getZoom() : 0; } catch (err) { zoom = 0; }
+      var cap = zoom >= 14 ? Infinity : Math.max(400, Math.round((cw / 40) * (ch / 40) * 4));
       var bb = null;
       try { bb = map && map.getBounds ? map.getBounds() : null; } catch (err) { bb = null; }
       var w = 0, e = 0, s = 0, n = 0;
@@ -8740,8 +8756,13 @@
         }
         ids.push(q.id); shown.push(q);
       });
+      if (cap !== Infinity && shown.length > cap) {
+        var cx = bb ? (w + e) / 2 : 0, cy = bb ? (s + n) / 2 : 0;
+        shown.sort((a, b) => gpsDist(a.p, [cx, cy]) - gpsDist(b.p, [cx, cy]));
+        shown = shown.slice(0, cap);
+        ids = shown.map((q) => q.id);
+      }
       var sig = ids.join(",");
-      if (sig === this.poiShown) return;
       this.poiShown = sig;
       var feats = shown.map((q) => ({ type: "Feature", geometry: { type: "Point", coordinates: q.p }, properties: { kind: q.kind, label: q.label || "", brand: q.brand || "" } }));
       var src = map && map.getSource("pois");
@@ -8904,7 +8925,7 @@
       this.onWay = onWay;
       // Drawn again only when the lights and cameras shown changed.
       var wkey = Object.keys(onMap).sort().join(",");
-      if (wkey !== this.onWayKey || this.poiShown == null) { this.onWayKey = wkey; this.refreshPois(); }
+      if (wkey !== this.onWayKey) { this.onWayKey = wkey; this.refreshPois(); }
       var limitNow = this.lastLimit ? this.lastLimit.v : NaN;
       if (cam) {
         var reach = kmh > 90 ? 1000 : 500;
