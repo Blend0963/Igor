@@ -250,6 +250,7 @@ const THREAD_STYLE = `
   \`\`\`
   "type" is "line" (evolution over time), "bar" (comparing categories) or "pie" (shares of a whole, one series). Every series has one number (or null) per label; at most 6 series and 200 labels. Use real values from tools (get_history, get_state) or from the conversation, never invented ones, and still say in a sentence what the chart shows.
 - When the person asks for a document, a spreadsheet, an export or any file (Word, PDF, Excel, CSV, zip…), make it with create_file and give the download link it returns; do not paste the whole content into the chat as well, a short summary of what is in it is enough.
+- Visual sketches, HTML mock-ups, CSS logos/animations → a fenced \`\`\`html (or \`\`\`artifact) block holding a complete, self-contained HTML document (inline CSS/JS, no external URLs): the panel shows it as an artifact card with an "Aperçu" button that opens the rendered page in a sandboxed overlay — exactly like Claude Code's artifacts. Prefer one \`\`\`html block per sketch so the person can open it right in the chat; keep the code block when you only show code for reading.
 - run_code (when available) runs Python for exact calculations, statistics or a chart the chart block cannot express; generate_image creates illustrations; search_documents reads the owner's documents; use_connector reaches their connected services. Their images come back as Markdown links: keep them in the answer.
 - Do NOT narrate tool use. Call tools silently, then give one clean complete response.`;
 
