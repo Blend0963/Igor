@@ -1,3 +1,9 @@
+## 0.38.87
+
+- Panel: an artifact card (```html / ```svg / ```css block) is now a single large **"Ouvrir l'aperçu"** button that opens the render in the full-screen webview — the raw code is no longer dumped in the thread.
+- Fix: a bare ```svg fence rendered black in the preview (the `<svg>` had no intrinsic size inside the flex wrapper) — the wrapper now stretches it to fill the frame.
+- Service worker cache bumped to `igor-shell-v8`.
+
 
 ## 0.38.86
 
