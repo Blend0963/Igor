@@ -86,6 +86,16 @@ export class SqliteConversationStore implements IConversationStore {
         PRIMARY KEY (conversation_id, user_id)
       );
 
+      -- Igor Code threads (the panel's ⚡ code). Stored here, not in one
+      -- browser's localStorage, so a code thread stays code on every client
+      -- and survives a restart of the add-on.
+      CREATE TABLE IF NOT EXISTS conversation_modes (
+        conversation_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        mode TEXT NOT NULL CHECK(mode IN ('code')),
+        PRIMARY KEY (conversation_id, user_id)
+      );
+
       CREATE TABLE IF NOT EXISTS users (
         user_id TEXT PRIMARY KEY,
         first_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -250,9 +260,18 @@ export class SqliteConversationStore implements IConversationStore {
       ).map((row) => row.conversation_id)
     );
 
+    const codeMode = new Set<string>(
+      (
+        this.db
+          .prepare(`SELECT conversation_id FROM conversation_modes WHERE user_id = ? AND mode = 'code'`)
+          .all(userId) as Array<{ conversation_id: string }>
+      ).map((row) => row.conversation_id)
+    );
+
     return rows.map((row) => ({
       conversationId: row.conversation_id,
       pinned: pinned.has(row.conversation_id),
+      codeMode: codeMode.has(row.conversation_id),
       title:
         custom.get(row.conversation_id) ??
         summarizeTitle(titles.get(row.conversation_id) ?? row.last_message),
@@ -310,9 +329,22 @@ export class SqliteConversationStore implements IConversationStore {
     }
   }
 
+  setConversationMode(conversationId: string, userId: string, mode: "code" | null): void {
+    if (mode === "code") {
+      this.db
+        .prepare(`INSERT OR IGNORE INTO conversation_modes (conversation_id, user_id, mode) VALUES (?, ?, 'code')`)
+        .run(conversationId, userId);
+    } else {
+      this.db.prepare(`DELETE FROM conversation_modes WHERE conversation_id = ? AND user_id = ?`).run(conversationId, userId);
+    }
+  }
+
   deleteConversation(conversationId: string, userId?: string): number {
     this.db
       .prepare(`DELETE FROM conversation_pins WHERE conversation_id = ? AND (? IS NULL OR user_id = ?)`)
+      .run(conversationId, userId ?? null, userId ?? null);
+    this.db
+      .prepare(`DELETE FROM conversation_modes WHERE conversation_id = ? AND (? IS NULL OR user_id = ?)`)
       .run(conversationId, userId ?? null, userId ?? null);
     this.db
       .prepare(`DELETE FROM conversation_titles WHERE conversation_id = ? AND (? IS NULL OR user_id = ?)`)

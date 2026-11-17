@@ -100,6 +100,48 @@ describe("panel threads in the conversation routes", () => {
     expect(conversations.listConversations("default")[0].pinned).toBe(false);
   });
 
+  it("sets a thread's code mode via PATCH, per user, and forgets it with the thread", async () => {
+    const { conversations, router } = setup();
+    conversations.storeMessage("mado-thread:t1", "default", "user", "hi");
+
+    const res = await call(router, "PATCH", "/api/conversations/default/mado-thread%3At1", { mode: "code" });
+    expect(res.status).toBe(200);
+    expect((res.body as { codeMode?: boolean }).codeMode).toBe(true);
+    expect(conversations.listConversations("default")[0].codeMode).toBe(true);
+
+    await call(router, "PATCH", "/api/conversations/default/mado-thread%3At1", { mode: null });
+    expect(conversations.listConversations("default")[0].codeMode).toBe(false);
+
+    await call(router, "PATCH", "/api/conversations/default/mado-thread%3At1", { mode: "code" });
+    await call(router, "DELETE", "/api/conversations/default/mado-thread%3At1");
+    conversations.storeMessage("mado-thread:t1", "default", "user", "again");
+    expect(conversations.listConversations("default")[0].codeMode).toBe(false);
+  });
+
+  it("marks the thread as code when a codeMode request is answered, and lists it in the summaries", async () => {
+    const conversations = new InMemoryConversationStore();
+    const llm = {
+      chat: vi.fn(async (req: { conversationId: string; userId: string; message: string }) => {
+        conversations.storeMessage(req.conversationId, req.userId, "user", req.message);
+        conversations.storeMessage(req.conversationId, req.userId, "assistant", "ok");
+        return { response: "ok", toolsUsed: [], factsLearned: 0 };
+      }),
+    } as unknown as IChatEngine;
+    const router = createRouter(llm, {} as IMemoryStore, "shodh", "0", undefined, conversations);
+
+    await call(router, "POST", "/api/chat", { message: "ls /srv/sandbox", conversationId: "mado-thread:code1", codeMode: true });
+    expect(conversations.listConversations("default")[0].codeMode).toBe(true);
+
+    // a classic request does not unset it
+    await call(router, "POST", "/api/chat", { message: "bonjour", conversationId: "mado-thread:code1" });
+    expect(conversations.listConversations("default")[0].codeMode).toBe(true);
+
+    // and non-thread conversations are never marked
+    await call(router, "POST", "/api/chat", { message: "ls", conversationId: "01HASSIST", codeMode: true });
+    const assist = conversations.listConversations("default").find((c) => c.conversationId === "01HASSIST");
+    expect(assist?.codeMode ?? false).toBe(false);
+  });
+
   it("refuses a PATCH that changes nothing", async () => {
     const { conversations, router } = setup();
     conversations.storeMessage("mado-thread:t1", "default", "user", "hi");
