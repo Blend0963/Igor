@@ -5244,7 +5244,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.74";
+  var GPS_CARD_VERSION = "0.38.80";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -5642,35 +5642,35 @@
   // ----- what is around the car: OpenStreetMap's points (Overpass) -----
   // Each kind: its colour on the map, its name.
   var GPS_POI = {
-    camera: { color: "#e5323b", name: "Radars", z: 0 },
-    fuel: { color: "#d9a441", name: "Stations-service", z: 10.5 },
-    charging: { color: "#5cc28f", name: "Bornes de recharge", z: 10.5 },
-    parking: { color: "#3b8cff", name: "Parkings", z: 11 },
-    rest: { color: "#5cc28f", name: "Aires de repos", z: 10.5 },
-    toilets: { color: "#9aa0a8", name: "Toilettes", z: 12 },
-    hospital: { color: "#e9e4da", name: "Hôpitaux", z: 10.5 },
-    pharmacy: { color: "#2fbf71", name: "Pharmacies", z: 13.5 },
-    atm: { color: "#8d7bf0", name: "Distributeurs", z: 13.5 },
-    restaurant: { color: "#e0784a", name: "Restaurants", z: 13.5 },
-    cafe: { color: "#a9714b", name: "Cafés", z: 13.5 },
-    supermarket: { color: "#39b8c4", name: "Supermarchés", z: 13.5 },
-    car_wash: { color: "#5aa9e6", name: "Lavages", z: 13.5 },
-    car_repair: { color: "#a8434a", name: "Garages", z: 13.5 },
-    hotel: { color: "#7e57c2", name: "Hôtels", z: 12 },
-    camping: { color: "#7cb342", name: "Campings", z: 12 },
-    bakery: { color: "#f2c14e", name: "Boulangeries", z: 13.5 },
-    bank: { color: "#5c6bc0", name: "Banques", z: 13.5 },
-    post: { color: "#f4d35e", name: "Postes", z: 13.5 },
-    police: { color: "#2646a8", name: "Police", z: 13.5 },
-    attraction: { color: "#d81b60", name: "Attractions", z: 12 },
-    museum: { color: "#8d6e63", name: "Musées", z: 13.5 },
-    cinema: { color: "#5e35b1", name: "Cinémas", z: 13.5 },
-    theme_park: { color: "#f4511e", name: "Parcs d'attractions", z: 10.5 },
-    zoo: { color: "#9ccc65", name: "Zoos", z: 12 },
-    beach: { color: "#00acc1", name: "Plages", z: 11 },
-    station: { color: "#78909c", name: "Gares", z: 12 },
-    airport: { color: "#607d8b", name: "Aéroports", z: 10.5 },
-    car_rental: { color: "#a1887f", name: "Locations de voitures", z: 13.5 }
+    camera: { color: "#e5323b", name: "Radars" },
+    fuel: {  color: "#d9a441", name: "Stations-service" },
+    charging: {  color: "#5cc28f", name: "Bornes de recharge" },
+    parking: {  color: "#3b8cff", name: "Parkings" },
+    rest: {  color: "#5cc28f", name: "Aires de repos" },
+    toilets: {  color: "#9aa0a8", name: "Toilettes" },
+    hospital: {  color: "#e9e4da", name: "Hôpitaux" },
+    pharmacy: {  color: "#2fbf71", name: "Pharmacies" },
+    atm: {  color: "#8d7bf0", name: "Distributeurs" },
+    restaurant: {  color: "#e0784a", name: "Restaurants" },
+    cafe: {  color: "#a9714b", name: "Cafés" },
+    supermarket: {  color: "#39b8c4", name: "Supermarchés" },
+    car_wash: {  color: "#5aa9e6", name: "Lavages" },
+    car_repair: {  color: "#a8434a", name: "Garages" },
+    hotel: {  color: "#7e57c2", name: "Hôtels" },
+    camping: {  color: "#7cb342", name: "Campings" },
+    bakery: {  color: "#f2c14e", name: "Boulangeries" },
+    bank: {  color: "#5c6bc0", name: "Banques" },
+    post: {  color: "#f4d35e", name: "Postes" },
+    police: {  color: "#2646a8", name: "Police" },
+    attraction: {  color: "#d81b60", name: "Attractions" },
+    museum: {  color: "#8d6e63", name: "Musées" },
+    cinema: {  color: "#5e35b1", name: "Cinémas" },
+    theme_park: {  color: "#f4511e", name: "Parcs d'attractions" },
+    zoo: {  color: "#9ccc65", name: "Zoos" },
+    beach: {  color: "#00acc1", name: "Plages" },
+    station: {  color: "#78909c", name: "Gares" },
+    airport: {  color: "#607d8b", name: "Aéroports" },
+    car_rental: {  color: "#a1887f", name: "Locations de voitures" }
   };
   var GPS_POI_DEFAULT = ["fuel", "charging", "parking", "rest", "toilets", "hospital", "pharmacy", "atm", "restaurant", "cafe", "supermarket", "car_wash", "car_repair"];
   // The pumps' own order: the gazole first, then the Sans Plomb, the ethanol
@@ -5856,8 +5856,6 @@
   // The map cut in squares (web tiles at zoom 13, about 3 km): the points are
   // read once per square and kept, so the whole view fills and stays filled.
   var GPS_TILE_Z = 13;
-  // The spread's step (screen pixels): piled places stand a step apart.
-  var GPS_POI_SPREAD = 30;
   function gpsTileOf(p, z) {
     var n = Math.pow(2, z), la = gpsRad(Math.max(-85, Math.min(85, p[1])));
     return [Math.floor((p[0] + 180) / 360 * n), Math.floor((1 - Math.log(Math.tan(la) + 1 / Math.cos(la)) / Math.PI) / 2 * n)];
@@ -7780,9 +7778,17 @@
         if (n && String(n).trim() && String(n) !== "null") { name = String(n).trim().slice(0, 40); return true; }
         return false;
       });
-      // Any tap asks: a place says its name, the empty map says « Ce point »
-      // — the two ways (a new route, a stop) stand under it either way.
-      if (!name) name = "Ce point";
+      // A place on the map's own layer says its enseigne, or its kind when
+      // it has no name (a pharmacy, a cafe); the empty map alone says
+      // « Ce point » — the two ways (a new route, a stop) stand under it.
+      if (!name) {
+        var pq = [];
+        try { pq = (map.getLayer("pois") ? map.queryRenderedFeatures(e.point, { layers: ["pois"] }) : []) || []; } catch (err) { pq = []; }
+        var pr = pq.length && pq[0].properties ? pq[0].properties : null;
+        if (pr && pr.label && String(pr.label).trim()) name = String(pr.label).trim().slice(0, 40);
+        else if (pr && pr.kind && GPS_POI[pr.kind] && GPS_POI[pr.kind].name) name = GPS_POI[pr.kind].name;
+        else name = "Ce point";
+      }
       this.closePick();
       var el = document.createElement("div");
       el.className = "mappick";
@@ -8419,11 +8425,6 @@
     applyLayers() {
       var map = this.map;
       if (!map || !map.getLayer || !map.getLayer("pois")) return;
-      // maplibre weighs a filter's zoom when the square is loaded, not when
-      // the finger moves: a zoom law inside the filter keeps the zoom of its
-      // birth (a square caught far keeps its far law; none is ever hidden
-      // again). So the filter keeps the kinds' law only - the zoom's law
-      // lives in refreshPois, judged live, on the screen itself.
       ["incidents", "incidents-closed", "incidents-pt"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible"); });
       // The tags over the pumps follow the map's word too.
       this.refreshFuelTags();
@@ -8448,12 +8449,10 @@
         paint: { "circle-radius": 7, "circle-color": ["get", "color"], "circle-stroke-color": "#07080a", "circle-stroke-width": 2 } });
       map.addSource("pois", { type: "geojson", data: this.poiData() });
       this.poiShown = null;
-      // The spread's slots: each piled place carries its row seat (screen
-      // pixels, so the row rides with the map), zero when it owns its place.
-      var offExpr = ["match", ["get", "slot"]];
-      for (var sp = -10; sp <= 10; sp++) offExpr.push(sp, ["literal", [sp * GPS_POI_SPREAD, 0]]);
-      offExpr.push(["literal", [0, 0]]);
-      var layout = { "icon-image": ["concat", "igor-", ["get", "kind"]], "icon-size": ["interpolate", ["linear"], ["zoom"], 12, ["match", ["get", "kind"], "camera", 1.6, 1.1], 16, ["match", ["get", "kind"], "camera", 2.5, 1.7]], "icon-allow-overlap": true, "icon-offset": offExpr,
+      // A checked place is drawn wherever the eye rests: no zoom law hides
+      // it (a law weighed on the square would keep the zoom of its birth),
+      // no row of piled places — every icon owns its place, always.
+      var layout = { "icon-image": ["concat", "igor-", ["get", "kind"]], "icon-size": ["interpolate", ["linear"], ["zoom"], 12, ["match", ["get", "kind"], "camera", 1.6, 1.1], 16, ["match", ["get", "kind"], "camera", 2.5, 1.7]], "icon-allow-overlap": true,
         "symbol-sort-key": ["match", ["get", "kind"], "camera", 0, 1] };
       // The names are the tap's business now (the popup says who is who);
       // only the cameras keep theirs - the limit under the radar.
@@ -8715,16 +8714,12 @@
     // car's way (ahead, on its road or its route), not the streets around.
     refreshPois() {
       var map = this.map, ids = [], shown = [];
-      // The screen's law (a video game's own), judged live and in pixels:
-      // the zoom's gate is read at this very instant (not the zoom a square
-      // was born with), and a place is drawn only where the eye sees it -
-      // projected on the screen, a hand's width (120 px) past the edges so
-      // the arrival stays fluid. A NaN projection means "never seen": the
-      // pattern of !(...) keeps it out. The cheap box first (the view's
-      // bounds hold the whole pitched screen), the true pixels then. The
-      // cameras keep their own law: the car's way, whether the eye rests
-      // there or not.
-      var zoom = map && map.getZoom ? map.getZoom() : 0;
+      // A checked place is drawn wherever the eye rests, at every zoom:
+      // no zoom gate any more — the old one hid kinds below their threshold
+      // and re-weighed the whole view at every move, which made some icons
+      // flicker. The screen's box still decides (a hand's width past the
+      // edges, so the arrival stays fluid); the cameras keep their own law:
+      // the car's way, whether the eye rests there or not.
       var M = 120, cw = 0, ch = 0;
       try { cw = map.getContainer().clientWidth; ch = map.getContainer().clientHeight; } catch (err) { cw = 0; ch = 0; }
       var bb = null;
@@ -8738,8 +8733,6 @@
       (this.pois || []).forEach((q) => {
         if (q.kind === "camera") { if (!this.onMap || !this.onMap[q.id]) return; }
         else {
-          var gate = GPS_POI[q.kind] && GPS_POI[q.kind].z != null ? GPS_POI[q.kind].z : 0;
-          if (zoom < gate) return;
           if (bb && (q.p[0] < w || q.p[0] > e || q.p[1] < s || q.p[1] > n)) return;
           var px = null;
           try { px = map.project(q.p); } catch (err) { px = null; }
@@ -8747,59 +8740,15 @@
         }
         ids.push(q.id); shown.push(q);
       });
-      var zb = Math.round(zoom * 4);
-      var sig = ids.join(",") + "@" + zb;
+      var sig = ids.join(",");
       if (sig === this.poiShown) return;
       this.poiShown = sig;
-      var feats = shown.map((q) => ({ type: "Feature", geometry: { type: "Point", coordinates: q.p }, properties: { kind: q.kind, label: q.label || "", brand: q.brand || "", slot: 0 } }));
-      this.spreadPois(feats);
+      var feats = shown.map((q) => ({ type: "Feature", geometry: { type: "Point", coordinates: q.p }, properties: { kind: q.kind, label: q.label || "", brand: q.brand || "" } }));
       var src = map && map.getSource("pois");
       if (src) src.setData({ type: "FeatureCollection", features: feats });
       this.refreshFuelTags(shown);
     },
 
-    // The shelf: places piled on the same pixels (an aire's cafe, toilets and
-    // fuel within one icon's width) stand in a row instead, centred on the
-    // pile's own place, and take their true seat back once the zoom parts
-    // them. The row is screen pixels: it rides with the map, and the zoom's
-    // change rebuilds it (the signature carries the zoom).
-    spreadPois(feats) {
-      var map = this.map;
-      if (!map || !map.project) return;
-      var SP = GPS_POI_SPREAD, MAX = 10, pts = [];
-      feats.forEach((f) => {
-        if (f.properties.kind === "camera") return;
-        var ll = map.project(f.geometry.coordinates);
-        pts.push({ f: f, x: ll.x, y: ll.y });
-      });
-      pts.forEach((p, pi) => { p.i = pi; });
-      var cell = {};
-      pts.forEach((p) => { var k = Math.round(p.x / SP) + "/" + Math.round(p.y / SP); (cell[k] = cell[k] || []).push(p); });
-      var done = {};
-      pts.forEach((p) => {
-        if (done[p.i]) return;
-        var cluster = [p], queue = [p.i];
-        done[p.i] = true;
-        while (queue.length) {
-          var c = pts[queue.shift()], gx = Math.round(c.x / SP), gy = Math.round(c.y / SP);
-          for (var ox = -1; ox <= 1; ox++) for (var oy = -1; oy <= 1; oy++) {
-            var bucket = cell[(gx + ox) + "/" + (gy + oy)];
-            if (!bucket) continue;
-            bucket.forEach((q) => {
-              if (done[q.i] || Math.abs(q.x - c.x) >= SP || Math.abs(q.y - c.y) >= SP) return;
-              done[q.i] = true; cluster.push(q); queue.push(q.i);
-            });
-          }
-        }
-        if (cluster.length < 2) return;
-        cluster.sort((a, b) => a.x - b.x || a.y - b.y);
-        var cx = cluster.reduce((sum, q) => sum + q.x, 0) / cluster.length, n = cluster.length;
-        cluster.forEach((q, i2) => {
-          var tx = cx + (i2 - (n - 1) / 2) * SP;
-          q.f.properties.slot = Math.max(-MAX, Math.min(MAX, Math.round((tx - q.x) / SP)));
-        });
-      });
-    },
     // The gazole's price standing over its station: a small tag the eye reads
     // without a finger — the enseigne's logo when the card has one, the price,
     // or the flux's own word when the tap is dry. Nothing known, nothing hung:

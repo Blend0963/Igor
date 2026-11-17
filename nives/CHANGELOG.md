@@ -1,3 +1,10 @@
+## 0.38.80 — Checked places are always on the map
+
+- **No zoom gate on the POI any more.** Each kind used to carry a zoom threshold (`GPS_POI[kind].z`) weighed live in `refreshPois()`: below it the kind was hidden, and the whole view was re-weighed at every `moveend` with a signature carrying the zoom — the source of the flickering icons some saw. A checked layer is now drawn wherever the eye rests, at every zoom; only the screen box (bounds + 120 px) decides, and the re-render signature carries the ids alone (`igor-wall.js`).
+- **The spread row is gone.** `spreadPois()` (piled places standing in a horizontal row via `icon-offset`/`slot`) is removed with the constant `GPS_POI_SPREAD`; every icon keeps its own place, `icon-allow-overlap: true` lets them pile naturally.
+- **A tap on a POI names it.** The pick popup and the route/stop thumbnail no longer say « Ce point » when the tapped marker has no name: they take the marker's `label`, else its kind's name (« Pharmacies », « Cafés »…). « Ce point » remains only for a tap on the empty map (`igor-wall.js`, `mapPick`).
+- `GPS_CARD_VERSION` bumped to 0.38.80 so the kiosks drop the cached old script.
+
 ## 0.38.79
 
 - **Real Igor/Code separation (server-enforced).** The panel sends `codeMode` with each chat; a classic Igor thread (`codeMode: false`) never receives `run_on_sandbox`, `run_code`, `use_connector` or `write_config_file` — refused both in the offered tool list and in the handler (llm/tool-policy.ts). Code threads keep full access (sandbox, cross-thread project work).
