@@ -141,6 +141,18 @@ describe("InMemoryConversationStore", () => {
     expect(store.getConversationHistory("mado-thread:old")).toHaveLength(1);
   });
 
+  it("keeps a thread's code mode, and forgets it with the thread", () => {
+    store.storeMessage("mado-thread:a", "u", "user", "hi");
+    store.setConversationMode("mado-thread:a", "u", "code");
+    expect(store.listConversations("u")[0].codeMode).toBe(true);
+    store.setConversationMode("mado-thread:a", "u", null);
+    expect(store.listConversations("u")[0].codeMode).toBe(false);
+    store.setConversationMode("mado-thread:a", "u", "code");
+    store.deleteConversation("mado-thread:a", "u");
+    store.storeMessage("mado-thread:a", "u", "user", "again");
+    expect(store.listConversations("u")[0].codeMode).toBe(false);
+  });
+
   it("clears all data on close", () => {
     store.storeMessage("conv-1", "user-1", "user", "Hello");
     store.close();

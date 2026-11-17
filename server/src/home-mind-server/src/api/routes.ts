@@ -165,7 +165,7 @@ export async function withAttachedDocuments(
   return { request: { ...rest, message: read.message } };
 }
 
-/** PATCH a conversation: rename it, mark it as a favourite, or both. */
+/** PATCH a conversation: rename it, mark it as a favourite, set its mode, or any mix. */
 export const RenameSchema = z
   .object({
     title: z
@@ -174,8 +174,15 @@ export const RenameSchema = z
       .pipe(z.string().min(1, "Title is required").max(120))
       .optional(),
     pinned: z.boolean().optional(),
+    // "code" marks the thread as an Igor Code thread; null switches it back to
+    // classic. Stored server-side so the mode follows the thread to every
+    // client, not just the one that set it.
+    mode: z.enum(["code"]).nullable().optional(),
   })
-  .refine((v) => v.title !== undefined || v.pinned !== undefined, "Nothing to change: send a title or pinned");
+  .refine(
+    (v) => v.title !== undefined || v.pinned !== undefined || v.mode !== undefined,
+    "Nothing to change: send a title, pinned or mode"
+  );
 
 const AddFactSchema = z.object({
   content: z.string().min(1, "Fact content is required"),
@@ -403,6 +410,12 @@ export function createRouter(
       );
       // A thread starts with an empty memory on purpose.
       if (!isThreadId(parsed.data.conversationId)) void checkEmptyBucket?.(parsed.data.userId);
+      // A code-mode request marks the thread itself as a code thread, server-side,
+      // so the mode follows it to every client and survives a restart (the
+      // panel's localStorage copy is only a cache of this).
+      if (parsed.data.codeMode === true && conversations?.setConversationMode && isThreadId(parsed.data.conversationId)) {
+        await conversations.setConversationMode(parsed.data.conversationId, parsed.data.userId, "code");
+      }
 
       const { request, confirm } = await withAttachedDocuments(parsed.data);
       if (confirm) {
@@ -467,6 +480,12 @@ export function createRouter(
       );
       // A thread starts with an empty memory on purpose.
       if (!isThreadId(parsed.data.conversationId)) void checkEmptyBucket?.(parsed.data.userId);
+      // A code-mode request marks the thread itself as a code thread, server-side,
+      // so the mode follows it to every client and survives a restart (the
+      // panel's localStorage copy is only a cache of this).
+      if (parsed.data.codeMode === true && conversations?.setConversationMode && isThreadId(parsed.data.conversationId)) {
+        await conversations.setConversationMode(parsed.data.conversationId, parsed.data.userId, "code");
+      }
 
       // Set up SSE headers
       res.setHeader("Content-Type", "text/event-stream");
@@ -741,7 +760,7 @@ export function createRouter(
    * Only a conversation this user has messages in can be named.
    */
   router.patch("/conversations/:userId/:conversationId", async (req: Request, res: Response) => {
-    if (!conversations?.setConversationTitle || !conversations.setConversationPinned) {
+    if (!conversations?.setConversationTitle || !conversations.setConversationPinned || !conversations.setConversationMode) {
       return res.status(501).json({ error: "Conversation store not available" });
     }
     const parsed = RenameSchema.safeParse(req.body);
@@ -758,10 +777,16 @@ export function createRouter(
       if (!owned) {
         return res.status(404).json({ error: "Conversation not found" });
       }
-      const { title, pinned } = parsed.data;
+      const { title, pinned, mode } = parsed.data;
       if (title !== undefined) await conversations.setConversationTitle(conversationId, userId, title);
       if (pinned !== undefined) await conversations.setConversationPinned(conversationId, userId, pinned);
-      res.json({ conversationId, ...(title !== undefined ? { title } : {}), ...(pinned !== undefined ? { pinned } : {}) });
+      if (mode !== undefined) await conversations.setConversationMode(conversationId, userId, mode);
+      res.json({
+        conversationId,
+        ...(title !== undefined ? { title } : {}),
+        ...(pinned !== undefined ? { pinned } : {}),
+        ...(mode !== undefined ? { codeMode: mode === "code" } : {}),
+      });
     } catch (error) {
       console.error("Rename conversation error:", error);
       const message = error instanceof Error ? error.message : "Unknown error";

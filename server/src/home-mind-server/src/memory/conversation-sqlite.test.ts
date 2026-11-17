@@ -88,6 +88,25 @@ describe("SqliteConversationStore", () => {
     expect(store.listConversations("user-1")[0].pinned).toBe(false);
   });
 
+  it("keeps a thread's code mode per user, until the conversation is deleted", () => {
+    store.storeMessage("mado-thread:a", "user-1", "user", "hi");
+    store.storeMessage("mado-thread:a", "user-2", "user", "hi");
+    store.setConversationMode("mado-thread:a", "user-1", "code");
+    store.setConversationMode("mado-thread:a", "user-1", "code");
+    expect(store.listConversations("user-1")[0].codeMode).toBe(true);
+    expect(store.listConversations("user-2")[0].codeMode).toBe(false);
+
+    // back to classic
+    store.setConversationMode("mado-thread:a", "user-1", null);
+    expect(store.listConversations("user-1")[0].codeMode).toBe(false);
+
+    // and it dies with the thread
+    store.setConversationMode("mado-thread:a", "user-1", "code");
+    store.deleteConversation("mado-thread:a", "user-1");
+    store.storeMessage("mado-thread:a", "user-1", "user", "new start");
+    expect(store.listConversations("user-1")[0].codeMode).toBe(false);
+  });
+
   it("limits history to last N messages", () => {
     for (let i = 0; i < 5; i++) {
       store.storeMessage("conv-1", "user-1", "user", `Message ${i}`);

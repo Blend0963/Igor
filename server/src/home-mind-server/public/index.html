@@ -59,6 +59,8 @@
   .mode-item .wm-bow { width: 16px; height: 16px; flex: none; }
   .mode-item .check { margin-left: auto; width: 14px; height: 14px; visibility: hidden; }
   .mode-item.active .check { visibility: visible; }
+  .code-badge.code-toggle { cursor: pointer; font-family: inherit; }
+  .code-badge.code-toggle:hover { background: rgba(var(--accent-rgb),0.25); }
   .code-badge { font-size: 11px; color: var(--link); background: rgba(var(--accent-rgb),0.12); border: 1px solid rgba(var(--accent-rgb),0.35); border-radius: 6px; padding: 1px 6px; margin-left: 8px; vertical-align: middle; font-weight: 600; }
   .tool-run { margin: 6px 0 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--code-bg, rgba(0,0,0,0.04)); font-size: 12px; }
   .tool-run summary { cursor: pointer; padding: 5px 10px; font-family: ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
@@ -822,12 +824,21 @@
         title.appendChild(dots);
       }
       title.appendChild(document.createTextNode(t.title || "Sans titre"));
+      var cbadge = document.createElement("button");
+      cbadge.className = "code-badge code-toggle";
+      cbadge.type = "button";
       if (isCodeThread(t.conversationId)) {
-        var cbadge = document.createElement("span");
-        cbadge.className = "code-badge";
         cbadge.textContent = "</> code";
-        title.appendChild(cbadge);
+        cbadge.title = "Passer ce fil en mode Igor classique";
+      } else {
+        cbadge.textContent = "</>";
+        cbadge.title = "Passer ce fil en mode Igor Code";
       }
+      cbadge.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        toggleCodeMode(t);
+      });
+      title.appendChild(cbadge);
       var date = document.createElement("div");
       date.className = "t-date";
       try { date.textContent = new Date(t.lastMessageAt).toLocaleString(); } catch (e) { date.textContent = ""; }
@@ -861,6 +872,17 @@
       row.appendChild(del);
       row.addEventListener("click", function () { openThread(t.conversationId); });
       nav.appendChild(row);
+  }
+
+  // Switch a thread between Igor Code and classic, server-side (so it follows
+  // the thread to every client), then re-render so it moves to the other list.
+  function toggleCodeMode(t) {
+    var wantCode = !isCodeThread(t.conversationId);
+    if (wantCode) markCodeThread(t.conversationId); else unmarkCodeThread(t.conversationId);
+    var known = (state.threads || []).filter(function (x) { return x.conversationId === t.conversationId; })[0];
+    if (known) known.codeMode = wantCode;
+    renderThreads(state.threads);
+    if (state.current === t.conversationId) setUiMode(wantCode ? "code" : "classic");
   }
 
   function togglePin(t) {
@@ -972,6 +994,12 @@
     var known = state.threads.filter(function (t) { return t.conversationId === id; })[0];
     el("chat-title").textContent = (known && known.title) || "Fil";
     el("chat-title").classList.remove("untitled");
+    // Opening a thread switches the panel to that thread's own mode (the
+    // server-stored one), so a code thread opened from the Igor list — or on
+    // another device — lands in code mode right away.
+    if (known && typeof known.codeMode === "boolean" && uiMode() !== (known.codeMode ? "code" : "classic")) {
+      setUiMode(known.codeMode ? "code" : "classic");
+    }
     if (!quiet) { el("messages").textContent = ""; setStatus(""); closeSide(); }
     refreshSendButton();
     api("api/conversations/" + USER_ID + "/" + encodeURIComponent(id))
@@ -3033,10 +3061,46 @@
   ].join("\n");
   var LS_CODE = "igorCodeThreads";
   function codeThreads() { try { return JSON.parse(localStorage.getItem(LS_CODE) || "[]"); } catch (e) { return []; } }
-  function isCodeThread(id) { return id ? codeThreads().indexOf(id) !== -1 : false; }
+  // The thread's mode is stored SERVER-side (conversation_modes table) and comes
+  // back with the thread list as t.codeMode — that is what makes a code thread
+  // stay code after a restart or on another device. The localStorage list is
+  // only a cache for a thread created milliseconds ago, before the list
+  // refresh carries its codeMode; it is never the source of truth.
+  function isCodeThread(id) {
+    if (!id) return false;
+    var known = (state.threads || []).filter(function (t) { return t.conversationId === id; })[0];
+    if (known && typeof known.codeMode === "boolean") return known.codeMode;
+    return codeThreads().indexOf(id) !== -1;
+  }
   function markCodeThread(id) {
     var list = codeThreads();
     if (list.indexOf(id) === -1) { list.push(id); try { localStorage.setItem(LS_CODE, JSON.stringify(list)); } catch (e) { /* private mode */ } }
+    // Persist server-side too, so the mode survives this client.
+    api("api/conversations/" + USER_ID + "/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify({ mode: "code" })
+    }).then(function () {
+      var known = (state.threads || []).filter(function (t) { return t.conversationId === id; })[0];
+      if (known) { known.codeMode = true; renderThreads(state.threads); }
+    }).catch(function (err) {
+      // 404: the thread has no message yet — the first sent message persists
+      // the mode server-side (codeMode in the chat payload).
+      if (err.status !== 404) setStatus("Mode code non enregistré : " + err.message, true);
+    });
+  }
+  function unmarkCodeThread(id) {
+    var list = codeThreads();
+    var i = list.indexOf(id);
+    if (i !== -1) { list.splice(i, 1); try { localStorage.setItem(LS_CODE, JSON.stringify(list)); } catch (e) {} }
+    api("api/conversations/" + USER_ID + "/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify({ mode: null })
+    }).then(function () {
+      var known = (state.threads || []).filter(function (t) { return t.conversationId === id; })[0];
+      if (known) { known.codeMode = false; renderThreads(state.threads); }
+    }).catch(function (err) {
+      if (err.status !== 404) setStatus("Mode classique non enregistré : " + err.message, true);
+    });
   }
   function newCodeThread() {
     newThread();

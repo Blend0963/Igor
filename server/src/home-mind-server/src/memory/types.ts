@@ -48,6 +48,12 @@ export interface ConversationSummary {
   messageCount: number;
   /** Marked as a favourite: the panel lists it first. */
   pinned?: boolean;
+  /**
+   * The thread runs in Igor Code mode (sandbox tools, dev persona). Unlike the
+   * panel's own UI mode, this belongs to the thread and is stored server-side,
+   * so it follows the thread across clients and restarts.
+   */
+  codeMode?: boolean;
 }
 
 export interface IConversationStore {
@@ -81,6 +87,12 @@ export interface IConversationStore {
   deleteMessagesFrom?(conversationId: string, userId: string, messageId: string): number | Promise<number>;
   /** Marks the conversation as a favourite, or not. Kept until it is deleted. */
   setConversationPinned?(conversationId: string, userId: string, pinned: boolean): void | Promise<void>;
+  /**
+   * Marks the conversation as an Igor Code thread, or back to classic (null).
+   * Kept until the conversation is deleted — this is what makes a code thread
+   * stay a code thread on every client, not just the one that created it.
+   */
+  setConversationMode?(conversationId: string, userId: string, mode: "code" | null): void | Promise<void>;
   /** With `userId`, deletes only that user's messages in the conversation. */
   deleteConversation(conversationId: string, userId?: string): number | Promise<number>;
   getKnownUsers(): string[];
