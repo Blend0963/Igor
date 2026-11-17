@@ -1,3 +1,8 @@
+## 0.38.85 — Changelog deduplicated; version bump so the add-on update is visible
+
+- The CHANGELOG had accumulated duplicate entries (0.38.82, 0.38.83 appeared twice, plus an old 0.11.4) — the merge of the 0.38.84 PR appended new entries without removing the older copies, which made it look like the changelog had not been touched. Duplicates are now removed; each version appears once, newest first.
+- Add-on version bumped 0.38.84 → 0.38.85 in `nives/config.yaml` so the build workflow publishes a fresh image tag and Home Assistant offers the update (a published version is never overwritten).
+
 ## 0.38.84 — ```svg and ```css fences also get an Aperçu button
 
 - The panel's artifact route now covers `svg` and `css` fences, not only `html`/`artifact` (this is why the first preview test showed plain code blocks for those languages). A bare SVG is wrapped in a minimal dark full-screen document, a bare CSS in a stub page that applies the rules, so the sandboxed preview shows something meaningful; the code shown and copied stays the raw fence content.
@@ -14,14 +19,10 @@
 
 - The panel's markdown renderer turns fenced `html` blocks into artifact cards with an **Aperçu** button; the modal renders the code live in a sandboxed iframe (`sandbox="allow-scripts"`, `srcdoc`), closes on X / backdrop / Esc and clears `srcdoc` so scripts and timers stop. Streaming-safe label while the block is not closed; copy button kept. Service worker shell bumped to `igor-shell-v6` so installed panels drop the cached old page, and the assistant prompt now knows it can emit openable HTML artifacts for visual sketches.
 
-## 0.38.83 — Thread code mode is a property of the thread, stored on the server
-
 - The code/classic mode of a chat thread is no longer kept only in the browser's localStorage (which made threads flip back to classic after a HA restart or when switching client, PC to phone): it is persisted server-side, per thread and per user (`conversation_modes` table in SQLite, `codeMode` flag in the in-memory store).
 - `GET /api/conversations` returns `codeMode` with each thread; `PATCH /api/conversations/:user/:id` accepts `{mode: "code" | null}`; `/api/chat` and `/api/chat/stream` persist the mode when a message arrives with `codeMode: true`, so a thread started in code mode stays code even on another device. Deleting a thread deletes its mode.
 - Panel: opening a thread switches the Code/Igor tab to that thread's own mode (the localStorage is only a cache for a thread created milliseconds ago); the `</> code` badge in the thread list is now a button to toggle a thread between code and classic, persisted on the server.
 - Regression tests: mode persisted via PATCH, via codeMode on chat, in-memory store, removed with the thread (4 new tests; suite: 1143 passed).
-
-## 0.38.82 — HTML artifacts get an Aperçu button
 
 - The panel's markdown renderer turns fenced `html` blocks into artifact cards with an **Aperçu** button; the modal renders the code live in a sandboxed iframe (`sandbox="allow-scripts"`, `srcdoc`), closes on X / backdrop / Esc and clears `srcdoc` so scripts and timers stop. Streaming-safe label while the block is not closed; copy button kept. Service worker shell bumped to `igor-shell-v6` so installed panels drop the cached old page, and the assistant prompt now knows it can emit openable HTML artifacts for visual sketches.
 
@@ -1129,13 +1130,10 @@ With the local model (`local_llm_url`), a spoken or typed Assist request now tak
 
 - Chat-panel threads now adapt reasoning to the request: greetings and simple home-state questions skip reasoning, everyday conversation uses low effort, and explicit analysis, debugging, comparison or substantial prompts keep the configured reasoning level. A reasoning level explicitly chosen for a request still takes precedence. The configured thread level is the ceiling, so complex requests retain the existing quality setting while routine turns can start and finish sooner.
 
-
 ## 0.11.4 — A spoken answer that loops is cut short
 
 - On a plain command ("mets un minuteur de 30 minutes") the fast model sometimes looped: it answered, added an emoji, then wrote "--- *Je corrige :*" and the same answer again and again, all of it read aloud and shown on the tablet. A spoken reply is now passed on sentence by sentence: a sentence it already said, or a "---" rule, ends it there, before any of the repeat is heard. Emojis are left out of spoken replies (the voice read their names). Written replies and threads are unchanged.
 - **igor-ear** (since 0.11.3): "Igor" said alone gets a short spoken question ("Oui, monsieur ?", about seventy of them, never twice in a row), then the next sentence is the order, without the name. Igor no longer hears its own voice: the ear stays closed until its reply has played and the speakers are quiet, and a sentence that starts with what it just said is dropped. A second ear for the name, Vosk, runs next to Whisper; the names are configurable (`[name] names`, for instance `["mado", "igor"]`). `[mode] name_alone = "satellite"` hands the order to the satellite itself. On the hub: `git -C ~/MaDo pull && bash ~/MaDo/ear/install.sh && systemctl --user restart igor-ear`.
-
-## 0.11.4 — A spoken answer that loops is cut short
 
 - On a plain command ("mets un minuteur de 30 minutes") the fast model sometimes looped: it answered, added an emoji, then wrote "--- *Je corrige :*" and the same answer again and again, all of it read aloud and shown on the tablet. A spoken reply is now passed on sentence by sentence: a sentence it already said, or a "---" rule, ends it there, before any of the repeat is heard. Emojis are left out of spoken replies (the voice read their names). Written replies and threads are unchanged.
 - **igor-ear** (since 0.11.3): "Igor" said alone gets a short spoken question ("Oui, monsieur ?", about seventy of them, never twice in a row), then the next sentence is the order, without the name. Igor no longer hears its own voice: the ear stays closed until its reply has played and the speakers are quiet, and a sentence that starts with what it just said is dropped. A second ear for the name, Vosk, runs next to Whisper; the names are configurable (`[name] names`, for instance `["mado", "igor"]`). `[mode] name_alone = "satellite"` hands the order to the satellite itself. On the hub: `git -C ~/MaDo pull && bash ~/MaDo/ear/install.sh && systemctl --user restart igor-ear`.
@@ -1322,7 +1320,6 @@ Mistral's own tools need a Mistral key: the dedicated one, or your chat key when
 - Favourite threads: ☆ on a thread in the list marks it as a favourite (★); favourites stay at the top of the list under their own heading.
 - Voxtral voice: new option `text_to_speech: mistral` (and `tts_voice`) adds a 🔊 button under each reply in the panel and offers MaDo as a text-to-speech engine to Home Assistant's voice assistants.
 - Memory extraction on Mistral uses JSON mode, so a fact is never lost to a reply that is not valid JSON.
-
 
 ## 0.6.0 — One memory for Assist and the threads
 
