@@ -48,10 +48,17 @@
   .brand { font-weight: 600; font-size: 16px; letter-spacing: 0.5px; }
   #btn-new { background: rgba(var(--accent-rgb),0.15); color: var(--link); border: 1px solid rgba(var(--accent-rgb),0.4); padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
   #btn-new:hover { background: rgba(var(--accent-rgb),0.3); }
-  .mode-switch { display: inline-flex; border: 1px solid rgba(var(--accent-rgb),0.4); border-radius: 8px; overflow: hidden; font-size: 12px; }
-  .mode-switch button { background: transparent; color: var(--muted); border: 0; padding: 5px 10px; cursor: pointer; font-weight: 600; }
-  .mode-switch button.active { background: rgba(var(--accent-rgb),0.22); color: var(--link); }
-  .mode-switch button:hover:not(.active) { background: rgba(var(--accent-rgb),0.12); }
+  button.brand.wordmark { background: none; border: 0; padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; color: var(--fg); }
+  button.brand.wordmark:hover { color: var(--accent-hi); }
+  .brand .wm-chev { width: 11px; height: 11px; opacity: 0.7; }
+  .mode-menu { position: absolute; top: calc(100% - 8px); left: 14px; min-width: 168px; background: var(--surface); border: 1px solid var(--border-hi); border-radius: 10px; box-shadow: var(--comp-shadow, 0 8px 24px rgba(0,0,0,0.45)); padding: 4px; z-index: 30; }
+  .mode-menu[hidden] { display: none; }
+  .mode-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: 0; cursor: pointer; padding: 8px 10px; border-radius: 7px; color: var(--fg); font-family: var(--igor-title); font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; }
+  .mode-item:hover { background: var(--hover); }
+  .mode-item.active { color: var(--link); }
+  .mode-item .wm-bow { width: 16px; height: 16px; flex: none; }
+  .mode-item .check { margin-left: auto; width: 14px; height: 14px; visibility: hidden; }
+  .mode-item.active .check { visibility: visible; }
   .code-badge { font-size: 11px; color: var(--link); background: rgba(var(--accent-rgb),0.12); border: 1px solid rgba(var(--accent-rgb),0.35); border-radius: 6px; padding: 1px 6px; margin-left: 8px; vertical-align: middle; font-weight: 600; }
   .tool-run { margin: 6px 0 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--code-bg, rgba(0,0,0,0.04)); font-size: 12px; }
   .tool-run summary { cursor: pointer; padding: 5px 10px; font-family: ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
@@ -559,11 +566,11 @@
 <div id="app">
   <aside id="sidebar">
     <div class="side-head">
-      <span class="brand wordmark"><svg class="wm-bow" viewBox="0 0 256 256" aria-hidden="true"><rect x="107" y="20" width="44" height="216" fill="#e9e4da"/><circle class="eye-ring" cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle class="eye-pupil" cx="128" cy="96" r="16" fill="#e5323b"/></svg>Igor</span>
+      <button id="btn-mode" type="button" class="brand wordmark" aria-haspopup="true" aria-expanded="false" title="Changer de mode"><svg class="wm-bow" viewBox="0 0 256 256" aria-hidden="true"><rect x="107" y="20" width="44" height="216" fill="#e9e4da"/><circle class="eye-ring" cx="128" cy="96" r="48" fill="#07080a" stroke="#e5323b" stroke-width="16"/><circle class="eye-pupil" cx="128" cy="96" r="16" fill="#e5323b"/></svg><span id="mode-label">Igor</span><svg class="wm-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
       <button id="btn-new" type="button">+ Nouveau fil</button>
-      <div class="mode-switch" role="tablist" aria-label="Mode du panneau">
-        <button id="mode-classic" type="button" role="tab" title="Fils classiques : maison, quotidien, documents">Classique</button>
-        <button id="mode-code" type="button" role="tab" title="Fils code : développement sur la VM sandbox">⚡ Code</button>
+      <div id="mode-menu" class="mode-menu" role="menu" hidden>
+        <button type="button" class="mode-item" data-mode="classic" role="menuitem"><svg class="wm-bow" viewBox="0 0 256 256" aria-hidden="true"><rect x="107" y="20" width="44" height="216" fill="currentColor"/><circle cx="128" cy="96" r="48" fill="var(--bg)" stroke="#e5323b" stroke-width="16"/><circle cx="128" cy="96" r="16" fill="#e5323b"/></svg>Igor<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg></button>
+        <button type="button" class="mode-item" data-mode="code" role="menuitem"><svg class="wm-bow" viewBox="0 0 256 256" aria-hidden="true"><rect x="107" y="20" width="44" height="216" fill="currentColor"/><circle cx="128" cy="96" r="48" fill="var(--bg)" stroke="#e5323b" stroke-width="16"/><circle cx="128" cy="96" r="16" fill="#e5323b"/></svg>Code<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg></button>
       </div>
       <button id="btn-close-side" type="button" title="Fermer" aria-label="Fermer la liste"><svg class="svg-ic" style="width:18px;height:18px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
@@ -742,10 +749,14 @@
   function uiMode() { try { return localStorage.getItem(LS_UIMODE) === "code" ? "code" : "classic"; } catch (e) { return "classic"; } }
   function setUiMode(m) {
     try { localStorage.setItem(LS_UIMODE, m); } catch (e) {}
-    el("mode-classic").classList.toggle("active", m !== "code");
-    el("mode-code").classList.toggle("active", m === "code");
-    el("mode-classic").setAttribute("aria-selected", m !== "code" ? "true" : "false");
-    el("mode-code").setAttribute("aria-selected", m === "code" ? "true" : "false");
+    var label = el("mode-label");
+    if (label) label.textContent = m === "code" ? "Code" : "Igor";
+    var items = document.querySelectorAll(".mode-item");
+    for (var i = 0; i < items.length; i++) {
+      var on = items[i].getAttribute("data-mode") === m;
+      items[i].classList.toggle("active", on);
+      items[i].setAttribute("aria-checked", on ? "true" : "false");
+    }
     refreshThreads();
   }
   function renderThreads(threads) {
@@ -2642,8 +2653,24 @@
   }
   el("input").addEventListener("input", autoGrow);
 
-  el("mode-classic").addEventListener("click", function () { setUiMode("classic"); });
-  el("mode-code").addEventListener("click", function () { setUiMode("code"); });
+  (function () {
+    var btn = el("btn-mode"), menu = el("mode-menu");
+    if (!btn || !menu) return;
+    function closeMenu() { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); }
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+      btn.setAttribute("aria-expanded", menu.hidden ? "false" : "true");
+    });
+    menu.addEventListener("click", function (e) {
+      var item = e.target.closest(".mode-item");
+      if (!item) return;
+      setUiMode(item.getAttribute("data-mode") === "code" ? "code" : "classic");
+      closeMenu();
+    });
+    document.addEventListener("click", function (e) { if (!menu.hidden && !menu.contains(e.target)) closeMenu(); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !menu.hidden) closeMenu(); });
+  })();
   el("btn-new").addEventListener("click", function () { if (uiMode() === "code") newCodeThread(); else newThread(); });
   el("btn-new-top").addEventListener("click", function () { if (uiMode() === "code") newCodeThread(); else newThread(); });
   setUiMode(uiMode());
@@ -2928,8 +2955,7 @@
     newThread();
     markCodeThread(state.current);
     try { localStorage.setItem(LS_UIMODE, "code"); } catch (e) {}
-    el("mode-classic").classList.remove("active");
-    el("mode-code").classList.add("active");
+    setUiMode("code");
     writePick(state.current, { model: IGOR_CODE_MODEL, reasoning: "high" });
     showPick();
     el("chat-title").textContent = "Nouveau fil";
