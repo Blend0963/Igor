@@ -1121,7 +1121,7 @@
       var body = match[2].replace(/\n$/, "");
       var closed = /```$/.test(match[0]);
       if (lang === "chart") box.appendChild(chartOrCode(body, closed));
-      else if (lang === "html" || lang === "artifact") box.appendChild(artifactBlock(match[1].trim(), body, closed));
+      else if (lang === "html" || lang === "artifact" || lang === "svg" || lang === "css") box.appendChild(artifactBlock(lang, body, closed));
       else box.appendChild(codeBlock(match[1].trim(), body));
       last = match.index + match[0].length;
     }
@@ -1956,19 +1956,34 @@
     box.insertBefore(row, box.firstChild);
   }
 
-  // ----- artifacts (```html / ```artifact fences) -----
+  // ----- artifacts (```html / ```artifact / ```svg / ```css fences) -----
   //
   // Like Claude Code's artifacts: an HTML block gets a preview button in
   // its header that opens the rendered page in a sandboxed iframe overlay.
+  // Bare svg/css fences are wrapped in a minimal document for the preview.
   // The iframe is sandbox="allow-scripts" only: no same-origin, no forms,
   // no popups — the sketch runs, but it cannot touch the panel or the API.
+  // A bare ```svg or ```css fence gets a minimal document so the sandboxed
+  // preview shows it full-screen instead of as raw XML text.
+  function artifactDocument(lang, code) {
+    if (lang === "svg") {
+      return '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;display:flex;align-items:center;justify-content:center;background:#111}svg{max-width:100%;max-height:100%}</style></head><body>' + code + "</body></html>";
+    }
+    if (lang === "css") {
+      return '<!doctype html><html><head><meta charset="utf-8"><style>' + code + "</style></head><body><p style=\"font:16px/1.6 sans-serif;color:#eee;padding:24px\">Aperçu du CSS : appliquez ces règles à un élément de votre choix, ou remplacez ce texte par votre HTML.</p></body></html>";
+    }
+    return code;
+  }
+
   function artifactBlock(lang, code, closed) {
     var wrap = document.createElement("div");
     wrap.className = "code artifact";
     var head = document.createElement("div");
     head.className = "code-head";
     var label = document.createElement("span");
-    label.textContent = closed ? "artefact html" : "artefact html (en cours…)";
+    var kind = lang === "svg" ? "svg" : lang === "css" ? "css" : "html";
+    label.textContent = closed ? "artefact " + kind : "artefact " + kind + " (en cours…)";
+    var doc = artifactDocument(lang, code);
     var actions = document.createElement("div");
     actions.className = "code-actions";
     var preview = document.createElement("button");
@@ -1977,7 +1992,7 @@
     preview.innerHTML = icon("play");
     preview.appendChild(document.createTextNode("Aperçu"));
     preview.title = "Ouvrir le rendu dans une fenêtre";
-    preview.addEventListener("click", function () { openArtifact(code, "Artefact HTML"); });
+    preview.addEventListener("click", function () { openArtifact(doc, "Artefact " + kind.toUpperCase()); });
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "code-copy";
