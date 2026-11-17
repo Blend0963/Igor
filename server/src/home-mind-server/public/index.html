@@ -98,6 +98,9 @@
   .code-head .code-actions { display: flex; gap: 6px; align-items: center; }
   .code-preview { background: none; border: 1px solid var(--border); color: var(--fg2); border-radius: 6px; padding: 3px 8px; font: inherit; font-size: 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
   .code-preview:hover { background: var(--hover); color: var(--fg); }
+  .artifact-open { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 18px; border: 0; border-top: 1px solid var(--border); background: var(--surface); color: var(--fg); font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; }
+  .artifact-open:hover { background: var(--hover); }
+  .artifact-open svg { width: 20px; height: 20px; }
   .code-preview svg { width: 13px; height: 13px; }
   .artifact-modal { z-index: 60; }
   .artifact-modal .box { width: min(1060px, 96vw); height: min(760px, 92vh); max-height: 92vh; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
@@ -1967,7 +1970,7 @@
   // preview shows it full-screen instead of as raw XML text.
   function artifactDocument(lang, code) {
     if (lang === "svg") {
-      return '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;display:flex;align-items:center;justify-content:center;background:#111}svg{max-width:100%;max-height:100%}</style></head><body>' + code + "</body></html>";
+      return '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;display:flex;align-items:center;justify-content:center;background:#111}svg{width:100%;height:100%}</style></head><body>' + code + "</body></html>";
     }
     if (lang === "css") {
       return '<!doctype html><html><head><meta charset="utf-8"><style>' + code + "</style></head><body><p style=\"font:16px/1.6 sans-serif;color:#eee;padding:24px\">Aperçu du CSS : appliquez ces règles à un élément de votre choix, ou remplacez ce texte par votre HTML.</p></body></html>";
@@ -1983,16 +1986,8 @@
     var label = document.createElement("span");
     var kind = lang === "svg" ? "svg" : lang === "css" ? "css" : "html";
     label.textContent = closed ? "artefact " + kind : "artefact " + kind + " (en cours…)";
-    var doc = artifactDocument(lang, code);
     var actions = document.createElement("div");
     actions.className = "code-actions";
-    var preview = document.createElement("button");
-    preview.type = "button";
-    preview.className = "code-preview";
-    preview.innerHTML = icon("play");
-    preview.appendChild(document.createTextNode("Aperçu"));
-    preview.title = "Ouvrir le rendu dans une fenêtre";
-    preview.addEventListener("click", function () { openArtifact(doc, "Artefact " + kind.toUpperCase()); });
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "code-copy";
@@ -2007,16 +2002,20 @@
         setTimeout(function () { btn.textContent = "Copier"; btn.classList.remove("done"); }, 1500);
       });
     });
-    actions.appendChild(preview);
     actions.appendChild(btn);
     head.appendChild(label);
     head.appendChild(actions);
-    var pre = document.createElement("pre");
-    var codeEl = document.createElement("code");
-    codeEl.textContent = code;
-    pre.appendChild(codeEl);
     wrap.appendChild(head);
-    wrap.appendChild(pre);
+    // Gros bouton plein large : ouvre le rendu dans la webview plein écran
+    var open = document.createElement("button");
+    open.type = "button";
+    open.className = "artifact-open";
+    open.innerHTML = icon("play");
+    open.appendChild(document.createTextNode("Ouvrir l\u2019aperçu"));
+    open.addEventListener("click", function () {
+      openArtifact(artifactDocument(lang, code), "Artefact " + kind.toUpperCase());
+    });
+    wrap.appendChild(open);
     return wrap;
   }
 
