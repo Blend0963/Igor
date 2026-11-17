@@ -1,3 +1,8 @@
+
+## 0.38.86
+
+- Panel: static files (index.html, sw.js) are now served with `Cache-Control: no-store`, so a browser can no longer keep an old panel after an add-on update — the new index.html / service worker always loads on next open. Fixes "artifact Aperçu button still missing after update".
+
 ## 0.38.85 — Changelog deduplicated; version bump so the add-on update is visible
 
 - The CHANGELOG had accumulated duplicate entries (0.38.82, 0.38.83 appeared twice, plus an old 0.11.4) — the merge of the 0.38.84 PR appended new entries without removing the older copies, which made it look like the changelog had not been touched. Duplicates are now removed; each version appears once, newest first.

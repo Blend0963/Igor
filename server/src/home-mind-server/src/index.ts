@@ -411,7 +411,11 @@ if (existsSync(publicDir)) {
   // (public/sw.js); this only covers the first share, before the worker is
   // installed, by opening the app instead of failing.
   app.post("/share", (_req, res) => res.redirect(303, "./"));
-  app.use(express.static(publicDir));
+  // Static panel files are sent with no-store: express.static's default
+  // ETag/Last-Modified caching let a browser keep serving an old index.html
+  // (and its old service worker) after an add-on update, hiding new panel
+  // features until a hard reload.
+  app.use(express.static(publicDir, { etag: false, lastModified: false, setHeaders: (res) => res.setHeader("Cache-Control", "no-store") }));
 }
 
 // Root endpoint
