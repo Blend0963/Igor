@@ -1,3 +1,25 @@
+## 0.38.83 — Thread code mode is a property of the thread, stored on the server
+
+- The code/classic mode of a chat thread is no longer kept only in the browser's localStorage (which made threads flip back to classic after a HA restart or when switching client, PC to phone): it is persisted server-side, per thread and per user (`conversation_modes` table in SQLite, `codeMode` flag in the in-memory store).
+- `GET /api/conversations` returns `codeMode` with each thread; `PATCH /api/conversations/:user/:id` accepts `{mode: "code" | null}`; `/api/chat` and `/api/chat/stream` persist the mode when a message arrives with `codeMode: true`, so a thread started in code mode stays code even on another device. Deleting a thread deletes its mode.
+- Panel: opening a thread switches the Code/Igor tab to that thread's own mode (the localStorage is only a cache for a thread created milliseconds ago); the `</> code` badge in the thread list is now a button to toggle a thread between code and classic, persisted on the server.
+- Regression tests: mode persisted via PATCH, via codeMode on chat, in-memory store, removed with the thread (4 new tests; suite: 1143 passed).
+
+## 0.38.82 — HTML artifacts get an Aperçu button
+
+- The panel's markdown renderer turns fenced `html` blocks into artifact cards with an **Aperçu** button; the modal renders the code live in a sandboxed iframe (`sandbox="allow-scripts"`, `srcdoc`), closes on X / backdrop / Esc and clears `srcdoc` so scripts and timers stop. Streaming-safe label while the block is not closed; copy button kept. Service worker shell bumped to `igor-shell-v6` so installed panels drop the cached old page, and the assistant prompt now knows it can emit openable HTML artifacts for visual sketches.
+
+## 0.38.83 — Thread code mode is a property of the thread, stored on the server
+
+- The code/classic mode of a chat thread is no longer kept only in the browser's localStorage (which made threads flip back to classic after a HA restart or when switching client, PC to phone): it is persisted server-side, per thread and per user (`conversation_modes` table in SQLite, `codeMode` flag in the in-memory store).
+- `GET /api/conversations` returns `codeMode` with each thread; `PATCH /api/conversations/:user/:id` accepts `{mode: "code" | null}`; `/api/chat` and `/api/chat/stream` persist the mode when a message arrives with `codeMode: true`, so a thread started in code mode stays code even on another device. Deleting a thread deletes its mode.
+- Panel: opening a thread switches the Code/Igor tab to that thread's own mode (the localStorage is only a cache for a thread created milliseconds ago); the `</> code` badge in the thread list is now a button to toggle a thread between code and classic, persisted on the server.
+- Regression tests: mode persisted via PATCH, via codeMode on chat, in-memory store, removed with the thread (4 new tests; suite: 1143 passed).
+
+## 0.38.82 — HTML artifacts get an Aperçu button
+
+- The panel's markdown renderer turns fenced `html` blocks into artifact cards with an **Aperçu** button; the modal renders the code live in a sandboxed iframe (`sandbox="allow-scripts"`, `srcdoc`), closes on X / backdrop / Esc and clears `srcdoc` so scripts and timers stop. Streaming-safe label while the block is not closed; copy button kept. Service worker shell bumped to `igor-shell-v6` so installed panels drop the cached old page, and the assistant prompt now knows it can emit openable HTML artifacts for visual sketches.
+
 ## 0.38.81 — The POI always match the view, instantly
 
 - **No signature early-return in `refreshPois()`.** The screen's box (bounds + 120 px, pixel test) is re-weighed at every call and the source is always `setData`'d, so a POI never lingers where it should have gone and never stays missing where it should be — the old `if (sig === this.poiShown) return;` was the "hard to refresh" bug.
