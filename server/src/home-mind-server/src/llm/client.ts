@@ -102,7 +102,7 @@ export class LLMClient implements IChatEngine {
     const turnId = randomUUID(); // nonce for this turn — powers the automation confirmation gate
     // ONE shared context for the whole turn — forget_memory writes
     // suppressExtraction back onto it, so per-call literals would drop the flag.
-    const toolCtx: ToolContext = { conversationId: effectiveConversationId, turnId, userId: scope.factBucket, memory: this.memory, ownerId: userId, isThread: scope.isThread, unattended: request.unattended === true, noLongTermMemory: !scope.facts, actions: [] };
+    const toolCtx: ToolContext = { conversationId: effectiveConversationId, turnId, userId: scope.factBucket, memory: this.memory, ownerId: userId, isThread: scope.isThread, unattended: request.unattended === true, noLongTermMemory: !scope.facts, codeMode: request.codeMode, actions: [] };
 
     // 0. A spoken sentence that names Igor after its opening may only talk
     // about it: a small call decides before the main model is called.

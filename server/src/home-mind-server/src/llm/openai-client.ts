@@ -312,6 +312,7 @@ export class OpenAIChatEngine implements IChatEngine {
       ownerId: userId,
       isThread: scope.isThread,
       unattended: request.unattended === true,
+      codeMode: request.codeMode,
       noLongTermMemory: !scope.facts,
       actions: [],
     };
@@ -500,7 +501,7 @@ export class OpenAIChatEngine implements IChatEngine {
     }
 
     const promptMode = scope.isThread ? "thread" : isVoice ? "voice" : "text";
-    const allTools = openAIToolsFor(promptMode, { unattended: request.unattended === true, noMemory: !scope.facts });
+    const allTools = openAIToolsFor(promptMode, { unattended: request.unattended === true, noMemory: !scope.facts, codeMode: request.codeMode });
     // The local model also hands the online one the memories a reply needs.
     const allowed = new Set(allTools.map((t) => (t.type === "function" ? t.function.name : "")));
     const tools = local ? localToolList(scope.facts).filter((t) => t.type !== "function" || allowed.has(t.function.name) || t.function.name === SHARE_MEMORY) : allTools;

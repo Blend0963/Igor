@@ -36,6 +36,12 @@ export interface ChatRequest {
    */
   unattended?: boolean;
   /**
+   * The panel's mode switch: a "code" thread gets the developer persona and
+   * the code tools (sandbox, run_code, connectors); a classic Igor thread
+   * (codeMode === false) never gets them (llm/tool-policy.ts).
+   */
+  codeMode?: boolean;
+  /**
    * Have the local model read this request's prompt ahead of time, without
    * the person's words, and answer nothing (llm/local-llm.ts): nothing is
    * stored, nothing is learned.
