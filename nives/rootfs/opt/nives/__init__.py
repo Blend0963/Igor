@@ -83,6 +83,11 @@ from .const import (
     SERVICE_CAR_STATUS,
     SERVICE_CAR_POIS,
     SERVICE_CAR_FUEL,
+    SERVICE_CAR_MAP_STATUS,
+    SERVICE_CAR_MAP_UPDATE,
+    SERVICE_CAR_MAP_POIS,
+    SERVICE_CAR_MAP_SEARCH,
+    SERVICE_CAR_MAP_INFO,
     CONF_CAR_USERS,
 )
 
@@ -484,6 +489,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     _async_register_traffic(hass)
     _async_register_route(hass)
     _async_register_car(hass)
+    _async_register_offline_maps(hass)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await _async_setup_update_watch(hass, entry)
@@ -1462,6 +1468,160 @@ def _async_register_car(hass: HomeAssistant) -> None:
         (SERVICE_CAR_STOP, _stop, CAR_STOP_SCHEMA),
         (SERVICE_CAR_POIS, _pois, CAR_POIS_SCHEMA),
         (SERVICE_CAR_FUEL, _fuel, CAR_FUEL_SCHEMA),
+    ):
+        _async_register_car_service(hass, name, handler, schema)
+    _async_register_offline_services(hass)
+
+
+OFFLINE_DIR_NAME = "nives_offline"
+
+
+def _offline_maps(hass: HomeAssistant):
+    """The region's offline maps (offline.py), created once per Core run."""
+    store = hass.data.setdefault(DOMAIN, {})
+    if "offline_maps" not in store:
+        from .offline import OfflineMaps
+
+        store["offline_maps"] = OfflineMaps(Path(hass.config.path(OFFLINE_DIR_NAME)))
+    return store["offline_maps"]
+
+
+@callback
+def _async_register_offline_maps(hass: HomeAssistant) -> None:
+    """Serve the offline tiles and style over HTTP (auth required, like every
+    /api/nives/ endpoint the card already calls): /api/nives/offline/tiles.pmtiles
+    (range requests — MapLibre reads the PMTiles straight from the URL) and
+    /api/nives/offline/style.json (a MapLibre style pointing at the tiles)."""
+    from aiohttp import web
+
+    store = hass.data.setdefault(DOMAIN, {})
+    if store.get("offline_views_registered"):
+        return
+    maps = _offline_maps(hass)
+
+    class OfflineTilesView(HomeAssistantView):
+        url = "/api/nives/offline/tiles.pmtiles"
+        name = "api:nives:offline_tiles"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.StreamResponse:
+            path = maps.tiles
+            if not path.exists():
+                return web.Response(status=404, text="carte hors ligne absente — nives.car_map_update d'abord")
+            size = path.stat().st_size
+            rng = request.headers.get("Range")
+            if rng:
+                try:
+                    unit, spec = rng.split("=")
+                    start_s, _, end_s = spec.partition("-")
+                    start = int(start_s)
+                    end = int(end_s) if end_s else size - 1
+                    end = min(end, size - 1)
+                except ValueError:
+                    return web.Response(status=416)
+                resp = web.StreamResponse(status=206, headers={
+                    "Content-Range": f"bytes {start}-{end}/{size}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(end - start + 1),
+                    "Content-Type": "application/vnd.pmtiles",
+                    "Cache-Control": "public, max-age=86400",
+                })
+                await resp.prepare(request)
+                with open(path, "rb") as f:
+                    f.seek(start)
+                    remaining = end - start + 1
+                    while remaining > 0:
+                        chunk = f.read(min(1024 * 1024, remaining))
+                        if not chunk:
+                            break
+                        await resp.write(chunk)
+                        remaining -= len(chunk)
+                return resp
+            resp = web.FileResponse(path, headers={
+                "Accept-Ranges": "bytes",
+                "Content-Type": "application/vnd.pmtiles",
+                "Cache-Control": "public, max-age=86400",
+            })
+            return resp
+
+    class OfflineStyleView(HomeAssistantView):
+        url = "/api/nives/offline/style.json"
+        name = "api:nives:offline_style"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            from .offline import offline_style
+
+            base = str(request.url.with_path("/api/nives/offline/tiles.pmtiles"))
+            return web.json_response(offline_style(base))
+
+    hass.http.register_view(OfflineTilesView())
+    hass.http.register_view(OfflineStyleView())
+    store["offline_views_registered"] = True
+
+
+def _async_register_offline_services(hass: HomeAssistant) -> None:
+    """`nives.car_map_*`: the offline maps' services — status, update (download
+    the region, rebuild POI + tiles), and the queries the GPS card makes
+    (POI around a point, POI by name, one POI's detail sheet). The map data
+    never leaves the server; the queries are SQLite reads."""
+    if hass.services.has_service(DOMAIN, SERVICE_CAR_MAP_STATUS):
+        return
+    from .offline import GEOFABRIK_REGIONS
+
+    maps = _offline_maps(hass)
+
+    async def _map_status(call: ServiceCall) -> ServiceResponse:
+        return {"ok": True, **maps.status()}
+
+    async def _map_update(call: ServiceCall) -> ServiceResponse:
+        region = str(call.data.get("region") or "france")
+        force = bool(call.data.get("force"))
+        return await maps.update(region=region, force=force)
+
+    async def _map_pois(call: ServiceCall) -> ServiceResponse:
+        lat, lon = float(call.data["latitude"]), float(call.data["longitude"])
+        radius_m = float(call.data.get("radius_km") or 5) * 1000.0
+        kinds = [k.strip() for k in str(call.data.get("kinds") or "").split(",") if k.strip()]
+        if not maps.db_path.exists():
+            return {"ok": False, "error": "base hors ligne absente — nives.car_map_update d'abord", "pois": []}
+        return {"ok": True, "source": "offline", "kinds": kinds, "pois": maps.nearby(kinds, lat, lon, radius_m)}
+
+    async def _map_search(call: ServiceCall) -> ServiceResponse:
+        query = str(call.data.get("query") or "").strip()
+        near = None
+        if call.data.get("latitude") is not None and call.data.get("longitude") is not None:
+            near = (float(call.data["longitude"]), float(call.data["latitude"]))
+        if not maps.db_path.exists():
+            return {"ok": False, "error": "base hors ligne absente", "results": []}
+        return {"ok": True, "source": "offline", "results": maps.search(query, near)}
+
+    async def _map_info(call: ServiceCall) -> ServiceResponse:
+        info = maps.poi_info(int(call.data["id"]))
+        if info is None:
+            return {"ok": False, "error": "POI inconnu"}
+        return {"ok": True, "source": "offline", "poi": info}
+
+    for name, handler, schema in (
+        (SERVICE_CAR_MAP_STATUS, _map_status, vol.Schema({})),
+        (SERVICE_CAR_MAP_UPDATE, _map_update, vol.Schema({
+            vol.Optional("region", default="france"): vol.In(list(GEOFABRIK_REGIONS)),
+            vol.Optional("force", default=False): bool,
+        })),
+        (SERVICE_CAR_MAP_POIS, _map_pois, vol.Schema({
+            vol.Required("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
+            vol.Required("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
+            vol.Optional("radius_km", default=5): vol.All(vol.Coerce(float), vol.Range(min=0.5, max=50)),
+            vol.Optional("kinds", default="fuel,charging,rest,toilets,atm,cafe,restaurant,supermarket,pharmacy,parking,station,hospital"): str,
+        })),
+        (SERVICE_CAR_MAP_SEARCH, _map_search, vol.Schema({
+            vol.Required("query"): str,
+            vol.Optional("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
+            vol.Optional("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
+        })),
+        (SERVICE_CAR_MAP_INFO, _map_info, vol.Schema({
+            vol.Required("id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+        })),
     ):
         _async_register_car_service(hass, name, handler, schema)
 

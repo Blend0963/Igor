@@ -107,6 +107,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV NODE_ENV=production
 
 # Install base packages (xz-utils only for unpacking s6-overlay, removed after)
+# osmium-tool + tippecanoe: the offline map's build chain (nives.car_map_update
+# cuts the Geofabrik extract into POI with osmium, into vector tiles with
+# tippecanoe; both in universe on noble).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
@@ -116,6 +119,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-client \
     procps \
     libstdc++6 \
+    osmium-tool \
+    tippecanoe \
     && rm -rf /var/lib/apt/lists/*
 
 # Install s6-overlay (detect architecture at build time), checked before unpacking

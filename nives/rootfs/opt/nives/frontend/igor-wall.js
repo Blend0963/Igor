@@ -6228,6 +6228,7 @@
         ".lpanel label { display: flex; align-items: center; gap: 9px; color: #e9e4da; font-size: 15px; cursor: pointer; white-space: nowrap; }" +
         ".lpanel .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px #07080a; }" +
         ".lpanel input { width: 16px; height: 16px; margin: 0; accent-color: #59d0e0; }" +
+        ".offbtn { margin-top: 4px; padding: 8px 10px; border-radius: var(--igor-radius, 3px); border: 1px solid #59d0e0; background: none; color: #59d0e0; font-family: inherit; font-size: 13px; cursor: pointer; }\n" +
         ".portrait .lpanel { left: 56px; }" +
         // The card as the whole screen: the dashboard's bar and neighbours lie
         // beneath it, while its own panels, toasts and popups (its children)
@@ -6396,6 +6397,16 @@
         ".mappick button { font: inherit; font-size: 14px; padding: 10px 12px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #e9e4da; cursor: pointer; display: flex; align-items: center; gap: 10px; --mdc-icon-size: 20px; white-space: nowrap; } .mappick button ha-icon { color: #59d0e0; flex: none; }" +
         ".mappick .mp-name { color: #878c95; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; min-width: 0; padding: 2px 0 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
         ".mappick .mp-x { flex: none; margin-left: auto; width: 30px; height: 30px; min-height: 0; padding: 0; justify-content: center; border: none; background: transparent; color: #878c95; --mdc-icon-size: 18px; } .mappick .mp-x ha-icon { color: #878c95; }" +
+        ".poisheet { max-width: 320px; }\n" +
+        ".poisheet .ps-body { padding: 10px 12px; display: grid; gap: 8px; max-height: 46vh; overflow-y: auto; }\n" +
+        ".ps-table { border-collapse: collapse; width: 100%; font-size: 13px; }\n" +
+        ".ps-table th { text-align: left; color: #878c95; font-weight: normal; padding: 2px 10px 2px 0; vertical-align: top; white-space: nowrap; }\n" +
+        ".ps-table td { color: #e9e4da; padding: 2px 0; word-break: break-word; }\n" +
+        ".ps-wiki { font-size: 13px; color: #c9d4de; border-top: 1px solid #22262c; padding-top: 8px; }\n" +
+        ".ps-wiki p { margin: 4px 0 0; line-height: 1.45; }\n" +
+        ".ps-link { display: inline-flex; align-items: center; gap: 6px; color: #59d0e0; font-size: 13px; text-decoration: none; }\n" +
+        ".ps-link:hover { text-decoration: underline; }\n" +
+        ".ps-loading { color: #878c95; font-size: 13px; }" +
         // The map carries `no-swipe`: a finger dragging it moves the map,
         // never the dashboard's page (the swipe-between-tabs module above
         // reads this very class).
@@ -6407,6 +6418,7 @@
         '<button id="voice" title="Voix du guidage"><ha-icon icon="mdi:volume-high"></ha-icon></button>' +
         '<button id="overview" title="Choisir l’itinéraire" hidden><ha-icon icon="mdi:map-search"></ha-icon></button>' +
         '<button id="layers" title="Couches"><ha-icon icon="mdi:layers"></ha-icon></button>' +
+        '<button id="offline" title="Carte hors ligne : état et mise à jour"><ha-icon icon="mdi:map-marker-radius"></ha-icon></button>' +
         '<button id="full" title="Plein écran"><ha-icon icon="mdi:fullscreen"></ha-icon></button></div>' +
         '<div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div style="min-width:0"><div class="d" id="navD"></div><div class="t" id="navT"></div><div class="x" id="navX" hidden></div><div class="l" id="navL" hidden></div></div></div>' +
         '<div class="glow" id="glow" hidden></div>' +
@@ -6436,6 +6448,7 @@
       // The fuel, Waze's way: a touch, the stations around, each with its
       // gazole price and its detour; a touch on one, and the car goes.
       $("fuel").addEventListener("click", () => this.openFuel());
+      $("offline").addEventListener("click", () => this.openOfflinePanel());
       $("fclose").addEventListener("click", () => { $("fpanel").hidden = true; this.closeFuelPrices(); });
       $("ppClose").addEventListener("click", (ev) => { ev.stopPropagation(); this.closeFuelPrices(); });
       $("pprice").addEventListener("click", (ev) => { if (ev.target === this.$("pprice")) this.closeFuelPrices(); });
@@ -6538,6 +6551,10 @@
     }
     styleUrl() {
       if (this.config.style) return this.config.style;
+      // The offline tiles first when the server has them (nives.car_map_status
+      // said ready at init): the card then works with no internet at all,
+      // TomTom quota spent or not. CARTO stays the fallback.
+      if (this.offlineReady) return window.location.origin + "/api/nives/offline/style.json";
       if (this.config.theme === "clair") return GPS_DAY;
       if (this.config.theme === "auto") {
         var sun = this._hass && this._hass.states["sun.sun"];
@@ -6747,6 +6764,15 @@
     trailData() { return { type: "Feature", geometry: { type: "MultiLineString", coordinates: this.trail.filter(function (x) { return x.length > 1; }) } }; }
     async init(p) {
       this.loading = true;
+      this.offlineReady = false;
+      // Is the server's offline map there? Then the style is the local
+      // PMTiles and the POI come from the SQLite base — no TomTom, no Overpass.
+      try {
+        var ms = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_map_status", return_response: true, service_data: {} });
+        var mr = ms && ms.response;
+        this.offlineReady = !!(mr && mr.ok && mr.ready);
+        this.offlineInfo = mr || null;
+      } catch (e) { this.offlineReady = false; }
       var ml;
       try { ml = await gpsMapLibre(); } catch (e) { this.message(e.message); this.loading = false; return; }
       // The style is fetched by hand first: left to MapLibre, its failure on
@@ -7415,6 +7441,19 @@
         var r = res && res.response;
         if (r && r.ok) { rows = r.results || []; this.searchLive = r.source === "tomtom"; }
       } catch (e) { rows = null; }
+      // The offline base also answers by name (FTS5, « gare de lyon » finds it
+      // even misspelled) — asked with car_search, before Nominatim.
+      if (rows == null && this._hass && this.offlineReady) {
+        try {
+          var ro = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_map_search", return_response: true,
+            service_data: Object.assign({ query: q }, here ? { latitude: here[1], longitude: here[0] } : {}) });
+          var rr = ro && ro.response;
+          if (rr && rr.ok && Array.isArray(rr.results) && rr.results.length) {
+            rows = rr.results.map((r) => ({ lat: r.lat, lon: r.lon, name: r.name || r.brand || "lieu",
+              address: [r.housenumber, r.street, r.city].filter(Boolean).join(" "), offId: r.id, kind: r.kind }));
+          }
+        } catch (e) { /* offline absent: Nominatim below */ }
+      }
       if (rows == null) rows = await this.searchOsm(q, here);
       if (seq !== this.searchSeq) return;
       list.innerHTML = "";
@@ -7817,6 +7856,23 @@
         this.$("panel").hidden = true;
       });
       el.appendChild(go);
+      // A POI of the offline base (the tap landed on one, or its id is known):
+      // a detail sheet — name, kind, address, hours, phone, site, and the
+      // Wikipédia summary when the OSM tag carries one (wikidata/wikipedia).
+      var offId = (fuel && fuel.properties && fuel.properties.offId) || null;
+      if (!offId) {
+        try {
+          var pfs = map.queryRenderedFeatures(e.point, { layers: ["pois"] }) || [];
+          for (var i = 0; i < pfs.length; i++) if (pfs[i].properties && pfs[i].properties.offId) { offId = pfs[i].properties.offId; break; }
+        } catch (err) { offId = null; }
+      }
+      if (offId) {
+        var fiche = document.createElement("button");
+        fiche.type = "button";
+        fiche.innerHTML = '<ha-icon icon="mdi:information-outline"></ha-icon>Fiche';
+        fiche.addEventListener("click", (ev) => { ev.stopPropagation(); this.openPoiSheet(offId, name); });
+        el.appendChild(fiche);
+      }
       if (this.dest) {
         var via = document.createElement("button");
         via.type = "button";
@@ -7835,6 +7891,131 @@
     },
     closePick() {
       if (this._pick) { try { this._pick.remove(); } catch (e) { /* gone */ } this._pick = null; }
+    },
+    // The offline map's panel: is the region downloaded, when, how big —
+    // and the button that (re)downloads it (nives.car_map_update, Geofabrik's
+    // daily extract). Like Organic Maps' regions, with a refresh button.
+    async openOfflinePanel() {
+      var old = this.$("offpanel");
+      if (old) { old.hidden = !old.hidden; if (!old.hidden) return; }
+      var pan = document.createElement("div");
+      pan.id = "offpanel";
+      pan.className = "lpanel";
+      pan.style.left = "64px";
+      pan.innerHTML = '<b>Carte hors ligne</b><div class="ps-loading">Vérification…</div>';
+      this.$("card").appendChild(pan);
+      var refresh = async () => {
+        pan.innerHTML = '<b>Carte hors ligne</b><div class="ps-loading">Téléchargement + tuiles en cours… (plusieurs minutes la première fois)</div>';
+        try {
+          var res = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_map_update", return_response: true,
+            service_data: { region: "france", force: true } });
+          var r = res && res.response;
+          if (r && r.ok) {
+            this.offlineReady = true;
+            pan.innerHTML = '<b>Carte hors ligne</b>' +
+              '<div class="ps-loading">Région : ' + (r.region || "?") + '<br>POI : ' + (r.pois || 0) +
+              '<br>Tuiles : ' + ((r.tiles_bytes || 0) / 1048576).toFixed(0) + ' Mo<br>Mise à jour : ' + new Date().toLocaleString() + '</div>' +
+              '<button type="button" class="offbtn">Re-télécharger</button>';
+          } else {
+            pan.innerHTML = '<b>Carte hors ligne</b><div class="ps-loading">Échec : ' + String((r && r.error) || "inconnu").replace(/</g, "&lt;") + '</div>' +
+              '<button type="button" class="offbtn">Réessayer</button>';
+          }
+        } catch (e) {
+          pan.innerHTML = '<b>Carte hors ligne</b><div class="ps-loading">Échec : ' + String(e && e.message || e).replace(/</g, "&lt;") + '</div>' +
+            '<button type="button" class="offbtn">Réessayer</button>';
+        }
+        var b = pan.querySelector(".offbtn");
+        if (b) b.addEventListener("click", (ev) => { ev.stopPropagation(); refresh(); });
+      };
+      try {
+        var res = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_map_status", return_response: true, service_data: {} });
+        var r = res && res.response;
+        if (r && r.ok) {
+          this.offlineInfo = r;
+          this.offlineReady = !!r.ready;
+          var txt = r.ready
+            ? "Région : " + (r.region || "?") + " · " + (r.pois || 0) + " POI · " + ((r.tiles_bytes || 0) / 1048576).toFixed(0) + " Mo de tuiles" +
+              (r.updated ? "<br>Dernier téléchargement : " + r.updated : "")
+            : "Aucune carte téléchargée pour l'instant.";
+          pan.innerHTML = '<b>Carte hors ligne</b><div class="ps-loading">' + txt + '</div>' +
+            '<button type="button" class="offbtn">' + (r.updating ? "Mise à jour en cours…" : (r.ready ? "Mettre à jour" : "Télécharger la France")) + "</button>";
+          var b = pan.querySelector(".offbtn");
+          if (b && !r.updating) b.addEventListener("click", (ev) => { ev.stopPropagation(); refresh(); });
+        } else {
+          pan.innerHTML = '<b>Carte hors ligne</b><div class="ps-loading">Service indisponible.</div>';
+        }
+      } catch (e) {
+        pan.innerHTML = '<b>Carte hors ligne</b><div class="ps-loading">Service indisponible (' + String(e && e.message || e).replace(/</g, "&lt;") + ').</div>';
+      }
+    },
+    // Called when an offline ask failed: try the status once more (the base
+    // may have been built meanwhile), else fall back to the online sources.
+    _offlineTry() {
+      if (this._offlineTried) return;
+      this._offlineTried = true;
+      this._hass.callWS({ type: "call_service", domain: "nives", service: "car_map_status", return_response: true, service_data: {} })
+        .then((res) => { var r = res && res.response; if (r && r.ok) this.offlineReady = !!r.ready; })
+        .catch(() => {});
+    },
+    // The POI's detail sheet (offline base): everything the OSM tags said,
+    // plus the Wikipédia summary when the tags carry a wikidata/wikipedia id
+    // (fetched live from the REST API; without internet the sheet still shows
+    // the local fields and a link that opens when the phone has signal).
+    async openPoiSheet(offId, fallbackName) {
+      var old = this.$("poisheet");
+      if (old) old.remove();
+      var sheet = document.createElement("div");
+      sheet.id = "poisheet";
+      sheet.className = "mappick poisheet";
+      sheet.innerHTML = '<div class="mp-head"><div class="mp-name">…</div>' +
+        '<button type="button" class="mp-x" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
+        '<div class="ps-body"><div class="ps-loading">Chargement…</div></div>';
+      sheet.querySelector(".mp-x").addEventListener("click", (ev) => { ev.stopPropagation(); sheet.remove(); });
+      sheet.addEventListener("click", (ev) => ev.stopPropagation());
+      this.$("map").appendChild(sheet);
+      var poi = null;
+      try {
+        var res = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_map_info", return_response: true,
+          service_data: { id: offId } });
+        var r = res && res.response;
+        if (r && r.ok) poi = r.poi;
+      } catch (e) { /* offline base unreachable */ }
+      if (!poi) { sheet.querySelector(".ps-body").innerHTML = '<div class="ps-loading">Fiche indisponible.</div>'; return; }
+      var kindName = (GPS_POI[poi.kind] && GPS_POI[poi.kind].name) || poi.kind || "";
+      var rows = [];
+      if (poi.kind) rows.push(["Type", kindName]);
+      var addr = [poi.housenumber, poi.street, poi.city].filter(Boolean).join(" ");
+      if (addr) rows.push(["Adresse", addr]);
+      if (poi.brand && poi.brand !== poi.name) rows.push(["Enseigne", poi.brand]);
+      if (poi.opening_hours) rows.push(["Horaires", poi.opening_hours]);
+      if (poi.phone) rows.push(["Tél.", poi.phone]);
+      if (poi.website) rows.push(["Site", poi.website]);
+      var html = "<table class='ps-table'>" + rows.map((r) =>
+        "<tr><th>" + r[0] + "</th><td>" + String(r[1]).replace(/</g, "&lt;") + "</td></tr>").join("") + "</table>";
+      // Wikipédia: the OSM tag (fr:Page or a Qid) → the REST summary.
+      var wikiUrl = null, summary = null;
+      if (poi.wikipedia) {
+        var m = String(poi.wikipedia).match(/^([a-z-]+):(.+)$/i);
+        wikiUrl = m ? "https://" + m[1] + ".wikipedia.org/wiki/" + encodeURIComponent(m[2].replace(/ /g, "_")) : null;
+      } else if (poi.wikidata) {
+        wikiUrl = "https://www.wikidata.org/wiki/" + poi.wikidata;
+      }
+      if (wikiUrl && /^https:\/\/([a-z-]+)\.wikipedia\.org\//.test(wikiUrl)) {
+        var lang = wikiUrl.match(/^https:\/\/([a-z-]+)\.wikipedia\.org\//)[1];
+        var page = decodeURIComponent(wikiUrl.split("/wiki/")[1]);
+        try {
+          var wr = await fetch("https://" + lang + ".wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(page), { headers: { Accept: "application/json" } });
+          if (wr.ok) {
+            var wj = await wr.json();
+            summary = wj.extract || null;
+            if (wj.content_urls && wj.content_urls.desktop && wj.content_urls.desktop.page) wikiUrl = wj.content_urls.desktop.page;
+          }
+        } catch (e) { /* no internet: the link still works later */ }
+      }
+      if (summary) html += '<div class="ps-wiki"><b>Wikipédia</b><p>' + String(summary).replace(/</g, "&lt;") + "</p></div>";
+      if (wikiUrl) html += '<a class="ps-link" target="_blank" rel="noopener" href="' + wikiUrl + '"><ha-icon icon="mdi:open-in-new"></ha-icon>Ouvrir Wikipédia</a>';
+      sheet.querySelector(".mp-name").textContent = poi.name || poi.brand || fallbackName || "Lieu";
+      sheet.querySelector(".ps-body").innerHTML = html || '<div class="ps-loading">Rien de plus.</div>';
     },
     // The station's prices, read from the Ministry's instant flux (Igor asks
     // data.economie.gouv.fr, the station nearest the tap within 500 m): the
@@ -8572,6 +8753,21 @@
         // the whole square from Overpass, as before.
         var c = [(t.b.w + t.b.e) / 2, (t.b.n + t.b.s) / 2];
         var kinds = this.poiKinds().filter((k) => k !== "camera").join(",");
+        // The offline base first (nives.car_map_pois, SQLite on the server):
+        // no quota, no Overpass strike, the same answer every time. TomTom
+        // and Overpass stay the fallbacks when the base is missing.
+        if (this._hass && this.offlineReady && kinds) {
+          var rad = Math.max(1.5, Math.sqrt(Math.max(0, t.b.e - t.b.w) * 111 * Math.max(0, t.b.n - t.b.s) * 111) / 2 / 1000);
+          return this._hass.callWS({ type: "call_service", domain: "nives", service: "car_map_pois", return_response: true,
+            service_data: { latitude: c[1], longitude: c[0], radius_km: Math.min(20, rad), kinds: kinds } })
+            .then((res) => {
+              var r = (res && res.response) || {};
+              if (!r.ok || !Array.isArray(r.pois) || !r.pois.length) throw new Error(r.error || "offline vide");
+              return (r.pois).map((q) => ({ id: "off" + q.id, kind: q.kind, p: [q.lon, q.lat], label: (q.name || q.brand || "").slice(0, 18), brand: q.brand || "", offId: q.id }));
+            })
+            .then((items) => { if (key === this.poiKey) keep(items); })
+            .catch(() => { this.offlineReady = false; this._offlineTry(); return fromOverpass(); });
+        }
         if (this._hass && this.config.tomtom_pois !== false && kinds) {
         var ttFailed = 0;
           var tt = this._hass.callWS({ type: "call_service", domain: "nives", service: "car_pois", return_response: true,
