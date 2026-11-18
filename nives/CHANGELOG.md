@@ -1,14 +1,16 @@
 # Changelog
 
-## 0.38.78 — Carte hors ligne (style Organic Maps) + menu du mode
-
-- Menu du mode : le sélecteur segmenté Classique/Code est remplacé par un menu déroulant sur le wordmark « Igor » (entrées **Igor** et **Code**, coche sur l'actif) ; en mode Code le wordmark lit « Code ». Styles en variables DA existantes.
+## 0.38.79 — Carte hors ligne (style Organic Maps)
 
 - **Nouveau module `offline.py`** : télécharge l'extrait OSM d'une région (Geofabrik, mise à jour quotidienne par diffs), le découpe en **base POI SQLite** (`osmium tags-filter` → rtree + FTS5, tags wikidata/wikipedia conservés) et en **tuiles vectorielles PMTiles** (`tippecanoe`). Stocké sur le serveur HA dans `<config>/nives_offline`.
 - **5 nouveaux services** `nives.car_map_status / car_map_update / car_map_pois / car_map_search / car_map_info` + 2 endpoints HTTP authentifiés `/api/nives/offline/tiles.pmtiles` (range requests, lu directement par MapLibre) et `/api/nives/offline/style.json` (style sombre maison).
 - **Carte GPS** : si la carte hors ligne est prête, le style utilisé est le PMTiles local (mis en cache navigateur → fonctionne sans internet du tout) et les POI viennent de la base SQLite **avant** TomTom/Overpass ; bouton « hors ligne » dans la barre de la carte (état + téléchargement/mise à jour, comme les régions d'Organic Maps) ; recherche d'adresse complétée par la FTS5 locale (tolérante aux fautes, biaisée sur la position) ; **fiche POI au toucher** (adresse, horaires, tél., site) + **résumé Wikipédia** via l'API REST et lien « Ouvrir Wikipédia ».
 - **Dockerfile** : ajout des paquets `osmium-tool` et `tippecanoe`.
 - **Tests** : `nives/tests/test_offline.py` (7 tests, OK) — mapping tags→kinds, recherche FTS5, nearby rtree, pipeline osmium/tippecanoe sur un .osm synthétique.
+
+## 0.38.78 — Menu du mode déroulant
+
+- Le sélecteur segmenté Classique/Code est remplacé par un menu déroulant sur le wordmark « Igor » (entrées **Igor** et **Code**, coche sur l'actif) ; en mode Code le wordmark lit « Code ». Styles en variables DA existantes.
 
 ## 0.38.76 — Every checked layer is drawn
 
