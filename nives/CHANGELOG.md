@@ -1,3 +1,4 @@
+## 0.38.92 — Message clair si osmium est absent (image non rebuildée)
 ## 0.38.91 — Reprise du téléchargement carte hors ligne
 
 - Le téléchargement de l'extrait OSM **reprend là où il s'était arrêté** (fichier `.pbf.part` + en-tête `Range`), au lieu de tout recommencer à chaque lancement.
