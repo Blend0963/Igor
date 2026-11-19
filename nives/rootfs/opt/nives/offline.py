@@ -279,6 +279,12 @@ class OfflineMaps:
 
     @staticmethod
     def _run(cmd: list[str]) -> None:
+        import shutil
+        if shutil.which(cmd[0]) is None:
+            raise RuntimeError(
+                f"Commande '{cmd[0]}' introuvable dans le conteneur : "
+                "rebuild l'image de l'add-on (paquet osmium-tool requis)."
+            )
         proc = subprocess.run(cmd, capture_output=True)
         if proc.returncode != 0:
             raise RuntimeError(
