@@ -160,6 +160,9 @@ class OfflineMaps:
             "pbf_bytes": self.pbf.stat().st_size if self.pbf.exists() else 0,
             "tiles_bytes": self.tiles.stat().st_size if self.tiles.exists() else 0,
             "updating": bool(state.get("updating")),
+            "step": state.get("step", ""),
+            "progress": int(state.get("progress") or 0),
+            "error": state.get("error", ""),
         }
 
     def _count(self) -> int:
@@ -294,7 +297,17 @@ class OfflineMaps:
             tmp = self.pbf.with_suffix(".pbf.part")
             req = urllib.request.Request(base + "-latest.osm.pbf", headers={"User-Agent": "Igor (Home Assistant)"})
             with urllib.request.urlopen(req, timeout=300) as r, open(tmp, "wb") as f:
-                shutil.copyfileobj(r, f, 1024 * 1024)
+                total = int(r.headers.get("Content-Length") or 0)
+                got = 0
+                while True:
+                    chunk = r.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    got += len(chunk)
+                    if total:
+                        self._write_state(updating=True, step="download",
+                                          progress=max(0, min(39, int(got * 40 / total))))
             os.replace(tmp, self.pbf)
         else:
             self._run(["osmium", "update", str(self.pbf), "--server", base + "-updates"])
@@ -306,7 +319,7 @@ class OfflineMaps:
         self._run(["osmium", "tags-filter", str(self.pbf), *OSMIUM_POI_FILTER.split(),
                    "-o", str(self.pois_pbf), "--overwrite"])
         geo = subprocess.run(
-            ["osmium", "export", str(self.pois_pbf), "-f", "geojsonseq", "--geometry-types", "point", "-o", "-"],
+            ["osmium", "export", str(self.pois_pbf), "-f", "geojsonseq", "-o", "-"],
             capture_output=True, check=True,
         ).stdout.decode()
         db_tmp = self.db_path.with_suffix(".db.tmp")
@@ -333,7 +346,20 @@ class OfflineMaps:
             kind = kind_of_tags(p)
             if not kind:
                 continue
-            lon, lat = f["geometry"]["coordinates"][:2]
+            geom = f["geometry"]
+            if geom["type"] == "Point":
+                lon, lat = geom["coordinates"][:2]
+            else:  # a building/area POI: its centroid
+                pts: list = []
+                def _walk(c):
+                    if isinstance(c[0], (int, float)):
+                        pts.append(c)
+                    else:
+                        for x in c:
+                            _walk(x)
+                _walk(geom["coordinates"])
+                lon = sum(q[0] for q in pts) / len(pts)
+                lat = sum(q[1] for q in pts) / len(pts)
             cur = db.execute(
                 """INSERT INTO pois(kind,name,brand,lat,lon,street,housenumber,city,phone,website,
                      opening_hours,wikidata,wikipedia,tags) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
@@ -346,6 +372,8 @@ class OfflineMaps:
             db.execute("INSERT INTO poi_names(rowid, name, brand) VALUES(?,?,?)",
                        (cur.lastrowid, p.get("name") or "", p.get("brand") or ""))
             n += 1
+            if n % 100000 == 0:
+                self._write_state(updating=True, step="pois", progress=min(69, 40 + n // 100000))
         db.execute("CREATE INDEX idx_pois_kind ON pois(kind)")
         db.commit()
         db.close()
@@ -353,6 +381,7 @@ class OfflineMaps:
         return n
 
     def _build_tiles(self) -> int:
+        self._write_state(updating=True, step="tiles", progress=70)
         keep = [a for tag in TIPPECANOE_KEEP for a in ("-y", tag)]
         export = subprocess.Popen(
             ["osmium", "export", str(self.pbf), "-f", "geojsonseq", "-o", "-"],
@@ -383,11 +412,11 @@ class OfflineMaps:
             stamp = self._download(region_path, force)
             n_pois = self._build_pois()
             n_tiles = self._build_tiles()
-            self._write_state(updating=False, region=region,
+            self._write_state(updating=False, step="done", progress=100, error="", region=region,
                               updated=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), pois=n_pois)
             return {"ok": True, "region": region, "stamp": stamp, "pois": n_pois, "tiles_bytes": n_tiles}
         except Exception as err:  # noqa: BLE001 - reported to the caller
-            self._write_state(updating=False)
+            self._write_state(updating=False, step="error", error=str(err))
             return {"ok": False, "error": str(err)}
 
 

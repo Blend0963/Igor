@@ -7892,6 +7892,29 @@
     closePick() {
       if (this._pick) { try { this._pick.remove(); } catch (e) { /* gone */ } this._pick = null; }
     },
+    // Live progress of a running download: poll car_map_status, render a bar.
+    _offlinePoll(pan) {
+      if (this._offlineTimer) clearInterval(this._offlineTimer);
+      var STEP_FR = { download: "Téléchargement de l'extrait OSM…", pois: "Extraction des POI…", tiles: "Génération des tuiles…", done: "Terminé", error: "Échec" };
+      this._offlineTimer = setInterval(async () => {
+        try {
+          var res = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_map_status", return_response: true, service_data: {} });
+          var r = res && res.response;
+          if (!r || !r.ok || !pan.isConnected) { clearInterval(this._offlineTimer); return; }
+          this.offlineReady = !!r.ready;
+          if (!r.updating) {
+            clearInterval(this._offlineTimer); this._offlineTimer = null;
+            this.openOfflinePanel(); // re-render the panel with the final state
+            return;
+          }
+          var pct = Math.max(0, Math.min(100, r.progress || 0));
+          var label = (STEP_FR[r.step] || "En cours…") + " — " + pct + " %";
+          pan.innerHTML = '<b>Carte hors ligne</b>' +
+            '<div class="ps-loading">' + label + '</div>' +
+            '<progress value="' + pct + '" max="100" style="width:100%"></progress>';
+        } catch (e) { /* next tick */ }
+      }, 3000);
+    },
     // The offline map's panel: is the region downloaded, when, how big —
     // and the button that (re)downloads it (nives.car_map_update, Geofabrik's
     // daily extract). Like Organic Maps' regions, with a refresh button.
@@ -7912,6 +7935,7 @@
           var r = res && res.response;
           if (r && r.ok) {
             this.offlineReady = true;
+            this._offlinePoll(pan);
             pan.innerHTML = '<b>Carte hors ligne</b>' +
               '<div class="ps-loading">Région : ' + (r.region || "?") + '<br>POI : ' + (r.pois || 0) +
               '<br>Tuiles : ' + ((r.tiles_bytes || 0) / 1048576).toFixed(0) + ' Mo<br>Mise à jour : ' + new Date().toLocaleString() + '</div>' +
@@ -7933,10 +7957,11 @@
         if (r && r.ok) {
           this.offlineInfo = r;
           this.offlineReady = !!r.ready;
+          if (r.updating) { this._offlinePoll(pan); return; }
           var txt = r.ready
             ? "Région : " + (r.region || "?") + " · " + (r.pois || 0) + " POI · " + ((r.tiles_bytes || 0) / 1048576).toFixed(0) + " Mo de tuiles" +
               (r.updated ? "<br>Dernier téléchargement : " + r.updated : "")
-            : "Aucune carte téléchargée pour l'instant.";
+            : "Aucune carte téléchargée pour l'instant." + (r.error ? "<br>Dernière erreur : " + String(r.error).replace(/</g, "&lt;") : "");
           pan.innerHTML = '<b>Carte hors ligne</b><div class="ps-loading">' + txt + '</div>' +
             '<button type="button" class="offbtn">' + (r.updating ? "Mise à jour en cours…" : (r.ready ? "Mettre à jour" : "Télécharger la France")) + "</button>";
           var b = pan.querySelector(".offbtn");
