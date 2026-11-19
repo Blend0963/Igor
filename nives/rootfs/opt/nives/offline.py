@@ -53,6 +53,10 @@ OSMIUM_POI_FILTER = (
 )
 TIPPECANOE_KEEP = ("name", "amenity", "shop", "tourism", "railway", "highway",
                    "natural", "aeroway", "maxspeed", "oneway", "layer", "bridge", "tunnel")
+# The lite tile set (weak head units): roads and water only, no text at all —
+# the cheapest thing a small CPU can draw. POI stay in the SQLite base.
+OSMIUM_LITE_FILTER = "w/highway w/waterway n/natural=water w/natural=water n/water"
+TIPPECANOE_LITE_KEEP = ("highway", "waterway", "water", "natural", "layer", "bridge", "tunnel")
 
 
 def kind_of_tags(p: dict) -> str | None:
@@ -146,6 +150,7 @@ class OfflineMaps:
         self.pois_pbf = self.dir / "pois.osm.pbf"
         self.db_path = self.dir / "pois.db"
         self.tiles = self.dir / "tiles.pmtiles"
+        self.tiles_lite = self.dir / "tiles-lite.pmtiles"
         self.state_path = self.dir / "state.json"
         self._lock: asyncio.Lock | None = None
         # A previous run killed mid-download (add-on restart) leaves
@@ -172,6 +177,7 @@ class OfflineMaps:
             "pois": self._count() if self.db_path.exists() else 0,
             "pbf_bytes": self.pbf.stat().st_size if self.pbf.exists() else 0,
             "tiles_bytes": self.tiles.stat().st_size if self.tiles.exists() else 0,
+            "tiles_lite_bytes": self.tiles_lite.stat().st_size if self.tiles_lite.exists() else 0,
             "updating": bool(state.get("updating")),
             "step": state.get("step", ""),
             "progress": int(state.get("progress") or 0),
@@ -432,29 +438,42 @@ class OfflineMaps:
         os.replace(db_tmp, self.db_path)
         return n
 
-    def _build_tiles(self) -> int:
-        self._write_state(updating=True, step="tiles", progress=70)
-        keep = [a for tag in TIPPECANOE_KEEP for a in ("-y", tag)]
-        export = self._popen_checked(
-            ["osmium", "export", str(self.pbf), "-f", "geojsonseq", "-o", "-"],
-            stdout=subprocess.PIPE,
-        )
-        # tippecanoe picks the output format from the extension: the temp
-        # file must end in .pmtiles or it writes an MBTiles (SQLite) instead.
-        tmp = self.dir / "tiles.build.pmtiles"
+    def _tippecanoe(self, out: Path, keep: tuple[str, ...], src: Path | None = None) -> None:
+        """osmium export -> geojsonseq -> tippecanoe -> `out` (.pmtiles).
+        tippecanoe picks the output format from the extension: the temp file
+        must end in .pmtiles or it writes an MBTiles (SQLite) instead."""
+        tmp = out.with_suffix(".build.pmtiles") if out.suffix == ".pmtiles" else out.parent / (out.name + ".build.pmtiles")
         if tmp.exists():
             tmp.unlink()
+        keep_args = [a for tag in keep for a in ("-y", tag)]
+        # NB: no "-o -" — this osmium treats "-" as a literal file and writes
+        # a single newline; stdout is the default output anyway.
+        export = self._popen_checked(
+            ["osmium", "export", str(src or self.pbf), "-f", "geojsonseq"],
+            stdout=subprocess.PIPE,
+        )
         assert export.stdout is not None
         proc = subprocess.run(
             ["tippecanoe", "-o", str(tmp), "-l", "osm", "-zg", "--no-tile-size-limit",
-             "--no-feature-limit", "--drop-densest-as-needed", "--read-parallel", *keep],
+             "--no-feature-limit", "--drop-densest-as-needed", "--read-parallel", *keep_args],
             stdin=export.stdout, capture_output=True,
         )
         export.stdout.close()
         export.wait()
-        if proc.returncode != 0:
+        if proc.returncode != 0 and not tmp.exists():
             raise RuntimeError("tippecanoe a échoué (%d): %s" % (proc.returncode, proc.stderr.decode(errors="replace")[-400:]))
-        os.replace(tmp, self.tiles)
+        os.replace(tmp, out)
+
+    def _build_tiles(self) -> int:
+        self._write_state(updating=True, step="tiles", progress=70)
+        self._tippecanoe(self.tiles, TIPPECANOE_KEEP)
+        # Lite set for weak CPUs (head units): roads + water, no names.
+        lite = self.dir / "lite.osm.pbf"
+        self._run(["osmium", "tags-filter", str(self.pbf), OSMIUM_LITE_FILTER,
+                   "-o", str(lite), "--overwrite"])
+        self._tippecanoe(self.tiles_lite, TIPPECANOE_LITE_KEEP, src=lite)
+        if lite.exists():
+            lite.unlink()
         return self.tiles.stat().st_size
 
     def _update_blocking(self, region: str, force: bool) -> dict:
@@ -490,30 +509,51 @@ def offline_style(pmtiles_url: str) -> dict:
              "filter": ["in", "class", "water", "waterway", "ocean"],
              "paint": {"fill-color": "#12293a"}},
             {"id": "landuse", "type": "fill", "source": "osm", "source-layer": "osm",
-             "filter": ["in", "class", "park", "forest", "wood", "grass", "pitch"],
-             "paint": {"fill-color": "#16241d", "fill-opacity": 0.8}},
-            {"id": "buildings", "type": "fill", "source": "osm", "source-layer": "osm",
-             "minzoom": 14, "filter": ["==", ["geometry-type"], "Polygon"],
-             "paint": {"fill-color": "#1b2836", "fill-outline-color": "#24394a"}},
+             "minzoom": 11, "filter": ["in", "class", "park", "forest", "wood"],
+             "paint": {"fill-color": "#16241d", "fill-opacity": 0.6}},
             {"id": "roads", "type": "line", "source": "osm", "source-layer": "osm",
              "filter": ["has", "highway"],
              "paint": {"line-color": road_c, "line-width": road_w, "line-opacity": 0.9}},
             {"id": "road-names", "type": "symbol", "source": "osm", "source-layer": "osm",
-             "minzoom": 12, "filter": ["all", ["has", "name"], ["==", ["geometry-type"], "LineString"]],
+             "minzoom": 14, "filter": ["all", ["has", "name"], ["==", ["geometry-type"], "LineString"], ["in", ["get", "class"], "motorway", "trunk", "primary", "secondary"]],
              "layout": {"text-field": ["get", "name"],
                         "text-size": ["interpolate", ["linear"], ["zoom"], 12, 10, 16, 13],
                         "text-font": ["Noto Sans Regular"], "symbol-placement": "line", "text-optional": True},
              "paint": {"text-color": "#8fa3b5", "text-halo-color": "#101820", "text-halo-width": 1}},
             {"id": "poi", "type": "circle", "source": "osm", "source-layer": "osm",
-             "minzoom": 13, "filter": ["all", ["has", "amenity"], ["==", ["geometry-type"], "Point"]],
+             "minzoom": 15, "filter": ["all", ["has", "amenity"], ["==", ["geometry-type"], "Point"]],
              "paint": {"circle-radius": ["interpolate", ["linear"], ["zoom"], 13, 2, 16, 4],
                        "circle-color": "#e0a33a", "circle-stroke-color": "#101820", "circle-stroke-width": 1}},
             {"id": "place-names", "type": "symbol", "source": "osm", "source-layer": "osm",
-             "minzoom": 10, "filter": ["all", ["has", "name"], ["==", ["geometry-type"], "Point"],
+             "minzoom": 12, "filter": ["all", ["has", "name"], ["==", ["geometry-type"], "Point"],
                                         ["!", ["has", "amenity"]]],
              "layout": {"text-field": ["get", "name"],
                         "text-size": ["interpolate", ["linear"], ["zoom"], 10, 9, 14, 12, 17, 15],
                         "text-font": ["Noto Sans Bold"], "text-anchor": "top", "text-offset": [0, 0.8]},
              "paint": {"text-color": "#c9d4de", "text-halo-color": "#101820", "text-halo-width": 1.2}},
+        ],
+    }
+
+
+def offline_style_lite(pmtiles_url: str) -> dict:
+    """The zero-text twin of offline_style for weak head units: roads and
+    water only, no symbol layers at all — nothing for the small CPU to
+    lay out or rasterize. POI stay in the SQLite base (map markers)."""
+    road_w = ["interpolate", ["linear"], ["zoom"], 10, 0.6, 13, 2, 16, 5, 18, 9]
+    road_c = ["match", ["get", "class"],
+              ["motorway", "trunk"], "#3d5a73", ["primary", "secondary", "tertiary"], "#2c4257",
+              ["residential", "unclassified", "service"], "#22333f", "#22333f"]
+    return {
+        "version": 8,
+        "name": "Igor offline lite",
+        "sources": {"osm": {"type": "vector", "url": f"pmtiles://{pmtiles_url}"}},
+        "layers": [
+            {"id": "bg", "type": "background", "paint": {"background-color": "#101820"}},
+            {"id": "water", "type": "fill", "source": "osm", "source-layer": "osm",
+             "filter": ["in", "class", "water", "waterway", "ocean"],
+             "paint": {"fill-color": "#12293a"}},
+            {"id": "roads", "type": "line", "source": "osm", "source-layer": "osm",
+             "filter": ["has", "highway"],
+             "paint": {"line-color": road_c, "line-width": road_w, "line-opacity": 0.9}},
         ],
     }

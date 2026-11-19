@@ -1499,13 +1499,13 @@ def _async_register_offline_maps(hass: HomeAssistant) -> None:
         return
     maps = _offline_maps(hass)
 
-    class OfflineTilesView(HomeAssistantView):
-        url = "/api/nives/offline/tiles.pmtiles"
-        name = "api:nives:offline_tiles"
-        requires_auth = True
+    def _tiles_get(path: Path):
+        async def get(request: web.Request) -> web.StreamResponse:
+            return await _serve_pmtiles(request, path)
+        return get
 
-        async def get(self, request: web.Request) -> web.StreamResponse:
-            path = maps.tiles
+    async def _serve_pmtiles(request: web.Request, path: Path) -> web.StreamResponse:
+        if True:
             if not path.exists():
                 return web.Response(status=404, text="carte hors ligne absente — nives.car_map_update d'abord")
             size = path.stat().st_size
@@ -1544,6 +1544,18 @@ def _async_register_offline_maps(hass: HomeAssistant) -> None:
             })
             return resp
 
+    class OfflineTilesView(HomeAssistantView):
+        url = "/api/nives/offline/tiles.pmtiles"
+        name = "api:nives:offline_tiles"
+        requires_auth = True
+        get = _tiles_get(maps.tiles)
+
+    class OfflineTilesLiteView(HomeAssistantView):
+        url = "/api/nives/offline/tiles-lite.pmtiles"
+        name = "api:nives:offline_tiles_lite"
+        requires_auth = True
+        get = _tiles_get(maps.tiles_lite)
+
     class OfflineStyleView(HomeAssistantView):
         url = "/api/nives/offline/style.json"
         name = "api:nives:offline_style"
@@ -1555,8 +1567,21 @@ def _async_register_offline_maps(hass: HomeAssistant) -> None:
             base = str(request.url.with_path("/api/nives/offline/tiles.pmtiles"))
             return web.json_response(offline_style(base))
 
+    class OfflineStyleLiteView(HomeAssistantView):
+        url = "/api/nives/offline/style-lite.json"
+        name = "api:nives:offline_style_lite"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            from .offline import offline_style_lite
+
+            base = str(request.url.with_path("/api/nives/offline/tiles-lite.pmtiles"))
+            return web.json_response(offline_style_lite(base))
+
     hass.http.register_view(OfflineTilesView())
+    hass.http.register_view(OfflineTilesLiteView())
     hass.http.register_view(OfflineStyleView())
+    hass.http.register_view(OfflineStyleLiteView())
     store["offline_views_registered"] = True
 
 

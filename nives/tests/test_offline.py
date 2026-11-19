@@ -148,6 +148,16 @@ def test_tiles_build(tmp_path):
         assert f.read(7) == b"PMTiles"
 
 
+def test_offline_style_lite():
+    style = offline.offline_style_lite("https://ha.local/api/nives/offline/tiles-lite.pmtiles")
+    assert style["version"] == 8
+    assert style["sources"]["osm"]["url"] == "pmtiles://https://ha.local/api/nives/offline/tiles-lite.pmtiles"
+    layer_ids = {l["id"] for l in style["layers"]}
+    # lite: no symbol layers at all (nothing for a weak CPU to rasterize)
+    assert not any(l["type"] == "symbol" for l in style["layers"])
+    assert {"bg", "water", "roads"} <= layer_ids
+
+
 def test_offline_style():
     style = offline.offline_style("https://ha.local/api/nives/offline/tiles.pmtiles")
     assert style["version"] == 8
