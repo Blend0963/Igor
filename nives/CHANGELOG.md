@@ -1,3 +1,7 @@
+## 0.38.93 — osmium export vérifié (message clair si binaire absent)
+
+- Les appels `osmium export` passent par la vérification de binaire : plus de `[Errno 2]` brut, message explicite « rebuild l'image de l'add-on ».
+
 ## 0.38.92 — Message clair si osmium est absent (image non rebuildée)
 ## 0.38.91 — Reprise du téléchargement carte hors ligne
 
