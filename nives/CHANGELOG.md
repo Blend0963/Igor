@@ -1,3 +1,9 @@
+## 0.38.95 — Carte hors ligne « lite » pour autoradio (CPU faible)
+
+- Nouveau jeu de tuiles `tiles-lite.pmtiles` (routes + eau uniquement, **aucun texte**) + style `/api/nives/offline/style-lite.json` : la carte GPS l'utilise par défaut hors ligne (`offline_style: full` dans la config pour l'ancien style complet).
+- Rendu encore allégé en mode hors ligne : fps 8, snap route 1 s, limites 3 s.
+- Les POI restent servis par la base SQLite locale (marqueurs carte), zéro réseau.
+
 ## 0.38.94 — Perf carte hors ligne sur autoradio
 
 - Style pmtiles allégé (pas de bâtiments, noms de routes dès z14 et grandes routes seulement, POI dès z15) : moins de tuiles à décoder sur le petit CPU.

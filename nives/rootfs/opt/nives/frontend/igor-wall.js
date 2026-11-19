@@ -6554,7 +6554,10 @@
       // The offline tiles first when the server has them (nives.car_map_status
       // said ready at init): the card then works with no internet at all,
       // TomTom quota spent or not. CARTO stays the fallback.
-      if (this.offlineReady) return window.location.origin + "/api/nives/offline/style.json";
+      // Offline: the lite style (roads + water only, zero text) unless the
+      // card explicitly asks for the full one — weak head units need the
+      // cheapest rendering there is.
+      if (this.offlineReady) return window.location.origin + (this.config.offline_style === "full" ? "/api/nives/offline/style.json" : "/api/nives/offline/style-lite.json");
       if (this.config.theme === "clair") return GPS_DAY;
       if (this.config.theme === "auto") {
         var sun = this._hass && this._hass.states["sun.sun"];
@@ -6966,7 +6969,7 @@
       var gap = this.rafAt ? now - this.rafAt : 16;
       this.rafAt = now;
       this.rafAvg = this.rafAvg == null ? gap : this.rafAvg + (Math.min(gap, 500) - this.rafAvg) * 0.05;
-      var want = Math.max(5, Math.min(60, Number(this.config.fps) || (this.offlineReady ? 12 : 20)));
+      var want = Math.max(5, Math.min(60, Number(this.config.fps) || (this.offlineReady ? 8 : 20)));
       if (!this.fpsNow || this.fpsNow > want) this.fpsNow = want;
       if (!this.paceAt) this.paceAt = now;
       if (now - this.paceAt > 5000) {
@@ -7006,7 +7009,7 @@
       // off by when that is more (at most 150 m).
       var snapM = Number(this.config.snap) || 0;
       if (snapM > 0) snapM = gpsTrust(this.accuracy, 10, Math.max(snapM, Math.min(this.accuracy || 0, 150)), snapM);
-      if (snapM > 0 && (!this.snapAt || now - this.snapAt > (this.offlineReady ? 600 : 200))) {
+      if (snapM > 0 && (!this.snapAt || now - this.snapAt > (this.offlineReady ? 1000 : 200))) {
         this.snapAt = now;
         // Guided: the car is on its route as long as it is near enough (a GPS
         // off by a few tens of metres, a parallel street), never on another road.
@@ -7060,7 +7063,7 @@
         this.addTrail(on ? s.point : this.pos, on);
       }
       if (this.route && (!this.navAt || now - this.navAt > 1000)) { this.navAt = now; this.navTick(now, moving); }
-      if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > (this.offlineReady ? 2000 : 800))) { this.limitAt = now; this.limitTick(now, moving); }
+      if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > (this.offlineReady ? 3000 : 800))) { this.limitAt = now; this.limitTick(now, moving); }
       if (!this.alertAt || now - this.alertAt > 500) { this.alertAt = now; this.alertTick(now, speed); }
       if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); }
       // The stations' panel, left open, follows the car: gone far enough from
