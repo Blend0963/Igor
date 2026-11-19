@@ -1,3 +1,10 @@
+## 0.38.91 — Reprise du téléchargement carte hors ligne
+
+- Le téléchargement de l'extrait OSM **reprend là où il s'était arrêté** (fichier `.pbf.part` + en-tête `Range`), au lieu de tout recommencer à chaque lancement.
+- La barre de progression est mise à jour **toutes les ~1 s avec les Mo reçus**, même quand le serveur ne donne pas la taille totale.
+- Si l'add-on redémarre en plein téléchargement, l'état « en cours » est nettoyé au démarrage et marqué « interrompu » : plus de barre bloquée à 0 %.
+- Rien n'est jamais supprimé : `region.osm.pbf`, `pois.db`, `tiles.pmtiles` et `state.json` restent dans `/config/nives_offline/`.
+
 ## 0.38.90 — Progression réelle du téléchargement de la carte hors ligne
 
 - `offline.py` : la barre de progression démarre à 0 % dès le lancement (avant elle

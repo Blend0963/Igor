@@ -148,6 +148,12 @@ class OfflineMaps:
         self.tiles = self.dir / "tiles.pmtiles"
         self.state_path = self.dir / "state.json"
         self._lock: asyncio.Lock | None = None
+        # A previous run killed mid-download (add-on restart) leaves
+        # updating=true forever: clear it at startup, the .part file is kept
+        # and the download resumes from there.
+        st = self._state()
+        if st.get("updating"):
+            self._write_state(updating=False, step="interrupted", error="interrompu (redémarrage)")
 
     def lock(self) -> asyncio.Lock:
         if self._lock is None:
@@ -303,20 +309,28 @@ class OfflineMaps:
             return stamp
         if not self.pbf.exists() or force or state.get("region_path") != region_path:
             tmp = self.pbf.with_suffix(".pbf.part")
-            req = urllib.request.Request(base + "-latest.osm.pbf", headers={"User-Agent": "Igor (Home Assistant)"})
-            with urllib.request.urlopen(req, timeout=300) as r, open(tmp, "wb") as f:
-                total = int(r.headers.get("Content-Length") or 0) or \
+            got = tmp.stat().st_size if tmp.exists() else 0  # resume a partial download
+            headers = {"User-Agent": "Igor (Home Assistant)"}
+            if got:
+                headers["Range"] = f"bytes={got}-"
+            req = urllib.request.Request(base + "-latest.osm.pbf", headers=headers)
+            mode = "ab" if got else "wb"
+            last_write = 0.0
+            with urllib.request.urlopen(req, timeout=300) as r, open(tmp, mode) as f:
+                cl = int(r.headers.get("Content-Length") or 0)
+                total = (cl + got) if cl else \
                     GEOFABRIK_APPROX_BYTES.get(region_path.rsplit("/", 1)[-1], 0)
-                got = 0
                 while True:
                     chunk = r.read(1024 * 1024)
                     if not chunk:
                         break
                     f.write(chunk)
                     got += len(chunk)
-                    if total:
-                        self._write_state(updating=True, step="download", downloaded=got,
-                                          progress=max(0, min(39, int(got * 40 / total))))
+                    now = time.monotonic()
+                    if now - last_write >= 1.0:  # update the bar ~1x/s, not per MB
+                        last_write = now
+                        pct = max(0, min(39, int(got * 40 / total))) if total else 0
+                        self._write_state(updating=True, step="download", downloaded=got, progress=pct)
             os.replace(tmp, self.pbf)
         else:
             self._run(["osmium", "update", str(self.pbf), "--server", base + "-updates"])
