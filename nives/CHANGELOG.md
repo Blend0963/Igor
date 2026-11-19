@@ -1,3 +1,13 @@
+## 0.38.90 — Progression réelle du téléchargement de la carte hors ligne
+
+- `offline.py` : la barre de progression démarre à 0 % dès le lancement (avant elle
+  gardait l'ancienne valeur), et progresse maintenant sur les **octets reçus** même
+  quand Geofabrik répond sans `Content-Length` (mode chunked) — avant, sur la France
+  (4,5 Go, 10-20 min), elle restait bloquée à 0 % pendant tout le téléchargement.
+  Taille estimée par région en secours ; `downloaded_bytes` exposé dans
+  `nives.car_map_status`.
+- `igor-wall.js` : le panneau affiche « Mo reçus » à côté du % pendant le téléchargement.
+
 ## 0.38.89 — Barre de progression du téléchargement carte hors ligne
 
 - `nives/config.yaml` : `version: "0.38.88"` → `"0.38.89"` (chaque PR = +1, règle retenue).

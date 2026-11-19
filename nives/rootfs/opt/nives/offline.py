@@ -27,6 +27,13 @@ from pathlib import Path
 from typing import Any
 
 GEOFABRIK_BASE = "https://download.geofabrik.de"
+# Rough pbf sizes (bytes), used to show a progress % even when the server
+# answers in chunked mode with no Content-Length.
+GEOFABRIK_APPROX_BYTES = {
+    "france": 4_500_000_000, "belgium": 900_000_000, "switzerland": 700_000_000,
+    "luxembourg": 50_000_000, "germany": 4_000_000_000, "spain": 1_900_000_000,
+    "italy": 2_200_000_000, "europe": 26_000_000_000, "planet": 75_000_000_000,
+}
 GEOFABRIK_REGIONS = {
     "france": "europe/france",
     "belgium": "europe/belgium",
@@ -162,6 +169,7 @@ class OfflineMaps:
             "updating": bool(state.get("updating")),
             "step": state.get("step", ""),
             "progress": int(state.get("progress") or 0),
+            "downloaded_bytes": int(state.get("downloaded") or 0),
             "error": state.get("error", ""),
         }
 
@@ -297,7 +305,8 @@ class OfflineMaps:
             tmp = self.pbf.with_suffix(".pbf.part")
             req = urllib.request.Request(base + "-latest.osm.pbf", headers={"User-Agent": "Igor (Home Assistant)"})
             with urllib.request.urlopen(req, timeout=300) as r, open(tmp, "wb") as f:
-                total = int(r.headers.get("Content-Length") or 0)
+                total = int(r.headers.get("Content-Length") or 0) or \
+                    GEOFABRIK_APPROX_BYTES.get(region_path.rsplit("/", 1)[-1], 0)
                 got = 0
                 while True:
                     chunk = r.read(1024 * 1024)
@@ -306,7 +315,7 @@ class OfflineMaps:
                     f.write(chunk)
                     got += len(chunk)
                     if total:
-                        self._write_state(updating=True, step="download",
+                        self._write_state(updating=True, step="download", downloaded=got,
                                           progress=max(0, min(39, int(got * 40 / total))))
             os.replace(tmp, self.pbf)
         else:
@@ -407,7 +416,7 @@ class OfflineMaps:
 
     def _update_blocking(self, region: str, force: bool) -> dict:
         region_path = GEOFABRIK_REGIONS.get(region, region)
-        self._write_state(updating=True, region=region)
+        self._write_state(updating=True, region=region, step="download", progress=0, error="", downloaded=0)
         try:
             stamp = self._download(region_path, force)
             n_pois = self._build_pois()
