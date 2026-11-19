@@ -6805,7 +6805,7 @@
         bearing: this.headingUp ? this.heading : 0, attributionControl: this.config.hide_attribution ? false : { compact: true },
         // Light on a small screen: no label fade (it redraws for 300 ms at
         // each label), at most 2 device pixels per pixel.
-        fadeDuration: 0, pixelRatio: Math.min(window.devicePixelRatio || 1, Number(this.config.pixel_ratio) || 2),
+        fadeDuration: 0, pixelRatio: Math.min(window.devicePixelRatio || 1, Number(this.config.pixel_ratio) || (this.offlineReady ? 1 : 2)),
         // Igor's own tiles (traffic) need the Home Assistant login, as every API call.
         transformRequest: (url) => {
           if (url.indexOf("/api/nives/") >= 0) this.lastNives = url;
@@ -6846,7 +6846,7 @@
       this.$("map").style.touchAction = "none";
       map.on("style.load", () => {
         // The roads of whatever base map: line layers of OpenMapTiles' « transportation ».
-        this.roads = (map.getStyle().layers || []).filter((l) => l.type === "line" && /transportation|road/i.test(String(l["source-layer"] || ""))).map((l) => l.id);
+        this.roads = (map.getStyle().layers || []).filter((l) => l.type === "line" && (/transportation|road/i.test(String(l["source-layer"] || "")) || /^roads?(-|$)/i.test(String(l.id || "")))).map((l) => l.id);
         if (!map.getSource("route")) {
           map.addSource("route", { type: "geojson", data: this.routeData() });
           map.addLayer({ id: "route-case", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
@@ -6966,7 +6966,7 @@
       var gap = this.rafAt ? now - this.rafAt : 16;
       this.rafAt = now;
       this.rafAvg = this.rafAvg == null ? gap : this.rafAvg + (Math.min(gap, 500) - this.rafAvg) * 0.05;
-      var want = Math.max(5, Math.min(60, Number(this.config.fps) || 20));
+      var want = Math.max(5, Math.min(60, Number(this.config.fps) || (this.offlineReady ? 12 : 20)));
       if (!this.fpsNow || this.fpsNow > want) this.fpsNow = want;
       if (!this.paceAt) this.paceAt = now;
       if (now - this.paceAt > 5000) {
@@ -7006,7 +7006,7 @@
       // off by when that is more (at most 150 m).
       var snapM = Number(this.config.snap) || 0;
       if (snapM > 0) snapM = gpsTrust(this.accuracy, 10, Math.max(snapM, Math.min(this.accuracy || 0, 150)), snapM);
-      if (snapM > 0 && (!this.snapAt || now - this.snapAt > 200)) {
+      if (snapM > 0 && (!this.snapAt || now - this.snapAt > (this.offlineReady ? 600 : 200))) {
         this.snapAt = now;
         // Guided: the car is on its route as long as it is near enough (a GPS
         // off by a few tens of metres, a parallel street), never on another road.
@@ -7060,7 +7060,7 @@
         this.addTrail(on ? s.point : this.pos, on);
       }
       if (this.route && (!this.navAt || now - this.navAt > 1000)) { this.navAt = now; this.navTick(now, moving); }
-      if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > 500)) { this.limitAt = now; this.limitTick(now, moving); }
+      if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > (this.offlineReady ? 2000 : 800))) { this.limitAt = now; this.limitTick(now, moving); }
       if (!this.alertAt || now - this.alertAt > 500) { this.alertAt = now; this.alertTick(now, speed); }
       if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); }
       // The stations' panel, left open, follows the car: gone far enough from
