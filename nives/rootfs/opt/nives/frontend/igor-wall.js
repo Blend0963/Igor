@@ -7908,7 +7908,9 @@
             return;
           }
           var pct = Math.max(0, Math.min(100, r.progress || 0));
-          var label = (STEP_FR[r.step] || "En cours…") + " — " + pct + " %";
+          var extra = r.step === "download" && r.downloaded_bytes
+            ? " (" + (r.downloaded_bytes / 1048576).toFixed(0) + " Mo reçus)" : "";
+          var label = (STEP_FR[r.step] || "En cours…") + " — " + pct + " %" + extra;
           pan.innerHTML = '<b>Carte hors ligne</b>' +
             '<div class="ps-loading">' + label + '</div>' +
             '<progress value="' + pct + '" max="100" style="width:100%"></progress>';
