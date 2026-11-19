@@ -1,3 +1,8 @@
+## 0.38.89 — Barre de progression du téléchargement carte hors ligne
+
+- `nives/config.yaml` : `version: "0.38.88"` → `"0.38.89"` (chaque PR = +1, règle retenue).
+- Barre de progression en temps réel (étape + %) dans le panneau « hors ligne » pendant le téléchargement, notification de fin/échec, POI surfaciques (bâtiments) conservés, message d'erreur affiché si la carte n'est pas prête.
+
 ## 0.38.88 — Bump de version (mise à jour de l'add-on visible dans Home Assistant)
 
 - `nives/config.yaml` : `version: "0.38.87"` → `"0.38.88"` pour que HA propose la mise à jour de l'add-on (contenu 0.38.87 déjà mergé via PR #258).
