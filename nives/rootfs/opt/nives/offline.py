@@ -278,6 +278,31 @@ class OfflineMaps:
         os.replace(tmp, self.state_path)
 
     @staticmethod
+    def _check(cmd: list[str]) -> None:
+        import shutil
+        if shutil.which(cmd[0]) is None:
+            raise RuntimeError(
+                f"Commande '{cmd[0]}' introuvable dans le conteneur : "
+                "rebuild l'image de l'add-on (paquet osmium-tool requis)."
+            )
+
+    @classmethod
+    def _run_capture(cls, cmd: list[str]) -> subprocess.CompletedProcess:
+        cls._check(cmd)
+        proc = subprocess.run(cmd, capture_output=True)
+        if proc.returncode != 0:
+            raise RuntimeError(
+                " ".join(cmd[:2]) + " a échoué (%d): " % proc.returncode
+                + proc.stderr.decode(errors="replace")[-400:]
+            )
+        return proc
+
+    @classmethod
+    def _popen_checked(cls, cmd: list[str], **kw) -> subprocess.Popen:
+        cls._check(cmd)
+        return subprocess.Popen(cmd, **kw)
+
+    @staticmethod
     def _run(cmd: list[str]) -> None:
         import shutil
         if shutil.which(cmd[0]) is None:
@@ -347,10 +372,8 @@ class OfflineMaps:
     def _build_pois(self) -> int:
         self._run(["osmium", "tags-filter", str(self.pbf), *OSMIUM_POI_FILTER.split(),
                    "-o", str(self.pois_pbf), "--overwrite"])
-        geo = subprocess.run(
-            ["osmium", "export", str(self.pois_pbf), "-f", "geojsonseq", "-o", "-"],
-            capture_output=True, check=True,
-        ).stdout.decode()
+        proc = self._run_capture(["osmium", "export", str(self.pois_pbf), "-f", "geojsonseq", "-o", "-"])
+        geo = proc.stdout.decode()
         db_tmp = self.db_path.with_suffix(".db.tmp")
         if db_tmp.exists():
             db_tmp.unlink()
@@ -412,7 +435,7 @@ class OfflineMaps:
     def _build_tiles(self) -> int:
         self._write_state(updating=True, step="tiles", progress=70)
         keep = [a for tag in TIPPECANOE_KEEP for a in ("-y", tag)]
-        export = subprocess.Popen(
+        export = self._popen_checked(
             ["osmium", "export", str(self.pbf), "-f", "geojsonseq", "-o", "-"],
             stdout=subprocess.PIPE,
         )
