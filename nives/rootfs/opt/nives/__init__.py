@@ -1577,7 +1577,24 @@ def _async_register_offline_services(hass: HomeAssistant) -> None:
     async def _map_update(call: ServiceCall) -> ServiceResponse:
         region = str(call.data.get("region") or "france")
         force = bool(call.data.get("force"))
-        return await maps.update(region=region, force=force)
+        result = await maps.update(region=region, force=force)
+        try:
+            if result.get("ok"):
+                await hass.services.async_call(
+                    "persistent_notification", "create",
+                    {"title": "Carte hors ligne prête",
+                     "message": f"Région « {region} » téléchargée : {result.get('pois', 0)} POI, "
+                                f"{(result.get('tiles_bytes') or 0) / 1048576:.0f} Mo de tuiles."},
+                    blocking=False)
+            else:
+                await hass.services.async_call(
+                    "persistent_notification", "create",
+                    {"title": "Échec du téléchargement de la carte",
+                     "message": f"Région « {region} » : {result.get('error', 'erreur inconnue')}"},
+                    blocking=False)
+        except Exception:
+            pass
+        return result
 
     async def _map_pois(call: ServiceCall) -> ServiceResponse:
         lat, lon = float(call.data["latitude"]), float(call.data["longitude"])
