@@ -1,3 +1,7 @@
+## 0.38.88 — Bump de version (mise à jour de l'add-on visible dans Home Assistant)
+
+- `nives/config.yaml` : `version: "0.38.87"` → `"0.38.88"` pour que HA propose la mise à jour de l'add-on (contenu 0.38.87 déjà mergé via PR #258).
+
 ## 0.38.87
 
 - Panel: an artifact card (```html / ```svg / ```css block) is now a single large **"Ouvrir l'aperçu"** button that opens the render in the full-screen webview — the raw code is no longer dumped in the thread.
