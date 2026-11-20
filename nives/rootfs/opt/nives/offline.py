@@ -364,28 +364,38 @@ class OfflineMaps:
             return stamp
         if not self.pbf.exists() or force or state.get("region_path") != region_path:
             tmp = self.pbf.with_suffix(".pbf.part")
-            got = tmp.stat().st_size if tmp.exists() else 0  # resume a partial download
-            headers = {"User-Agent": "Igor (Home Assistant)"}
-            if got:
-                headers["Range"] = f"bytes={got}-"
-            req = urllib.request.Request(base + "-latest.osm.pbf", headers=headers)
-            mode = "ab" if got else "wb"
+            total = GEOFABRIK_APPROX_BYTES.get(region_path.rsplit("/", 1)[-1], 0)
             last_write = 0.0
-            with urllib.request.urlopen(req, timeout=300) as r, open(tmp, mode) as f:
-                cl = int(r.headers.get("Content-Length") or 0)
-                total = (cl + got) if cl else \
-                    GEOFABRIK_APPROX_BYTES.get(region_path.rsplit("/", 1)[-1], 0)
-                while True:
-                    chunk = r.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    got += len(chunk)
-                    now = time.monotonic()
-                    if now - last_write >= 1.0:  # update the bar ~1x/s, not per MB
-                        last_write = now
-                        pct = max(0, min(39, int(got * 40 / total))) if total else 0
-                        self._write_state(updating=True, step="download", downloaded=got, progress=pct)
+            # Resilient download: any network hiccup mid-file is retried with a
+            # Range request from the bytes already on disk, up to 10 times.
+            for attempt in range(10):
+                got = tmp.stat().st_size if tmp.exists() else 0
+                headers = {"User-Agent": "Igor (Home Assistant)"}
+                if got:
+                    headers["Range"] = f"bytes={got}-"
+                req = urllib.request.Request(base + "-latest.osm.pbf", headers=headers)
+                try:
+                    with urllib.request.urlopen(req, timeout=60) as r, open(tmp, "ab" if got else "wb") as f:
+                        cl = int(r.headers.get("Content-Length") or 0)
+                        if cl:
+                            total = cl + got
+                        while True:
+                            chunk = r.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+                            f.flush()
+                            got += len(chunk)
+                            now = time.monotonic()
+                            if now - last_write >= 1.0:  # update the bar ~1x/s, not per MB
+                                last_write = now
+                                pct = max(0, min(39, int(got * 40 / total))) if total else 0
+                                self._write_state(updating=True, step="download", downloaded=got, progress=pct)
+                    break  # file complete
+                except Exception:  # noqa: BLE001 - resume from .part on next attempt
+                    if attempt == 9:
+                        raise
+                    time.sleep(min(2 ** attempt, 30))
             os.replace(tmp, self.pbf)
         else:
             self._run(["osmium", "update", str(self.pbf), "--server", base + "-updates"])
