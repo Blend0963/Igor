@@ -173,3 +173,19 @@ def test_status_empty(tmp_path):
     assert maps.nearby(["fuel"], 48.85, 2.35) == []
     assert maps.search("gare") == []
     assert maps.poi_info(1) is None
+
+
+def test_offline_style_raster():
+    style = offline.offline_style_raster("https://ha.local/api/nives/offline/raster/{z}/{x}/{y}.png")
+    assert style["version"] == 8
+    src = style["sources"]["carto"]
+    assert src["type"] == "raster" and src["tiles"] == ["https://ha.local/api/nives/offline/raster/{z}/{x}/{y}.png"]
+    # one single raster layer: no vector source, no glyphs, no symbol layer
+    assert len(style["layers"]) == 1 and style["layers"][0]["type"] == "raster"
+    assert "glyphs" not in style
+
+
+def test_raster_tile_math():
+    # Paris at z14 must land in the expected tile
+    x, y = offline.OfflineMaps.__new__(offline.OfflineMaps)._lonlat2tile(2.3522, 48.8566, 14)
+    assert (x, y) == (8299, 5636)  # Paris z14

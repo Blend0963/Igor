@@ -6557,7 +6557,15 @@
       // Offline: the lite style (roads + water only, zero text) unless the
       // card explicitly asks for the full one — weak head units need the
       // cheapest rendering there is.
-      if (this.offlineReady) return window.location.origin + (this.config.offline_style === "full" ? "/api/nives/offline/style.json" : "/api/nives/offline/style-lite.json");
+      if (this.offlineReady) {
+        var os = this.config.offline_style;
+        // Default offline = raster (pre-rendered CARTO dark PNGs served locally:
+        // pixel-identical to the online basemap, zero vector decode on the head
+        // unit). "full" = vector PMTiles, "lite" = vector roads+water only.
+        if (os === "full") return window.location.origin + "/api/nives/offline/style.json";
+        if (os === "lite") return window.location.origin + "/api/nives/offline/style-lite.json";
+        return window.location.origin + "/api/nives/offline/style-raster.json";
+      }
       if (this.config.theme === "clair") return GPS_DAY;
       if (this.config.theme === "auto") {
         var sun = this._hass && this._hass.states["sun.sun"];

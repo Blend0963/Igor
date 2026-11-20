@@ -58,6 +58,21 @@ TIPPECANOE_KEEP = ("name", "amenity", "shop", "tourism", "railway", "highway",
 OSMIUM_LITE_FILTER = "w/highway w/waterway n/natural=water w/natural=water n/water"
 TIPPECANOE_LITE_KEEP = ("highway", "waterway", "water", "natural", "layer", "bridge", "tunnel")
 
+# Raster basemap for weak head units: the SAME CARTO dark tiles the card uses
+# online (GPS_DARK), pre-downloaded once for the region (z0..RASTER_MAXZOOM,
+# overzoom beyond) and served locally. Pure PNG = nothing to decode on the
+# head unit's CPU, exactly like Waze. ~40k tiles / <1 Go for France at z14.
+RASTER_TILE_URL = "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
+RASTER_MAXZOOM = 14
+# Rough bounding boxes (minlon, minlat, maxlon, maxlat) per region.
+REGION_BBOX = {
+    "france": (-5.5, 41.0, 9.9, 51.6), "belgium": (2.4, 49.4, 6.5, 51.6),
+    "switzerland": (5.7, 45.7, 10.6, 47.9), "luxembourg": (5.7, 49.4, 6.6, 50.3),
+    "germany": (5.8, 47.2, 15.1, 55.1), "spain": (-9.4, 35.9, 3.4, 43.9),
+    "italy": (6.6, 35.5, 18.6, 47.2), "europe": (-25.0, 34.0, 45.0, 72.0),
+    "world": (-180.0, -85.0, 180.0, 85.0),
+}
+
 
 def kind_of_tags(p: dict) -> str | None:
     """An OSM tag set -> the card's kind (the same keys as car.KINDS)."""
@@ -151,6 +166,7 @@ class OfflineMaps:
         self.db_path = self.dir / "pois.db"
         self.tiles = self.dir / "tiles.pmtiles"
         self.tiles_lite = self.dir / "tiles-lite.pmtiles"
+        self.raster_dir = self.dir / "raster"
         self.state_path = self.dir / "state.json"
         self._lock: asyncio.Lock | None = None
         # A previous run killed mid-download (add-on restart) leaves
@@ -178,6 +194,8 @@ class OfflineMaps:
             "pbf_bytes": self.pbf.stat().st_size if self.pbf.exists() else 0,
             "tiles_bytes": self.tiles.stat().st_size if self.tiles.exists() else 0,
             "tiles_lite_bytes": self.tiles_lite.stat().st_size if self.tiles_lite.exists() else 0,
+            "raster_ready": self.raster_ready(),
+            "raster_tiles": self.raster_count(),
             "updating": bool(state.get("updating")),
             "step": state.get("step", ""),
             "progress": int(state.get("progress") or 0),
@@ -476,6 +494,72 @@ class OfflineMaps:
             lite.unlink()
         return self.tiles.stat().st_size
 
+    # ------------------------------------------------------ raster basemap ---
+
+    def raster_ready(self) -> bool:
+        marker = self.raster_dir / "done"
+        return marker.exists() and any(self.raster_dir.glob("*/*/*.png"))
+
+    def raster_count(self) -> int:
+        try:
+            return sum(1 for _ in self.raster_dir.glob("*/*/*.png"))
+        except OSError:
+            return 0
+
+    def _raster_bbox(self, region: str) -> tuple[float, float, float, float]:
+        return REGION_BBOX.get(region, (-180.0, -85.0, 180.0, 85.0))
+
+    def _lonlat2tile(self, lon: float, lat: float, z: int) -> tuple[int, int]:
+        lat = max(-85.05112878, min(85.05112878, lat))
+        n = 2 ** z
+        x = int((lon + 180.0) / 360.0 * n)
+        y = int((1.0 - math.log(math.tan(math.radians(lat)) + 1.0 / math.cos(math.radians(lat))) / math.pi) / 2.0 * n)
+        return min(n - 1, max(0, x)), min(n - 1, max(0, y))
+
+    def _download_raster(self, region: str) -> int:
+        """Pre-download the CARTO dark PNG tiles for the region (z0..RASTER_MAXZOOM)
+        into raster/{z}/{x}/{y}.png — the same tiles the online style uses, so
+        the offline raster map is pixel-identical to the online one. Already
+        downloaded tiles are skipped, so an interrupted run resumes."""
+        minlon, minlat, maxlon, maxlat = self._raster_bbox(region)
+        zmax = RASTER_MAXZOOM
+        total = 0
+        for z in range(0, zmax + 1):
+            x0, y1 = self._lonlat2tile(minlon, minlat, z)
+            x1, y0 = self._lonlat2tile(maxlon, maxlat, z)
+            total += (x1 - x0 + 1) * (y1 - y0 + 1)
+        done = 0
+        opener = urllib.request.build_opener()
+        opener.addheaders = [("User-Agent", "igor-addon-offline-maps/1.0")]
+        for z in range(0, zmax + 1):
+            x0, y1 = self._lonlat2tile(minlon, minlat, z)
+            x1, y0 = self._lonlat2tile(maxlon, maxlat, z)
+            for x in range(x0, x1 + 1):
+                zdir = self.raster_dir / str(z) / str(x)
+                zdir.mkdir(parents=True, exist_ok=True)
+                for y in range(y0, y1 + 1):
+                    tile = zdir / f"{y}.png"
+                    if tile.exists() and tile.stat().st_size > 0:
+                        done += 1
+                        continue
+                    url = RASTER_TILE_URL.format(z=z, x=x, y=y)
+                    try:
+                        with opener.open(url, timeout=20) as r, open(tile, "wb") as f:
+                            f.write(r.read())
+                    except Exception:
+                        if tile.exists():
+                            tile.unlink()
+                        continue
+                    done += 1
+                    if done % 500 == 0:
+                        self._write_state(step="raster", progress=min(99, 70 + int(29 * done / max(total, 1))), downloaded=done)
+        (self.raster_dir / "done").write_text("ok")
+        return done
+
+    def _build_raster(self, region: str) -> int:
+        self._write_state(step="raster", progress=70)
+        return self._download_raster(region)
+
     def _update_blocking(self, region: str, force: bool) -> dict:
         region_path = GEOFABRIK_REGIONS.get(region, region)
         self._write_state(updating=True, region=region, step="download", progress=0, error="", downloaded=0)
@@ -483,9 +567,10 @@ class OfflineMaps:
             stamp = self._download(region_path, force)
             n_pois = self._build_pois()
             n_tiles = self._build_tiles()
+            n_raster = self._build_raster(region)
             self._write_state(updating=False, step="done", progress=100, error="", region=region,
                               updated=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), pois=n_pois)
-            return {"ok": True, "region": region, "stamp": stamp, "pois": n_pois, "tiles_bytes": n_tiles}
+            return {"ok": True, "region": region, "stamp": stamp, "pois": n_pois, "tiles_bytes": n_tiles, "raster_tiles": n_raster}
         except Exception as err:  # noqa: BLE001 - reported to the caller
             self._write_state(updating=False, step="error", error=str(err))
             return {"ok": False, "error": str(err)}
@@ -556,4 +641,20 @@ def offline_style_lite(pmtiles_url: str) -> dict:
              "filter": ["has", "highway"],
              "paint": {"line-color": road_c, "line-width": road_w, "line-opacity": 0.9}},
         ],
+    }
+
+
+def offline_style_raster(tile_url: str, maxzoom: int = RASTER_MAXZOOM) -> dict:
+    """Pure-raster offline style: ONE raster source pointing at the locally
+    served CARTO dark PNG tiles (identical to the online GPS_DARK basemap).
+    No vector decode, no glyphs, no symbol layout — the head unit only blits
+    finished images, so rendering costs nothing (Waze-style). POI markers,
+    route line and vehicle arrow are still drawn by the card on top."""
+    return {
+        "version": 8,
+        "name": "Igor offline raster",
+        "sources": {
+            "carto": {"type": "raster", "tiles": [tile_url], "tileSize": 256, "maxzoom": maxzoom}
+        },
+        "layers": [{"id": "carto", "type": "raster", "source": "carto"}],
     }
