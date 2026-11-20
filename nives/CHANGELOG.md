@@ -1,3 +1,4 @@
+## 0.38.96 — Fond de carte hors ligne 100 % raster (identique à l'en ligne, zéro lag)
 ## 0.38.95 — Carte hors ligne « lite » pour autoradio (CPU faible)
 
 - Nouveau jeu de tuiles `tiles-lite.pmtiles` (routes + eau uniquement, **aucun texte**) + style `/api/nives/offline/style-lite.json` : la carte GPS l'utilise par défaut hors ligne (`offline_style: full` dans la config pour l'ancien style complet).

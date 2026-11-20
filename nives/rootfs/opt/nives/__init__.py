@@ -1581,7 +1581,40 @@ def _async_register_offline_maps(hass: HomeAssistant) -> None:
     hass.http.register_view(OfflineTilesView())
     hass.http.register_view(OfflineTilesLiteView())
     hass.http.register_view(OfflineStyleView())
+    class OfflineStyleRasterView(HomeAssistantView):
+        url = "/api/nives/offline/style-raster.json"
+        name = "api:nives:offline_style_raster"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            from .offline import offline_style_raster
+
+            base = str(request.url.with_path("/api/nives/offline/raster/{z}/{x}/{y}.png"))
+            return web.json_response(offline_style_raster(base))
+
+    class OfflineRasterTileView(HomeAssistantView):
+        """Serves the pre-rendered CARTO dark PNG tiles from the offline dir."""
+        url = "/api/nives/offline/raster/{z}/{x}/{y}.png"
+        name = "api:nives:offline_raster_tile"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            z = request.match_info["z"]
+            x = request.match_info["x"]
+            y = request.match_info["y"]
+            if not (z.isdigit() and x.isdigit() and y.isdigit()):
+                return web.Response(status=400)
+            path = maps.raster_dir / z / x / f"{y}.png"
+            if not path.exists():
+                return web.Response(status=404)
+            return web.FileResponse(path, headers={
+                "Content-Type": "image/png",
+                "Cache-Control": "public, max-age=604800",
+            })
+
     hass.http.register_view(OfflineStyleLiteView())
+    hass.http.register_view(OfflineStyleRasterView())
+    hass.http.register_view(OfflineRasterTileView())
     store["offline_views_registered"] = True
 
 
