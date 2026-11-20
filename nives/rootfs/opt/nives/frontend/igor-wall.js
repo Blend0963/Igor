@@ -6557,7 +6557,10 @@
       // Offline: the lite style (roads + water only, zero text) unless the
       // card explicitly asks for the full one — weak head units need the
       // cheapest rendering there is.
-      if (this.offlineReady) return window.location.origin + (this.config.offline_style === "full" ? "/api/nives/offline/style.json" : "/api/nives/offline/style-lite.json");
+      if (this.offlineReady) {
+        if (this.config.perf === "max") return window.location.origin + "/api/nives/offline/style-ultralite.json";
+        return window.location.origin + (this.config.offline_style === "full" ? "/api/nives/offline/style.json" : "/api/nives/offline/style-lite.json");
+      }
       if (this.config.theme === "clair") return GPS_DAY;
       if (this.config.theme === "auto") {
         var sun = this._hass && this._hass.states["sun.sun"];
@@ -6808,7 +6811,8 @@
         bearing: this.headingUp ? this.heading : 0, attributionControl: this.config.hide_attribution ? false : { compact: true },
         // Light on a small screen: no label fade (it redraws for 300 ms at
         // each label), at most 2 device pixels per pixel.
-        fadeDuration: 0, pixelRatio: Math.min(window.devicePixelRatio || 1, Number(this.config.pixel_ratio) || (this.offlineReady ? 1 : 2)),
+        fadeDuration: 0, renderWorldCopies: this.config.perf !== "max",
+        pixelRatio: Math.min(window.devicePixelRatio || 1, Number(this.config.pixel_ratio) || (this.offlineReady ? 1 : 2)),
         // Igor's own tiles (traffic) need the Home Assistant login, as every API call.
         transformRequest: (url) => {
           if (url.indexOf("/api/nives/") >= 0) this.lastNives = url;
@@ -6969,7 +6973,7 @@
       var gap = this.rafAt ? now - this.rafAt : 16;
       this.rafAt = now;
       this.rafAvg = this.rafAvg == null ? gap : this.rafAvg + (Math.min(gap, 500) - this.rafAvg) * 0.05;
-      var want = Math.max(5, Math.min(60, Number(this.config.fps) || (this.offlineReady ? 8 : 20)));
+      var want = Math.max(4, Math.min(60, Number(this.config.fps) || (this.config.perf === "max" ? 5 : (this.offlineReady ? 8 : 20))));
       if (!this.fpsNow || this.fpsNow > want) this.fpsNow = want;
       if (!this.paceAt) this.paceAt = now;
       if (now - this.paceAt > 5000) {
@@ -7062,10 +7066,13 @@
         var on = s && gpsDist(this.pos, s.point) < 3 ? s : null;
         this.addTrail(on ? s.point : this.pos, on);
       }
-      if (this.route && (!this.navAt || now - this.navAt > 1000)) { this.navAt = now; this.navTick(now, moving); }
-      if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > (this.offlineReady ? 3000 : 800))) { this.limitAt = now; this.limitTick(now, moving); }
-      if (!this.alertAt || now - this.alertAt > 500) { this.alertAt = now; this.alertTick(now, speed); }
-      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); }
+      var perfMax = this.config.perf === "max";
+      var moved = !this.lastTickPos || gpsDist(this.lastTickPos, this.pos) > 5;
+      this.lastTickPos = this.pos;
+      if (this.route && (!this.navAt || now - this.navAt > (perfMax ? 2000 : 1000))) { this.navAt = now; this.navTick(now, moving); }
+      if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > (perfMax ? 5000 : (this.offlineReady ? 3000 : 800)))) { this.limitAt = now; this.limitTick(now, moving); }
+      if (!this.alertAt || now - this.alertAt > (perfMax ? 1000 : 500)) { this.alertAt = now; this.alertTick(now, speed); }
+      if (moved && (!this.poiTickAt || now - this.poiTickAt > (perfMax ? 5000 : 1000))) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); }
       // The stations' panel, left open, follows the car: gone far enough from
       // where it last asked (400 m, and never twice within ten seconds), it
       // asks again — the list is the stations around the car, not the ones
@@ -7139,7 +7146,7 @@
       }
       this.drPos = gpsProject(from, this.heading, step);
       // Kept on the road, a few times a second: it bends with it.
-      if (!this.drSnapAt || now - this.drSnapAt > 200) {
+      if (!this.drSnapAt || now - this.drSnapAt > (this.config.perf === "max" ? 2000 : 200)) {
         this.drSnapAt = now;
         var r = this.road(this.drPos, 40, this.heading, now);
         if (r) {

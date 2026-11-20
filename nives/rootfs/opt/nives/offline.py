@@ -557,3 +557,24 @@ def offline_style_lite(pmtiles_url: str) -> dict:
              "paint": {"line-color": road_c, "line-width": road_w, "line-opacity": 0.9}},
         ],
     }
+
+
+def offline_style_ultralite(pmtiles_url: str) -> dict:
+    """The Waze-class twin for very weak head units: major roads only, no
+    water, no text, maxzoom 15 — the fewest features the little CPU has to
+    decode and draw per frame. POI stay in the SQLite base (map markers)."""
+    road_w = ["interpolate", ["linear"], ["zoom"], 10, 0.5, 13, 1.5, 15, 4]
+    road_c = ["match", ["get", "class"],
+              ["motorway", "trunk", "primary"], "#3d5a73", "#2c4257"]
+    return {
+        "version": 8,
+        "name": "Igor offline ultralite",
+        "maxzoom": 15,
+        "sources": {"osm": {"type": "vector", "url": f"pmtiles://{pmtiles_url}"}},
+        "layers": [
+            {"id": "bg", "type": "background", "paint": {"background-color": "#101820"}},
+            {"id": "roads", "type": "line", "source": "osm", "source-layer": "osm",
+             "filter": ["in", "class", "motorway", "trunk", "primary", "secondary"],
+             "paint": {"line-color": road_c, "line-width": road_w, "line-opacity": 0.9}},
+        ],
+    }

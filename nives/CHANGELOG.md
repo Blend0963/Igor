@@ -1,3 +1,8 @@
+## 0.38.96 — Mode perf max « zéro lag » pour autoradio très faible
+
+- Nouveau style hors ligne `style-ultralite.json` : routes majeures uniquement, pas d'eau, pas de texte, maxzoom 15
+- Option `perf: max` sur la carte GPS : fps 5, renderWorldCopies off, snap route 2 s, ticks POI/radars/trafic toutes les 5 s et seulement si la voiture a bougé
+
 ## 0.38.95 — Carte hors ligne « lite » pour autoradio (CPU faible)
 
 - Nouveau jeu de tuiles `tiles-lite.pmtiles` (routes + eau uniquement, **aucun texte**) + style `/api/nives/offline/style-lite.json` : la carte GPS l'utilise par défaut hors ligne (`offline_style: full` dans la config pour l'ancien style complet).

@@ -1578,10 +1578,22 @@ def _async_register_offline_maps(hass: HomeAssistant) -> None:
             base = str(request.url.with_path("/api/nives/offline/tiles-lite.pmtiles"))
             return web.json_response(offline_style_lite(base))
 
+    class OfflineStyleUltraliteView(HomeAssistantView):
+        url = "/api/nives/offline/style-ultralite.json"
+        name = "api:nives:offline_style_ultralite"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            from .offline import offline_style_ultralite
+
+            base = str(request.url.with_path("/api/nives/offline/tiles-lite.pmtiles"))
+            return web.json_response(offline_style_ultralite(base))
+
     hass.http.register_view(OfflineTilesView())
     hass.http.register_view(OfflineTilesLiteView())
     hass.http.register_view(OfflineStyleView())
     hass.http.register_view(OfflineStyleLiteView())
+    hass.http.register_view(OfflineStyleUltraliteView())
     store["offline_views_registered"] = True
 
 
