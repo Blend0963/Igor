@@ -1,3 +1,10 @@
+## 0.38.98 — Carte 100 % hors ligne, auto-maintenue (plus de mode en ligne ni de bouton)
+
+- **Téléchargement automatique au démarrage** : si aucune carte locale n'existe (install neuve, `/config` perdu), l'add-on lance tout seul la construction (extrait Geofabrik + POI SQLite + tuiles PMTiles + **raster CARTO dark z0–14**) à `homeassistant.start`; puis **toutes les 24 h** un `ensure()` vérifie l'âge de la source et applique les diffs quotidiens Geofabrik si besoin (no-op sinon). Échec = log + nouvel essai au tick suivant, jamais fatal. `nives.car_map_update` reste disponible en manuel.
+- **Plus de bouton « Télécharger » ni de panneau** dans la carte GPS : à l'ouverture, si la carte manque, la carte appelle elle-même `car_map_update`; la progression s'affiche dans un **toast qui disparaît tout seul** (« Carte hors ligne · Téléchargement… — 42 % »), rafraîchi toutes les 3 s.
+- **Mode en ligne retiré** : `styleUrl()` ne renvoie plus jamais CARTO en ligne — toujours le style raster local par défaut (`offline_style: full|lite` possibles). Tant que le téléchargement tourne, les tuiles manquantes laissent le fond noir, la carte se remplit au fil du téléchargement. Le trafic TomTom est coupé quand la carte hors ligne est active.
+- **POI par défaut allégés** (conduite) : `fuel, charging, parking, rest, restaurant, toilets, hospital, pharmacy, atm, supermarket, car_repair` — la base SQLite locale reste **complète** (tous les kinds OSM), seules les couches dessinées sont réduites pour le petit CPU de l'autoradio; `pois:` dans la config de la carte permet d'en remettre.
+
 ## 0.38.96 — Fond de carte hors ligne 100 % raster (identique à l'en ligne, zéro lag)
 ## 0.38.95 — Carte hors ligne « lite » pour autoradio (CPU faible)
 

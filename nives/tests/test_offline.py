@@ -166,6 +166,41 @@ def test_offline_style():
     assert {"bg", "water", "roads", "road-names", "poi", "place-names"} <= layer_ids
 
 
+def test_ensure_skips_when_fresh(tmp_path, monkeypatch):
+    """ensure() is a no-op when the local extract is fresh: no update call."""
+    maps = offline.OfflineMaps(tmp_path / "data")
+    maps.pbf.write_bytes(b"fake")  # pretend the extract is downloaded
+    from datetime import datetime, timedelta, timezone
+    fresh = (datetime.now(timezone.utc) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    maps._write_state(region_path="europe/france", source_updated=fresh, stamp="sequenceNumber=1 timestamp=x")
+    calls = []
+    async def fake_update(region="france", force=False):
+        calls.append((region, force)); return {"ok": True}
+    monkeypatch.setattr(maps, "update", fake_update)
+    import asyncio
+    res = asyncio.run(maps.ensure(region="france"))
+    assert res["ok"] and res.get("skipped") and calls == []
+
+
+def test_ensure_updates_when_stale_or_missing(tmp_path, monkeypatch):
+    """No extract yet (or stale source): ensure() delegates to update()."""
+    import asyncio
+    maps = offline.OfflineMaps(tmp_path / "data2")
+    calls = []
+    async def fake_update(region="france", force=False):
+        calls.append((region, force)); return {"ok": True}
+    monkeypatch.setattr(maps, "update", fake_update)
+    asyncio.run(maps.ensure(region="france"))
+    assert calls == [("france", False)]
+    # stale source (older than 24 h) -> update too
+    maps2 = offline.OfflineMaps(tmp_path / "data3")
+    maps2.pbf.write_bytes(b"fake")
+    maps2._write_state(region_path="europe/france", source_updated="2020-01-01T00:00:00Z", stamp="old")
+    monkeypatch.setattr(maps2, "update", fake_update)
+    asyncio.run(maps2.ensure(region="france"))
+    assert calls[-1] == ("france", False)
+
+
 def test_status_empty(tmp_path):
     maps = offline.OfflineMaps(tmp_path / "empty")
     st = maps.status()
