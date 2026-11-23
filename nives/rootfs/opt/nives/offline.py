@@ -8,8 +8,10 @@ mostly without the network at all.
 The master copy lives on the Home Assistant server (<config>/nives_offline);
 the head unit keeps its own copy in the browser cache (MapLibre caches the
 PMTiles range requests), exactly like the regions Organic Maps downloads.
-`nives.car_map_update` refreshes it (Geofabrik's daily diffs), and the card's
-menu gets a button that calls the same service.
+No button, no panel: the add-on downloads the region itself at Home Assistant's
+startup when missing and refreshes it with Geofabrik's daily diffs every 24 h
+(`ensure()`); the card only shows a self-dismissing toast while it runs and
+always renders the local map (`nives.car_map_update` stays as a manual service).
 """
 
 from __future__ import annotations
@@ -27,6 +29,10 @@ from pathlib import Path
 from typing import Any
 
 GEOFABRIK_BASE = "https://download.geofabrik.de"
+# Autostart (no button): the region downloaded at Home Assistant's startup when
+# missing, then refreshed when the local extract is older than this.
+DEFAULT_REGION = "france"
+DAILY_REFRESH_HOURS = 24.0
 # Rough pbf sizes (bytes), used to show a progress % even when the server
 # answers in chunked mode with no Content-Length.
 GEOFABRIK_APPROX_BYTES = {
@@ -286,6 +292,26 @@ class OfflineMaps:
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, self._update_blocking, region, force)
 
+    async def ensure(self, region: str = DEFAULT_REGION, force: bool = False,
+                     max_age_hours: float = DAILY_REFRESH_HOURS) -> dict:
+        """Update only when needed: no local extract yet, another region, a
+        forced run, or a source older than `max_age_hours`. Otherwise a no-op
+        — this is what the add-on's startup/daily autostart calls, so the map
+        maintains itself with no button."""
+        if not force and self.pbf.exists():
+            state = self._state()
+            if state.get("region_path") == GEOFABRIK_REGIONS.get(region, region) and state.get("source_updated"):
+                try:
+                    from datetime import datetime, timezone
+                    age_h = (datetime.now(timezone.utc) - datetime.fromisoformat(
+                        str(state["source_updated"]).replace("Z", "+00:00"))).total_seconds() / 3600.0
+                    if age_h < max_age_hours:
+                        return {"ok": True, "skipped": True, "region": region,
+                                "reason": f"déjà à jour (source {state['source_updated']})"}
+                except Exception:  # noqa: BLE001 - fall through to a real update
+                    pass
+        return await self.update(region=region, force=force)
+
     def _state(self) -> dict:
         if self.state_path.exists():
             try:
@@ -341,23 +367,25 @@ class OfflineMaps:
                 + proc.stderr.decode(errors="replace")[-400:]
             )
 
-    def _download(self, region_path: str, force: bool) -> str:
+    def _remote_stamp(self, region_path: str) -> str:
+        """Geofabrik's current sequenceNumber/timestamp for the region."""
         base = f"{GEOFABRIK_BASE}/{region_path}"
-        stamp = ""
         last: Exception | None = None
-        for attempt in range(3):
+        for _ in range(3):
+            stamp = ""
             try:
                 with urllib.request.urlopen(base + "-updates/state.txt", timeout=30) as r:
                     for line in r.read().decode().splitlines():
                         if line.startswith(("sequenceNumber=", "timestamp=")):
                             stamp += line.strip() + " "
-                last = None
-                break
+                return stamp.strip()
             except Exception as err:  # noqa: BLE001 - retried
                 last = err
-        if last:
-            raise RuntimeError(f"Geofabrik injoignable: {last}")
-        stamp = stamp.strip()
+        raise RuntimeError(f"Geofabrik injoignable: {last}")
+
+    def _download(self, region_path: str, force: bool) -> str:
+        base = f"{GEOFABRIK_BASE}/{region_path}"
+        stamp = self._remote_stamp(region_path)
         state = self._state()
         fresh = (not force) and self.pbf.exists() and state.get("region_path") == region_path and state.get("stamp") == stamp
         if fresh:

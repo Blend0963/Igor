@@ -5235,8 +5235,6 @@
   // the real position), and between two fixes it goes on along that road for
   // at most 4 seconds instead of 8 straight ahead.
   var GPS_MAPLIBRE = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl";
-  var GPS_DARK = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
-  var GPS_DAY = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
   var GPS_R = 6378137, GPS_PREDICT_S = 4, GPS_MOVING = 0.8, GPS_TRAIL = 600;
   // The drawn lines breathe with the zoom: thin on the overview (they must not
   // smother the map), road-wide at the zooms one drives at. Pure paint — the
@@ -5672,7 +5670,8 @@
     airport: {  color: "#607d8b", name: "Aéroports" },
     car_rental: {  color: "#a1887f", name: "Locations de voitures" }
   };
-  var GPS_POI_DEFAULT = ["fuel", "charging", "parking", "rest", "toilets", "hospital", "pharmacy", "atm", "restaurant", "cafe", "supermarket", "car_wash", "car_repair"];
+  // Default kinds kept short on purpose: offline POI are read from the local SQLite base (free), but every kind drawn is a symbol the head unit renders — a long list costs CPU on a weak autoradio. The full base stays on the server; `pois:` in the card config can list more.
+  var GPS_POI_DEFAULT = ["fuel", "charging", "parking", "rest", "restaurant", "toilets", "hospital", "pharmacy", "atm", "supermarket", "car_repair"];
   // The pumps' own order: the gazole first, then the Sans Plomb, the ethanol
   // and the gas — the board every station's window reads in this order.
   var GPS_FUELS = [["gazole", "Gazole"], ["sp95", "SP95"], ["sp98", "SP98"], ["e10", "E10"], ["e85", "E85"], ["gplc", "GPL"]];
@@ -6418,7 +6417,6 @@
         '<button id="voice" title="Voix du guidage"><ha-icon icon="mdi:volume-high"></ha-icon></button>' +
         '<button id="overview" title="Choisir l’itinéraire" hidden><ha-icon icon="mdi:map-search"></ha-icon></button>' +
         '<button id="layers" title="Couches"><ha-icon icon="mdi:layers"></ha-icon></button>' +
-        '<button id="offline" title="Carte hors ligne : état et mise à jour"><ha-icon icon="mdi:map-marker-radius"></ha-icon></button>' +
         '<button id="full" title="Plein écran"><ha-icon icon="mdi:fullscreen"></ha-icon></button></div>' +
         '<div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div style="min-width:0"><div class="d" id="navD"></div><div class="t" id="navT"></div><div class="x" id="navX" hidden></div><div class="l" id="navL" hidden></div></div></div>' +
         '<div class="glow" id="glow" hidden></div>' +
@@ -6448,7 +6446,6 @@
       // The fuel, Waze's way: a touch, the stations around, each with its
       // gazole price and its detour; a touch on one, and the car goes.
       $("fuel").addEventListener("click", () => this.openFuel());
-      $("offline").addEventListener("click", () => this.openOfflinePanel());
       $("fclose").addEventListener("click", () => { $("fpanel").hidden = true; this.closeFuelPrices(); });
       $("ppClose").addEventListener("click", (ev) => { ev.stopPropagation(); this.closeFuelPrices(); });
       $("pprice").addEventListener("click", (ev) => { if (ev.target === this.$("pprice")) this.closeFuelPrices(); });
@@ -6551,27 +6548,16 @@
     }
     styleUrl() {
       if (this.config.style) return this.config.style;
-      // The offline tiles first when the server has them (nives.car_map_status
-      // said ready at init): the card then works with no internet at all,
-      // TomTom quota spent or not. CARTO stays the fallback.
-      // Offline: the lite style (roads + water only, zero text) unless the
-      // card explicitly asks for the full one — weak head units need the
-      // cheapest rendering there is.
-      if (this.offlineReady) {
-        var os = this.config.offline_style;
-        // Default offline = raster (pre-rendered CARTO dark PNGs served locally:
-        // pixel-identical to the online basemap, zero vector decode on the head
-        // unit). "full" = vector PMTiles, "lite" = vector roads+water only.
-        if (os === "full") return window.location.origin + "/api/nives/offline/style.json";
-        if (os === "lite") return window.location.origin + "/api/nives/offline/style-lite.json";
-        return window.location.origin + "/api/nives/offline/style-raster.json";
-      }
-      if (this.config.theme === "clair") return GPS_DAY;
-      if (this.config.theme === "auto") {
-        var sun = this._hass && this._hass.states["sun.sun"];
-        return sun && sun.state === "above_horizon" ? GPS_DAY : GPS_DARK;
-      }
-      return GPS_DARK;
+      // Offline only, no online mode left: the local raster basemap by default
+      // (pre-rendered CARTO dark PNGs served by HA — pixel-identical to the old
+      // online CARTO dark, zero vector decode on the head unit, like Waze).
+      // "full" = vector PMTiles, "lite" = vector roads+water only. While the
+      // download runs the raster tiles are missing: the map stays black and
+      // fills in as the tiles land.
+      var os = this.config.offline_style;
+      if (os === "full") return window.location.origin + "/api/nives/offline/style.json";
+      if (os === "lite") return window.location.origin + "/api/nives/offline/style-lite.json";
+      return window.location.origin + "/api/nives/offline/style-raster.json";
     }
     message(text) { this.$("msg").textContent = text; this.$("msg").hidden = !text; }
     // The position to believe: the head unit's (`entity`) or the phone's
@@ -6783,6 +6769,11 @@
         var mr = ms && ms.response;
         this.offlineReady = !!(mr && mr.ok && mr.ready);
         this.offlineInfo = mr || null;
+        // No download button any more: the card maintains its offline map
+        // itself — start the download when there is none, and follow the
+        // progress in a toast that disappears on its own.
+        if (mr && mr.ok && !mr.ready && !mr.updating) this._autoMapUpdate();
+        if (mr && mr.ok && mr.updating) this._offlinePollToast();
       } catch (e) { this.offlineReady = false; }
       var ml;
       try { ml = await gpsMapLibre(); } catch (e) { this.message(e.message); this.loading = false; return; }
@@ -7903,97 +7894,39 @@
     closePick() {
       if (this._pick) { try { this._pick.remove(); } catch (e) { /* gone */ } this._pick = null; }
     },
-    // Live progress of a running download: poll car_map_status, render a bar.
-    _offlinePoll(pan) {
+    // The offline map updates itself (server autostart + this call when the
+    // card opens and finds none): kick nives.car_map_update, then show the
+    // progress in a small toast that disappears by itself when done.
+    _autoMapUpdate() {
+      if (this._autoMapTried) return;
+      this._autoMapTried = true;
+      this._hass.callWS({ type: "call_service", domain: "nives", service: "car_map_update", return_response: true, service_data: { region: "france", force: false } })
+        .then((res) => { var r = res && res.response; if (r && r.ok && r.updating !== false) this._offlinePollToast(); })
+        .catch(() => {});
+    },
+    // Poll car_map_status while a download/refresh runs: one toast line
+    // ("Carte hors ligne · … — 42 %"), refreshed every 3 s, hidden by itself
+    // at the end (or on error). No panel, no button.
+    _offlinePollToast() {
       if (this._offlineTimer) clearInterval(this._offlineTimer);
-      var STEP_FR = { download: "Téléchargement de l'extrait OSM…", pois: "Extraction des POI…", tiles: "Génération des tuiles…", done: "Terminé", error: "Échec" };
+      var STEP_FR = { download: "Téléchargement de l'extrait OSM…", pois: "Extraction des POI…", tiles: "Génération des tuiles…", raster: "Téléchargement des tuiles…", done: "Carte hors ligne prête", error: "Échec — nouvel essai au prochain démarrage" };
       this._offlineTimer = setInterval(async () => {
         try {
           var res = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_map_status", return_response: true, service_data: {} });
           var r = res && res.response;
-          if (!r || !r.ok || !pan.isConnected) { clearInterval(this._offlineTimer); return; }
+          if (!r || !r.ok) { clearInterval(this._offlineTimer); this._offlineTimer = null; return; }
           this.offlineReady = !!r.ready;
           if (!r.updating) {
             clearInterval(this._offlineTimer); this._offlineTimer = null;
-            this.openOfflinePanel(); // re-render the panel with the final state
+            this.toast(r.step === "error" ? (STEP_FR.error) : "Carte hors ligne · à jour", 5000);
+            if (this.map && this.styleNow !== this.styleUrl()) { this.styleNow = this.styleUrl(); this.map.setStyle(this.styleNow, { diff: false }); }
             return;
           }
           var pct = Math.max(0, Math.min(100, r.progress || 0));
-          var extra = r.step === "download" && r.downloaded_bytes
-            ? " (" + (r.downloaded_bytes / 1048576).toFixed(0) + " Mo reçus)" : "";
-          var label = (STEP_FR[r.step] || "En cours…") + " — " + pct + " %" + extra;
-          pan.innerHTML = '<b>Carte hors ligne</b>' +
-            '<div class="ps-loading">' + label + '</div>' +
-            '<progress value="' + pct + '" max="100" style="width:100%"></progress>';
+          var extra = r.step === "download" && r.downloaded_bytes ? " (" + (r.downloaded_bytes / 1048576).toFixed(0) + " Mo)" : "";
+          this.toast("Carte hors ligne · " + (STEP_FR[r.step] || "En cours…") + " — " + pct + " %" + extra, 3200);
         } catch (e) { /* next tick */ }
       }, 3000);
-    },
-    // The offline map's panel: is the region downloaded, when, how big —
-    // and the button that (re)downloads it (nives.car_map_update, Geofabrik's
-    // daily extract). Like Organic Maps' regions, with a refresh button.
-    async openOfflinePanel() {
-      var old = this.$("offpanel");
-      if (old) { old.hidden = !old.hidden; if (!old.hidden) return; }
-      var pan = document.createElement("div");
-      pan.id = "offpanel";
-      pan.className = "lpanel";
-      pan.style.left = "64px";
-      pan.innerHTML = '<b>Carte hors ligne</b><div class="ps-loading">Vérification…</div>';
-      this.$("card").appendChild(pan);
-      var refresh = async () => {
-        pan.innerHTML = '<b>Carte hors ligne</b><div class="ps-loading">Téléchargement + tuiles en cours… (plusieurs minutes la première fois)</div>';
-        try {
-          var res = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_map_update", return_response: true,
-            service_data: { region: "france", force: true } });
-          var r = res && res.response;
-          if (r && r.ok) {
-            this.offlineReady = true;
-            this._offlinePoll(pan);
-            pan.innerHTML = '<b>Carte hors ligne</b>' +
-              '<div class="ps-loading">Région : ' + (r.region || "?") + '<br>POI : ' + (r.pois || 0) +
-              '<br>Tuiles : ' + ((r.tiles_bytes || 0) / 1048576).toFixed(0) + ' Mo<br>Mise à jour : ' + new Date().toLocaleString() + '</div>' +
-              '<button type="button" class="offbtn">Re-télécharger</button>';
-          } else {
-            pan.innerHTML = '<b>Carte hors ligne</b><div class="ps-loading">Échec : ' + String((r && r.error) || "inconnu").replace(/</g, "&lt;") + '</div>' +
-              '<button type="button" class="offbtn">Réessayer</button>';
-          }
-        } catch (e) {
-          pan.innerHTML = '<b>Carte hors ligne</b><div class="ps-loading">Échec : ' + String(e && e.message || e).replace(/</g, "&lt;") + '</div>' +
-            '<button type="button" class="offbtn">Réessayer</button>';
-        }
-        var b = pan.querySelector(".offbtn");
-        if (b) b.addEventListener("click", (ev) => { ev.stopPropagation(); refresh(); });
-      };
-      try {
-        var res = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_map_status", return_response: true, service_data: {} });
-        var r = res && res.response;
-        if (r && r.ok) {
-          this.offlineInfo = r;
-          this.offlineReady = !!r.ready;
-          if (r.updating) { this._offlinePoll(pan); return; }
-          var txt = r.ready
-            ? "Région : " + (r.region || "?") + " · " + (r.pois || 0) + " POI · " + ((r.tiles_bytes || 0) / 1048576).toFixed(0) + " Mo de tuiles" +
-              (r.updated ? "<br>Dernier téléchargement : " + r.updated : "")
-            : "Aucune carte téléchargée pour l'instant." + (r.error ? "<br>Dernière erreur : " + String(r.error).replace(/</g, "&lt;") : "");
-          pan.innerHTML = '<b>Carte hors ligne</b><div class="ps-loading">' + txt + '</div>' +
-            '<button type="button" class="offbtn">' + (r.updating ? "Mise à jour en cours…" : (r.ready ? "Mettre à jour" : "Télécharger la France")) + "</button>";
-          var b = pan.querySelector(".offbtn");
-          if (b && !r.updating) b.addEventListener("click", (ev) => { ev.stopPropagation(); refresh(); });
-        } else {
-          pan.innerHTML = '<b>Carte hors ligne</b><div class="ps-loading">Service indisponible.</div>';
-        }
-      } catch (e) {
-        pan.innerHTML = '<b>Carte hors ligne</b><div class="ps-loading">Service indisponible (' + String(e && e.message || e).replace(/</g, "&lt;") + ').</div>';
-      }
-    },
-    // Called when an offline ask failed: try the status once more (the base
-    // may have been built meanwhile), else fall back to the online sources.
-    _offlineTry() {
-      if (this._offlineTried) return;
-      this._offlineTried = true;
-      this._hass.callWS({ type: "call_service", domain: "nives", service: "car_map_status", return_response: true, service_data: {} })
-        .then((res) => { var r = res && res.response; if (r && r.ok) this.offlineReady = !!r.ready; })
-        .catch(() => {});
     },
     // The POI's detail sheet (offline base): everything the OSM tags said,
     // plus the Wikipédia summary when the tags carry a wikidata/wikipedia id
@@ -8804,7 +8737,7 @@
               return (r.pois).map((q) => ({ id: "off" + q.id, kind: q.kind, p: [q.lon, q.lat], label: (q.name || q.brand || "").slice(0, 18), brand: q.brand || "", offId: q.id }));
             })
             .then((items) => { if (key === this.poiKey) keep(items); })
-            .catch(() => { this.offlineReady = false; this._offlineTry(); return fromOverpass(); });
+            .catch(() => { this.offlineReady = false; return fromOverpass(); });
         }
         if (this._hass && this.config.tomtom_pois !== false && kinds) {
         var ttFailed = 0;
@@ -9242,7 +9175,7 @@
       this.alertKey = a.key;
     },
     // ----- live traffic: Igor asks TomTom when a key is set (nives.traffic) -----
-    trafficOn() { return this.config.traffic !== false && !!(this.traffic && this.traffic.enabled); },
+    trafficOn() { return !this.offlineReady && this.config.traffic !== false && !!(this.traffic && this.traffic.enabled); },
     trafficTick(now, moving) {
       if (this.config.traffic === false || !this._hass || !this.pos || this.trafficBusy) return;
       var T = this.traffic, moved = this.trafficCenter ? gpsDist(this.trafficCenter, this.pos) : Infinity;
