@@ -333,6 +333,9 @@ def tile_ok(z: int, x: int, y: int) -> bool:
 # the key). Two generations of style; the first that answers is kept.
 TOMTOM_HOST = "https://api.tomtom.com/"
 STYLE_PATHS = (
+    # Orbis Maps, dark, made for driving — the style Igor used up to 0.38.64
+    # (its usage shows on the key: « Map Display Vector Tiles »).
+    "maps/orbis/assets/styles/0.*/style?apiVersion=1&map=basic_street-dark-driving",
     # Orbis Maps (street, dark)
     "maps/orbis/assets/styles/0.*/style.json?apiVersion=1&map=basic_street-dark",
     # TomTom Maps (Genesis), dark

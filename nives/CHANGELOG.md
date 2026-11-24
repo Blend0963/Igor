@@ -1,5 +1,6 @@
 ## 0.39.8 — Fond TomTom : le journal dit pourquoi
 
+- Carte 3D du téléphone (`basemap: tomtom-3d`) : d'abord le style Orbis **« basic_street-dark-driving »**, celui qu'Igor utilisait jusqu'à la 0.38.64 et dont la clé montre l'usage (« Map Display Vector Tiles ») — l'adresse essayée en premier en 0.39.7 n'était pas la bonne.
 - Fond de carte TomTom (`basemap: tomtom`, `tomtom-3d`) : quand TomTom refuse, le journal de Home Assistant dit maintenant ce que TomTom a répondu pour chaque adresse essayée (code et début du message, la clé masquée), au plus une fois par minute. La carte reçoit une erreur 502 explicite au lieu de recopier le code de TomTom (une « 500 » qui faisait croire à une panne d'Igor).
 
 ## 0.39.7 — Fond de carte sans clé API
