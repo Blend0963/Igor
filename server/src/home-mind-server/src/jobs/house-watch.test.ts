@@ -35,6 +35,20 @@ describe("findIssues", () => {
     ]);
   });
 
+  it("never reports Browser Mod screens as gone (they sleep with their screen)", () => {
+    const seen = new Set(["binary_sensor.browsermodd82760ac45f8c84b", "light.browser_mod_tablette_screen", "switch.videoprojecteur"]);
+    const keys = findIssues(
+      [
+        st("binary_sensor.browsermodd82760ac45f8c84b", "unavailable", {}, 90),
+        st("light.browser_mod_tablette_screen", "unavailable", {}, 90),
+        st("switch.videoprojecteur", "unavailable", {}, 90),
+      ],
+      NOW,
+      seen
+    ).map((f) => f.key);
+    expect(keys).toEqual(["unavailable:switch.videoprojecteur"]);
+  });
+
   it("counts a device as gone only once it was seen working", () => {
     const seen = new Set<string>();
     expect(findIssues([st("light.cuisine", "unavailable", {}, 120)], NOW, seen)).toEqual([]);

@@ -868,8 +868,12 @@
         var col = el("div", "col", cols);
         (c.cards || []).forEach((item) => {
           if (item && item.heading != null && !item.type) { el("div", "hd", col, item.heading); return; }
-          var grow = !!(item && item.grow && item.card);
-          var cfg = grow ? item.card : item;
+          // `- card: {...}` with or without `grow`: the card inside. It used to be
+          // unwrapped only with grow: true, and a plain `- card:` reached Home
+          // Assistant without a type — « Erreur de configuration ».
+          var wrapped = !!(item && item.card && !item.type);
+          var grow = !!(wrapped && item.grow);
+          var cfg = wrapped ? item.card : item;
           var slot = el("div", "slot" + (grow ? " grow" : ""), col);
           var card;
           try {
@@ -5233,6 +5237,11 @@
   //                                         #   fuel, charging, parking, rest, toilets, hospital
   //   street_names: true                    # the road where the car is, at the bottom (false: off)
   //   fps: 20                               # the map drawn that many times a second while moving (lower: lighter)
+  //   local_gps: true                       # on the head unit itself: the arrow follows the screen's own GPS
+  //                                         # (browser geolocation, about once a second, like a navigation app)
+  //                                         # instead of the tracker's round trip through Home Assistant; the
+  //                                         # tracker stays the fallback. Needs HTTPS (or the app's WebView with
+  //                                         # location allowed); ignored when the screen is more than 3 km from the car.
   //   buildings: true                       # false: the map without its buildings (lighter on a head unit)
   //   pixel_ratio: 2                        # at most that many device pixels per pixel (1: lighter)
   //   dead_reckoning: true                  # in a tunnel, on at the OBD speed (speed_entity) for 3 min (false: off)
@@ -5263,7 +5272,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.99";
+  var GPS_CARD_VERSION = "0.39.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -5700,8 +5709,10 @@
     airport: {  color: "#607d8b", name: "Aéroports" },
     car_rental: {  color: "#a1887f", name: "Locations de voitures" }
   };
-  // Default kinds kept short on purpose: offline POI are read from the local SQLite base (free), but every kind drawn is a symbol the head unit renders — a long list costs CPU on a weak autoradio. The full base stays on the server; `pois:` in the card config can list more.
-  var GPS_POI_DEFAULT = ["fuel", "charging", "parking", "rest", "restaurant", "toilets", "hospital", "pharmacy", "atm", "supermarket", "car_repair"];
+  // Every kind by default (the owner's choice: all the places matter). They
+  // come from the local SQLite base, one symbol layer, squares cached on the
+  // screen; `pois:` in the card config can still list fewer.
+  var GPS_POI_DEFAULT = Object.keys(GPS_POI).filter(function (k) { return k !== "camera"; });
   // The pumps' own order: the gazole first, then the Sans Plomb, the ethanol
   // and the gas — the board every station's window reads in this order.
   var GPS_FUELS = [["gazole", "Gazole"], ["sp95", "SP95"], ["sp98", "SP98"], ["e10", "E10"], ["e85", "E85"], ["gplc", "GPL"]];
@@ -6230,7 +6241,33 @@
       this.read();
     }
     connectedCallback() { if (this.map && !this.raf) this.raf = requestAnimationFrame(() => this.tick()); }
-    disconnectedCallback() { cancelAnimationFrame(this.raf); this.raf = null; }
+    disconnectedCallback() {
+      cancelAnimationFrame(this.raf); this.raf = null;
+      if (this.geoWatch != null && navigator.geolocation) { navigator.geolocation.clearWatch(this.geoWatch); this.geoWatch = null; }
+    }
+    // local_gps: the head unit's own GPS, straight from the browser. Every
+    // tracker fix (GPSLogger → Home Assistant → this screen) arrives seconds
+    // late; this one is the position now, as a navigation app gets it.
+    startLocalGps() {
+      if (!this.config.local_gps || this.geoWatch != null || this.geoOff) return;
+      if (!navigator.geolocation || window.isSecureContext === false) { this.geoOff = true; return; }
+      this.geoWatch = navigator.geolocation.watchPosition((pos) => {
+        var c = pos.coords, p = [c.longitude, c.latitude];
+        // A screen far from the car (a phone at home showing this dashboard)
+        // is not the car: its position is ignored.
+        var st = this.pickSource && this.pickSource(), a = (st && st.attributes) || {};
+        if (typeof a.latitude === "number" && gpsDist(p, [a.longitude, a.latitude]) > 3000) { this.localAt = 0; return; }
+        this.localAt = performance.now();
+        this.localSpeed = c.speed != null && isFinite(c.speed) ? c.speed : null;
+        this.accuracy = c.accuracy || 0;
+        this.onFix(p, c.heading != null && isFinite(c.heading) ? c.heading : undefined, this.localSpeed != null ? this.localSpeed : NaN, new Date(pos.timestamp || Date.now()).toISOString());
+      }, (err) => {
+        // Refused (no permission, not HTTPS): the tracker again, for good.
+        if (err && err.code === 1) { this.geoOff = true; if (this.geoWatch != null) navigator.geolocation.clearWatch(this.geoWatch); this.geoWatch = null; }
+        this.localAt = 0;
+      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 });
+    }
+    localLive() { return !!this.localAt && performance.now() - this.localAt < 4000; }
     build() {
       this.root = this.attachShadow({ mode: "open" });
       this.root.innerHTML = scaled(
@@ -6647,9 +6684,14 @@
         return;
       }
       var p = [lon, lat];
-      // How far the GPS may be off (metres), as the companion app says.
-      this.accuracy = Number(a.gps_accuracy != null ? a.gps_accuracy : a.accuracy) || 0;
-      if (!this.fix || this.fix.updated !== st.last_updated) this.onFix(p, course, speed, st.last_updated);
+      this.startLocalGps();
+      // The screen's own GPS is live: the tracker's late fixes are not taken.
+      if (this.localLive()) { if (this.fix) p = this.fix.point; }
+      else {
+        // How far the GPS may be off (metres), as the companion app says.
+        this.accuracy = Number(a.gps_accuracy != null ? a.gps_accuracy : a.accuracy) || 0;
+        if (!this.fix || this.fix.updated !== st.last_updated) this.onFix(p, course, speed, st.last_updated);
+      }
       this.overlays();
       this.lostCheck();
       // A destination set elsewhere (the phone, Igor): guidance there.
@@ -6749,6 +6791,9 @@
       if (src) src.setData(this.trailData());
     }
     speedMps() {
+      // The screen's own GPS speed is the speed now; the car's (OBD, through
+      // Home Assistant) arrives late.
+      if (this.localLive() && this.localSpeed != null) return this.localSpeed;
       var e = this.config.speed_entity && this._hass.states[this.config.speed_entity];
       var kmh = e ? parseFloat(e.state) : NaN;
       if (!isNaN(kmh)) return kmh / 3.6;
@@ -8527,7 +8572,7 @@
       // it - the usual places of the road wide open, the new drawers shut
       // until the layers' panel opens them.
       var c = this.config, saved = null;
-      try { saved = JSON.parse(window.localStorage.getItem("igor-gps-layers") || "null"); } catch (e) { saved = null; }
+      try { saved = JSON.parse(window.localStorage.getItem("igor-gps-layers-2") || "null"); } catch (e) { saved = null; }
       var pois = Array.isArray(c.pois) ? c.pois : GPS_POI_DEFAULT;
       this.layers = { cameras: saved ? (saved.cameras ? "radar" : false) : "radar" };
       Object.keys(GPS_POI).forEach((k) => {
@@ -8546,8 +8591,8 @@
     saveLayers() {
       var v = {};
       Object.keys(GPS_POI).forEach((k) => { v[k] = k === "camera" ? !!(this.layers.cameras && this.layers.cameras !== "off") : !!this.layers[k]; });
-      try { window.localStorage.setItem("igor-gps-layers", JSON.stringify(v)); } catch (e) { /* no storage */ }
-      if (this._hass && this._hass.callWS) this._hass.callWS({ type: "frontend/set_user_data", key: "igor-gps-layers", value: v }).catch(() => {});
+      try { window.localStorage.setItem("igor-gps-layers-2", JSON.stringify(v)); } catch (e) { /* no storage */ }
+      if (this._hass && this._hass.callWS) this._hass.callWS({ type: "frontend/set_user_data", key: "igor-gps-layers-2", value: v }).catch(() => {});
     },
 
     // The house's word, read once the first time the card sees the house:
@@ -8555,7 +8600,7 @@
     syncLayers() {
       if (this.layersSynced || !this._hass || !this._hass.callWS) return;
       this.layersSynced = true;
-      this._hass.callWS({ type: "frontend/get_user_data", key: "igor-gps-layers" }).then((r) => {
+      this._hass.callWS({ type: "frontend/get_user_data", key: "igor-gps-layers-2" }).then((r) => {
         var v = r && r.value;
         if (!v || typeof v !== "object") return;
         var changed = false;
@@ -8565,7 +8610,7 @@
           if (this.layers[k] !== want) { this.layers[k] = want; changed = true; }
         });
         if (!changed) return;
-        try { window.localStorage.setItem("igor-gps-layers", JSON.stringify(this.layers)); } catch (e) { /* no storage */ }
+        try { window.localStorage.setItem("igor-gps-layers-2", JSON.stringify(this.layers)); } catch (e) { /* no storage */ }
         this.applyLayers();
       }).catch(() => { /* no house word */ });
     },

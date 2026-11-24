@@ -1,3 +1,10 @@
+## 0.39.0 — GPS au GPS de l'autoradio, tous les POI, cases du mur réparées, veille sans écrans Browser Mod
+
+- **Carte GPS — `local_gps: true`** : la flèche suit le GPS de l'écran lui-même (géolocalisation du navigateur, environ 1 fois/s, comme une appli de navigation) au lieu de l'aller-retour GPSLogger → Home Assistant → écran, qui arrivait avec plusieurs secondes de retard. La vitesse affichée vient aussi de ce GPS tant qu'il répond (l'OBD passe par Home Assistant et arrive en retard). Les traceurs restent la source de secours ; un écran à plus de 3 km de la voiture (un téléphone à la maison) est ignoré. Nécessite HTTPS et l'autorisation de localisation.
+- **Tous les POI par défaut** (les 29 catégories de la base hors ligne, au lieu de 11). La mémoire des calques de l'écran repart de zéro (nouvelle clé) pour que les anciennes catégories masquées réapparaissent.
+- **`igor-wall` : `- card:` sans `grow`** est maintenant déballé comme avec `grow: true` — ces cases affichaient « Erreur de configuration ».
+- **Veille de la maison** : les entités Browser Mod (écrans de tablette / autoradio qui s'endorment) ne sont plus signalées « ne répond plus » (test ajouté).
+
 ## 0.38.99 — Vouvoiement dans le fil, GPS sans retour en mode lourd, MapLibre local, formulaires voiture
 
 - **Fil de discussion : vouvoiement systématique** (`THREAD_STYLE`, `prompts.ts`) — Igor dit « vous » dans chaque réponse du fil, même si on lui écrit « tu » ou si un souvenir dit « tu ». La voix et Assist ne changent pas (test `prompts.modes.test.ts`).
