@@ -42,6 +42,7 @@ from .const import (
     FRONTEND_CARDS,
     FRONTEND_SCRIPT,
     FRONTEND_URL_BASE,
+    FRESH_URL_BASE,
     RESTART_ISSUE_ID,
     RESTART_NOTIFY_ID,
     SERVICE_HEARD,
@@ -328,9 +329,34 @@ async def _async_setup_frontend(hass: HomeAssistant) -> list[str] | None:
             [StaticPathConfig(FRONTEND_URL_BASE, str(folder), False)]
         )
         store["static_registered"] = True
+    # The two page scripts are served by a view of their own, « no-cache »:
+    # every page load asks Home Assistant whether the file changed (a 304
+    # when it did not). An add-on update then reaches every screen at its
+    # next reload — the companion app's web view used to keep the old copy
+    # under the same address for days, whatever cache was cleared.
+    if not store.get("fresh_view_registered"):
+        from aiohttp import web
+        from homeassistant.components.http import HomeAssistantView
+
+        class FreshScriptView(HomeAssistantView):
+            url = FRESH_URL_BASE + "/{name}"
+            name = "nives:fresh_script"
+            requires_auth = False
+
+            async def get(self, request: web.Request, **_route: str) -> web.StreamResponse:
+                fname = request.match_info.get("name", "")
+                if fname not in (FRONTEND_SCRIPT, FRONTEND_CARDS):
+                    return web.Response(status=404)
+                resp = web.FileResponse(folder / fname)
+                resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+                resp.headers["Content-Type"] = "text/javascript; charset=utf-8"
+                return resp
+
+        hass.http.register_view(FreshScriptView())
+        store["fresh_view_registered"] = True
     digests = await hass.async_add_executor_job(_frontend_digests, folder, (FRONTEND_SCRIPT, FRONTEND_CARDS))
     urls = [
-        f"{FRONTEND_URL_BASE}/{name}?v={integration.version}-{digests.get(name, '')}"
+        f"{FRESH_URL_BASE}/{name}?v={integration.version}-{digests.get(name, '')}"
         for name in (FRONTEND_SCRIPT, FRONTEND_CARDS)
     ]
     for url in urls:
