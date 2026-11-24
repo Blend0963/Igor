@@ -5355,7 +5355,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.39.7";
+  var GPS_CARD_VERSION = "0.40.4";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -10583,6 +10583,7 @@
         // the buttons row
         ".bar { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; height: 100%; min-height: 64px; }",
         ".bar button.b { flex-direction: column; gap: 4px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; --mdc-icon-size: 24px; min-height: 0; min-width: 0; height: 100%; padding: 4px 2px; overflow: hidden; } .bar button.b span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+        ":host(.narrow) .bar button.b span { display: none; } :host(.narrow) .bar button.b { --mdc-icon-size: 26px; }",
         ".bar button.waze { border-color: #59d0e0; color: #59d0e0; } .bar button.waze ha-icon { color: #59d0e0; }",
         ".bar button.red { border-color: " + CAR_BAD + "; color: " + CAR_BAD + "; } .bar button.red ha-icon { color: " + CAR_BAD + "; }",
         ".bar button.on { border-color: var(--acc); color: var(--acc); }",
@@ -10658,6 +10659,7 @@
       }
     }
     buildBar(card) {
+      if (window.ResizeObserver) { this.ro = new ResizeObserver((en) => { var w = en[0] && en[0].contentRect.width; if (w) this.classList.toggle("narrow", w < 600); }); this.ro.observe(this); }
       var bar = el("div", "bar", card);
       var list = this.config.buttons || ["search", "home", "fuel", "stopover", "voice", "stop"];
       var defs = { search: ["mdi:magnify", "chercher"], home: ["mdi:home", "maison"], work: ["mdi:briefcase", "travail"], fuel: ["mdi:gas-station", "stations"], stopover: ["mdi:flag-checkered", "étape"], voice: ["mdi:volume-high", "voix"], stop: ["mdi:stop", "stop"], waze: ["mdi:waze", "waze"] };
@@ -10994,6 +10996,10 @@
         ".cnt { display: inline-block; min-width: 20px; padding: 0 5px; border-radius: 10px; background: #e5323b; color: #fff !important; font-weight: 700; line-height: 20px; font-size: 12px; text-align: center; margin-left: 8px; vertical-align: 3px; }",
         ".cp button.b { flex-direction: row; gap: 6px; min-height: 46px; padding: 0 14px; --mdc-icon-size: 18px; }",
         ".cp .l { border-color: " + CAR_BLUE + "; color: " + CAR_BLUE + "; } .cp .l ha-icon { color: " + CAR_BLUE + "; } .cp .r { border-color: " + CAR_OK + "; color: " + CAR_OK + "; } .cp .r ha-icon { color: " + CAR_OK + "; }",
+        // Narrow (a folded phone, big text): the buttons keep their icon only, the name gets the room.
+        ":host(.narrow) .cp { grid-template-columns: 38px minmax(0, 1fr) auto auto; gap: 8px; } :host(.narrow) .cp .a { width: 36px; height: 36px; font-size: 16px; }",
+        ":host(.narrow) .cp button.b { padding: 0 12px; min-width: 52px; justify-content: center; } :host(.narrow) .cp button.b span { display: none; } :host(.narrow) .cp button.b { --mdc-icon-size: 22px; }",
+        ":host(.narrow) .top { flex-wrap: wrap; } :host(.narrow) .rd { font-size: 10px; }",
         ".rep { position: fixed; inset: 0; z-index: 2147482000; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }",
         ".rep .dl { width: min(760px, 90vw); background: #0d0f12; border: 1px solid var(--line); padding: 16px 18px; color: var(--fg); }",
         ".rep .q { display: flex; align-items: center; gap: 12px; padding: 15px 14px; border: 1px solid var(--line); margin-top: 10px; font-size: 19px; cursor: pointer; } .rep .q small { margin-left: auto; font-size: 12px; color: var(--dim); letter-spacing: .08em; }",
@@ -11008,6 +11014,8 @@
       ].join("\n"));
       var card = el("ha-card", "", this.shadowRoot);
       var c = this.config, cl = c.call || {};
+      // Narrow below 620 px of card: icon-only buttons (the Fold folded, big text).
+      if (window.ResizeObserver) { this.ro = new ResizeObserver((en) => { var w = en[0] && en[0].contentRect.width; if (w) this.classList.toggle("narrow", w < 620); }); this.ro.observe(this); }
       this.callEl = el("div", "call", card); this.callEl.hidden = true;
       var who = el("div", "", this.callEl); this.callSt = el("div", "st", who);
       var w = el("div", "who", who); this.av = el("div", "av", w); this.callN = el("div", "n", w);
@@ -11139,10 +11147,13 @@
         ".abs { border: 1px dashed " + CAR_WARN + "; margin: -12px -14px; padding: 12px 14px; } .abs .tel { color: " + CAR_WARN + "; }",
         ".ph { display: flex; gap: 14px; align-items: center; margin: 6px 0 10px; } .pi { width: 40px; height: 66px; border: 2px solid " + CAR_WARN + "; border-radius: 8px; display: grid; place-items: center; color: " + CAR_WARN + "; --mdc-icon-size: 22px; flex: none; }",
         ".ph b { font-weight: 400; font-size: 17px; display: block; } .ph small { color: var(--dim); font-size: 13px; }",
+        ":host(.narrow) .ph b { font-size: 14px; } :host(.narrow) .ph small { display: none; } :host(.narrow) .pi { width: 30px; height: 50px; } :host(.narrow) .top { flex-wrap: wrap; gap: 4px; }",
+        ":host(.narrow) .fav button.b { font-size: 13px; padding: 8px; gap: 6px; } :host(.narrow) .av { width: 26px; height: 26px; font-size: 13px; }",
         ".wz button.b { min-height: 56px; flex-direction: row; gap: 10px; --mdc-icon-size: 22px; } .wz .go { border-color: #59d0e0; color: #59d0e0; } .wz .go ha-icon { color: #59d0e0; }",
         "[hidden] { display: none !important; }"
       ].join("\n"));
       var card = el("ha-card", "", this.shadowRoot), c = this.config;
+      if (window.ResizeObserver) { this.ro = new ResizeObserver((en) => { var w = en[0] && en[0].contentRect.width; if (w) this.classList.toggle("narrow", w < 360); }); this.ro.observe(this); }
       // On the dock
       this.on = el("div", "", card);
       var t = el("div", "top", this.on); el("div", "h", t, "téléphone"); this.bat = el("div", "tel", t, "sur le socle");

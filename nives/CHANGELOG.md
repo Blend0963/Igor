@@ -1,3 +1,7 @@
+## 0.40.4 — L'autoradio lisible sur un écran étroit
+
+- `igor-messages-card`, `igor-phone-card`, barre GPS de `igor-guide-card` : sur un écran étroit ou en grand texte (un Fold plié), les boutons ne gardent que leur icône et les noms reprennent la place (plus de « J… »). La carte GPS dit sa version (0.40.4) dans ses messages d'erreur.
+
 ## 0.40.3 — Sans téléphone, pas d'itinéraire proposé
 
 - `igor-guide-card`, téléphone absent : le bloc ne répète plus « pas de téléphone » (la colonne Téléphone le dit) ; il montre **où est la voiture** — la rue et la ville (`address` : le capteur « Geocoded location » de l'autoradio).
