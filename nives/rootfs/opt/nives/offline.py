@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import math
 import os
 import shutil
@@ -27,6 +28,8 @@ import time
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+_LOGGER = logging.getLogger(__name__)
 
 GEOFABRIK_BASE = "https://download.geofabrik.de"
 # Autostart (no button): the region downloaded at Home Assistant's startup when
@@ -595,8 +598,11 @@ class OfflineMaps:
         return done
 
     def _build_raster(self, region: str) -> int:
-        self._write_state(step="raster", progress=70)
-        return self._download_raster(region)
+        # CARTO now requires an API key: every tile would be its "API KEY
+        # REQUIRED" picture. No bulk download any more — the card uses the
+        # online raster, or the vector offline styles ("full" / "lite").
+        _LOGGER.warning("Offline raster basemap disabled: CARTO tiles now require an API key; use offline_style full or lite")
+        return self.raster_count()
 
     def _update_blocking(self, region: str, force: bool, raster: bool = False) -> dict:
         region_path = GEOFABRIK_REGIONS.get(region, region)

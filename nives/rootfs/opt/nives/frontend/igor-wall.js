@@ -5265,6 +5265,9 @@
   //   theme: sombre                         # sombre, clair, or auto (light by day, dark at night)
   //   hide_attribution: false
   //   style: <a MapLibre style URL>         # another base map (the theme's CARTO one by default)
+  //   basemap: tomtom                       # TomTom's dark map (PNG), with the TomTom key of Igor's options, relayed by HA
+  //   basemap: tomtom-3d                    # TomTom's vector map, buildings in relief (a phone; heavy for a head unit)
+  //   tiles: https://…/{z}/{x}/{y}.png?key=…  # your own raster base map (tiles_maxzoom: 20, tiles_attribution)
   //   destination: input_text.car_destination  # « lat,lon;Nom »: guidance there (set it from a phone, or the card's flag)
   //   favorites:                            # the flag's quick places
   //     - { name: Maison, zone: zone.home }
@@ -5315,17 +5318,27 @@
   var GPS_MAPLIBRE_CDN = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl";
   var GPS_MAPLIBRE = GPS_MAPLIBRE_LOCAL;
   // The base map online: CARTO's dark raster tiles (OpenStreetMap data).
+  // Online basemap: Esri's "Dark Gray Canvas" raster tiles — free, no API
+  // key (CARTO's dark_all now answers "API KEY REQUIRED" on every tile).
+  // Two layers: the dark base, then the labels drawn on top. Esri serves
+  // them up to z16; MapLibre overzooms beyond. Pure PNG, nothing to decode.
+  var GPS_ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/";
   var GPS_ONLINE_STYLE = {
     version: 8, name: "Igor sombre",
-    sources: { carto: { type: "raster", tileSize: 256, maxzoom: 20,
-      tiles: ["a", "b", "c", "d"].map(function (h) { return "https://" + h + ".basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"; }),
-      attribution: "© OpenStreetMap · © CARTO" } },
+    sources: {
+      fond: { type: "raster", tileSize: 256, maxzoom: 16,
+        tiles: [GPS_ESRI + "World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"],
+        attribution: "© Esri, HERE, Garmin, © OpenStreetMap" },
+      noms: { type: "raster", tileSize: 256, maxzoom: 16,
+        tiles: [GPS_ESRI + "World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"] }
+    },
     // Igor's black: the page's own black under the tiles (never a grey
-    // square while one loads), and CARTO's dark grey pushed to black — more
-    // contrast, less colour — the roads stay readable, the land goes black.
+    // square while one loads), Esri's dark grey land pushed to black, the
+    // roads lifted so they stay readable at a glance.
     layers: [
       { id: "igor-bg", type: "background", paint: { "background-color": "#08090b" } },
-      { id: "carto", type: "raster", source: "carto", paint: { "raster-contrast": 0.35, "raster-brightness-max": 0.92, "raster-saturation": -0.5, "raster-fade-duration": 0 } }
+      { id: "fond", type: "raster", source: "fond", paint: { "raster-contrast": 0.4, "raster-brightness-min": 0, "raster-brightness-max": 1, "raster-saturation": -0.5, "raster-fade-duration": 0 } },
+      { id: "noms", type: "raster", source: "noms", paint: { "raster-fade-duration": 0 } }
     ]
   };
   var GPS_R = 6378137, GPS_PREDICT_S = 4, GPS_MOVING = 0.8, GPS_TRAIL = 600;
@@ -5335,7 +5348,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.39.6";
+  var GPS_CARD_VERSION = "0.39.7";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6302,6 +6315,7 @@
     setConfig(config) {
       if (!config || !config.entity) throw new Error("igor-gps-card: entity est requis (le device_tracker de l'autoradio)");
       this.config = Object.assign({ zoom: 16, pitch: 45, heading_up: true, follow_pause: 15, theme: "sombre", snap: 50 }, config);
+      this._ttStyle = this._tilesStyle = null;
       this.headingUp = this.config.heading_up !== false;
       // compact: the card standing small in a dashboard's view — no buttons
       // (too small for a finger, and the map is a window, not a cockpit), a
@@ -6733,7 +6747,7 @@
       // black for as long as the server had not downloaded the whole region.
       // The local copy is used when it is complete (car_map_update raster: true).
       var os0 = this.config.offline_style;
-      if (!os0 && !(this.offlineInfo && this.offlineInfo.raster_ready)) return GPS_ONLINE_STYLE;
+      if (!os0 && !(this.offlineInfo && this.offlineInfo.raster_ready)) return this.onlineStyle();
       // Offline only, no online mode left: the local raster basemap by default
       // (pre-rendered CARTO dark PNGs served by HA — pixel-identical to the old
       // online CARTO dark, zero vector decode on the head unit, like Waze).
@@ -6744,6 +6758,56 @@
       if (os === "full") return window.location.origin + "/api/nives/offline/style.json";
       if (os === "lite") return window.location.origin + "/api/nives/offline/style-lite.json";
       return window.location.origin + "/api/nives/offline/style-raster.json";
+    }
+    // `tiles:` (card option) — your own raster basemap, e.g. CARTO Dark Matter
+    // or Stadia with your key in the URL: "https://…/{z}/{x}/{y}.png?api_key=…".
+    // The key stays in your dashboard, never in Igor. Labels are in those
+    // tiles already, so Esri's label layer goes away. `tiles_maxzoom` (20).
+    // The 3D map's finish: TomTom's own points of interest hidden (Igor draws
+    // its own — prices, radars — no doubles), and the buildings raised from
+    // their footprints with whatever height the tiles carry (else ~3 floors).
+    tomtom3d(map) {
+      var layers = map.getStyle().layers || [];
+      layers.forEach((l) => {
+        if (l.type === "symbol" && /poi|point.of.interest/i.test(l.id + " " + (l["source-layer"] || ""))) map.setLayoutProperty(l.id, "visibility", "none");
+      });
+      if (layers.some((l) => l.type === "fill-extrusion")) return;
+      var fp = layers.find((l) => l.type === "fill" && l.source && /build/i.test(l.id + " " + (l["source-layer"] || "")));
+      if (!fp || map.getLayer("igor-3d")) return;
+      var h = ["to-number", ["coalesce", ["get", "height"], ["get", "render_height"], ["get", "building_height"],
+        ["*", 3, ["to-number", ["coalesce", ["get", "levels"], ["get", "building:levels"], 3], 3]]], 9];
+      var first = layers.find((l) => l.type === "symbol");
+      map.addLayer({ id: "igor-3d", type: "fill-extrusion", source: fp.source, "source-layer": fp["source-layer"], minzoom: 15,
+        filter: fp.filter || ["all"],
+        paint: { "fill-extrusion-color": "#1d2128", "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 15, 0, 16, h],
+          "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.85 } }, first ? first.id : undefined);
+    }
+    onlineStyle() {
+      var t = this.config.tiles;
+      // `basemap: tomtom` — TomTom's dark map through Home Assistant, with the
+      // key of Igor's options (never in the dashboard). 512 px pictures.
+      // `basemap: tomtom-3d` (the phone): TomTom's vector map, relayed whole
+      // by Home Assistant (style, tiles, fonts, icons), buildings in relief.
+      if (this.config.basemap === "tomtom-3d") return window.location.origin + "/api/nives/tomtom/style.json";
+      if (this.config.basemap === "tomtom") {
+        if (!this._ttStyle) this._ttStyle = {
+          version: 8, name: "Igor sombre",
+          sources: { fond: { type: "raster", tileSize: 512, maxzoom: 22,
+            tiles: [window.location.origin + "/api/nives/basemap/{z}/{x}/{y}.png"], attribution: "© TomTom" } },
+          layers: [GPS_ONLINE_STYLE.layers[0], { id: "fond", type: "raster", source: "fond", paint: { "raster-saturation": -0.3, "raster-fade-duration": 0 } }]
+        };
+        return this._ttStyle;
+      }
+      if (!t) return GPS_ONLINE_STYLE;
+      // The same object every time: the card compares it to decide a reload.
+      if (this._tilesStyle) return this._tilesStyle;
+      return this._tilesStyle = {
+        version: 8, name: "Igor sombre",
+        sources: { fond: { type: "raster", tileSize: 256, maxzoom: +this.config.tiles_maxzoom || 20,
+          tiles: (Array.isArray(t) ? t : [t]).map(String),
+          attribution: this.config.tiles_attribution || "© OpenStreetMap" } },
+        layers: [GPS_ONLINE_STYLE.layers[0], Object.assign({}, GPS_ONLINE_STYLE.layers[1], { paint: { "raster-contrast": 0.35, "raster-brightness-max": 0.92, "raster-saturation": -0.5, "raster-fade-duration": 0 } })]
+      };
     }
     message(text) { this.$("msg").textContent = text; this.$("msg").hidden = !text; }
     // The position to believe: the head unit's (`entity`) or the phone's
@@ -7085,6 +7149,7 @@
         if (this.config.buildings === false) (map.getStyle().layers || []).forEach((l) => {
           if (/building/i.test(l.id + " " + (l["source-layer"] || ""))) map.setLayoutProperty(l.id, "visibility", "none");
         });
+        if (this.config.basemap === "tomtom-3d") this.tomtom3d(map);
         this.styleLayers();
         this.msgShown = null;
         this.message("");

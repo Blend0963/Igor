@@ -1,3 +1,11 @@
+## 0.39.7 — Fond de carte sans clé API
+
+- `igor-gps-card` : CARTO exige désormais une clé API (chaque tuile affichait « API KEY REQUIRED »). Le fond de carte en ligne passe sur **Esri Dark Gray Canvas** : gratuit, sans clé. Le fond sombre et les noms sont deux couches d'images (aucun décodage vectoriel sur l'autoradio), sur le noir d'Igor, routes contrastées.
+- Option de carte **`basemap: tomtom-3d`** (pour un téléphone) : la carte vectorielle de TomTom, relayée en entier par Home Assistant sous `/api/nives/tomtom/…` (style, données, polices, icônes ; la clé est ajoutée au passage et retirée des adresses renvoyées). Les bâtiments sont montés en relief à partir du zoom 15, avec la hauteur fournie par les données, sinon environ 3 étages. Les points d'intérêt propres à TomTom sont masqués : Igor garde les siens (prix, radars), sans doublons. Deux générations de style essayées (Orbis, puis TomTom Maps).
+- Option de carte **`tiles:`** : votre propre fond raster avec votre clé dans l'adresse (ex. CARTO Dark Matter, Stadia Alidade Smooth Dark), `tiles_maxzoom` (20 par défaut), `tiles_attribution`. La clé reste dans votre dashboard.
+- Option de carte **`basemap: tomtom`** : le fond sombre de TomTom (images PNG de 512 px), avec la **clé TomTom déjà saisie dans les options d'Igor** : Home Assistant relaie les images (`/api/nives/basemap/{z}/{x}/{y}.png`), la clé ne va jamais dans un dashboard. Les 600 dernières images restent en mémoire, le navigateur les garde une semaine. Trois adresses TomTom essayées dans l'ordre (Orbis v2, Orbis v1, TomTom Maps « night ») ; la première qui répond est gardée.
+- Cartes hors ligne : le téléchargement du fond raster CARTO est désactivé (il n'aurait enregistré que l'image « API KEY REQUIRED »). Les styles hors ligne vectoriels `full` et `lite` ne changent pas.
+
 ## 0.39.6 — Le téléphone, écran compagnon de l'autoradio
 
 - `igor-wall` : **`publish_tab: input_text.…`** — l'écran écrit la page qu'il montre (l'autoradio). **`follow:`** — l'écran ouvre la page correspondant à celle d'un autre (`entity`, `views` : page de l'autre → page de celui-ci), seulement quand la page voulue change ; `enabled` (un `input_boolean`) le coupe ; `call` (l'état du téléphone) ouvre une page dédiée pendant une sonnerie ou un appel, puis revient. Testé : changement d'onglet, appel, fin d'appel, suivi coupé, publication.

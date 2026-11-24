@@ -487,6 +487,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     await _async_register_notifications(hass)
     _async_register_trip_map(hass)
     _async_register_traffic(hass)
+    _async_register_basemap(hass)
     _async_register_route(hass)
     _async_register_car(hass)
     _async_register_offline_maps(hass)
@@ -845,6 +846,127 @@ def _traffic_key(hass: HomeAssistant) -> str | None:
         if key:
             return key
     return None
+
+
+@callback
+def _async_register_basemap(hass: HomeAssistant) -> None:
+    """/api/nives/basemap/{z}/{x}/{y}.png: TomTom's dark raster map for the GPS
+    card (`basemap: tomtom`), fetched with the key from Igor's options — the
+    key never reaches a dashboard. 404 without a key. Recent tiles are kept in
+    memory (the same streets every day), and the browser keeps them a week."""
+    store = hass.data.setdefault(DOMAIN, {})
+    if store.get("basemap_view_registered"):
+        return
+    from collections import OrderedDict
+
+    from aiohttp import web
+    from homeassistant.components.http import HomeAssistantView
+
+    from .traffic import basemap_urls, tile_ok
+
+    cache: OrderedDict[tuple[int, int, int], bytes] = OrderedDict()
+    state = {"first": 0}
+    headers = {"Content-Type": "image/png", "Cache-Control": "private, max-age=604800"}
+
+    class BasemapTileView(HomeAssistantView):
+        url = "/api/nives/basemap/{z}/{x}/{y}.png"
+        name = "api:nives:basemap"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            try:
+                z, x, y = (int(request.match_info[k]) for k in ("z", "x", "y"))
+            except ValueError:
+                return web.Response(status=400)
+            if not tile_ok(z, x, y):
+                return web.Response(status=400)
+            key = _traffic_key(hass)
+            if not key:
+                return web.Response(status=404, text="clé TomTom absente des options d'Igor")
+            hit = cache.get((z, x, y))
+            if hit is not None:
+                cache.move_to_end((z, x, y))
+                return web.Response(body=hit, headers=headers)
+            session = async_get_clientsession(hass)
+            last = 502
+            for i, url in basemap_urls(key, z, x, y, state["first"]):
+                try:
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as r:
+                        body = await r.read()
+                        if r.status == 200 and body[:8] == b"\x89PNG\r\n\x1a\n":
+                            state["first"] = i
+                            cache[(z, x, y)] = body
+                            while len(cache) > 600:
+                                cache.popitem(last=False)
+                            return web.Response(body=body, headers=headers)
+                        last = r.status
+                except (aiohttp.ClientError, TimeoutError):
+                    last = 504
+            return web.Response(status=last if last >= 400 else 502)
+
+    # The 3D map (`basemap: tomtom-3d`, the phone): TomTom's vector style and
+    # everything it asks for, relayed under /api/nives/tomtom/…, key added.
+    from .traffic import STYLE_PATHS, relay_ok, rewrite_json, strip_key, with_key
+
+    relay_cache: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
+    style_state = {"first": 0}
+    prefix = "/api/nives/tomtom/"
+
+    class TomTomRelayView(HomeAssistantView):
+        url = "/api/nives/tomtom/{path:.+}"
+        name = "api:nives:tomtom"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            key = _traffic_key(hass)
+            if not key:
+                return web.Response(status=404, text="clé TomTom absente des options d'Igor")
+            base = str(request.url.with_path(prefix).with_query(None))
+            raw = request.rel_url.raw_path[len(prefix):]
+            qs = request.rel_url.raw_query_string
+            session = async_get_clientsession(hass)
+            if raw == "style.json":
+                n = len(STYLE_PATHS)
+                order = [style_state["first"]] + [i for i in range(n) if i != style_state["first"]]
+                last = 502
+                for i in order:
+                    try:
+                        async with session.get(with_key(STYLE_PATHS[i], key), timeout=aiohttp.ClientTimeout(total=10)) as r:
+                            text = await r.text()
+                            if r.status == 200 and text.lstrip().startswith("{"):
+                                style_state["first"] = i
+                                return web.Response(text=rewrite_json(text, base), content_type="application/json",
+                                                    headers={"Cache-Control": "private, max-age=3600"})
+                            last = r.status
+                    except (aiohttp.ClientError, TimeoutError):
+                        last = 504
+                _LOGGER.warning("Carte 3D : TomTom n'a fourni aucun style (dernière réponse %s)", last)
+                return web.Response(status=last if last >= 400 else 502)
+            if not relay_ok(raw):
+                return web.Response(status=403)
+            pq = raw + ("?" + strip_key(qs) if qs else "")
+            hit = relay_cache.get(pq)
+            if hit is not None:
+                relay_cache.move_to_end(pq)
+                return web.Response(body=hit[0], content_type=hit[1], headers={"Cache-Control": "private, max-age=86400"})
+            try:
+                async with session.get(with_key(pq, key), timeout=aiohttp.ClientTimeout(total=10)) as r:
+                    body = await r.read()
+                    ctype = (r.headers.get("Content-Type") or "application/octet-stream").split(";")[0].strip()
+                    if r.status != 200:
+                        return web.Response(status=r.status)
+            except (aiohttp.ClientError, TimeoutError):
+                return web.Response(status=504)
+            if "json" in ctype:
+                body = rewrite_json(body.decode("utf-8", "replace"), base).encode()
+            relay_cache[pq] = (body, ctype)
+            while len(relay_cache) > 1500:
+                relay_cache.popitem(last=False)
+            return web.Response(body=body, content_type=ctype, headers={"Cache-Control": "private, max-age=86400"})
+
+    hass.http.register_view(BasemapTileView())
+    hass.http.register_view(TomTomRelayView())
+    store["basemap_view_registered"] = True
 
 
 @callback

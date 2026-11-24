@@ -15,6 +15,7 @@ card asks Home Assistant (logged in, administrators only), which asks TomTom.
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 INCIDENTS_URL = "https://api.tomtom.com/traffic/services/5/incidentDetails"
@@ -293,3 +294,83 @@ def _parse_one(r: dict) -> dict[str, Any] | None:
         "delay": float(summary.get("trafficDelayInSeconds") or 0),
         "steps": steps,
     }
+
+
+# ----- the basemap: TomTom's dark raster map, relayed with the same key -----
+# The card never sees the key: it asks /api/nives/basemap/{z}/{x}/{y}.png
+# (Home Assistant, logged in), which asks TomTom. Pre-drawn 512 px PNG = nothing
+# for the head unit to compute. TomTom has three generations of this API; the
+# first that answers with a picture is kept for the following tiles.
+BASEMAP_URLS = (
+    # Orbis Maps v2
+    "https://api.tomtom.com/maps/orbis/display/raster/tile/{z}/{x}/{y}"
+    "?apiVersion=2&style=street-dark&tileSize=512&key={key}",
+    # Orbis Maps v1
+    "https://api.tomtom.com/maps/orbis/map-display/tile/{z}/{x}/{y}.png"
+    "?apiVersion=1&style=street-dark&tileSize=512&key={key}",
+    # TomTom Maps (Genesis): the « night » style
+    "https://api.tomtom.com/map/1/tile/basic/night/{z}/{x}/{y}.png?tileSize=512&key={key}",
+)
+BASEMAP_MAXZOOM = 22
+
+
+def basemap_urls(key: str, z: int, x: int, y: int, first: int = 0) -> list[tuple[int, str]]:
+    """The tile's addresses, the one known to work first: [(index, url), …]."""
+    order = [first] + [i for i in range(len(BASEMAP_URLS)) if i != first]
+    return [(i, BASEMAP_URLS[i].format(z=z, x=x, y=y, key=key)) for i in order]
+
+
+def tile_ok(z: int, x: int, y: int) -> bool:
+    """A real tile address (no request to TomTom for nonsense)."""
+    return 0 <= z <= BASEMAP_MAXZOOM and 0 <= x < 2 ** z and 0 <= y < 2 ** z
+
+
+# ----- the 3D map (phone): TomTom's vector style, relayed whole -----
+# A vector map is more than pictures: a style, its tiles, fonts and icons, all
+# at api.tomtom.com and all wanting the key. Home Assistant relays every one of
+# them under /api/nives/tomtom/…, adds the key on the way out, and rewrites the
+# addresses inside the JSON it relays so the browser never meets TomTom (nor
+# the key). Two generations of style; the first that answers is kept.
+TOMTOM_HOST = "https://api.tomtom.com/"
+STYLE_PATHS = (
+    # Orbis Maps (street, dark)
+    "maps/orbis/assets/styles/0.*/style.json?apiVersion=1&map=basic_street-dark",
+    # TomTom Maps (Genesis), dark
+    "style/1/style/22.2.1-*?map=2/basic_street-dark",
+)
+# Only these corners of api.tomtom.com go through the relay (maps, not every API).
+RELAY_PREFIXES = ("maps/", "map/", "style/")
+
+_KEY_RE = re.compile(r"([?&])key=[^&\"'\s]*(&)?")
+
+
+def strip_key(url: str) -> str:
+    """An address without its key= (the relay puts it back)."""
+    return _KEY_RE.sub(lambda m: m.group(1) if m.group(2) else "", url)
+
+
+def with_key(path_query: str, key: str) -> str:
+    """api.tomtom.com/<path?query> with the key."""
+    pq = strip_key(path_query)
+    return TOMTOM_HOST + pq + ("&" if "?" in pq else "?") + "key=" + key
+
+
+def relay_ok(path: str) -> bool:
+    return path.startswith(RELAY_PREFIXES) and ".." not in path
+
+
+def rewrite_json(text: str, base: str) -> str:
+    """TomTom's addresses → the relay's (base ends with '/'), keys removed."""
+    text = text.replace("https:\\/\\/api.tomtom.com\\/", TOMTOM_HOST)
+    out, i = [], 0
+    while True:
+        j = text.find(TOMTOM_HOST, i)
+        if j < 0:
+            out.append(text[i:])
+            return "".join(out)
+        out.append(text[i:j])
+        k = j
+        while k < len(text) and text[k] not in "\"' \n":
+            k += 1
+        out.append(base + strip_key(text[j + len(TOMTOM_HOST):k]))
+        i = k
