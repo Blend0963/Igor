@@ -1,3 +1,9 @@
+## 0.43.3 — Les bâtiments en 3D pour de bon, la carte jusqu'au bord
+
+- `igor-gps-card` (`basemap: tomtom-3d`) : les bâtiments en relief sont maintenant construits par Igor à partir de ceux que TomTom dessine à plat — mêmes tuiles, mêmes contours, élevés à leur hauteur (`height` d'Orbis, `ground_height` pour ce qui ne touche pas le sol ; ceux marqués `extrude: false` restent plats). Les couches 3D du style, qui ne montraient rien, sont mises de côté. Visibles dès le zoom 14,5, éclairés, plus clairs en hauteur. Testé avec le moteur de carte (MapLibre) sur des bâtiments d'essai.
+- `display_only` : la carte occupe tout l'écran, bord à bord, y compris la bande de l'appareil photo que Home Assistant laissait vide.
+- `debug: true` dit aussi combien de bâtiments en relief sont à l'écran et quelles informations les tuiles donnent.
+
 ## 0.43.2 — La 3D bien visible sur le téléphone
 
 - `igor-gps-card` (`basemap: tomtom-3d`) : les bâtiments en relief de TomTom sont pris en main au lieu d'être laissés tels quels — visibles dès le zoom 14,5 (une vue inclinée voit loin), opaques, éclairés de côté avec le pied plus sombre, et un peu plus clairs que le sol quand le style sombre les fondait dans la nuit. Si le style n'a pas de couche 3D, Igor élève lui-même les bâtiments (dès le zoom 14,5 aussi).

@@ -5393,7 +5393,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.43.2";
+  var GPS_CARD_VERSION = "0.43.3";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6663,7 +6663,11 @@
       // the head unit (the shared destination) and said there (voice_to).
       if (this.config.display_only) {
         var dsp = document.createElement("style");
-        dsp.textContent = ".btns,.nav,.glow,.side,.street,.toast,.ask,.panel:not(.rpanel),.lpanel,.eta,.hud,.snap,.maplibregl-ctrl-bottom-right,.maplibregl-ctrl-bottom-left { display: none !important; }";
+        dsp.textContent = ".btns,.nav,.glow,.side,.street,.toast,.ask,.panel:not(.rpanel),.lpanel,.eta,.hud,.snap,.maplibregl-ctrl-bottom-right,.maplibregl-ctrl-bottom-left { display: none !important; }" +
+          // The whole screen, edge to edge — under the camera's notch too:
+          // Home Assistant keeps that strip empty (its safe area), the map
+          // is laid over the page instead, from corner to corner.
+          " #card { position: fixed !important; inset: 0 !important; width: auto !important; height: auto !important; z-index: 40 !important; border-radius: 0 !important; margin: 0 !important; }";
         this.root.appendChild(dsp);
       }
       var mlCss = this.root.querySelector("link[data-ml-css]");
@@ -6852,38 +6856,49 @@
         try { if (map.setSky) map.setSky({ "sky-color": "#0b0e14", "horizon-color": "#1b2433", "fog-color": "#08090b", "sky-horizon-blend": 0.6, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.4 }); } catch (e) { /* older engine */ }
         try { map.setLight({ anchor: "viewport", color: "#cfd8e6", intensity: 0.45, position: [1.3, 210, 35] }); } catch (e) { /* no light */ }
       }
-      // TomTom's own buildings in relief, made to show: from zoom 14.5 (a
-      // pitched view sees far), opaque, lit from the side with a darker
-      // foot, a touch lighter than the ground so the volumes read at night.
-      var ext = layers.filter((l) => l.type === "fill-extrusion");
-      this.diag3d = ext.length ? ext.length + " couches 3D TomTom" : "";
-      if (ext.length) {
-        ext.forEach((l) => {
-          try {
-            map.setLayerZoomRange(l.id, Math.min(l.minzoom != null ? l.minzoom : 15, 14.5), 24);
-            map.setLayoutProperty(l.id, "visibility", "visible");
-            map.setPaintProperty(l.id, "fill-extrusion-opacity", this.hq() ? 0.96 : 0.9);
-            map.setPaintProperty(l.id, "fill-extrusion-vertical-gradient", true);
-            // A colour too close to the ground (the dark style): lifted a little.
-            var col = map.getPaintProperty(l.id, "fill-extrusion-color");
-            if (typeof col !== "string" || /^#(0|1)[0-9a-f]{5}$/i.test(col) || /^#(0|1)[0-9a-f]{2}$/i.test(col)) map.setPaintProperty(l.id, "fill-extrusion-color", this.hq() ? "#2b323d" : "#262c35");
-          } catch (e) { /* a layer the engine refuses: left as it is */ }
-        });
-        if (this.config.debug) this.message("relief : " + this.diag3d);
-        return;
-      }
-      var fp = layers.find((l) => l.type === "fill" && l.source && /build/i.test(l.id + " " + (l["source-layer"] || "")));
-      if (!fp || map.getLayer("igor-3d")) return;
+      // The buildings in relief, built by Igor from the buildings TomTom
+      // draws flat: the same tiles, the same polygons, raised to their own
+      // height (Orbis: `height` in metres, `ground_height` for what stands
+      // above the ground, `extrude` false: not to be raised). The style's own
+      // 3D layers, when it has any, are put away: one relief, not two.
+      var hq = this.hq(), flats = layers.filter((l) => l.type === "fill" && /build/i.test(l.id + " " + (l["source-layer"] || "")));
+      layers.filter((l) => l.type === "fill-extrusion").forEach((l) => { try { map.setLayoutProperty(l.id, "visibility", "none"); } catch (e) { /* kept */ } });
       var h = ["to-number", ["coalesce", ["get", "height"], ["get", "render_height"], ["get", "building_height"],
-        ["*", 3, ["to-number", ["coalesce", ["get", "levels"], ["get", "building:levels"], 3], 3]]], 9];
-      var first = layers.find((l) => l.type === "symbol");
-      this.diag3d = "bâtiments en relief par Igor (" + (fp["source-layer"] || fp.id) + ")";
-      if (this.config.debug) this.message("relief : " + this.diag3d);
-      map.addLayer({ id: "igor-3d", type: "fill-extrusion", source: fp.source, "source-layer": fp["source-layer"], minzoom: 14.5,
-        filter: fp.filter || ["all"],
-        paint: { "fill-extrusion-color": this.hq() ? ["interpolate", ["linear"], h, 0, "#232932", 30, "#2b323d", 80, "#36404e"] : "#262c35",
-          "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 14.5, 0, 15.5, h],
-          "fill-extrusion-base": 0, "fill-extrusion-opacity": this.hq() ? 0.95 : 0.85, "fill-extrusion-vertical-gradient": true } }, first ? first.id : undefined);
+        ["*", 3.2, ["to-number", ["coalesce", ["get", "levels"], ["get", "building:levels"], ["get", "number_of_floors"], 3], 3]]], 10];
+      var base = ["to-number", ["coalesce", ["get", "ground_height"], ["get", "min_height"], ["get", "render_min_height"], 0], 0];
+      var raise = ["!=", ["to-string", ["get", "extrude"]], "false"];
+      var first = layers.find((l) => l.type === "symbol"), done = {}, made = [];
+      flats.forEach((fp, n) => {
+        var key = fp.source + "|" + (fp["source-layer"] || "");
+        if (done[key] || !fp.source) return;
+        done[key] = true;
+        var id = "igor-3d" + (n ? "-" + n : "");
+        if (map.getLayer(id)) { made.push(id); return; }
+        var spec = { id: id, type: "fill-extrusion", source: fp.source, minzoom: 14.5,
+          paint: { "fill-extrusion-color": hq ? ["interpolate", ["linear"], h, 0, "#262d37", 25, "#2f3743", 60, "#3a4452", 150, "#475366"] : "#2a313b",
+            "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 14.5, 0, 15.5, h],
+            "fill-extrusion-base": ["interpolate", ["linear"], ["zoom"], 14.5, 0, 15.5, base],
+            "fill-extrusion-opacity": hq ? 0.96 : 0.9, "fill-extrusion-vertical-gradient": true } };
+        if (fp["source-layer"]) spec["source-layer"] = fp["source-layer"];
+        // The flat layer's own filter kept (which polygons are buildings),
+        // with « not to be raised » left out — unless it is written the old
+        // way (the two cannot be mixed): then it is kept alone.
+        var legacy = (f) => Array.isArray(f) && (/^(all|any|none)$/.test(f[0]) ? f.slice(1).some(legacy) : /^(==|!=|<|>|<=|>=|in|!in|!has)$/.test(f[0]) && typeof f[1] === "string");
+        var filter = !fp.filter ? raise : legacy(fp.filter) ? fp.filter : ["all", fp.filter, raise];
+        try { map.addLayer(Object.assign({}, spec, { filter: filter }), first ? first.id : undefined); } catch (e) { /* refused: told below */ }
+        if (map.getLayer(id)) made.push(id);
+      });
+      this.diag3d = made.length ? "bâtiments en relief par Igor (" + flats.map((l) => l["source-layer"] || l.id).filter((v, i, a) => a.indexOf(v) === i).join(", ") + ")" : flats.length ? "bâtiments trouvés mais relief refusé par le moteur" : "aucune couche de bâtiments dans le style";
+      if (this.config.debug) {
+        this.message("relief : " + this.diag3d);
+        // Once drawn: how many raised buildings are on screen, and their heights.
+        map.once("idle", () => {
+          var f = [];
+          try { f = made.length ? map.queryRenderedFeatures({ layers: made }) : []; } catch (e) { f = []; }
+          var props = f[0] ? Object.keys(f[0].properties || {}).slice(0, 8).join(",") : "";
+          this.message("relief : " + this.diag3d + " · " + f.length + " à l'écran" + (props ? " · " + props : ""));
+        });
+      }
     }
     onlineStyle() {
       var t = this.config.tiles;
