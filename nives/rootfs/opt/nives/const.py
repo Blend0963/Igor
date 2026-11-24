@@ -132,6 +132,8 @@ DEFAULT_VOICE_DISPLAY = True
 # Where the frontend script is served from, and the attribute that marks the
 # sensor so the script finds it whatever the user renamed its entity id to.
 FRONTEND_URL_BASE = "/nives_static"
+# The two page scripts, served « no-cache » by their own view (fresh after every update).
+FRESH_URL_BASE = "/nives_scripts"
 FRONTEND_SCRIPT = "igor-tablet.js"
 # The dashboard cards (igor-wall, its status bar, the journal, Docker, network
 # and camera cards) and the header hiding of the "Igor Journal (tablette)" theme.

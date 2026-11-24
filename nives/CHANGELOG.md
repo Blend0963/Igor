@@ -1,3 +1,7 @@
+## 0.40.5 — Chaque mise à jour arrive vraiment sur les écrans
+
+- Les deux scripts des pages (`igor-wall.js`, `igor-tablet.js`) sont servis par Igor lui-même sous `/nives_scripts/…`, en « no-cache » : à chaque chargement de page, l'écran demande à Home Assistant si le fichier a changé. L'application compagnon (web view Android) gardait sinon l'ancienne copie des jours entiers sous la même adresse, quels que soient les caches vidés — les nouveautés des 0.40.2 à 0.40.4 n'apparaissaient pas. Un dernier redémarrage complet de Home Assistant est nécessaire pour l'activer ; ensuite, plus jamais.
+
 ## 0.40.4 — L'autoradio lisible sur un écran étroit
 
 - `igor-messages-card`, `igor-phone-card`, barre GPS de `igor-guide-card` : sur un écran étroit ou en grand texte (un Fold plié), les boutons ne gardent que leur icône et les noms reprennent la place (plus de « J… »). La carte GPS dit sa version (0.40.4) dans ses messages d'erreur.
