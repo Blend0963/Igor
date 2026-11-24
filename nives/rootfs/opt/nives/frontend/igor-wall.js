@@ -5320,6 +5320,7 @@
   //   fullscreen_button: false              # no fullscreen button (a dashboard that is the map already)
   //   display_only: true                    # a second screen: the map only (no button, banner or sign); a tap on the map still picks a place or a route
   //   base_pois: true                       # with basemap: tomtom-3d, TomTom's own places (Igor adds only cameras and stations with prices)
+  //   debug: true                           # says in the message band how the relief was made (TomTom's 3D layers, or Igor's)
   //   voice_to: input_text.car_voice        # what the guidance says goes there (« ms|kind|text »), said by the head unit's igor-guide-card
   //   publish_ahead: input_text.car_ahead   # the radar within reach and what lies ahead on the route, for igor-drive-card
   //   publish_routes: input_text.car_routes  # the routes offered, for the head unit to choose (route_choice: input_text.car_choice brings the answer)
@@ -5392,7 +5393,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.42.1";
+  var GPS_CARD_VERSION = "0.43.2";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6851,16 +6852,37 @@
         try { if (map.setSky) map.setSky({ "sky-color": "#0b0e14", "horizon-color": "#1b2433", "fog-color": "#08090b", "sky-horizon-blend": 0.6, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.4 }); } catch (e) { /* older engine */ }
         try { map.setLight({ anchor: "viewport", color: "#cfd8e6", intensity: 0.45, position: [1.3, 210, 35] }); } catch (e) { /* no light */ }
       }
-      if (layers.some((l) => l.type === "fill-extrusion")) return;
+      // TomTom's own buildings in relief, made to show: from zoom 14.5 (a
+      // pitched view sees far), opaque, lit from the side with a darker
+      // foot, a touch lighter than the ground so the volumes read at night.
+      var ext = layers.filter((l) => l.type === "fill-extrusion");
+      this.diag3d = ext.length ? ext.length + " couches 3D TomTom" : "";
+      if (ext.length) {
+        ext.forEach((l) => {
+          try {
+            map.setLayerZoomRange(l.id, Math.min(l.minzoom != null ? l.minzoom : 15, 14.5), 24);
+            map.setLayoutProperty(l.id, "visibility", "visible");
+            map.setPaintProperty(l.id, "fill-extrusion-opacity", this.hq() ? 0.96 : 0.9);
+            map.setPaintProperty(l.id, "fill-extrusion-vertical-gradient", true);
+            // A colour too close to the ground (the dark style): lifted a little.
+            var col = map.getPaintProperty(l.id, "fill-extrusion-color");
+            if (typeof col !== "string" || /^#(0|1)[0-9a-f]{5}$/i.test(col) || /^#(0|1)[0-9a-f]{2}$/i.test(col)) map.setPaintProperty(l.id, "fill-extrusion-color", this.hq() ? "#2b323d" : "#262c35");
+          } catch (e) { /* a layer the engine refuses: left as it is */ }
+        });
+        if (this.config.debug) this.message("relief : " + this.diag3d);
+        return;
+      }
       var fp = layers.find((l) => l.type === "fill" && l.source && /build/i.test(l.id + " " + (l["source-layer"] || "")));
       if (!fp || map.getLayer("igor-3d")) return;
       var h = ["to-number", ["coalesce", ["get", "height"], ["get", "render_height"], ["get", "building_height"],
         ["*", 3, ["to-number", ["coalesce", ["get", "levels"], ["get", "building:levels"], 3], 3]]], 9];
       var first = layers.find((l) => l.type === "symbol");
-      map.addLayer({ id: "igor-3d", type: "fill-extrusion", source: fp.source, "source-layer": fp["source-layer"], minzoom: 15,
+      this.diag3d = "bâtiments en relief par Igor (" + (fp["source-layer"] || fp.id) + ")";
+      if (this.config.debug) this.message("relief : " + this.diag3d);
+      map.addLayer({ id: "igor-3d", type: "fill-extrusion", source: fp.source, "source-layer": fp["source-layer"], minzoom: 14.5,
         filter: fp.filter || ["all"],
-        paint: { "fill-extrusion-color": this.hq() ? ["interpolate", ["linear"], h, 0, "#1a1e25", 30, "#242a33", 80, "#2e3642"] : "#1d2128",
-          "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 15, 0, 16, h],
+        paint: { "fill-extrusion-color": this.hq() ? ["interpolate", ["linear"], h, 0, "#232932", 30, "#2b323d", 80, "#36404e"] : "#262c35",
+          "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 14.5, 0, 15.5, h],
           "fill-extrusion-base": 0, "fill-extrusion-opacity": this.hq() ? 0.95 : 0.85, "fill-extrusion-vertical-gradient": true } }, first ? first.id : undefined);
     }
     onlineStyle() {
@@ -10593,8 +10615,139 @@
   //   phone: binary_sensor.phone_in_car    # absent: no route offered (Chercher, Maison, Stations, Étape greyed); the block shows where the car is:
   //   address: sensor.headunit_geocoded_location   # the street and the town
   //   ahead: input_text.car_ahead          # the map's heartbeat (its publish_ahead): silent 20 s while guided → « guidage interrompu », Waze offered
+  //   relay: device_tracker.headunit       # … or the head unit takes the trip over itself (mode dégradé), on its own GPS
+  //   relay_speed: sensor.car_speed        # km/h (OBD): the car carried on between two fixes
   //   weather: weather.home                # the weather, at the foot of the block in every state
   //   mode: buttons                        # the row of GPS buttons instead of the guidance
+  // ----- the head unit's own guidance (mode dégradé) -----
+  // The phone's map gone mid-trip (off its dock, closed, battery out): the
+  // head unit takes the same destination and guides by itself — no map drawn,
+  // the route asked from Igor (TomTom, as the phone), the car followed on
+  // its own GPS (the companion app's device_tracker, a fix every few seconds)
+  // and carried on between two fixes with the OBD speed. Distances rounded,
+  // « ≈ », the announcements a little earlier. What lies ahead (the official
+  // radars along the route, jams, tolls) goes to igor-drive-card's frieze on
+  // window.__igorRelay, in publish_ahead's own words.
+  // A short entrance for a block that changes (opacity and a few pixels:
+  // the head unit's GPU does it alone, no layout). `motion: false` on a card:
+  // none at all.
+  function carIn(node, card, dy, ms) {
+    if (!node || !node.animate || (card && card.config && card.config.motion === false)) return;
+    try { node.animate([{ opacity: 0, transform: "translateY(" + (dy || 0) + "px)" }, { opacity: 1, transform: "none" }], { duration: ms || 250, easing: "ease-out" }); } catch (e) { /* no animation */ }
+  }
+  class CarRelay {
+    constructor(card) { this.card = card; this.R = null; this.spoken = {}; }
+    hass() { return this.card._hass; }
+    fix() {
+      var c = this.card.config, h = this.hass(), p = h && h.states[c.relay];
+      if (!p || p.attributes.latitude == null || p.attributes.longitude == null) return null;
+      var hd = Number(p.attributes.course != null ? p.attributes.course : p.attributes.bearing);
+      return { p: [Number(p.attributes.longitude), Number(p.attributes.latitude)], t: String(p.last_updated || p.last_changed || ""), head: isFinite(hd) ? hd : null, acc: Number(p.attributes.gps_accuracy) || 0 };
+    }
+    // m/s: the OBD speed (`relay_speed`, km/h), else the tracker's own.
+    speed() {
+      var c = this.card.config, h = this.hass(), s = c.relay_speed && h && h.states[c.relay_speed], v = s ? parseFloat(s.state) : NaN;
+      if (isFinite(v)) return Math.max(0, v / 3.6);
+      var p = h && h.states[c.relay], a = p ? Number(p.attributes.speed) : NaN;
+      return isFinite(a) ? Math.max(0, a) : 0;
+    }
+    route(dest) {
+      var f = this.fix(), h = this.hass();
+      if (!f || !h || !h.callWS) return Promise.resolve(false);
+      this.dest = dest; this.busy = true; this.routeAt = Date.now();
+      var v = this.speed(), from = f.p;
+      if (v > 3 && f.head != null) from = gpsProject(from, f.head, Math.min(80, v * 2));
+      return h.callWS({ type: "call_service", domain: "nives", service: "route", return_response: true,
+        service_data: Object.assign({ from: [from[1], from[0]], to: [dest.lat, dest.lon], via: (dest.via || []).map((x) => [x.lat, x.lon]), avoid: [], avoid_types: [], route_type: "fastest" },
+          v > 2 && f.head != null ? { heading: Math.round(f.head) % 360 } : {}) })
+        .then((res) => res && res.response).catch(() => null).then((r) => {
+          this.busy = false;
+          if (!r || !r.ok || !r.route || !r.route.coords || r.route.coords.length < 2) return false;
+          var R0 = r.route, co = R0.coords, cum = [0];
+          for (var i = 1; i < co.length; i++) cum.push(cum[i - 1] + gpsDist(co[i - 1], co[i]));
+          var at = (ix) => cum[Math.max(0, Math.min(ix, co.length - 1))];
+          var steps = (R0.steps || []).map((x) => {
+            var s = gpsTomTomStep(x), o = x.loc ? gpsOnLine(x.loc, co) : null;
+            s.at = o ? cum[o.seg - 1] + gpsDist(co[o.seg - 1], o.point) : 0; s.m = String(x.maneuver || "");
+            return s;
+          }).filter((s) => s.m !== "DEPART");
+          var tolls = [];
+          (R0.tolls || []).forEach((sp) => { tolls.push(at(sp[0])); tolls.push(at(sp[1])); });
+          this.R = { co: co, cum: cum, total: cum[cum.length - 1], steps: steps, duration: Number(R0.duration) || 0, delay: Number(R0.delay) || 0,
+            jams: (R0.jams || []).map((j) => ({ a: at(j.start), b: at(j.end), level: j.level, delay: j.delay || 0 })), tolls: tolls };
+          this.seg = 1; this.fixKey = null; this.fixAlong = 0; this.fixAt = Date.now(); this.off = 0; this.camAlong = null; this.camFrom = null;
+          return true;
+        });
+    }
+    // Where the car stands along the route, carried on with the speed
+    // between two fixes (at most 10 s: an older fix is not trusted further).
+    locate() {
+      var R = this.R, f = this.fix();
+      if (!R || !f) return null;
+      if (f.t !== this.fixKey) {
+        this.fixKey = f.t;
+        var lo = Math.max(1, this.seg - 30), hi = Math.min(R.co.length, this.seg + 400);
+        var o = gpsOnLine(f.p, R.co.slice(lo - 1, hi));
+        if (o) o.seg += lo - 1;
+        if (!o || o.dist > 150) { var o2 = gpsOnLine(f.p, R.co); if (o2 && (!o || o2.dist < o.dist)) o = o2; }
+        if (o) { this.seg = o.seg; this.fixAlong = R.cum[o.seg - 1] + gpsDist(R.co[o.seg - 1], o.point); this.fixAt = Date.now(); }
+        // Off the route: two fixes in a row further than 60 m (or the fix's own error).
+        this.off = o && o.dist > Math.max(60, f.acc * 1.5) ? this.off + 1 : 0;
+      }
+      var dt = Math.min(10, (Date.now() - this.fixAt) / 1000);
+      this.along = Math.min(R.total, this.fixAlong + this.speed() * dt);
+      return this.along;
+    }
+    guide() {
+      var R = this.R, along = this.locate();
+      if (!R || along == null) return null;
+      var left = Math.max(0, R.total - along), i = -1;
+      for (var k = 0; k < R.steps.length; k++) if (R.steps[k].at > along + 8 && !/^ARRIVE/.test(R.steps[k].m)) { i = k; break; }
+      var next = i >= 0 ? R.steps[i] : null, nx2 = i >= 0 ? R.steps[i + 1] : null;
+      var secs = R.total ? R.duration * left / R.total : 0, dn = next ? next.at - along : left;
+      return { icon: next ? next.icon : "mdi:flag-checkered", dist: "≈ " + gpsMetres(dn), text: next ? (next.short || next.text) : (this.dest.name !== "destination" ? this.dest.name : "Arrivée"),
+        then: nx2 && !/^ARRIVE/.test(nx2.m) && nx2.at - next.at < 1500 ? "puis " + (nx2.short || nx2.text).replace(/^./, (x) => x.toLowerCase()) : next && next.road ? next.road : "",
+        eta: hhmm(new Date(Date.now() + secs * 1000)), left: gpsMetres(left), min: Math.max(1, Math.round(secs / 60)), jam: R.delay >= 60 ? Math.round(R.delay / 60) : 0,
+        dest: this.dest.name !== "destination" ? this.dest.name : "", relay: true, _i: i, _dn: dn, _next: next, _left: left };
+    }
+    // The words, a little earlier than the phone's (the fix comes late):
+    // « Dans 800 mètres, tournez à droite », then « Tournez à droite ».
+    announce(g, say) {
+      var v = this.speed();
+      if (!g._next) { if (g._left < 60 && !this.spoken.arr) { this.spoken.arr = 1; say("Vous êtes arrivé" + (g.dest ? ", " + g.dest : "")); } return; }
+      var far = v > 22 ? 1500 : v > 12 ? 800 : 500, near = Math.max(150, v * 9), dn = g._dn, ph = g._next.short || g._next.text;
+      var spoken = (m) => m >= 1000 ? String(Math.round(m / 100) / 10).replace(".", ",") + (m >= 2000 ? " kilomètres" : " kilomètre") : Math.round(m / 100) * 100 + " mètres";
+      if (dn <= near) { if (!this.spoken[g._i + "n"]) { this.spoken[g._i + "n"] = 1; this.spoken[g._i + "f"] = 1; say(ph); } }
+      else if (dn <= far && !this.spoken[g._i + "f"]) { this.spoken[g._i + "f"] = 1; say("Dans " + spoken(dn) + ", " + ph.replace(/^./, (x) => x.toLowerCase())); }
+    }
+    // What lies ahead, for the frieze: the official radars along the route
+    // (fetched around the car every 8 km), the jams, the tolls.
+    ahead() {
+      var R = this.R, h = this.hass(), f = this.fix(), along = this.along || 0, left = Math.max(0, R.total - along), v = this.speed();
+      if (f && h && h.callWS && (!this.camFrom || gpsDist(this.camFrom, f.p) > 8000) && !this.camBusy) {
+        this.camBusy = true; this.camFrom = f.p;
+        h.callWS({ type: "call_service", domain: "nives", service: "car_cameras", return_response: true, service_data: { latitude: f.p[1], longitude: f.p[0], radius_km: 20 } })
+          .then((res) => {
+            var list = (res && res.response && res.response.cameras) || [], out = [];
+            list.forEach((q) => { var o = gpsOnLine([q.lon, q.lat], R.co); if (o && o.dist < 40) out.push({ a: R.cum[o.seg - 1] + gpsDist(R.co[o.seg - 1], o.point), what: q.what || "Radar" }); });
+            this.camAlong = out.sort((a, b) => a.a - b.a);
+          }).catch(() => {}).then(() => { this.camBusy = false; });
+      }
+      var ev = [], cam = "";
+      (this.camAlong || []).forEach((q) => {
+        var d = q.a - along; if (d < -20 || d > Math.min(left, 30000)) return;
+        ev.push(["c", d, q.what]);
+        if (!cam && d >= 0 && d <= (v > 25 ? 1000 : 500)) cam = [Math.round(d), "", String(q.what).replace(/[~;|]/g, " ").slice(0, 24), /feu|passage/i.test(q.what) ? 1 : 0].join("~");
+      });
+      R.jams.forEach((j) => { if (j.b > along + 30) ev.push(["j", Math.max(0, j.a - along), j.level === 2 ? (j.delay >= 60 ? "+" + Math.round(j.delay / 60) + " min" : "bouchon") : "ralenti", Math.round(j.b - Math.max(j.a, along)), j.level === 2 ? 2 : 1]); });
+      R.tolls.forEach((a) => { if (a > along - 1500) ev.push(["p", a - along, "péage"]); });
+      ev.sort((a, b) => a[1] - b[1]);
+      var evs = ev.slice(0, 6).map((x) => [x[0], Math.round(x[1]), String(x[2]).replace(/[~;|]/g, " ").slice(0, 18)].concat(x.length > 3 ? [x[3], x[4]] : []).join("~")).join(";");
+      window.__igorRelay = [Date.now(), 1, Math.round(left), cam, evs].join("|");
+    }
+    stop() { this.R = null; window.__igorRelay = ""; }
+  }
+
   class IgorGuideCard extends IgorCard {
     setConfig(config) { this.config = config || {}; }
     getCardSize() { return 2; }
@@ -10743,11 +10896,28 @@
       this.npStreet = el("div", "", this.noPhone); this.npStreet.style.cssText = "font-size:26px;line-height:1.15;margin-top:4px";
       this.npTown = el("div", "", this.noPhone); this.npTown.style.cssText = "font-size:16px;color:var(--dim);margin-top:6px";
       this.guide = el("div", "", card);
-      if (this.remote()) { this.guide.style.display = "flex"; this.guide.style.flexDirection = "column"; this.guide.style.flex = "1"; this.guide.style.minHeight = "0"; el("div", "h", this.guide, "guidage"); }
+      if (this.remote()) {
+        this.guide.style.display = "flex"; this.guide.style.flexDirection = "column"; this.guide.style.flex = "1"; this.guide.style.minHeight = "0";
+        var gh = el("div", "", this.guide); gh.style.cssText = "display:flex;justify-content:space-between;align-items:baseline";
+        el("div", "h", gh, "guidage");
+        this.relayTag = el("span", "", gh, "mode dégradé"); this.relayTag.hidden = true;
+        this.relayTag.style.cssText = "font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:" + CAR_WARN + ";border:1px solid " + CAR_WARN + ";padding:2px 6px";
+      }
       var t = el("div", "turn", this.guide);
       this.gIcon = icon(t, "mdi:arrow-up");
       var tt = el("div", "", t);
       this.gDist = el("div", "dist", tt); this.gText = el("div", "tx", tt); this.gThen = el("div", "then", tt);
+      // Mode dégradé: what the driver should know, and Waze a touch away.
+      if (this.remote()) {
+        this.relayBox = el("div", "", this.guide); this.relayBox.hidden = true;
+        var rn = el("div", "", this.relayBox); rn.style.cssText = "margin-top:10px;font-size:12px;line-height:1.45;color:var(--dim);border:1px dashed #4a3a22;padding:8px 10px";
+        el("span", "", rn, "GPS de l'autoradio").style.color = CAR_WARN; rn.appendChild(document.createTextNode(" · annonces un peu plus tôt, distances arrondies"));
+        var rw = el("button", "b go", this.relayBox); rw.type = "button"; rw.style.cssText = "width:100%;min-height:46px;flex-direction:row;gap:10px;font-size:12px;letter-spacing:.14em;margin-top:8px";
+        icon(rw, "mdi:waze"); el("span", "", rw, "Continuer avec Waze"); rw.addEventListener("click", () => this.openWaze());
+        this.toastEl = el("div", "", card); this.toastEl.hidden = true;
+        this.toastEl.style.cssText = "position:absolute;left:10px;right:10px;top:10px;z-index:5;background:#101a15;border:1px solid " + CAR_OK + ";color:" + CAR_OK + ";padding:10px 12px;font-size:13px;letter-spacing:.06em;box-shadow:0 8px 30px rgba(0,0,0,.6)";
+        card.style.position = "relative";
+      }
       if (this.config.big) {
         var gr = el("div", "grid", this.guide);
         var cell = (lab, cls) => { var d = el("div", "", gr); el("span", "", d, lab); return el("b", cls || "", d); };
@@ -11035,10 +11205,10 @@
     connectedCallback() {
       super.connectedCallback();
       if (this.onGuide) { window.addEventListener("igor-gps-guide", this.onGuide); this.show(window.__igorGuide || null); }
-      // Remote: the heartbeat is judged every 5 s (no news is the news), and
+      // Remote: the heartbeat is judged every 2 s (no news is the news), and
       // again when the connection to Home Assistant goes or comes back.
       if (this.config && this.config.entity && !this.beat) {
-        this.beat = setInterval(() => { if (this.guide && this._hass) this.show(this.turnObj || null); }, 5000);
+        this.beat = setInterval(() => { if (this.guide && this._hass) this.show(this.turnObj || null); }, 2000);
         this.onConn = () => { if (this.guide && this._hass) this.show(this.turnObj || null); };
         window.addEventListener("igor-connection", this.onConn);
       }
@@ -11046,6 +11216,7 @@
     disconnectedCallback() {
       if (this.onGuide) window.removeEventListener("igor-gps-guide", this.onGuide);
       if (this.beat) { clearInterval(this.beat); this.beat = null; window.removeEventListener("igor-connection", this.onConn); }
+      if (this.relayTick) { clearInterval(this.relayTick); this.relayTick = null; }
     }
     // The phone map alive? Its heartbeat (publish_ahead, every 2 to 8 s).
     // Unknown without `ahead`; not judged while Home Assistant is out of
@@ -11056,28 +11227,88 @@
       var t = Number(String(a.state || "").split("|")[0]);
       return !(t > 0) || Date.now() - t > 20000;
     }
+    // Mode dégradé: the trip under way taken over by the head unit (`relay`),
+    // only when there was one (the phone's map guided) and the map fell
+    // silent. Started once per destination; its route failing, the block
+    // says « guidage interrompu » as before (Waze offered).
+    relayGuide() {
+      var c = this.config, h = this._hass, ds = c.destination && h && h.states[c.destination], dv = ds ? String(ds.state || "") : "";
+      var d = c.relay && gpsParsePoint(dv);
+      if (!d) { if (this.relay && this.relay.R) this.endRelay(false); return null; }
+      var r = this.relay || (this.relay = new CarRelay(this));
+      if (r.destKey !== dv) {
+        r.destKey = dv; r.failed = false; r.spoken = {}; r.R = null;
+        r.route(d).then((ok) => { if (r.destKey !== dv) return; r.failed = !ok; if (ok) { r.relayStart = Date.now(); this.speak("Le téléphone ne guide plus. Je reprends le guidage vers " + (d.name !== "destination" ? d.name : "votre destination") + "."); } this.show(this.turnObj || null); });
+        this.startRelayTick();
+        return null;
+      }
+      if (!r.R) return null;
+      // Off the route: asked again, at most once a minute.
+      if (r.off >= 2 && !r.busy && Date.now() - r.routeAt > 60000) { r.off = 0; r.route(d).then(() => {}); }
+      var g = r.guide();
+      if (!g) return null;
+      if (g._left < 40 && !g._next) {
+        r.announce(g, (x) => this.speak(x));
+        this.endRelay(false); this.send({ cmd: "stop" });
+        return null;
+      }
+      var off = c.mute && h.states[c.mute] && h.states[c.mute].state === "on";
+      r.announce(g, (x) => { if (!off) this.speak(x); });
+      r.ahead();
+      return g;
+    }
+    startRelayTick() { if (!this.relayTick) this.relayTick = setInterval(() => { if (this._hass && this.guide) this.show(this.turnObj || null); }, 1000); }
+    // The phone's map back (back: true): it takes over again, said briefly.
+    endRelay(back) {
+      var r = this.relay; if (!r) return;
+      var to = r.dest && r.dest.name !== "destination" ? r.dest.name : "";
+      if (back && r.R && this.toastEl) {
+        this.toastEl.textContent = "✓ téléphone sur le socle · sa carte reprend le guidage" + (to ? " vers " + to : "");
+        this.toastEl.hidden = false; carIn(this.toastEl, this, -10, 250); clearTimeout(this.toastT);
+        this.toastT = setTimeout(() => {
+          var te = this.toastEl, a = te.animate && this.config.motion !== false ? te.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 }) : null;
+          if (a) a.onfinish = () => { te.hidden = true; }; else te.hidden = true;
+        }, 6000);
+      }
+      r.stop(); r.destKey = null;
+      clearInterval(this.relayTick); this.relayTick = null;
+    }
     show(g) {
       if (!this.guide) return;
       // The map gone quiet while guiding (phone off its dock, app closed,
       // battery out): its last arrow would lie — the trip is cut.
-      var silent = !!(this.remote() && g && this.config.ahead && this.mapSilent());
-      if (silent) g = null;
+      // Home Assistant out of reach while the head unit guides: it goes on
+      // (its route is here; the fix comes back with the network).
+      var relaying = !!(this.relay && this.relay.R);
+      var silent = !!(this.remote() && (g || relaying) && this.config.ahead && (this.mapSilent() || relaying && window.__igorLost));
+      if (silent) g = this.relayGuide();
+      else if (relaying) this.endRelay(true);
       var away = this.remote() && (this.phoneAbsent() || silent) && !g;
       // A destination still set while the map is away: the trip was cut.
       var ds = away && this.config.destination && this._hass && this._hass.states[this.config.destination], dv = ds ? String(ds.state || "") : "";
       var cut = away && /^-?\d/.test(dv);
       if (this.cut) {
         this.cut.hidden = !cut;
-        if (cut) { this.cutTo.textContent = "Vers " + ((dv.split(";")[1] || "votre destination").split("|")[0]); this.cutWhy.textContent = this.phoneAbsent() ? "Le téléphone a quitté le socle : sa carte ne guide plus." : "La carte du téléphone ne répond plus (appli fermée, écran éteint, batterie…)."; }
+        if (cut) { this.cutTo.textContent = "Vers " + ((dv.split(";")[1] || "votre destination").split("|")[0]); this.cutWhy.textContent = this.relay && this.relay.destKey && !this.relay.failed && this.config.relay ? "L'autoradio calcule l'itinéraire pour reprendre le guidage…" : this.phoneAbsent() ? "Le téléphone a quitté le socle : sa carte ne guide plus." : "La carte du téléphone ne répond plus (appli fermée, écran éteint, batterie…)."; }
       }
       // Home Assistant out of reach: the last arrow stays, dimmed (the phone
       // still guides on its own screen).
-      this.guide.style.opacity = window.__igorLost ? "0.45" : "";
+      this.guide.style.opacity = window.__igorLost && !(g && g.relay) ? "0.45" : "";
+      if (this.relayTag) { var rl = !!(g && g.relay); this.relayTag.hidden = !rl; this.relayBox.hidden = !rl; this.guide.style.borderLeft = rl ? "3px solid " + CAR_WARN : ""; this.guide.style.paddingLeft = rl ? "10px" : ""; this.gIcon.style.color = rl ? CAR_WARN : ""; }
       if (this.noPhone) { this.noPhone.hidden = !away || cut; if (away && !cut) this.drawPlace(); }
       this.idle.hidden = !!g || away; this.guide.hidden = !g;
+      // The block's state changing (guidance, cut, mode dégradé, no phone,
+      // idle): the new one fades in. A new arrow, though, comes at once.
+      var sk = g ? (g.relay ? "relay" : "guide") : cut ? "cut" : away ? "away" : "idle";
+      if (this.stateKey && sk !== this.stateKey) carIn(sk === "relay" || sk === "guide" ? this.guide : sk === "cut" ? this.cut : sk === "away" ? this.noPhone : this.idle, this, 0, 280);
+      this.stateKey = sk;
       if (!g) return;
       this.gIcon.setAttribute("icon", g.icon || "mdi:arrow-up");
-      this.gDist.textContent = g.dist || "";
+      // « ≈ » (mode dégradé) small before the figure: the distance stays on one line.
+      var gd = String(g.dist || ""), approx = gd.indexOf("≈ ") === 0;
+      this.gDist.textContent = approx ? gd.slice(2) : gd;
+      if (approx) { var ap = document.createElement("span"); ap.textContent = "≈"; ap.style.cssText = "font-size:.5em;color:" + CAR_WARN + ";margin-right:6px;vertical-align:.35em"; this.gDist.insertBefore(ap, this.gDist.firstChild); }
+      this.gDist.style.whiteSpace = "nowrap";
       this.gText.textContent = g.text || "";
       this.gThen.textContent = g.then || "";
       this.gEta.textContent = g.eta || "";
@@ -11123,7 +11354,8 @@
         ".wrap { height: 100%; display: flex; flex-direction: column; gap: 10px; }",
         "ha-card.view { flex: 1; min-height: 0; display: flex; flex-direction: column; box-sizing: border-box; padding: 12px 18px; overflow: hidden; transition: background .3s, border-color .3s; border: 2px solid transparent; }",
         ".hr2 { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex: none; } .hr2 .h { margin-bottom: 4px; } .aside { font-size: 13px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
-        ".body { flex: 1; min-height: 0; position: relative; transition: opacity .3s; } .body.fade { opacity: 0; }",
+        ".body { flex: 1; min-height: 0; position: relative; transition: opacity .25s ease-out; will-change: opacity; } .body.fade { opacity: 0; transition-duration: .2s; } .body.fade.fast { transition-duration: .12s; }",
+        "ha-card.frz { transition: opacity .35s ease-out, transform .35s ease-out; } ha-card.frz.off { opacity: 0; transform: translateY(16px); }",
         ".tabs { display: flex; gap: 6px; justify-content: center; flex: none; margin-top: 6px; } .tabs span { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; padding: 4px 9px; border: 1px solid var(--line); color: var(--faint); cursor: pointer; }",
         ".tabs span.on { border-color: #59d0e0; color: #59d0e0; } .tabs span.lock { border-color: var(--fg); color: var(--fg); }",
         // Radar
@@ -11218,11 +11450,16 @@
       var c = this.config, a = this.st(c.ahead), parts = a ? String(a.state || "").split("|") : [];
       var fresh = parts.length >= 4 && t - Number(parts[0]) < 15000;
       this.mapAlive = fresh;
+      // The phone's map silent, the head unit guiding itself (mode dégradé):
+      // its own account of the road, rougher.
+      var rl = !fresh && window.__igorRelay ? String(window.__igorRelay).split("|") : null;
+      this.relayed = !!(rl && rl.length >= 4 && t - Number(rl[0]) < 15000);
+      if (this.relayed) { parts = rl; fresh = true; }
       this.aheadParts = fresh ? parts : null;
       if (fresh) {
         if (!parts[3]) return null;
         var r = parts[3].split("~");
-        return { d: Number(r[0]), limit: r[1] ? Number(r[1]) : null, what: r[2] || "Radar", noSpeed: r[3] === "1", approx: false };
+        return { d: Number(r[0]), limit: r[1] ? Number(r[1]) : null, what: r[2] || "Radar", noSpeed: r[3] === "1", approx: this.relayed };
       }
       return this.serverRadar(t);
     }
@@ -11267,7 +11504,9 @@
       if (want !== this.view) { this.view = want; this.viewAt = t; this.fadeTo(); }
       Object.keys(this.tabBtns).forEach((k) => { this.tabBtns[k].className = k === this.view ? (this.manual ? "lock" : "on") : ""; });
       this.tabsEl.hidden = this.view === "arret";
-      this.draw(rad, v);
+      this.lastRad = rad; this.lastV = v;
+      // While the old view fades out, it is left as it is.
+      if (!this.swapping) this.draw(rad, v);
       this.drawFrieze(t, v);
     }
     // Why the car pulls, told once at the start: a toll booth just passed
@@ -11282,7 +11521,20 @@
       if (from == null) return "";
       return from < 15 ? "démarrage" : (v || 0) >= 70 && from >= 55 ? "dépassement" : "relance";
     }
-    fadeTo() { this.body.classList.add("fade"); setTimeout(() => this.body.classList.remove("fade"), 280); this.drawn = null; }
+    // A view changing: the old one fades out (0.2 s; the radar, urgent:
+    // 0.12 s), then the new one is drawn and fades in (0.25 s).
+    fadeTo() {
+      this.drawn = null;
+      if (this.config.motion === false || !this.view) return;
+      var fast = this.view === "radar", b = this.body;
+      this.swapping = true; b.classList.toggle("fast", fast); b.classList.add("fade");
+      clearTimeout(this.swapT);
+      this.swapT = setTimeout(() => {
+        this.swapping = false; this.drawn = null;
+        this.draw(this.lastRad, this.lastV);
+        b.classList.remove("fade"); b.classList.remove("fast");
+      }, fast ? 120 : 200);
+    }
     draw(rad, v) {
       var k = this.view, card = this.cardEl;
       card.style.background = ""; card.style.borderColor = "transparent"; card.style.borderLeft = "";
@@ -11382,14 +11634,19 @@
     // distances are carried on with the speed, so the points glide.
     drawFrieze(t, v) {
       var p = this.aheadParts, guided = !!(p && p[1] === "1");
-      this.frz.hidden = !guided;
+      // In: it rises from below; out: it sinks and fades, then leaves its room.
+      var fz = this.frz, anim = this.config.motion !== false;
+      if (guided && fz.hidden) { fz.hidden = false; clearTimeout(this.frzT); if (anim) { fz.classList.add("off"); void fz.offsetWidth; fz.classList.remove("off"); } }
+      else if (guided) { clearTimeout(this.frzT); this.frzT = null; fz.classList.remove("off"); }
+      else if (!fz.hidden && !this.frzT) { if (anim) { fz.classList.add("off"); this.frzT = setTimeout(() => { fz.hidden = true; fz.classList.remove("off"); this.frzT = null; }, 350); } else fz.hidden = true; }
       if (!guided) { this.flowSpeed = null; return; }
       var at = Number(p[0]), gone = Math.max(0, Math.min(12, (t - at) / 1000)) * Math.max(0, v || 0) / 3.6;
       var left = Math.max(0, (Number(p[2]) || 0) - gone), span = Math.max(500, Math.min(left, 30000));
       var YOU = 6, END = 97, X = (d) => YOU + Math.max(0, Math.min(1, d / span)) * (END - YOU), R = (d) => Math.max(0, Math.min(100, d / span * 100));
       // The header: what is left, when the end is in the frieze.
       var tn = this.st(this.config.turn), g = tn ? String(tn.state || "").split("|") : [];
-      this.fzAside.textContent = left <= 30000 ? [gpsMetres(left), g[6] ? g[6] + " min" : "", g[4] ? "arrivée " + g[4] : ""].filter(Boolean).join(" · ") : "les 30 prochains km";
+      if (this.relayed) this.fzAside.textContent = "radars : liste officielle · sans stations";
+      else this.fzAside.textContent = left <= 30000 ? [gpsMetres(left), g[6] ? g[6] + " min" : "", g[4] ? "arrivée " + g[4] : ""].filter(Boolean).join(" · ") : "les 30 prochains km";
       // The dashes run with the car (stopped: still).
       var kmh = Math.max(0, v || 0), sp = kmh < 3 ? 0 : Math.round(kmh / 10);
       if (sp !== this.flowSpeed) { this.flowSpeed = sp; this.flow.style.animationPlayState = sp ? "running" : "paused"; if (sp) this.flow.style.animationDuration = (44 / (20 + kmh * 0.9)).toFixed(2) + "s"; }
@@ -11405,7 +11662,7 @@
         var lab = e.t === "c" ? ((e.l.match(/\d{2,3}/) || [])[0] || "radar") : e.t === "f" ? ((e.l.match(/\d+,\d+/) || [])[0] ? e.l.match(/\d+,\d+/)[0] + " €" : e.l) : e.l;
         return { id: e.t + "|" + e.l, t: e.t, d: e.d, lab: lab, sub: e.d > 0 ? gpsMetres(e.d) : "", look: e.t === "j" && e.lvl === 2 ? ["!", "#e5323b"] : LOOK[e.t] };
       });
-      if (left <= 30000) list.push({ id: "dest", t: "dest", d: left, lab: g[4] || "arrivée", sub: g[4] ? "arrivée" : "", look: ["⚑", "#e8e4dc"] });
+      if (left <= 30000) list.push({ id: "dest", t: "dest", d: left, lab: this.relayed ? "arrivée" : g[4] || "arrivée", sub: !this.relayed && g[4] ? "arrivée" : "", look: ["⚑", "#e8e4dc"] });
       else list.push({ id: "more", t: "more", d: span, lab: "", sub: "+ " + gpsMetres(left - span), look: ["›", "#8a9099"] });
       var seen = {}, lastX = -100;
       list.sort((a, b) => a.d - b.d).forEach((q) => {

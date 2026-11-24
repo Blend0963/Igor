@@ -1,3 +1,26 @@
+## 0.43.2 — La 3D bien visible sur le téléphone
+
+- `igor-gps-card` (`basemap: tomtom-3d`) : les bâtiments en relief de TomTom sont pris en main au lieu d'être laissés tels quels — visibles dès le zoom 14,5 (une vue inclinée voit loin), opaques, éclairés de côté avec le pied plus sombre, et un peu plus clairs que le sol quand le style sombre les fondait dans la nuit. Si le style n'a pas de couche 3D, Igor élève lui-même les bâtiments (dès le zoom 14,5 aussi).
+- `debug: true` : la bande de message dit comment le relief a été fait (couches 3D de TomTom, ou bâtiments élevés par Igor).
+
+## 0.43.1 — Des changements doux, sans charger l'autoradio
+
+- `igor-drive-card` : un vrai fondu enchaîné entre les vues — l'ancienne s'efface (0,2 s ; 0,12 s vers le radar, urgent), puis la nouvelle est dessinée et apparaît (0,25 s). Avant, la nouvelle vue s'affichait d'un coup puis clignotait.
+- La frise « devant vous » monte doucement au début d'un guidage et redescend à la fin.
+- `igor-guide-card` : le bloc qui change d'état (guidage, interrompu, mode dégradé, sans téléphone) apparaît en fondu ; une nouvelle flèche, elle, s'affiche tout de suite. Le bandeau « téléphone sur le socle » glisse depuis le haut et s'efface.
+- Seuls l'opacité et un léger déplacement sont animés (le processeur graphique s'en charge, sans recalcul de la page) ; rien ne tourne quand rien ne change. `motion: false` sur une carte : plus aucune animation.
+
+## 0.43.0 — Le mode dégradé : l'autoradio reprend le guidage
+
+- **`igor-guide-card` · `relay`** — un trajet était en cours et la carte du téléphone se tait (retiré du socle, appli fermée, batterie vide) : au lieu de s'arrêter, l'autoradio reprend **la même destination** lui-même. Il redemande l'itinéraire à Igor (TomTom), suit la voiture sur son propre GPS (`relay: device_tracker.…`, l'appli Home Assistant de l'autoradio) et la fait avancer entre deux positions avec la vitesse OBD (`relay_speed`).
+  - Bloc guidage en orange, étiquette « mode dégradé », distances « ≈ » arrondies, annonces plus tôt (« Dans 800 mètres, tournez à gauche », puis « Tournez à gauche »), « Continuer avec Waze » à portée de doigt ; « Le téléphone ne guide plus. Je reprends le guidage vers Maison. » au départ.
+  - Hors de l'itinéraire : recalculé, au plus une fois par minute. Arrivée : « Vous êtes arrivé », le guidage s'arrête.
+  - Coupure de Home Assistant pendant le mode dégradé : il continue (l'itinéraire est sur l'autoradio), la voiture avance à la vitesse connue jusqu'au retour des positions.
+  - Le téléphone revient : sa carte reprend, « ✓ téléphone sur le socle · sa carte reprend le guidage vers Maison », le mode dégradé s'arrête de lui-même.
+  - Jamais de nouvel itinéraire sans téléphone : seulement la suite d'un trajet déjà lancé.
+- `igor-drive-card` : en mode dégradé, la frise montre les radars de la liste officielle le long de l'itinéraire, les bouchons et les péages (« radars : liste officielle · sans stations ») ; le radar s'affiche « ≈ ».
+- Le signe de vie de la carte est vérifié toutes les 2 s (au lieu de 5).
+
 ## 0.42.1 — Les imprévus en route
 
 - **Connexion perdue** : la barre d'Igor vérifie Home Assistant toutes les 10 s ; sans réponse, un bandeau rouge « connexion perdue · valeurs figées depuis 18:05 · reconnexion… » remplace la ligne du haut, et la dernière flèche du guidage est estompée (le téléphone continue de guider sur son écran). Tout revient seul avec le réseau.
