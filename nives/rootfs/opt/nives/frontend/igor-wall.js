@@ -5282,6 +5282,10 @@
   //   street_names: true                    # the road where the car is, at the bottom (false: off)
   //   fps: 20                               # the map drawn that many times a second while moving (lower: lighter)
   //   fullscreen_button: false              # no fullscreen button (a dashboard that is the map already)
+  //   display_only: true                    # a second screen: the map only (no button, banner or sign); a tap on the map still picks a place or a route
+  //   base_pois: true                       # with basemap: tomtom-3d, TomTom's own places (Igor adds only cameras and stations with prices)
+  //   voice_to: input_text.car_voice        # what the guidance says goes there (« ms|kind|text »), said by the head unit's igor-guide-card
+  //   publish_turn: input_text.car_turn     # the whole guidance for igor-guide-card `entity` (« icon|dist|text|then|eta|left|min|jam|dest »)
   //   publish_guide: input_text.car_guide   # the guidance written for the other screens (« eta|km|min|destination »)
   //   announce: input_text.car_announce     # the house's announcements, said with the guidance's voice
   //                                         # (written « time|message » by a script; see script.voiture_dire)
@@ -5296,7 +5300,9 @@
   //                                         # location allowed); ignored when the screen is more than 3 km from the car.
   //   buildings: true                       # false: the map without its buildings (lighter on a head unit)
   //   pixel_ratio: 2                        # at most that many device pixels per pixel (1: lighter)
+  //   quality: max                          # a phone: full resolution, smoothed edges, 60 fps, sky and lit 3D buildings
   //   dead_reckoning: true                  # in a tunnel, on at the OBD speed (speed_entity) for 3 min (false: off)
+  //   tomtom_pois: true                     # the places from TomTom's search (one ask a kind and a square: heavy on the key's quota); OpenStreetMap by default
   //   traffic: true                         # the route's jams (orange, red) and the incidents on the map once a TomTom key is set (false: never)
   //   closure_ask: false                    # a closed road on the route (TomTom): round it at once (true: ask first)
   //   compact: true                         # small in a dashboard's view: no buttons, a tap anywhere opens full screen (false: off)
@@ -6369,7 +6375,7 @@
         "ha-card { display: block; position: relative; height: 100%; min-height: 240px; overflow: hidden; background: #07080a; border-radius: var(--igor-radius, 3px); }" +
         "#map { position: absolute; inset: 0; touch-action: none; } #map .maplibregl-canvas { touch-action: none; }" +
         ".msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; text-align: center; color: #878c95; font-family: " + MONO + "; font-size: 13px; }" +
-        ".msg[hidden] { display: none; }" +
+        ".msg[hidden] { display: none; } .msg { pointer-events: none; }" +
         ".btns { position: absolute; top: 10px; left: 10px; display: flex; flex-direction: column; gap: 8px; z-index: 2; }" +
         ".compact:not(.full) .btns { display: none; }" +
         ".full .btns button { width: 56px; height: 56px; --mdc-icon-size: 28px; }" +
@@ -6513,6 +6519,7 @@
         ".ftag { display: flex; align-items: center; gap: 5px; padding: 2px 7px; border-radius: 3px; background: rgba(7,8,10,0.88); border: 1px solid #22262c; font-family: 'Chakra Petch', " + MONO + "; font-size: 13px; font-weight: 600; color: #e9e4da; pointer-events: none; white-space: nowrap; }" +
         ".ftag img { height: 14px; max-width: 52px; object-fit: contain; background: #f4f1ea; border-radius: 2px; padding: 1px 3px; }" +
         ".ftag .dry { font-size: 10px; }" +
+        ".ftag.slim { padding: 1px 6px; font-size: 14px; } .ftag.slim img { display: none; }" +
         // The dry tap's word: the small red the road's warnings wear.
         ".dry { color: #d9704a; font-family: " + MONO + "; font-size: 12px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }" +
         ".np { color: #878c95; font-family: " + MONO + "; font-size: 12px; font-weight: 400; }" +
@@ -6610,6 +6617,16 @@
         '<div class="snap" id="snapEl"></div></ha-card>');
       var $ = (id) => this.root.getElementById(id);
       this.$ = $;
+      // display_only: a second screen (the phone under the head unit) — the
+      // map and nothing else: no button, no banner, no sign. The finger still
+      // works on the map itself: a place tapped (go there, a stop), a
+      // station's prices, the choice between routes. The rest is driven from
+      // the head unit (the shared destination) and said there (voice_to).
+      if (this.config.display_only) {
+        var dsp = document.createElement("style");
+        dsp.textContent = ".btns,.nav,.glow,.side,.street,.toast,.ask,.panel:not(.rpanel),.lpanel,.eta,.hud,.snap,.maplibregl-ctrl-bottom-right,.maplibregl-ctrl-bottom-left { display: none !important; }";
+        this.root.appendChild(dsp);
+      }
       var mlCss = this.root.querySelector("link[data-ml-css]");
       if (mlCss) mlCss.addEventListener("error", function () { if (mlCss.href.indexOf(GPS_MAPLIBRE_CDN) < 0) mlCss.href = GPS_MAPLIBRE_CDN + ".css"; });
       $("card").classList.toggle("noattr", !!this.config.hide_attribution);
@@ -6768,9 +6785,34 @@
     // their footprints with whatever height the tiles carry (else ~3 floors).
     tomtom3d(map) {
       var layers = map.getStyle().layers || [];
-      layers.forEach((l) => {
-        if (l.type === "symbol" && /poi|point.of.interest/i.test(l.id + " " + (l["source-layer"] || ""))) map.setLayoutProperty(l.id, "visibility", "none");
-      });
+      var poiLayers = layers.filter((l) => l.type === "symbol" && /poi|point.of.interest/i.test(l.id + " " + (l["source-layer"] || "")));
+      if (!this.basePois()) poiLayers.forEach((l) => map.setLayoutProperty(l.id, "visibility", "none"));
+      else {
+        // TomTom's own places stay (shops, pharmacies, parkings, stations);
+        // Igor only hangs the State's price over TomTom's pumps. Which
+        // property says « fuel » is read from the tiles themselves.
+        this.ttFuelDone = false;
+        var hideFuel = () => {
+          if (this.ttFuelDone || !this.map) return;
+          var feats = [];
+          try { feats = map.queryRenderedFeatures({ layers: poiLayers.map((l) => l.id) }) || []; } catch (e) { feats = []; }
+          var RX = /petrol|fuel|gas[ _-]?station|station[ _-]?service|carburant/i, key = null, vals = {};
+          feats.forEach((f) => { Object.keys(f.properties || {}).forEach((k) => { var v = f.properties[k]; if (typeof v === "string" && RX.test(v) && !/name/i.test(k)) { key = key || k; if (k === key) vals[v] = true; } }); });
+          if (!key) return;
+          this.ttFuelDone = true;
+          // TomTom's pumps stay: Igor's price hangs on each of them
+          // (refreshFuelTags snaps the State's station to the pump drawn).
+          this.ttFuel = { key: key, vals: Object.keys(vals), layers: poiLayers.map((l) => l.id) };
+          this.refreshFuelTags();
+        };
+        map.on("idle", hideFuel);
+      }
+      if (this.hq()) {
+        // A night sky over the horizon instead of a flat edge, and a light
+        // that gives the buildings their faces.
+        try { if (map.setSky) map.setSky({ "sky-color": "#0b0e14", "horizon-color": "#1b2433", "fog-color": "#08090b", "sky-horizon-blend": 0.6, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.4 }); } catch (e) { /* older engine */ }
+        try { map.setLight({ anchor: "viewport", color: "#cfd8e6", intensity: 0.45, position: [1.3, 210, 35] }); } catch (e) { /* no light */ }
+      }
       if (layers.some((l) => l.type === "fill-extrusion")) return;
       var fp = layers.find((l) => l.type === "fill" && l.source && /build/i.test(l.id + " " + (l["source-layer"] || "")));
       if (!fp || map.getLayer("igor-3d")) return;
@@ -6779,8 +6821,9 @@
       var first = layers.find((l) => l.type === "symbol");
       map.addLayer({ id: "igor-3d", type: "fill-extrusion", source: fp.source, "source-layer": fp["source-layer"], minzoom: 15,
         filter: fp.filter || ["all"],
-        paint: { "fill-extrusion-color": "#1d2128", "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 15, 0, 16, h],
-          "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.85 } }, first ? first.id : undefined);
+        paint: { "fill-extrusion-color": this.hq() ? ["interpolate", ["linear"], h, 0, "#1a1e25", 30, "#242a33", 80, "#2e3642"] : "#1d2128",
+          "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 15, 0, 16, h],
+          "fill-extrusion-base": 0, "fill-extrusion-opacity": this.hq() ? 0.95 : 0.85, "fill-extrusion-vertical-gradient": true } }, first ? first.id : undefined);
     }
     onlineStyle() {
       var t = this.config.tiles;
@@ -7077,12 +7120,23 @@
         bearing: this.headingUp ? this.heading : 0, attributionControl: this.config.hide_attribution ? false : { compact: true },
         // Light on a small screen: no label fade (it redraws for 300 ms at
         // each label), at most 2 device pixels per pixel.
-        fadeDuration: 0, pixelRatio: Math.min(window.devicePixelRatio || 1, Number(this.config.pixel_ratio) || (this.offlineReady ? 1 : 2)),
+        fadeDuration: this.hq() ? 250 : 0,
+        pixelRatio: this.hq() ? (window.devicePixelRatio || 1) : Math.min(window.devicePixelRatio || 1, Number(this.config.pixel_ratio) || (this.offlineReady ? 1 : 2)),
+        // quality: max (a phone): every device pixel, smoothed edges, the
+        // view tipped further, more tiles kept — the best the screen can show.
+        antialias: this.hq(), maxPitch: this.hq() ? 75 : 60, maxTileCacheSize: this.hq() ? 600 : null,
         // Igor's own tiles (traffic) need the Home Assistant login, as every API call.
         transformRequest: (url) => {
           if (url.indexOf("/api/nives/") >= 0) this.lastNives = url;
+          // Home Assistant behind a reverse proxy sees its own requests in
+          // http: the addresses it writes into a relayed style (TomTom 3D)
+          // then say http:// while the page is https — the browser refuses
+          // them. Same house, so the page's own origin, whatever they say.
+          var m = /^https?:\/\/([^/]+)(\/api\/nives\/.*)$/.exec(url);
+          if (m && m[1] === window.location.host) url = window.location.origin + m[2];
           var tok = this._hass && this._hass.auth && this._hass.auth.data && this._hass.auth.data.access_token;
-          return tok && url.indexOf(window.location.origin + "/api/nives/") === 0 ? { url: url, headers: { Authorization: "Bearer " + tok } } : undefined;
+          if (tok && url.indexOf(window.location.origin + "/api/nives/") === 0) return { url: url, headers: { Authorization: "Bearer " + tok } };
+          return m ? { url: url } : undefined;
         }
       }); } catch (e) { this.message("carte : " + (e && e.message || "WebGL indisponible sur cet appareil")); this.loading = false; return; }
       this.map = map;
@@ -7244,7 +7298,7 @@
       var gap = this.rafAt ? now - this.rafAt : 16;
       this.rafAt = now;
       this.rafAvg = this.rafAvg == null ? gap : this.rafAvg + (Math.min(gap, 500) - this.rafAvg) * 0.05;
-      var want = Math.max(5, Math.min(60, Number(this.config.fps) || (this.offlineReady ? 8 : 20)));
+      var want = Math.max(5, Math.min(60, Number(this.config.fps) || (this.hq() ? 60 : this.offlineReady ? 8 : 20)));
       if (!this.fpsNow || this.fpsNow > want) this.fpsNow = want;
       if (!this.paceAt) this.paceAt = now;
       if (now - this.paceAt > 5000) {
@@ -8069,6 +8123,16 @@
     mapPick(e) {
       var map = this.map;
       if (!map || !e || !e.point || !window.maplibregl) return;
+      // debug_pois: what the base map's tiles say under the finger (to find
+      // which property marks TomTom's stations), shown 15 s in the message band.
+      if (this.config.debug_pois) {
+        try {
+          var dbg = (map.queryRenderedFeatures(e.point) || []).filter((f) => f.layer && f.layer.type === "symbol").slice(0, 3)
+            .map((f) => (f.layer["source-layer"] || f.layer.id) + " → " + Object.keys(f.properties || {}).map((k) => k + "=" + f.properties[k]).join(", "));
+          this.message(dbg.length ? dbg.join("  |  ") : "aucun point d'intérêt de la carte ici");
+          clearTimeout(this.dbgTimer); this.dbgTimer = setTimeout(() => this.message(""), 15000);
+        } catch (err) { /* nothing under the finger */ }
+      }
       if (this.config.compact && !this.full) { this.setFull(true); return; }
       if (map.getLayer("alts") && map.queryRenderedFeatures(e.point, { layers: ["alts"] }).length) return;
       // A station of the map's own layer: its prices first, then the two ways.
@@ -8618,6 +8682,13 @@
     // browser's. `kind`: "nav" for a turn (only with the voice on « tout »),
     // else a warning (also with « alertes seulement »).
     say(text, kind) {
+      // voice_to: input_text.x — the words go to the screen that speaks (the
+      // head unit's igor-guide-card), not out of this one: « ms|kind|text ».
+      var vt = this.config.voice_to;
+      if (vt && text && this._hass && this._hass.callService) {
+        this._hass.callService("input_text", "set_value", { entity_id: vt, value: (Date.now() + "|" + (kind || "nav") + "|" + String(text)).slice(0, 250) }).catch(() => {});
+        return;
+      }
       var mode = this.voiceMode || "all";
       if (this.config.voice === false || mode === "off" || (mode === "alerts" && kind === "nav") || !text) return;
       var seq = this.saySeq = (this.saySeq || 0) + 1, engine = this.ttsEntity();
@@ -8803,6 +8874,19 @@
       // publish_guide: input_text.x — the guidance for the other screens of the
       // house (the phone beside): « 18:27|14 km|22 min|Maison », "" without a
       // route. Written when it changes, at most every 20 s (not each second).
+      // publish_turn: input_text.x — the whole guidance for the head unit
+      // (igor-guide-card `entity`): « icon|dist|text|then|eta|left|min|jam|dest »,
+      // at once when the turn changes, else at most every 2 s; "" at the end.
+      var pt = this.config.publish_turn;
+      if (pt && this._hass && this._hass.callService) {
+        var clean = (x) => String(x == null ? "" : x).replace(/\|/g, "/");
+        var tv = g ? [g.icon, g.dist, g.text, g.then, g.eta, g.left, g.min, g.jam || "", g.dest].map(clean).join("|").slice(0, 250) : "";
+        var tk = g ? g.icon + "|" + g.text : "", tn = Date.now();
+        if (tv !== this.turnSent && (!tv || tk !== this.turnKey || !this.turnAt || tn - this.turnAt > 2000)) {
+          this.turnSent = tv; this.turnKey = tk; this.turnAt = tn;
+          this._hass.callService("input_text", "set_value", { entity_id: pt, value: tv }).catch(() => { this.turnSent = null; });
+        }
+      }
       var pg = this.config.publish_guide;
       if (pg && this._hass && this._hass.callService) {
         var left = g ? (/ km$/.test(g.left || "") ? Math.round(parseFloat(String(g.left).replace(",", "."))) + " km" : "< 1 km") : "";
@@ -8904,8 +8988,13 @@
     poiKinds() {
       var L = this.layers || {}, out = [];
       Object.keys(GPS_POI).forEach((k) => { if (k === "camera" ? L.cameras && L.cameras !== "off" : L[k]) out.push(k); });
+      // The base map draws its own places (TomTom 3D): Igor adds only what it
+      // has better — the cameras, and the stations with their prices.
+      if (this.basePois()) out = out.filter((k) => k === "camera" || k === "fuel");
       return out;
     },
+    basePois() { return this.config.basemap === "tomtom-3d" && this.config.base_pois !== false; },
+    hq() { return this.config.quality === "max"; },
     applyLayers() {
       var map = this.map;
       if (!map || !map.getLayer || !map.getLayer("pois")) return;
@@ -9077,7 +9166,11 @@
             .then((items) => { if (key === this.poiKey) keep(items); })
             .catch(() => fromOverpass());
         }
-        if (this._hass && this.config.tomtom_pois !== false && kinds) {
+        // TomTom's places only when asked (`tomtom_pois: true`): one search a
+        // kind and a square, up to 28 a square — it emptied the key's monthly
+        // Search quota (2 500), which the address search and « Stations »
+        // need. OpenStreetMap is the map's source for places by default.
+        if (this._hass && this.config.tomtom_pois === true && kinds) {
         var ttFailed = 0;
           var tt = this._hass.callWS({ type: "call_service", domain: "nives", service: "car_pois", return_response: true,
             service_data: { latitude: c[1], longitude: c[0], radius_km: 3, kinds: kinds } })
@@ -9267,7 +9360,13 @@
       // out; a dot costs almost nothing — so every place is a dot of its
       // kind's colour, and the ones close enough to matter get their icon.
       var car = this.pos || (this.fix && this.fix.point);
-      var near = car ? shown.filter((q) => q.kind !== "camera" && gpsDist(q.p, car) < GPS_ICON_M)
+      // A station that wears its price tag (logo + price) is that tag only:
+      // no dot, no pump icon under it — one station, one mark on the map.
+      var fuelOn = !!(this.layers && this.layers.fuel);
+      var tagged = (q) => fuelOn && q.kind === "fuel" && ((q.prices || {}).gazole != null || !!(q.rupture || {}).gazole);
+      // On TomTom's 3D map its own pumps are the stations: Igor draws none.
+      var marks = shown.filter((q) => !tagged(q) && !(q.kind === "fuel" && this.basePois()));
+      var near = car ? marks.filter((q) => q.kind !== "camera" && gpsDist(q.p, car) < GPS_ICON_M)
         .sort((a, b) => gpsDist(a.p, car) - gpsDist(b.p, car)).slice(0, GPS_ICON_MAX) : [];
       var iconed = shown.filter((q) => q.kind === "camera").concat(near);
       var sig = ids.join(","), isig = iconed.map((q) => q.id).join(",");
@@ -9276,7 +9375,7 @@
       if (sig !== this.poiShown) {
         this.poiShown = sig;
         var src = map && map.getSource("pois");
-        if (src) src.setData({ type: "FeatureCollection", features: shown.filter((q) => q.kind !== "camera").map(asFeat) });
+        if (src) src.setData({ type: "FeatureCollection", features: marks.filter((q) => q.kind !== "camera").map(asFeat) });
         this.refreshFuelTags(shown);
       }
       if (isig !== this.poiIconSig) {
@@ -9301,17 +9400,29 @@
         return;
       }
       var seen = {};
+      // On TomTom's 3D map: the price sits on TomTom's own pump (within 80 m
+      // of the State's station), no logo — the pump already says the brand.
+      var pumps = [], tt = this.basePois() && this.ttFuel;
+      if (tt) {
+        try {
+          pumps = (map.queryRenderedFeatures({ layers: tt.layers.filter((id) => map.getLayer(id)) }) || [])
+            .filter((f) => tt.vals.indexOf(String((f.properties || {})[tt.key])) >= 0 && f.geometry && f.geometry.type === "Point")
+            .map((f) => f.geometry.coordinates);
+        } catch (e) { pumps = []; }
+      }
       ((shown || this.pois) || []).forEach((q) => {
         if (q.kind !== "fuel") return;
         var pr = (q.prices || {}).gazole, ru = (q.rupture || {}).gazole;
         if (pr == null && !ru) return;
         seen[q.id] = true;
+        var at = q.p;
+        if (pumps.length) { var bd = 80; pumps.forEach((c) => { var d = gpsDist(c, q.p); if (d < bd) { bd = d; at = c; } }); }
         var m = this.fuelTags[q.id];
         if (!m) {
-          var el = document.createElement("div"); el.className = "ftag";
-          m = new window.maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -14] }).setLngLat(q.p).addTo(map);
+          var el = document.createElement("div"); el.className = "ftag" + (tt ? " slim" : "");
+          m = new window.maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, tt ? -18 : -14] }).setLngLat(at).addTo(map);
           this.fuelTags[q.id] = m;
-        }
+        } else if (tt) m.setLngLat(at);
         var el = m.getElement();
         if (el._igorSig === pr + "|" + ru) return;
         el._igorSig = pr + "|" + ru;
@@ -10343,14 +10454,51 @@
   // While guided: the next turn, how far, then the arrival (time, km, min).
   // Without a route: « Où allons-nous ? » — search and the favourites, small.
   // It talks to the igor-gps-card of the same page (events on window).
+  // ----- igor-guide-card: the guidance, and the GPS's buttons -----
+  // Beside the map (same screen): follows the GPS card's events, as before.
+  // On a head unit whose map is on another screen (the phone, display_only):
+  //   entity: input_text.car_turn          # the GPS card's publish_turn
+  //   destination: input_text.car_dest     # where Chercher / Maison / Stop write
+  //   position: device_tracker.car         # « near here » for the search
+  //   favorites: [ { name: Maison, zone: zone.home }, { name: Travail, location: [48.9, 2.3] } ]
+  //   voice: input_text.car_voice          # the GPS card's voice_to: said HERE
+  //   announce: input_text.car_announce    # the house's announcements, said here too
+  //   mute: input_boolean.car_voice_off    # on: nothing said (the Voix button)
+  //   mode: buttons                        # the row of GPS buttons instead of the guidance
   class IgorGuideCard extends IgorCard {
     setConfig(config) { this.config = config || {}; }
     getCardSize() { return 2; }
+    remote() { return !!this.config.entity; }
+    send(detail) {
+      if (!this.remote()) { window.dispatchEvent(new CustomEvent("igor-gps-cmd", { detail: detail })); return; }
+      var c = this.config, h = this._hass;
+      if (!h) return;
+      var dest = c.destination;
+      if (detail.cmd === "stop") { if (dest) h.callService("input_text", "set_value", { entity_id: dest, value: "" }); return; }
+      if (detail.cmd === "fav") {
+        var f = this.favs()[Number(detail.index) || 0], at = this.favAt(f);
+        if (at && dest) h.callService("input_text", "set_value", { entity_id: dest, value: at.lat.toFixed(5) + "," + at.lon.toFixed(5) + ";" + String(f.name || "destination").replace(/[;|]/g, " ").slice(0, 60) });
+        return;
+      }
+      if (detail.cmd === "search") { this.openFind("search"); return; }
+      if (detail.cmd === "fuel") { this.openFind("fuel"); return; }
+      if (detail.cmd === "stopover") { this.openFind("stopover"); return; }
+      if (detail.cmd === "voice" && c.mute) h.callService("input_boolean", "toggle", { entity_id: c.mute });
+    }
+    favs() { var f = this.config.favorites || [{ name: "Maison", zone: "zone.home" }]; return f.map((x) => typeof x === "string" ? { name: x, zone: x === "Maison" ? "zone.home" : null } : x); }
+    favAt(f) {
+      if (!f) return null;
+      var ent = f.zone || f.entity, st = ent && this._hass && this._hass.states[ent];
+      if (st && st.attributes.latitude != null) return { lat: Number(st.attributes.latitude), lon: Number(st.attributes.longitude) };
+      if (Array.isArray(f.location)) return { lat: Number(f.location[0]), lon: Number(f.location[1]) };
+      return null;
+    }
+    guided() { var st = this.config.entity && this._hass && this._hass.states[this.config.entity]; return !!(st && st.state && st.state !== "unknown" && st.state !== "unavailable"); }
     build() {
       this.style(CAR_HEAD + "\n" + [
         "ha-card { gap: 6px; }",
         ".turn { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 10px; align-items: center; --mdc-icon-size: 50px; }",
-        ".turn ha-icon { color: var(--fg); }",
+        ".turn ha-icon { color: #59d0e0; }",
         ".dist { font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }",
         ".tx { font-size: 13px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }",
         ".then { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
@@ -10359,33 +10507,246 @@
         ".row { display: flex; gap: 6px; } .row button.b { flex: 1; min-height: 38px; flex-direction: row; gap: 8px; --mdc-icon-size: 18px; }",
         "button.go { border-color: var(--acc); color: var(--acc); } button.go ha-icon { color: var(--acc); }",
         "button.stop { flex: none !important; padding: 6px 12px; }",
+        // big: the head unit's guidance column (remote), the turn in large
+        ":host([big]) .turn { grid-template-columns: 86px minmax(0, 1fr); --mdc-icon-size: 82px; } :host([big]) .dist { font-size: 46px; } :host([big]) .tx { font-size: 18px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; } :host([big]) .then { font-size: 13px; margin-top: 4px; }",
+        ":host([big]) .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; border-top: 1px solid var(--line); padding-top: 10px; margin-top: auto; }",
+        ".grid span { display: block; font-size: 11px; color: var(--dim); } .grid b { font-weight: 400; font-size: 28px; font-variant-numeric: tabular-nums; } .grid b.s { font-size: 18px; } .grid .ok { color: " + CAR_OK + "; } .grid .warn { color: " + CAR_WARN + "; }",
+        // the buttons row
+        ".bar { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; height: 100%; }",
+        ".bar button.b { flex-direction: column; gap: 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; --mdc-icon-size: 24px; min-height: 0; height: 100%; }",
+        ".bar button.red { border-color: " + CAR_BAD + "; color: " + CAR_BAD + "; } .bar button.red ha-icon { color: " + CAR_BAD + "; }",
+        ".bar button.on { border-color: var(--acc); color: var(--acc); }",
+        // the finder (search, stations): over the whole screen
+        ".find { position: fixed; inset: 6% 10%; z-index: 2147482000; background: #0d0f12; color: var(--fg); font-family: inherit; border: 1px solid var(--line); border-radius: var(--igor-radius, 3px); display: flex; flex-direction: column; padding: 14px 16px; gap: 10px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.6); }",
+        ".find .fh { display: flex; align-items: center; justify-content: space-between; font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: var(--dim); }",
+        ".find form { display: flex; gap: 8px; } .find input { flex: 1; min-width: 0; font: inherit; font-size: 20px; padding: 12px; background: #14171b; color: var(--fg); border: 1px solid var(--acc); border-radius: 3px; }",
+        ".find .list { flex: 1; overflow-y: auto; } .find .it { display: flex; gap: 12px; align-items: center; padding: 12px 6px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 17px; }",
+        ".find .it small { display: block; font-size: 13px; color: var(--dim); margin-top: 2px; } .find .it .r { margin-left: auto; color: var(--acc); white-space: nowrap; font-size: 15px; }",
+        ".find .note { color: var(--dim); font-size: 14px; padding: 10px 6px; }",
         "[hidden] { display: none !important; }"
       ].join("\n"));
+      if (this.config.big) this.setAttribute("big", "");
       var card = el("ha-card", "", this.shadowRoot);
+      this.card = card;
+      if (this.config.mode === "buttons") { this.buildBar(card); this.buildFind(); return; }
       this.idle = el("div", "", card);
       el("div", "h", this.idle, this.config.title || "où allons-nous ?");
-      var send = (detail) => window.dispatchEvent(new CustomEvent("igor-gps-cmd", { detail: detail }));
       var go = el("button", "b go", this.idle); go.type = "button"; go.style.width = "100%"; go.style.flexDirection = "row"; go.style.minHeight = "40px";
       icon(go, "mdi:magnify"); el("span", "", go, "Chercher une adresse");
-      go.addEventListener("click", () => send({ cmd: "search" }));
+      go.addEventListener("click", () => this.send({ cmd: "search" }));
       var favs = el("div", "row", this.idle); favs.style.marginTop = "6px";
-      (this.config.favorites || ["Maison"]).slice(0, 2).forEach((name, i) => {
+      this.favs().slice(0, 2).forEach((f, i) => {
         var b = el("button", "b", favs); b.type = "button";
-        icon(b, i === 0 ? "mdi:home" : "mdi:star-outline"); el("span", "", b, name);
-        b.addEventListener("click", () => send({ cmd: "fav", index: i }));
+        icon(b, i === 0 ? "mdi:home" : "mdi:star-outline"); el("span", "", b, f.name);
+        b.addEventListener("click", () => this.send({ cmd: "fav", index: i }));
       });
       this.guide = el("div", "", card);
+      if (this.remote()) { this.guide.style.display = "flex"; this.guide.style.flexDirection = "column"; this.guide.style.flex = "1"; this.guide.style.minHeight = "0"; el("div", "h", this.guide, "guidage"); }
       var t = el("div", "turn", this.guide);
       this.gIcon = icon(t, "mdi:arrow-up");
       var tt = el("div", "", t);
       this.gDist = el("div", "dist", tt); this.gText = el("div", "tx", tt); this.gThen = el("div", "then", tt);
-      var e = el("div", "eta", this.guide);
-      this.gEta = el("b", "", e); this.gLeft = el("span", "", e);
-      var st = el("button", "b stop", e); st.type = "button"; st.style.marginLeft = "auto"; icon(st, "mdi:stop"); st.title = "Arrêter le guidage";
-      st.addEventListener("click", () => send({ cmd: "stop" }));
-      this.onGuide = (ev) => this.show(ev.detail);
-      window.addEventListener("igor-gps-guide", this.onGuide);
-      this.show(window.__igorGuide || null);
+      if (this.config.big) {
+        var gr = el("div", "grid", this.guide);
+        var cell = (lab, cls) => { var d = el("div", "", gr); el("span", "", d, lab); return el("b", cls || "", d); };
+        this.gEta = cell("arrivée"); this.gLeft = cell("reste", "s"); this.gJam = cell("trafic", "s"); this.gDest = cell("destination", "s");
+      } else {
+        var e = el("div", "eta", this.guide);
+        this.gEta = el("b", "", e); this.gLeft = el("span", "", e);
+        var st = el("button", "b stop", e); st.type = "button"; st.style.marginLeft = "auto"; icon(st, "mdi:stop"); st.title = "Arrêter le guidage";
+        st.addEventListener("click", () => this.send({ cmd: "stop" }));
+      }
+      this.buildFind();
+      if (!this.remote()) {
+        this.onGuide = (ev) => this.show(ev.detail);
+        window.addEventListener("igor-gps-guide", this.onGuide);
+        this.show(window.__igorGuide || null);
+      }
+    }
+    buildBar(card) {
+      var bar = el("div", "bar", card);
+      var list = this.config.buttons || ["search", "home", "fuel", "stopover", "voice", "stop"];
+      var defs = { search: ["mdi:magnify", "chercher"], home: ["mdi:home", "maison"], work: ["mdi:briefcase", "travail"], fuel: ["mdi:gas-station", "stations"], stopover: ["mdi:flag-checkered", "étape"], voice: ["mdi:volume-high", "voix"], stop: ["mdi:stop", "stop"], waze: ["mdi:waze", "waze"] };
+      this.barBtns = {};
+      list.forEach((k) => {
+        var d = defs[k]; if (!d) return;
+        var b = el("button", "b" + (k === "stop" ? " red" : ""), bar); b.type = "button";
+        this.barBtns[k] = b; this.barIcon = this.barIcon || {};
+        this.barIcon[k] = icon(b, d[0]); el("span", "", b, d[1]);
+        b.addEventListener("click", () => {
+          if (k === "home") this.send({ cmd: "fav", index: 0 });
+          else if (k === "work") this.send({ cmd: "fav", index: 1 });
+          else if (k === "waze") this.openWaze();
+          else this.send({ cmd: k });
+        });
+      });
+    }
+    // Waze, with the destination under way when there is one (the head
+    // unit's companion app opens it: `waze_notify: notify.mobile_app_x`).
+    openWaze() {
+      var c = this.config, h = this._hass, st = c.destination && h && h.states[c.destination];
+      var d = st && /^\s*(-?\d+(\.\d+)?)\s*,\s*(-?\d+(\.\d+)?)/.exec(st.state || "");
+      var uri = d ? "https://waze.com/ul?ll=" + d[1] + "," + d[3] + "&navigate=yes" : "https://waze.com/ul";
+      if (c.waze_notify && h) {
+        var svc = String(c.waze_notify).split(".");
+        h.callService(svc[0], svc[1], { message: "command_activity", data: { intent_action: "android.intent.action.VIEW", intent_uri: uri, intent_package_name: "com.waze" } });
+      } else window.open(uri, "_blank");
+    }
+    buildFind() {
+      var f = this.findEl = el("div", "find", this.shadowRoot); f.hidden = true;
+      var h = el("div", "fh", f); this.findTitle = el("span", "", h, "destination");
+      var x = el("button", "b", h); x.type = "button"; icon(x, "mdi:close"); x.addEventListener("click", () => { f.hidden = true; });
+      this.findForm = el("form", "", f);
+      this.findIn = el("input", "", this.findForm); this.findIn.type = "text"; this.findIn.placeholder = "Adresse, ville, lieu…"; this.findIn.setAttribute("enterkeyhint", "search");
+      var g = el("button", "b go", this.findForm); g.type = "submit"; icon(g, "mdi:magnify");
+      this.findForm.addEventListener("submit", (ev) => { ev.preventDefault(); this.runSearch(this.findIn.value); });
+      this.findList = el("div", "list", f);
+    }
+    near() {
+      var p = this.config.position && this._hass && this._hass.states[this.config.position];
+      return p && p.attributes.latitude != null ? { latitude: Number(p.attributes.latitude), longitude: Number(p.attributes.longitude) } : {};
+    }
+    openFind(kind) {
+      this.findKind = kind;
+      this.findEl.hidden = false;
+      this.findList.innerHTML = "";
+      this.findForm.hidden = kind === "fuel";
+      this.findTitle.textContent = kind === "fuel" ? "stations-service" : kind === "stopover" ? "ajouter une étape" : "où allons-nous ?";
+      if (kind === "fuel") this.runFuel();
+      else { this.findIn.value = ""; setTimeout(() => this.findIn.focus(), 50); }
+    }
+    note(t) { this.findList.innerHTML = ""; el("div", "note", this.findList, t); }
+    pick(p) {
+      var c = this.config, h = this._hass;
+      this.findEl.hidden = true;
+      if (!h || !p) return;
+      var name = String(p.name || "destination").replace(/[;|]/g, " ").slice(0, 60);
+      // Guided: a stop on the way (Igor's own service keeps the destination).
+      if ((this.findKind === "stopover" || this.findKind === "fuel") && this.guided()) {
+        h.callWS({ type: "call_service", domain: "nives", service: "car_stop", return_response: true, service_data: { latitude: p.lat, longitude: p.lon, name: name } }).catch(() => {});
+        return;
+      }
+      if (c.destination) h.callService("input_text", "set_value", { entity_id: c.destination, value: Number(p.lat).toFixed(5) + "," + Number(p.lon).toFixed(5) + ";" + name });
+    }
+    row(name, sub, right, onClick) {
+      var it = el("div", "it", this.findList), l = el("div", "", it);
+      el("div", "", l, name); if (sub) el("small", "", l, sub);
+      if (right) el("span", "r", it, right);
+      it.addEventListener("click", onClick);
+    }
+    runSearch(q) {
+      q = String(q || "").trim(); if (!q || !this._hass) return;
+      this.note("recherche…");
+      this._hass.callWS({ type: "call_service", domain: "nives", service: "car_search", return_response: true, service_data: Object.assign({ query: q, limit: 8 }, this.near()) })
+        .then((res) => {
+          var r = (res && res.response) || {}, rows = r.results || [];
+          if (!rows.length) { this.note(r.error || "aucun résultat"); return; }
+          this.findList.innerHTML = "";
+          rows.forEach((p) => this.row(p.name, p.address || "", "▸", () => this.pick(p)));
+        }).catch(() => this.note("recherche impossible"));
+    }
+    // The stations: Igor's list (the detour, the minutes, along the route
+    // when guided) with the State's prices beside each, the cheapest first
+    // (`fuel_type`: gazole by default). « Plus proche » sorts by the detour.
+    runFuel(sort) {
+      if (!this._hass) return;
+      var c = this.config, ft = c.fuel_type || "gazole", here = this.near();
+      this.fuelSort = sort || this.fuelSort || "prix";
+      if (!sort) this.note("stations autour…");
+      var ws = (service, data) => this._hass.callWS({ type: "call_service", domain: "nives", service: service, return_response: true, service_data: data })
+        .then((r) => (r && r.response) || {}).catch(() => ({}));
+      var asks = this.fuelRows && sort ? Promise.resolve(this.fuelRows) : Promise.all([
+        ws("car_nearby", Object.assign({ kind: "fuel", count: 12 }, here)),
+        here.latitude != null ? ws("car_fuel", { latitude: here.latitude, longitude: here.longitude, radius_km: 15 }) : Promise.resolve({})
+      ]).then((both) => {
+        var near = both[0].places || [], flux = both[1].stations || [];
+        var at = (p, q) => gpsDist([p.lon, p.lat], [q.lon, q.lat]);
+        var rows = near.map((p) => {
+          var best = null, bd = 150;
+          flux.forEach((s) => { var d = at(p, s); if (d < bd) { bd = d; best = s; } });
+          return Object.assign({}, p, { price: best && best.prices ? best.prices[ft] : null, dry: best && best.rupture ? best.rupture[ft] : null, brand: p.brand || (best && best.brand) || "" });
+        });
+        // Not guided and Igor's list empty (OpenStreetMap asleep): the flux alone.
+        if (!rows.length && flux.length && here.latitude != null) rows = flux.map((s) => ({ name: s.brand || s.city || "station", brand: s.brand || "", lat: s.lat, lon: s.lon, city: s.city || "",
+          distance_km: Math.round(gpsDist([here.longitude, here.latitude], [s.lon, s.lat]) / 100) / 10, price: s.prices ? s.prices[ft] : null, dry: s.rupture ? s.rupture[ft] : null }));
+        this.fuelRows = rows; this.fuelNote = both[0].error || both[0].note || "";
+        return rows;
+      });
+      asks.then((rows) => {
+        if (!rows.length) { this.note(this.fuelNote || "aucune station"); return; }
+        var cost = (p) => p.detour_min != null ? p.detour_min : p.minutes != null ? p.minutes : (p.distance_km || 99) * 1.5;
+        rows = rows.slice().sort(this.fuelSort === "prix"
+          ? (a, b) => (a.price == null) - (b.price == null) || (a.price || 0) - (b.price || 0) || cost(a) - cost(b)
+          : (a, b) => cost(a) - cost(b));
+        this.findList.innerHTML = "";
+        var chips = el("div", "", this.findList); chips.style.cssText = "display:flex;gap:8px;padding:4px 0 8px";
+        [["prix", "moins cher"], ["proche", "plus proche"]].forEach((x) => {
+          var b = el("button", "b" + (this.fuelSort === x[0] ? " go" : ""), chips, x[1]); b.type = "button"; b.style.cssText = "flex:1;min-height:40px;font-size:12px;letter-spacing:.12em;text-transform:uppercase";
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); this.runFuel(x[0]); });
+        });
+        var cheapest = rows.reduce((m, p) => p.price != null && (m == null || p.price < m) ? p.price : m, null);
+        rows.forEach((p) => {
+          var it = el("div", "it", this.findList), l = el("div", "", it);
+          el("div", "", l, [p.brand, p.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(" · "));
+          el("small", "", l, [p.detour_min != null ? "+" + Math.round(p.detour_min) + " min" : p.minutes != null ? p.minutes + " min" : "", p.distance_km != null ? p.distance_km + " km" : "", p.service_area || "", p.city || ""].filter(Boolean).join(" · "));
+          var r = el("span", "r", it);
+          if (p.price != null) { r.textContent = p.price.toFixed(3).replace(".", ",") + " €"; r.style.fontSize = "20px"; r.style.color = p.price === cheapest ? CAR_OK : "var(--fg)"; }
+          else if (p.dry) { r.textContent = "rupture"; r.style.color = CAR_WARN; }
+          else { r.textContent = "prix non communiqué"; r.style.color = "var(--dim)"; r.style.fontSize = "13px"; }
+          it.addEventListener("click", () => this.pick(p));
+        });
+      });
+    }
+    update() {
+      var c = this.config, h = this._hass;
+      if (!h || !this.card) return;
+      if (this.barBtns && this.barBtns.voice && c.mute) {
+        var off = h.states[c.mute] && h.states[c.mute].state === "on";
+        this.barIcon.voice.setAttribute("icon", off ? "mdi:volume-off" : "mdi:volume-high");
+      }
+      if (this.barBtns && this.barBtns.stop) this.barBtns.stop.disabled = !this.guided();
+      if (this.remote() && this.guide) {
+        var st = h.states[c.entity], v = st ? String(st.state || "") : "";
+        if (v === "unknown" || v === "unavailable") v = "";
+        if (v !== this.lastTurn) {
+          this.lastTurn = v;
+          var a = v.split("|");
+          this.show(v ? { icon: a[0], dist: a[1], text: a[2], then: a[3], eta: a[4], left: a[5], min: a[6], jam: Number(a[7]) || 0, dest: a[8] } : null);
+        }
+      }
+      this.hear(c.voice, "voiceSeen");
+      this.hear(c.announce, "announceSeen");
+    }
+    // A sentence written into an input_text (« ms|kind|text » or
+    // « time|text »): said once, here, if fresh and the voice is not off.
+    hear(ent, key) {
+      var st = ent && this._hass.states[ent];
+      if (!st || st.state === this[key]) return;
+      var first = this[key] === undefined;
+      this[key] = st.state;
+      if (first || st.state === "unknown" || st.state === "unavailable") return;
+      if (Date.now() - (Date.parse(st.last_changed) || 0) > 30000) return;
+      var parts = String(st.state).split("|"), text = parts.length >= 3 ? parts.slice(2).join("|") : parts.slice(1).join("|") || parts[0];
+      var off = this.config.mute && this._hass.states[this.config.mute] && this._hass.states[this.config.mute].state === "on";
+      if (off || !text.trim()) return;
+      this.speak(text.trim());
+    }
+    speak(text) {
+      var h = this._hass, engine = this.config.tts_entity || Object.keys(h.states).filter((id) => id.indexOf("tts.") === 0).find((id) => /igor|nives/.test(id));
+      var browser = () => { try { var u = new SpeechSynthesisUtterance(text); u.lang = "fr-FR"; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch (e) { /* no voice */ } };
+      if (!engine || !h.callApi) { browser(); return; }
+      var seq = this.speakSeq = (this.speakSeq || 0) + 1;
+      h.callApi("POST", "tts_get_url", { engine_id: engine, message: text, language: "fr" }).then((r) => {
+        var url = r && (r.path || r.url); if (!url || seq !== this.speakSeq) return;
+        // Web Audio: the voice over the music, without Android's audio focus.
+        var ctx = gpsAudioCtx();
+        var element = () => { try { var au = this.au || (this.au = new Audio()); au.src = url; au.play().catch(browser); } catch (e) { browser(); } };
+        if (!ctx) { element(); return; }
+        var run = () => fetch(url).then((x) => x.arrayBuffer()).then((ab) => new Promise((ok, ko) => ctx.decodeAudioData(ab, ok, ko)))
+          .then((buf) => { if (seq !== this.speakSeq) return; try { if (this.node) this.node.stop(); } catch (e) { /* ended */ } var s = ctx.createBufferSource(); s.buffer = buf; s.connect(ctx.destination); s.start(); this.node = s; })
+          .catch(element);
+        if (ctx.state === "suspended") ctx.resume().then(run, element); else run();
+      }).catch(browser);
     }
     connectedCallback() { super.connectedCallback(); if (this.onGuide) { window.addEventListener("igor-gps-guide", this.onGuide); this.show(window.__igorGuide || null); } }
     disconnectedCallback() { if (this.onGuide) window.removeEventListener("igor-gps-guide", this.onGuide); }
@@ -10398,7 +10759,12 @@
       this.gText.textContent = g.text || "";
       this.gThen.textContent = g.then || "";
       this.gEta.textContent = g.eta || "";
-      this.gLeft.textContent = [g.left, g.min ? g.min + " min" : "", g.jam ? "dont " + g.jam + " min de bouchons" : (g.dest || "")].filter(Boolean).join(" · ");
+      if (this.config.big) {
+        this.gLeft.textContent = [g.left, g.min ? g.min + " min" : ""].filter(Boolean).join(" · ");
+        this.gJam.textContent = g.jam ? g.jam + " min de bouchons" : "fluide";
+        this.gJam.className = "s " + (g.jam ? "warn" : "ok");
+        this.gDest.textContent = g.dest || "—";
+      } else this.gLeft.textContent = [g.left, g.min ? g.min + " min" : "", g.jam ? "dont " + g.jam + " min de bouchons" : (g.dest || "")].filter(Boolean).join(" · ");
     }
   }
 
