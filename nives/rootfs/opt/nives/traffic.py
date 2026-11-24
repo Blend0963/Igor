@@ -333,6 +333,9 @@ def tile_ok(z: int, x: int, y: int) -> bool:
 # the key). Two generations of style; the first that answers is kept.
 TOMTOM_HOST = "https://api.tomtom.com/"
 STYLE_PATHS = (
+    # Orbis Maps, dark, made for driving — the style version TomTom's own
+    # Maps SDK asks for (its 3D buildings drawn by MapLibre 6)
+    "maps/orbis/assets/styles/0.6.0-0/style.json?apiVersion=1&map=basic_street-dark-driving",
     # Orbis Maps (street, dark)
     "maps/orbis/assets/styles/0.*/style.json?apiVersion=1&map=basic_street-dark",
     # TomTom Maps (Genesis), dark

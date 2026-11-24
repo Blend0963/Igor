@@ -1,3 +1,24 @@
+## 0.45.0 — Le SDK TomTom sur le téléphone, et les vrais arbres
+
+- **SDK TomTom pour JavaScript** (`basemap: tomtom-3d`, page en https) : la carte du téléphone est créée par le Maps SDK de TomTom, avec son module 3D — **bâtiments à façades**, fenêtres éclairées la nuit, ombres (`Buildings3D`) et **surfaces texturées** : eau, bois, champs, asphalte (`GLSurfaces`, sans ses arbres placés au hasard ni le vent qui redessine sans cesse). Il n'est pas livré avec Igor (sa licence n'est pas celle d'Igor) : le navigateur du téléphone le charge depuis esm.sh (`sdk_cdn:` pour un autre CDN). Ses requêtes passent par le relais TomTom d'Igor : la clé ne quitte pas Home Assistant. S'il ne se charge pas, ou si sa carte ne vient pas en 25 s, la carte repart d'elle-même avec MapLibre 6 seul (`sdk: false` pour s'en passer). `sdk_style:` choisit le style (par défaut `streetDarkDriving`).
+- **Les monuments 3D** (Orbis 3D Landmarks : tour Eiffel, Colisée…) ne sont pas activés : TomTom les réserve aux clés qui en ont reçu le droit (accès anticipé privé).
+- **Les arbres, les vrais** : ceux qu'OpenStreetMap recense un par un (`natural=tree`) et les alignements (`tree_row`, un arbre tous les 9 m le long de la ligne), en 3D — un tronc et une couronne arrondie en trois étages, à leur hauteur et à leur largeur quand la carte les donne. Lus par carrés d'environ 1,2 km autour de la voiture (Overpass), gardés pendant la séance. `trees: false` pour s'en passer.
+- Testé dans Chromium : SDK assemblé depuis npm, faux serveur TomTom (style par le relais, bâtiments et surfaces du SDK créés), faux Overpass (317 couronnes dessinées dans une rue plantée) ; et la carte sans SDK, inchangée.
+
+## 0.44.0 — La 3D de TomTom, le tracé et la flèche façon TomTom
+
+- **MapLibre 6** pour la carte GPS : c'est la version pour laquelle les styles Orbis de TomTom sont écrits (le Maps SDK de TomTom l'exige). Servie par Igor avec les cartes, chargée en premier ; si l'appareil ne sait pas la charger, MapLibre 4.7.1 prend le relais comme avant.
+- **Les bâtiments 3D de TomTom** : quand le style en a, ce sont les siens qui s'affichent, tels que TomTom les a dessinés (coins arrondis compris). Igor n'élève lui-même les bâtiments que pour un style qui n'a aucune couche 3D.
+- **Le style de conduite sombre d'Orbis** (`basic_street-dark-driving`, version 0.6.0-0, celle du Maps SDK), puis les anciens styles en secours.
+- **Le tracé** : un halo bleu doux, un bord bleu profond, un corps bleu vif et une fine ligne claire au milieu. **La voiture** : un chevron couché sur la route, éclairé d'un côté, une lueur au sol.
+- Testé dans Chromium : la carte GPS complète sous MapLibre 6 (style 3D, itinéraire, bâtiments à l'écran), et le retour sur 4.7.1.
+
+## 0.43.3 — Les bâtiments en 3D pour de bon, la carte jusqu'au bord
+
+- `igor-gps-card` (`basemap: tomtom-3d`) : les bâtiments en relief sont maintenant construits par Igor à partir de ceux que TomTom dessine à plat — mêmes tuiles, mêmes contours, élevés à leur hauteur (`height` d'Orbis, `ground_height` pour ce qui ne touche pas le sol ; ceux marqués `extrude: false` restent plats). Les couches 3D du style, qui ne montraient rien, sont mises de côté. Visibles dès le zoom 14,5, éclairés, plus clairs en hauteur. Testé avec le moteur de carte (MapLibre) sur des bâtiments d'essai.
+- `display_only` : la carte occupe tout l'écran, bord à bord, y compris la bande de l'appareil photo que Home Assistant laissait vide.
+- `debug: true` dit aussi combien de bâtiments en relief sont à l'écran et quelles informations les tuiles donnent.
+
 ## 0.43.2 — La 3D bien visible sur le téléphone
 
 - `igor-gps-card` (`basemap: tomtom-3d`) : les bâtiments en relief de TomTom sont pris en main au lieu d'être laissés tels quels — visibles dès le zoom 14,5 (une vue inclinée voit loin), opaques, éclairés de côté avec le pied plus sombre, et un peu plus clairs que le sol quand le style sombre les fondait dans la nuit. Si le style n'a pas de couche 3D, Igor élève lui-même les bâtiments (dès le zoom 14,5 aussi).
