@@ -5283,7 +5283,13 @@
     sources: { carto: { type: "raster", tileSize: 256, maxzoom: 20,
       tiles: ["a", "b", "c", "d"].map(function (h) { return "https://" + h + ".basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"; }),
       attribution: "© OpenStreetMap · © CARTO" } },
-    layers: [{ id: "carto", type: "raster", source: "carto" }]
+    // Igor's black: the page's own black under the tiles (never a grey
+    // square while one loads), and CARTO's dark grey pushed to black — more
+    // contrast, less colour — the roads stay readable, the land goes black.
+    layers: [
+      { id: "igor-bg", type: "background", paint: { "background-color": "#08090b" } },
+      { id: "carto", type: "raster", source: "carto", paint: { "raster-contrast": 0.35, "raster-brightness-max": 0.92, "raster-saturation": -0.5, "raster-fade-duration": 0 } }
+    ]
   };
   var GPS_R = 6378137, GPS_PREDICT_S = 4, GPS_MOVING = 0.8, GPS_TRAIL = 600;
   // The drawn lines breathe with the zoom: thin on the overview (they must not
@@ -5292,7 +5298,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.39.3";
+  var GPS_CARD_VERSION = "0.39.4";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6326,7 +6332,7 @@
         // turn, the arrival, the destination) and what it does not need
         // (fullscreen, layers, the unknown-limit sign) are not drawn.
         ".rail .btns { left: auto; right: 10px; gap: 8px; }" +
-        ".rail .btns button { width: 118px; height: 52px; display: flex; gap: 8px; justify-content: center; font-family: inherit; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; --mdc-icon-size: 18px; color: #c9cdd2; }" +
+        ".rail .btns button { width: 118px; height: 52px; display: flex; gap: 8px; justify-content: center; font-family: " + MONO + "; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; --mdc-icon-size: 18px; color: #c9cdd2; }" +
         ".rail .btns button::after { content: attr(data-l); }" +
         ".rail .btns button[hidden] { display: none; }" +
         ".rail #full, .rail #layers, .rail .nav, .rail .eta, .rail .snap, .rail .sign.unk { display: none !important; }" +

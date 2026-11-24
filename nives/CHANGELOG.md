@@ -1,3 +1,8 @@
+## 0.39.4 — Fond de carte noir Igor
+
+- Fond de carte en ligne assombri au noir d'Igor : un fond `#08090b` sous les tuiles (jamais de carré gris pendant un chargement), tuiles CARTO plus contrastées et désaturées — le fond devient noir, les routes restent lisibles.
+- Boutons `controls: rail` dans la police monospace d'Igor.
+
 ## 0.39.3 — Carte de nouveau visible, voix par-dessus la musique, boutons autoradio
 
 - **Fond de carte en ligne par défaut** (tuiles CARTO sombres, mises en cache par le navigateur). Depuis 0.38.98 la carte n'utilisait que la copie locale de ces tuiles, que le serveur devait d'abord télécharger pour toute la région (France jusqu'au zoom 14 : des centaines de milliers de tuiles, une par une) : la carte restait noire. Le coût de dessin est le même en ligne ou en local — le lag venait des POI (corrigé en 0.39.1). La copie locale reste utilisée quand elle est complète ; son téléchargement n'est plus automatique (`nives.car_map_update` avec `raster: true`). La base de POI hors ligne est conservée.
