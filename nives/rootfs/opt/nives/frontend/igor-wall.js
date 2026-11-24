@@ -7041,10 +7041,8 @@
         var mr = ms && ms.response;
         this.offlineReady = !!(mr && mr.ok && mr.ready);
         this.offlineInfo = mr || null;
-        // No download button any more: the card maintains its offline map
-        // itself — start the download when there is none, and follow the
-        // progress in a toast that disappears on its own.
-        if (mr && mr.ok && !mr.ready && !mr.updating) this._autoMapUpdate();
+        // The card never starts an offline-map download by itself (0.39.10):
+        // a download asked by hand (nives.car_map_update) is only followed.
         if (mr && mr.ok && mr.updating) this._offlinePollToast();
       } catch (e) { this.offlineReady = false; }
       var ml;
