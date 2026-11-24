@@ -1,3 +1,18 @@
+## 0.41.0 — La page Route qui suit la route
+
+- **`igor-drive-card`** — le centre de l'autoradio change de lui-même selon la route, par priorité :
+  - **radar** à moins de 1 km (500 m en ville) : grand panneau, distance, barre qui se vide ; vert à la limite ou en dessous, orange jusqu'à +5 km/h, rouge au-delà (« ralentissez de 13 km/h ») ; sans téléphone, d'après la liste officielle et la position de l'autoradio (« ≈ », moins précis) ;
+  - **moteur** à la première grosse accélération (charge au plancher en accélérant, +15 km/h en 4 s, ou turbo à pleine pression — jamais le régime seul) : compte-tours, conseil de rapport, turbo, températures, charge, accélération en g ; tenu tant que dure l'effort lissé sur 6 s (les changements de rapport ne le ferment pas), au moins 20 s, fermé après 8 s de calme, pas rouvert avant 30 s sauf nouvelle forte accélération ;
+  - **trajet** pendant un guidage : la frise des 30 prochains km (radars, stations les moins chères avec leur prix, bouchons, arrivée) ;
+  - **conso** sinon : distance, L/100, coût, score éco, courbe de consommation instantanée, accélérations et freinages forts ;
+  - **voiture arrêtée** : le dernier trajet et la prochaine échéance.
+  Chaque vue reste au moins 8 s (radar et moteur exceptés) ; un toucher sur un onglet la fixe 60 s. Seuils réglables (`tune`). Testé en simulation : sortie de péage pied au plancher avec changements de rapport → moteur tenu jusqu'au retour au calme ; relances en ville et démarrage doux → rien.
+- `igor-gps-card` : **`publish_ahead`** — le radar à portée et ce qui vient sur l'itinéraire (radars, 2 stations les moins chères avec prix, bouchons), toutes les 2 à 8 s : c'est aussi le signe de vie de la carte du téléphone.
+- `igor-phone-card` : trois états — sur le socle, **dans la voiture** (Bluetooth seul, `nearby` : favoris et rappel « posez-le pour la carte »), absent ; batterie faible en orange sous 15 %.
+- `igor-messages-card` : **`present`** — téléphone hors de la voiture : « les messages reviennent dès qu'il se connecte ».
+- `igor-guide-card` : **guidage interrompu** (téléphone retiré en cours de trajet) — la destination, « Continuer avec Waze » (sur cette destination), « reposez le téléphone : le guidage reprend ».
+- `igor-car-card` : **`limit`** — le panneau de limitation à côté de la vitesse, la vitesse en vert / orange / rouge.
+
 ## 0.40.7 — Finitions de l'autoradio
 
 - `igor-schedule-card` (Carnet) : l'échéancier ne s'écrase plus à droite. L'échelle suit l'échéance la plus lointaine (racine carrée : ce qui arrive bientôt a plus de place), et les étiquettes trop proches prennent une autre rangée (dessous, dessus, plus loin dessous, plus loin dessus) au lieu de s'écrire l'une sur l'autre.
