@@ -5282,7 +5282,8 @@
   //   street_names: true                    # the road where the car is, at the bottom (false: off)
   //   fps: 20                               # the map drawn that many times a second while moving (lower: lighter)
   //   fullscreen_button: false              # no fullscreen button (a dashboard that is the map already)
-  //   display_only: true                    # a second screen: the map only (no button, banner or sign; touches ignored)
+  //   display_only: true                    # a second screen: the map only (no button, banner or sign); a tap on the map still picks a place or a route
+  //   base_pois: true                       # with basemap: tomtom-3d, TomTom's own places (Igor adds only cameras and stations with prices)
   //   voice_to: input_text.car_voice        # what the guidance says goes there (« ms|kind|text »), said by the head unit's igor-guide-card
   //   publish_turn: input_text.car_turn     # the whole guidance for igor-guide-card `entity` (« icon|dist|text|then|eta|left|min|jam|dest »)
   //   publish_guide: input_text.car_guide   # the guidance written for the other screens (« eta|km|min|destination »)
@@ -6615,12 +6616,13 @@
       var $ = (id) => this.root.getElementById(id);
       this.$ = $;
       // display_only: a second screen (the phone under the head unit) — the
-      // map and nothing else: no button, no banner, no sign; a finger on it
-      // changes nothing. Everything is driven from the head unit (the shared
-      // destination) and said there (voice_to).
+      // map and nothing else: no button, no banner, no sign. The finger still
+      // works on the map itself: a place tapped (go there, a stop), a
+      // station's prices, the choice between routes. The rest is driven from
+      // the head unit (the shared destination) and said there (voice_to).
       if (this.config.display_only) {
         var dsp = document.createElement("style");
-        dsp.textContent = ".btns,.nav,.glow,.side,.street,.toast,.ask,.panel,.lpanel,.pprice,.eta,.hud,.snap,.maplibregl-ctrl-bottom-right,.maplibregl-ctrl-bottom-left { display: none !important; } #map { pointer-events: none; }";
+        dsp.textContent = ".btns,.nav,.glow,.side,.street,.toast,.ask,.panel:not(.rpanel),.lpanel,.eta,.hud,.snap,.maplibregl-ctrl-bottom-right,.maplibregl-ctrl-bottom-left { display: none !important; }";
         this.root.appendChild(dsp);
       }
       var mlCss = this.root.querySelector("link[data-ml-css]");
@@ -6781,9 +6783,36 @@
     // their footprints with whatever height the tiles carry (else ~3 floors).
     tomtom3d(map) {
       var layers = map.getStyle().layers || [];
-      layers.forEach((l) => {
-        if (l.type === "symbol" && /poi|point.of.interest/i.test(l.id + " " + (l["source-layer"] || ""))) map.setLayoutProperty(l.id, "visibility", "none");
-      });
+      var poiLayers = layers.filter((l) => l.type === "symbol" && /poi|point.of.interest/i.test(l.id + " " + (l["source-layer"] || "")));
+      if (!this.basePois()) poiLayers.forEach((l) => map.setLayoutProperty(l.id, "visibility", "none"));
+      else {
+        // TomTom's own places stay (shops, pharmacies, parkings…), but not its
+        // stations: Igor's show logo + price (the State's flux), one mark a
+        // station. Which property says « fuel » is read from the tiles
+        // themselves (the schema is TomTom's), then filtered out.
+        this.ttFuelDone = false;
+        var hideFuel = () => {
+          if (this.ttFuelDone || !this.map) return;
+          var feats = [];
+          try { feats = map.queryRenderedFeatures({ layers: poiLayers.map((l) => l.id) }) || []; } catch (e) { feats = []; }
+          var RX = /petrol|fuel|gas[ _-]?station|station[ _-]?service|carburant/i, key = null, vals = {};
+          feats.forEach((f) => { Object.keys(f.properties || {}).forEach((k) => { var v = f.properties[k]; if (typeof v === "string" && RX.test(v) && !/name/i.test(k)) { key = key || k; if (k === key) vals[v] = true; } }); });
+          if (!key) return;
+          this.ttFuelDone = true;
+          // Made invisible, not filtered: a paint expression is accepted
+          // whatever filter syntax the style's layer uses.
+          var isFuel = ["in", ["to-string", ["get", key]], ["literal", Object.keys(vals)]];
+          poiLayers.forEach((l) => {
+            ["icon-opacity", "text-opacity"].forEach((prop) => {
+              var old = map.getPaintProperty(l.id, prop);
+              // A zoom curve must stay at the top of its expression: left as it is.
+              if (old != null && (typeof old !== "number" && !Array.isArray(old) || JSON.stringify(old).indexOf('"zoom"') >= 0)) return;
+              try { map.setPaintProperty(l.id, prop, ["case", isFuel, 0, old == null ? 1 : old]); } catch (e) { /* left as it is */ }
+            });
+          });
+        };
+        map.on("idle", hideFuel);
+      }
       if (layers.some((l) => l.type === "fill-extrusion")) return;
       var fp = layers.find((l) => l.type === "fill" && l.source && /build/i.test(l.id + " " + (l["source-layer"] || "")));
       if (!fp || map.getLayer("igor-3d")) return;
@@ -7859,8 +7888,7 @@
       // otherwise, or when TomTom does not answer.
       if (this.trafficOn()) {
         // A destination just chosen by hand: the routes to choose from.
-        if (this.chooseNext && !this.config.display_only) { this.chooseNext = false; if (await this.chooseRoute(d, from)) return; if (this.dest !== d) return; }
-        this.chooseNext = false;
+        if (this.chooseNext) { this.chooseNext = false; if (await this.chooseRoute(d, from)) return; if (this.dest !== d) return; }
         var tt = await this.askRoute(d, from, this.tripAvoid || []);
         if (this.dest !== d) return;
         if (tt && tt.ok && tt.route) { this.useTomTom(tt.route); return; }
@@ -8945,8 +8973,12 @@
     poiKinds() {
       var L = this.layers || {}, out = [];
       Object.keys(GPS_POI).forEach((k) => { if (k === "camera" ? L.cameras && L.cameras !== "off" : L[k]) out.push(k); });
+      // The base map draws its own places (TomTom 3D): Igor adds only what it
+      // has better — the cameras, and the stations with their prices.
+      if (this.basePois()) out = out.filter((k) => k === "camera" || k === "fuel");
       return out;
     },
+    basePois() { return this.config.basemap === "tomtom-3d" && this.config.base_pois !== false; },
     applyLayers() {
       var map = this.map;
       if (!map || !map.getLayer || !map.getLayer("pois")) return;
