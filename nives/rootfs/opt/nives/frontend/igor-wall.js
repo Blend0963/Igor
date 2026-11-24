@@ -10592,7 +10592,7 @@
       nps.style.cssText = "color:var(--dim);font-size:13px;margin:8px 0 10px";
       var wz = el("button", "b go", this.noPhone); wz.type = "button"; wz.style.cssText = "width:100%;min-height:56px;flex-direction:row;gap:10px;font-size:13px;letter-spacing:.14em";
       icon(wz, "mdi:waze"); el("span", "", wz, "Ouvrir Waze");
-      wz.addEventListener("click", () => this.openWaze());
+      wz.addEventListener("click", () => haAction(this, { action: "url", url_path: "app://com.waze" }));
       this.guide = el("div", "", card);
       if (this.remote()) { this.guide.style.display = "flex"; this.guide.style.flexDirection = "column"; this.guide.style.flex = "1"; this.guide.style.minHeight = "0"; el("div", "h", this.guide, "guidage"); }
       var t = el("div", "turn", this.guide);
@@ -10924,7 +10924,10 @@
     var look = key ? MSG_APPS[key] : ["#8a9099", (app[0] || "•").toUpperCase()];
     var name = key === "whatsapp" ? "WhatsApp" : key === "gmail" || key === "gm" ? "Gmail" : key === "sms" || key === "messaging" ? "SMS" : app ? app[0].toUpperCase() + app.slice(1) : "";
     var call = /appel|dialer|téléphone/i.test(app) && /manqu|missed/i.test(titre + " " + txt);
-    return { app: name, pkg: pkg, titre: titre, txt: txt, time: (date.match(/\d{1,2}:\d{2}/) || [""])[0], color: call ? "#e5323b" : look[0], letter: call ? "✆" : look[1], call: call };
+    // A conversation (one can answer it) or a notification (franceinfo, a
+    // parcel, an app): only a conversation gets « Répondre ».
+    var chat = /whatsapp|messaging|\.mms|sms|telegram|securesms|signal|facebook\.orca|messenger|teams|instagram|discord|slack|viber|skype/i.test(pkg + " " + app) && !/fork/i.test(pkg + app);
+    return { app: name, pkg: pkg, titre: titre, txt: txt, time: (date.match(/\d{1,2}:\d{2}/) || [""])[0], color: call ? "#e5323b" : look[0], letter: call ? "✆" : look[1], call: call, chat: chat };
   }
   class IgorMessagesCard extends IgorCard {
     setConfig(config) { if (!config || !config.entity) throw new Error("igor-messages-card: entity est requis"); this.config = config; }
@@ -11037,7 +11040,12 @@
         if (byKey[k]) { byKey[k].n++; return; }
         m.n = 1; byKey[k] = m; groups.push(m);
       });
-      groups.slice(0, inCall ? Math.min(3, c.count || 5) : (c.count || 5)).forEach((m, i) => {
+      var others = groups.filter((m) => !m.chat && !m.call);
+      groups = groups.filter((m) => m.chat || m.call);
+      this.head.textContent = "messages · " + groups.reduce((t, m) => t + m.n, 0);
+      var max = (inCall ? Math.min(3, c.count || 5) : (c.count || 5)) - (others.length ? 1 : 0);
+      if (!groups.length) el("div", "empty", this.list, "Aucun message");
+      groups.slice(0, Math.max(1, max)).forEach((m, i) => {
         var row = el("div", "cp" + (i ? "" : " new"), this.list);
         var a = el("div", "a", row, m.letter); a.style.background = m.color;
         var w = el("div", "w", row); w.appendChild(document.createTextNode(m.titre || m.app));
@@ -11053,6 +11061,17 @@
           icon(b2, "mdi:reply"); el("span", "", b2, "répondre"); b2.addEventListener("click", () => this.reply(m));
         }
       });
+      // Everything else in one quiet line: no answer to give, Igor reads it if asked.
+      if (others.length) {
+        var row = el("div", "cp", this.list); row.style.opacity = "0.85";
+        var ic = el("div", "a", row, "🔔"); ic.style.background = "#2a2f36"; ic.style.color = "var(--fg)";
+        var w = el("div", "w", row), n = others.reduce((t, m) => t + m.n, 0);
+        w.appendChild(document.createTextNode(n + (n > 1 ? " autres notifications" : " autre notification")));
+        el("small", "", w, others.slice(0, 4).map((m) => m.app || m.titre).filter((v, i, a) => v && a.indexOf(v) === i).join(" · "));
+        var b1 = el("button", "b l", row); b1.type = "button"; icon(b1, "mdi:play"); el("span", "", b1, "lire");
+        b1.addEventListener("click", () => this.run(this.config.say || "script.voiture_dire", { message: others.slice(0, 3).map((m) => (m.app ? m.app + " : " : "") + (m.titre || "") + (m.txt ? ". " + m.txt : "")).join(". ") }));
+        el("div", "", row);
+      }
     }
   }
 
@@ -11100,12 +11119,11 @@
       this.off = el("div", "abs", card);
       var t2 = el("div", "top", this.off); el("div", "h", t2, "téléphone"); el("div", "tel", t2, "absent");
       var ph = el("div", "ph", this.off); icon(el("div", "pi", ph), "mdi:cellphone-arrow-down");
-      var tx = el("div", "", ph); el("b", "", tx, "Posez le téléphone sur le socle"); el("small", "", tx, "la carte s'affiche dessus · sinon, Waze");
-      var wz = el("div", "row2 wz", this.off);
-      var ow = el("button", "b go", wz); ow.type = "button"; icon(ow, "mdi:waze"); el("span", "", ow, "ouvrir waze");
+      var tx = el("div", "", ph); el("b", "", tx, "Posez le téléphone sur le socle"); el("small", "", tx, "pour la carte et le guidage · sinon, Waze");
+      // No phone, no destination chosen here: Waze is simply opened.
+      var wz = el("div", "wz", this.off);
+      var ow = el("button", "b go", wz); ow.type = "button"; ow.style.width = "100%"; icon(ow, "mdi:waze"); el("span", "", ow, "ouvrir waze");
       ow.addEventListener("click", () => haAction(this, { action: "url", url_path: "app://com.waze" }));
-      var vw = el("button", "b", wz); vw.type = "button"; icon(vw, "mdi:arrow-right-bold-box-outline"); el("span", "", vw, "vers waze");
-      vw.addEventListener("click", () => IgorGuideCard.prototype.openWaze.call(this));
     }
     update() {
       var h = this._hass, c = this.config;
