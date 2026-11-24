@@ -888,7 +888,7 @@ def _async_register_basemap(hass: HomeAssistant) -> None:
                 cache.move_to_end((z, x, y))
                 return web.Response(body=hit, headers=headers)
             session = async_get_clientsession(hass)
-            last = 502
+            tried = []
             for i, url in basemap_urls(key, z, x, y, state["first"]):
                 try:
                     async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as r:
@@ -899,10 +899,16 @@ def _async_register_basemap(hass: HomeAssistant) -> None:
                             while len(cache) > 600:
                                 cache.popitem(last=False)
                             return web.Response(body=body, headers=headers)
-                        last = r.status
-                except (aiohttp.ClientError, TimeoutError):
-                    last = 504
-            return web.Response(status=last if last >= 400 else 502)
+                        why = body[:160].decode("utf-8", "replace").replace("\n", " ")
+                        tried.append(f"adresse {i + 1} → {r.status} {r.headers.get('Content-Type', '')} {why}")
+                except (aiohttp.ClientError, TimeoutError) as e:
+                    tried.append(f"adresse {i + 1} → injoignable ({type(e).__name__})")
+            # TomTom's own answers, said once per minute at most (the key never appears).
+            now = time.monotonic()
+            if now - state.get("logged", 0) > 60:
+                state["logged"] = now
+                _LOGGER.warning("Fond de carte TomTom refusé pour %s/%s/%s : %s", z, x, y, " | ".join(tried).replace(key, "***"))
+            return web.Response(status=502, text="TomTom a refusé le fond de carte (voir le journal de Home Assistant)")
 
     # The 3D map (`basemap: tomtom-3d`, the phone): TomTom's vector style and
     # everything it asks for, relayed under /api/nives/tomtom/…, key added.
@@ -928,7 +934,7 @@ def _async_register_basemap(hass: HomeAssistant) -> None:
             if raw == "style.json":
                 n = len(STYLE_PATHS)
                 order = [style_state["first"]] + [i for i in range(n) if i != style_state["first"]]
-                last = 502
+                tried = []
                 for i in order:
                     try:
                         async with session.get(with_key(STYLE_PATHS[i], key), timeout=aiohttp.ClientTimeout(total=10)) as r:
@@ -937,11 +943,12 @@ def _async_register_basemap(hass: HomeAssistant) -> None:
                                 style_state["first"] = i
                                 return web.Response(text=rewrite_json(text, base), content_type="application/json",
                                                     headers={"Cache-Control": "private, max-age=3600"})
-                            last = r.status
-                    except (aiohttp.ClientError, TimeoutError):
-                        last = 504
-                _LOGGER.warning("Carte 3D : TomTom n'a fourni aucun style (dernière réponse %s)", last)
-                return web.Response(status=last if last >= 400 else 502)
+                            last = f"{r.status} {text[:160]}"
+                            tried.append(f"style {i + 1} → {last}")
+                    except (aiohttp.ClientError, TimeoutError) as e:
+                        tried.append(f"style {i + 1} → injoignable ({type(e).__name__})")
+                _LOGGER.warning("Carte 3D : TomTom n'a fourni aucun style : %s", " | ".join(tried).replace(key, "***"))
+                return web.Response(status=502, text="TomTom a refusé le style 3D (voir le journal de Home Assistant)")
             if not relay_ok(raw):
                 return web.Response(status=403)
             pq = raw + ("?" + strip_key(qs) if qs else "")
