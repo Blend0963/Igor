@@ -1,6 +1,8 @@
 ## 0.40.0 — Le téléphone, écran déporté de l'autoradio
 
 - `igor-gps-card` : **`display_only: true`** — un second écran (le téléphone sous l'autoradio) : la carte seule, sans bouton, bandeau ni panneau. Le doigt agit toujours sur la carte : un lieu touché (y aller, en faire une étape), les prix d'une station, le choix entre les itinéraires.
+- `igor-guide-card`, bouton **Stations** : chaque station avec le **prix du carburant** (flux officiel `nives.car_fuel`, rapproché à 150 m près ; `fuel_type: gazole` par défaut), **la moins chère d'abord** (en vert), ou « plus proche » (le détour) d'un toucher. Sans liste d'Igor (OpenStreetMap endormi) : les stations du flux seules, par prix.
+- `igor-gps-card` : **`debug_pois: true`** — toucher la carte affiche 15 s ce que disent les points d'intérêt du fond sous le doigt (pour trouver la propriété qui marque les stations de TomTom).
 - Carte 3D (`basemap: tomtom-3d`) : **les points d'intérêt de TomTom restent affichés** (commerces, pharmacies, parkings…) et Igor n'ajoute plus les siens (OpenStreetMap), sauf les radars et les stations-service. Les stations de TomTom sont rendues invisibles (la propriété qui dit « carburant » est lue dans les tuiles elles-mêmes) : chaque station n'apparaît qu'une fois, avec le logo et le prix du flux officiel. `base_pois: false` revient aux points d'intérêt d'Igor.
 - `igor-gps-card` : **`voice_to: input_text.…`** — ce que dit le guidage part vers l'écran qui parle (« ms|type|texte ») au lieu de sortir de celui-ci.
 - `igor-gps-card` : **`publish_turn: input_text.…`** — tout le guidage pour l'autoradio (« icône|distance|texte|puis|arrivée|reste|min|bouchons|destination »), tout de suite quand le virage change, sinon au plus toutes les 2 s ; vidé à la fin.

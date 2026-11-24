@@ -6374,7 +6374,7 @@
         "ha-card { display: block; position: relative; height: 100%; min-height: 240px; overflow: hidden; background: #07080a; border-radius: var(--igor-radius, 3px); }" +
         "#map { position: absolute; inset: 0; touch-action: none; } #map .maplibregl-canvas { touch-action: none; }" +
         ".msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; text-align: center; color: #878c95; font-family: " + MONO + "; font-size: 13px; }" +
-        ".msg[hidden] { display: none; }" +
+        ".msg[hidden] { display: none; } .msg { pointer-events: none; }" +
         ".btns { position: absolute; top: 10px; left: 10px; display: flex; flex-direction: column; gap: 8px; z-index: 2; }" +
         ".compact:not(.full) .btns { display: none; }" +
         ".full .btns button { width: 56px; height: 56px; --mdc-icon-size: 28px; }" +
@@ -8118,6 +8118,16 @@
     mapPick(e) {
       var map = this.map;
       if (!map || !e || !e.point || !window.maplibregl) return;
+      // debug_pois: what the base map's tiles say under the finger (to find
+      // which property marks TomTom's stations), shown 15 s in the message band.
+      if (this.config.debug_pois) {
+        try {
+          var dbg = (map.queryRenderedFeatures(e.point) || []).filter((f) => f.layer && f.layer.type === "symbol").slice(0, 3)
+            .map((f) => (f.layer["source-layer"] || f.layer.id) + " → " + Object.keys(f.properties || {}).map((k) => k + "=" + f.properties[k]).join(", "));
+          this.message(dbg.length ? dbg.join("  |  ") : "aucun point d'intérêt de la carte ici");
+          clearTimeout(this.dbgTimer); this.dbgTimer = setTimeout(() => this.message(""), 15000);
+        } catch (err) { /* nothing under the finger */ }
+      }
       if (this.config.compact && !this.full) { this.setFull(true); return; }
       if (map.getLayer("alts") && map.queryRenderedFeatures(e.point, { layers: ["alts"] }).length) return;
       // A station of the map's own layer: its prices first, then the two ways.
@@ -10488,7 +10498,7 @@
         ".bar button.red { border-color: " + CAR_BAD + "; color: " + CAR_BAD + "; } .bar button.red ha-icon { color: " + CAR_BAD + "; }",
         ".bar button.on { border-color: var(--acc); color: var(--acc); }",
         // the finder (search, stations): over the whole screen
-        ".find { position: fixed; inset: 6% 10%; z-index: 2147482000; background: #0d0f12; border: 1px solid var(--line); border-radius: var(--igor-radius, 3px); display: flex; flex-direction: column; padding: 14px 16px; gap: 10px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.6); }",
+        ".find { position: fixed; inset: 6% 10%; z-index: 2147482000; background: #0d0f12; color: var(--fg); font-family: inherit; border: 1px solid var(--line); border-radius: var(--igor-radius, 3px); display: flex; flex-direction: column; padding: 14px 16px; gap: 10px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.6); }",
         ".find .fh { display: flex; align-items: center; justify-content: space-between; font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: var(--dim); }",
         ".find form { display: flex; gap: 8px; } .find input { flex: 1; min-width: 0; font: inherit; font-size: 20px; padding: 12px; background: #14171b; color: var(--fg); border: 1px solid var(--acc); border-radius: 3px; }",
         ".find .list { flex: 1; overflow-y: auto; } .find .it { display: flex; gap: 12px; align-items: center; padding: 12px 6px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 17px; }",
@@ -10616,19 +10626,57 @@
           rows.forEach((p) => this.row(p.name, p.address || "", "▸", () => this.pick(p)));
         }).catch(() => this.note("recherche impossible"));
     }
-    runFuel() {
+    // The stations: Igor's list (the detour, the minutes, along the route
+    // when guided) with the State's prices beside each, the cheapest first
+    // (`fuel_type`: gazole by default). « Plus proche » sorts by the detour.
+    runFuel(sort) {
       if (!this._hass) return;
-      this.note("stations autour…");
-      this._hass.callWS({ type: "call_service", domain: "nives", service: "car_nearby", return_response: true, service_data: Object.assign({ kind: "fuel", count: 8 }, this.near()) })
-        .then((res) => {
-          var r = (res && res.response) || {}, rows = r.places || [];
-          if (!rows.length) { this.note(r.error || r.note || "aucune station"); return; }
-          this.findList.innerHTML = "";
-          rows.forEach((p) => {
-            var right = p.detour_min != null ? "+" + Math.round(p.detour_min) + " min" : p.minutes != null ? p.minutes + " min" : (p.distance_km != null ? p.distance_km + " km" : "▸");
-            this.row([p.brand, p.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(" · "), [p.distance_km != null ? p.distance_km + " km" : "", p.service_area || "", p.city || ""].filter(Boolean).join(" · "), right, () => this.pick(p));
-          });
-        }).catch(() => this.note("recherche impossible"));
+      var c = this.config, ft = c.fuel_type || "gazole", here = this.near();
+      this.fuelSort = sort || this.fuelSort || "prix";
+      if (!sort) this.note("stations autour…");
+      var ws = (service, data) => this._hass.callWS({ type: "call_service", domain: "nives", service: service, return_response: true, service_data: data })
+        .then((r) => (r && r.response) || {}).catch(() => ({}));
+      var asks = this.fuelRows && sort ? Promise.resolve(this.fuelRows) : Promise.all([
+        ws("car_nearby", Object.assign({ kind: "fuel", count: 12 }, here)),
+        here.latitude != null ? ws("car_fuel", { latitude: here.latitude, longitude: here.longitude, radius_km: 15 }) : Promise.resolve({})
+      ]).then((both) => {
+        var near = both[0].places || [], flux = both[1].stations || [];
+        var at = (p, q) => gpsDist([p.lon, p.lat], [q.lon, q.lat]);
+        var rows = near.map((p) => {
+          var best = null, bd = 150;
+          flux.forEach((s) => { var d = at(p, s); if (d < bd) { bd = d; best = s; } });
+          return Object.assign({}, p, { price: best && best.prices ? best.prices[ft] : null, dry: best && best.rupture ? best.rupture[ft] : null, brand: p.brand || (best && best.brand) || "" });
+        });
+        // Not guided and Igor's list empty (OpenStreetMap asleep): the flux alone.
+        if (!rows.length && flux.length && here.latitude != null) rows = flux.map((s) => ({ name: s.brand || s.city || "station", brand: s.brand || "", lat: s.lat, lon: s.lon, city: s.city || "",
+          distance_km: Math.round(gpsDist([here.longitude, here.latitude], [s.lon, s.lat]) / 100) / 10, price: s.prices ? s.prices[ft] : null, dry: s.rupture ? s.rupture[ft] : null }));
+        this.fuelRows = rows; this.fuelNote = both[0].error || both[0].note || "";
+        return rows;
+      });
+      asks.then((rows) => {
+        if (!rows.length) { this.note(this.fuelNote || "aucune station"); return; }
+        var cost = (p) => p.detour_min != null ? p.detour_min : p.minutes != null ? p.minutes : (p.distance_km || 99) * 1.5;
+        rows = rows.slice().sort(this.fuelSort === "prix"
+          ? (a, b) => (a.price == null) - (b.price == null) || (a.price || 0) - (b.price || 0) || cost(a) - cost(b)
+          : (a, b) => cost(a) - cost(b));
+        this.findList.innerHTML = "";
+        var chips = el("div", "", this.findList); chips.style.cssText = "display:flex;gap:8px;padding:4px 0 8px";
+        [["prix", "moins cher"], ["proche", "plus proche"]].forEach((x) => {
+          var b = el("button", "b" + (this.fuelSort === x[0] ? " go" : ""), chips, x[1]); b.type = "button"; b.style.cssText = "flex:1;min-height:40px;font-size:12px;letter-spacing:.12em;text-transform:uppercase";
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); this.runFuel(x[0]); });
+        });
+        var cheapest = rows.reduce((m, p) => p.price != null && (m == null || p.price < m) ? p.price : m, null);
+        rows.forEach((p) => {
+          var it = el("div", "it", this.findList), l = el("div", "", it);
+          el("div", "", l, [p.brand, p.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(" · "));
+          el("small", "", l, [p.detour_min != null ? "+" + Math.round(p.detour_min) + " min" : p.minutes != null ? p.minutes + " min" : "", p.distance_km != null ? p.distance_km + " km" : "", p.service_area || "", p.city || ""].filter(Boolean).join(" · "));
+          var r = el("span", "r", it);
+          if (p.price != null) { r.textContent = p.price.toFixed(3).replace(".", ",") + " €"; r.style.fontSize = "20px"; r.style.color = p.price === cheapest ? CAR_OK : "var(--fg)"; }
+          else if (p.dry) { r.textContent = "rupture"; r.style.color = CAR_WARN; }
+          else { r.textContent = "prix ?"; r.style.color = "var(--dim)"; }
+          it.addEventListener("click", () => this.pick(p));
+        });
+      });
     }
     update() {
       var c = this.config, h = this._hass;
