@@ -1,3 +1,7 @@
+## 0.39.5 — Téléphone en source GPS principale
+
+- `igor-gps-card` : `fallback_after` (secondes, 4 par défaut) — combien de temps la source principale peut se taire avant que la source de secours porte la flèche. Un téléphone qui envoie sa position toutes les 5 s gardait sinon la flèche en aller-retour entre les deux sources.
+
 ## 0.39.4 — Fond de carte noir Igor
 
 - Fond de carte en ligne assombri au noir d'Igor : un fond `#08090b` sous les tuiles (jamais de carré gris pendant un chargement), tuiles CARTO plus contrastées et désaturées — le fond devient noir, les routes restent lisibles.

@@ -5217,6 +5217,7 @@
   //   type: custom:igor-gps-card
   //   entity: device_tracker.car            # the position (companion app), or a sensor with location: [lat, lon]
   //   fallback_entity: device_tracker.phone # a second position (the car's own): carries the arrow while the first is silent
+  //   fallback_after: 4                     # seconds of silence of the first before the second carries the arrow
   //   speed_entity: sensor.car_speed        # km/h from the car (OBD), better than the GPS's
   //   speed_limit_entity: sensor.speed_limit  # the limit sign, top right
   //   show_speed: true                      # false: no speed box on the map
@@ -5298,7 +5299,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.39.4";
+  var GPS_CARD_VERSION = "0.39.5";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6726,10 +6727,13 @@
       // phone back from a dead zone (25–40 m, what a phone says after a
       // tunnel) could never pay: the arrow stayed on the spare for good, in
       // the village it had never left.
-      var use = age(main) < 4 ? "main" : "phone";
-      // Not back and forth: the spare is left after 2.5 s of a primary back
-      // (it is taken after 4 s of one silent — a flapping source helps nobody).
-      if (this.srcNow === "phone" && use === "main" && age(main) >= 2.5) use = "phone";
+      // fallback_after: how long the primary may be silent (4 s by default; a
+      // phone that reports every 5 s needs more, or the arrow flaps between the two).
+      var lim = Math.max(2, Number(this.config.fallback_after) || 4);
+      var use = age(main) < lim ? "main" : "phone";
+      // Not back and forth: the spare is left once the primary answers again
+      // (taken after `lim` of silence — a flapping source helps nobody).
+      if (this.srcNow === "phone" && use === "main" && age(main) >= lim * 0.6) use = "phone";
       if (use !== this.srcNow) {
         this.srcNow = use;
         this.srcSeen = true;
