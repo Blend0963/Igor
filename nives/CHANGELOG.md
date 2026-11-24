@@ -1,3 +1,26 @@
+## 0.39.6 — Le téléphone, écran compagnon de l'autoradio
+
+- `igor-wall` : **`publish_tab: input_text.…`** — l'écran écrit la page qu'il montre (l'autoradio). **`follow:`** — l'écran ouvre la page correspondant à celle d'un autre (`entity`, `views` : page de l'autre → page de celui-ci), seulement quand la page voulue change ; `enabled` (un `input_boolean`) le coupe ; `call` (l'état du téléphone) ouvre une page dédiée pendant une sonnerie ou un appel, puis revient. Testé : changement d'onglet, appel, fin d'appel, suivi coupé, publication.
+- `igor-gps-card` : **`publish_guide: input_text.…`** — le guidage écrit pour les autres écrans (« heure|km|min|destination »), à chaque changement, au plus toutes les 20 s, vidé à la fin du guidage.
+
+## 0.39.5 — Téléphone en source GPS principale
+
+- `igor-gps-card` : `fallback_after` (secondes, 4 par défaut) — combien de temps la source principale peut se taire avant que la source de secours porte la flèche. Un téléphone qui envoie sa position toutes les 5 s gardait sinon la flèche en aller-retour entre les deux sources.
+
+## 0.39.4 — Fond de carte noir Igor
+
+- Fond de carte en ligne assombri au noir d'Igor : un fond `#08090b` sous les tuiles (jamais de carré gris pendant un chargement), tuiles CARTO plus contrastées et désaturées — le fond devient noir, les routes restent lisibles.
+- Boutons `controls: rail` dans la police monospace d'Igor.
+
+## 0.39.3 — Carte de nouveau visible, voix par-dessus la musique, boutons autoradio
+
+- **Fond de carte en ligne par défaut** (tuiles CARTO sombres, mises en cache par le navigateur). Depuis 0.38.98 la carte n'utilisait que la copie locale de ces tuiles, que le serveur devait d'abord télécharger pour toute la région (France jusqu'au zoom 14 : des centaines de milliers de tuiles, une par une) : la carte restait noire. Le coût de dessin est le même en ligne ou en local — le lag venait des POI (corrigé en 0.39.1). La copie locale reste utilisée quand elle est complète ; son téléchargement n'est plus automatique (`nives.car_map_update` avec `raster: true`). La base de POI hors ligne est conservée.
+- Corrigé : un style de carte donné en objet faisait planter l'ouverture de la carte (`style.indexOf`).
+- **Voix du guidage par Web Audio** : un élément `<audio>` prend le focus audio d'Android et met Deezer en pause ; Web Audio ne le prend pas, la voix passe par-dessus la musique. `voice_over_music: false` revient à l'ancien comportement. Le lecteur `<audio>` reste le secours tant que la page n'a pas été touchée (verrou des navigateurs).
+- **`announce: input_text.…`** : les annonces de la maison (écrites par un script) sont dites par la carte avec la voix d'Igor, comme le guidage — plus de notification « TTS ».
+- **`controls: rail`** (dashboard autoradio) : gros boutons écrits à droite (Recentrer, Nord, Étape pendant un guidage, Stations, Voix, Itinéraires) ; bandeau de manœuvre, barre d'arrivée, couches, plein écran et panneau de limite inconnue masqués (la colonne de guidage les montre). La carte GPS seule ne change pas.
+- `igor-buttons-card` : un champ de formulaire peut être pré-rempli depuis un capteur (`from:`), par exemple le kilométrage d'un entretien.
+
 ## 0.39.2 — Dashboard voiture : nouvelles cartes Route, Moteur, Diagnostic, Carnet
 
 Sept cartes légères pour l'autoradio (DOM et petits SVG, redessinées seulement quand leur valeur change, aucune bibliothèque), testées en 1280×720 et 1024×600 sans débordement :

@@ -1665,7 +1665,7 @@ def _async_register_offline_services(hass: HomeAssistant) -> None:
     async def _map_update(call: ServiceCall) -> ServiceResponse:
         region = str(call.data.get("region") or "france")
         force = bool(call.data.get("force"))
-        result = await maps.update(region=region, force=force)
+        result = await maps.update(region=region, force=force, raster=bool(call.data.get("raster")))
         try:
             if result.get("ok"):
                 await hass.services.async_call(
@@ -1712,6 +1712,7 @@ def _async_register_offline_services(hass: HomeAssistant) -> None:
         (SERVICE_CAR_MAP_UPDATE, _map_update, vol.Schema({
             vol.Optional("region", default="france"): vol.In(list(GEOFABRIK_REGIONS)),
             vol.Optional("force", default=False): bool,
+            vol.Optional("raster", default=False): bool,
         })),
         (SERVICE_CAR_MAP_POIS, _map_pois, vol.Schema({
             vol.Required("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
