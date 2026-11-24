@@ -1,3 +1,8 @@
+## 0.39.7 — Fond de carte sans clé API
+
+- `igor-gps-card` : CARTO exige désormais une clé API (chaque tuile affichait « API KEY REQUIRED »). Le fond de carte en ligne passe sur **Esri Dark Gray Canvas** : gratuit, sans clé. Le fond sombre et les noms sont deux couches d'images (aucun décodage vectoriel sur l'autoradio), sur le noir d'Igor, routes contrastées.
+- Cartes hors ligne : le téléchargement du fond raster CARTO est désactivé (il n'aurait enregistré que l'image « API KEY REQUIRED »). Les styles hors ligne vectoriels `full` et `lite` ne changent pas.
+
 ## 0.39.6 — Le téléphone, écran compagnon de l'autoradio
 
 - `igor-wall` : **`publish_tab: input_text.…`** — l'écran écrit la page qu'il montre (l'autoradio). **`follow:`** — l'écran ouvre la page correspondant à celle d'un autre (`entity`, `views` : page de l'autre → page de celui-ci), seulement quand la page voulue change ; `enabled` (un `input_boolean`) le coupe ; `call` (l'état du téléphone) ouvre une page dédiée pendant une sonnerie ou un appel, puis revient. Testé : changement d'onglet, appel, fin d'appel, suivi coupé, publication.

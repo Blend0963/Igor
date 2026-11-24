@@ -5315,17 +5315,27 @@
   var GPS_MAPLIBRE_CDN = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl";
   var GPS_MAPLIBRE = GPS_MAPLIBRE_LOCAL;
   // The base map online: CARTO's dark raster tiles (OpenStreetMap data).
+  // Online basemap: Esri's "Dark Gray Canvas" raster tiles — free, no API
+  // key (CARTO's dark_all now answers "API KEY REQUIRED" on every tile).
+  // Two layers: the dark base, then the labels drawn on top. Esri serves
+  // them up to z16; MapLibre overzooms beyond. Pure PNG, nothing to decode.
+  var GPS_ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/";
   var GPS_ONLINE_STYLE = {
     version: 8, name: "Igor sombre",
-    sources: { carto: { type: "raster", tileSize: 256, maxzoom: 20,
-      tiles: ["a", "b", "c", "d"].map(function (h) { return "https://" + h + ".basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"; }),
-      attribution: "© OpenStreetMap · © CARTO" } },
+    sources: {
+      fond: { type: "raster", tileSize: 256, maxzoom: 16,
+        tiles: [GPS_ESRI + "World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"],
+        attribution: "© Esri, HERE, Garmin, © OpenStreetMap" },
+      noms: { type: "raster", tileSize: 256, maxzoom: 16,
+        tiles: [GPS_ESRI + "World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"] }
+    },
     // Igor's black: the page's own black under the tiles (never a grey
-    // square while one loads), and CARTO's dark grey pushed to black — more
-    // contrast, less colour — the roads stay readable, the land goes black.
+    // square while one loads), Esri's dark grey land pushed to black, the
+    // roads lifted so they stay readable at a glance.
     layers: [
       { id: "igor-bg", type: "background", paint: { "background-color": "#08090b" } },
-      { id: "carto", type: "raster", source: "carto", paint: { "raster-contrast": 0.35, "raster-brightness-max": 0.92, "raster-saturation": -0.5, "raster-fade-duration": 0 } }
+      { id: "fond", type: "raster", source: "fond", paint: { "raster-contrast": 0.4, "raster-brightness-min": 0, "raster-brightness-max": 1, "raster-saturation": -0.5, "raster-fade-duration": 0 } },
+      { id: "noms", type: "raster", source: "noms", paint: { "raster-fade-duration": 0 } }
     ]
   };
   var GPS_R = 6378137, GPS_PREDICT_S = 4, GPS_MOVING = 0.8, GPS_TRAIL = 600;
@@ -5335,7 +5345,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.39.6";
+  var GPS_CARD_VERSION = "0.39.7";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
