@@ -5355,7 +5355,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.40.5";
+  var GPS_CARD_VERSION = "0.40.6";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -10946,6 +10946,7 @@
   //   count: 5
   //   read: input_boolean.telephone_lire_messages   # the header's « Igor lit les nouveaux » switch
   //   call: { state: sensor.phone_state, caller: sensor.caller, answer: script.x, hangup: script.y, sms: script.y, sms_text: "…" }
+  //   max_age_h: 12                                # only the messages of the last 12 hours (0: all)
   //   say: script.voiture_dire                     # « Lire »: Igor says it aloud
   //   reply: script.telephone_repondre             # « Répondre »: fields paquet, titre, texte
   //   callback: script.telephone_rappeler          # a missed call: « Rappeler »
@@ -10973,6 +10974,14 @@
     // parcel, an app): only a conversation gets « Répondre ».
     var chat = /whatsapp|messaging|\.mms|sms|telegram|securesms|signal|facebook\.orca|messenger|teams|instagram|discord|slack|viber|skype/i.test(pkg + " " + app) && !/fork/i.test(pkg + app);
     return { app: name, pkg: pkg, titre: titre, txt: txt, time: (date.match(/\d{1,2}:\d{2}/) || [""])[0], color: call ? "#e5323b" : look[0], letter: call ? "✆" : look[1], call: call, chat: chat };
+  }
+  // « 24/11/2026 18:03 », « 24/11/2026 18:03:12 », ISO… → milliseconds, or NaN.
+  function msgWhen(n) {
+    var d = String((n && (n.date || n.heure)) || "");
+    var m = /(\d{1,2})\/(\d{1,2})\/(\d{4})[ T,]+(\d{1,2}):(\d{2})/.exec(d);
+    if (m) return new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5]).getTime();
+    var t = Date.parse(d);
+    return isNaN(t) ? NaN : t;
   }
   class IgorMessagesCard extends IgorCard {
     setConfig(config) { if (!config || !config.entity) throw new Error("igor-messages-card: entity est requis"); this.config = config; }
@@ -11078,6 +11087,10 @@
       }
       if (this.rd && c.read) { var on = h.states[c.read] && h.states[c.read].state === "on"; this.rd.classList.toggle("on", on); this.rd.textContent = on ? "● lecture auto" : "lecture auto coupée"; }
       var st = h.states[c.entity], l = (st && st.attributes && st.attributes.liste) || [];
+      // Only what is recent (`max_age_h`, 12 h by default): a message of
+      // last month is not news on the road. Undated ones are dropped too.
+      var maxAge = (c.max_age_h != null ? Number(c.max_age_h) : 12) * 3600000;
+      if (maxAge > 0) { var nowMs = Date.now(); l = l.filter((n) => { var t = msgWhen(n); return !isNaN(t) && nowMs - t <= maxAge; }); }
       var sig = JSON.stringify(l).length + "|" + (l[0] && JSON.stringify(l[0])) + "|" + inCall;
       if (sig === this.sig) return;
       this.sig = sig;

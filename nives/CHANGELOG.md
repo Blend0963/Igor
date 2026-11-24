@@ -1,3 +1,7 @@
+## 0.40.6 — Pas de vieux messages à l'écran
+
+- `igor-messages-card` : **`max_age_h`** (12 h par défaut) — seuls les messages des dernières heures s'affichent ; ceux de l'ancien historique (ou sans date) ne reviennent plus. « Aucun message » quand rien de récent.
+
 ## 0.40.5 — Chaque mise à jour arrive vraiment sur les écrans
 
 - Les deux scripts des pages (`igor-wall.js`, `igor-tablet.js`) sont servis par Igor lui-même sous `/nives_scripts/…`, en « no-cache » : à chaque chargement de page, l'écran demande à Home Assistant si le fichier a changé. L'application compagnon (web view Android) gardait sinon l'ancienne copie des jours entiers sous la même adresse, quels que soient les caches vidés — les nouveautés des 0.40.2 à 0.40.4 n'apparaissaient pas. Un dernier redémarrage complet de Home Assistant est nécessaire pour l'activer ; ensuite, plus jamais.
