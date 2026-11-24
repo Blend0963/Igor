@@ -5368,7 +5368,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.41.0";
+  var GPS_CARD_VERSION = "0.42.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -8644,7 +8644,8 @@
     // publish_ahead: input_text.x — what the road holds ahead, for the head
     // unit's igor-drive-card: « ms|guidé|reste_m|radar|événements ».
     //   radar: « distance~limite~nature~sans_vitesse » (the one within reach), or empty;
-    //   événements: up to 6 « type~distance~libellé » (c camera, f fuel, j jam), « ; »-separated.
+    //   événements: up to 6 « type~distance~libellé » (c camera, f fuel, p toll, j jam
+    //   « j~distance~libellé~longueur~1|2 »), « ; »-separated.
     // Written when it changes (the radar at once), at most every 2 s, and at
     // least every 8 s: its time is also the map's heartbeat.
     publishAhead(now) {
@@ -8671,12 +8672,19 @@
         });
         fuels.sort((a, b) => a.pr - b.pr);
         fuels.slice(0, 2).forEach((f) => ev.push(["f", f.d, f.b + " " + f.pr.toFixed(3).replace(".", ",")]));
+        // A jam: where it starts, its length and how bad (1 slow, 2 jammed),
+        // so the head unit's frieze colours the stretch, not just a point.
         (R.jams || []).forEach((j) => {
-          var a = R.cum[Math.min(j.start, R.cum.length - 1)]; if (a > here) ev.push(["j", a - here, j.level === 2 ? "bouchon" + (j.delay >= 60 ? " +" + Math.round(j.delay / 60) + " min" : "") : "ralenti"]);
+          var a = R.cum[Math.min(j.start, R.cum.length - 1)], z = R.cum[Math.min(j.end, R.cum.length - 1)];
+          if (z > here + 30) ev.push(["j", Math.max(0, a - here), j.level === 2 ? (j.delay >= 60 ? "+" + Math.round(j.delay / 60) + " min" : "bouchon") : "ralenti", Math.round(z - Math.max(a, here)), j.level === 2 ? 2 : 1]);
         });
+        // The toll booths (where a toll stretch begins and ends), the one just
+        // passed too (down to 1.5 km behind): the head unit tells « sortie de
+        // péage » from an overtaking when the car pulls away.
+        (R.tolls || []).forEach((sp) => [sp[0], sp[1]].forEach((ix) => { var a = R.cum[Math.min(ix, R.cum.length - 1)]; if (a > here - 1500) ev.push(["p", a - here, "péage"]); }));
       }
       ev.sort((a, b) => a[1] - b[1]);
-      var evs = ev.slice(0, 6).map((x) => [x[0], Math.round(x[1]), String(x[2]).replace(/[~;|]/g, " ").slice(0, 22)].join("~")).join(";");
+      var evs = ev.slice(0, 6).map((x) => [x[0], Math.round(x[1]), String(x[2]).replace(/[~;|]/g, " ").slice(0, 18)].concat(x.length > 3 ? [x[3], x[4]] : []).join("~")).join(";");
       var body = [guided ? 1 : 0, Math.round(left), cam, evs].join("|");
       var key = body.replace(/\d+(?=~)/g, (m) => String(Math.round(Number(m) / 100)));
       var camKey = cam ? 1 : 0, t = Date.now();
@@ -11019,12 +11027,18 @@
   }
 
   // ----- igor-drive-card: the middle of the head unit, as the road goes -----
+  //   Above, what the moment asks: the radar, the engine on a hard pull, else
+  //   the trip under way and its consumption (the parked car: the last trip).
+  //   Below, whenever the phone map guides, the frieze of the next 30 km
+  //   (radars, the cheapest stations, tolls, jams), « vous » fixed and the road
+  //   running to it; no guidance, no frieze.
   //   type: custom:igor-drive-card
   //   ahead: input_text.car_ahead          # the phone map's publish_ahead (radar, what lies ahead, heartbeat)
   //   turn: input_text.car_turn            # its publish_turn (guided or not)
   //   speed: sensor.car_speed              # km/h
   //   limit: sensor.speed_limit            # the road's limit, when the radar does not say it
   //   rpm, load, boost, coolant, intake, advice: sensor.…   # the engine (OBD)
+  //   rpm_max: 5000, rpm_warn: 3500, rpm_bad: 4300, boost_max: 2   # the dial and the turbo bar
   //   consumption: sensor.car_l100_now     # instant L/100
   //   trip: { entity: sensor.car_trip, attribute: trajet }   # distance_km, duration_min, fuel_l, l100, eco_score, harsh_accel, t0_100…
   //   price: input_number.fuel_price       # €/L for the trip's cost
@@ -11038,39 +11052,64 @@
   // trip's consumption; the car stopped and silent: the last trip.
   class IgorDriveCard extends IgorCard {
     setConfig(config) { this.config = config || {}; }
-    getCardSize() { return 6; }
+    getCardSize() { return 7; }
     tune(k, d) { var t = this.config.tune || {}; return t[k] != null ? Number(t[k]) : d; }
     build() {
       this.style(CAR_HEAD + "\n" + [
-        "ha-card { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 14px 18px; overflow: hidden; transition: background .3s, border-color .3s; border: 2px solid transparent; }",
+        ".wrap { height: 100%; display: flex; flex-direction: column; gap: 10px; }",
+        "ha-card.view { flex: 1; min-height: 0; display: flex; flex-direction: column; box-sizing: border-box; padding: 12px 18px; overflow: hidden; transition: background .3s, border-color .3s; border: 2px solid transparent; }",
+        ".hr2 { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex: none; } .hr2 .h { margin-bottom: 4px; } .aside { font-size: 13px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
         ".body { flex: 1; min-height: 0; position: relative; transition: opacity .3s; } .body.fade { opacity: 0; }",
-        ".tabs { display: flex; gap: 6px; justify-content: center; flex: none; margin-top: 8px; } .tabs span { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; padding: 4px 9px; border: 1px solid var(--line); color: var(--faint); cursor: pointer; }",
+        ".tabs { display: flex; gap: 6px; justify-content: center; flex: none; margin-top: 6px; } .tabs span { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; padding: 4px 9px; border: 1px solid var(--line); color: var(--faint); cursor: pointer; }",
         ".tabs span.on { border-color: #59d0e0; color: #59d0e0; } .tabs span.lock { border-color: var(--fg); color: var(--fg); }",
-        ".rad { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }",
-        ".sign { width: 130px; height: 130px; border-radius: 50%; border: 10px solid #e5323b; background: #fff; color: #111; display: grid; place-items: center; font-size: 56px; font-weight: 700; } .sign.nos { font-size: 22px; }",
-        ".rk { font-size: 14px; letter-spacing: .3em; text-transform: uppercase; } .rd { font-size: 64px; line-height: 1; font-variant-numeric: tabular-nums; }",
+        // Radar
+        ".rad { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }",
+        ".sign { width: 108px; height: 108px; border-radius: 50%; border: 10px solid #e5323b; background: #fff; color: #111; display: grid; place-items: center; font-size: 46px; font-weight: 700; flex: none; } .sign.nos { font-size: 22px; }",
+        ".rk { font-size: 14px; letter-spacing: .3em; text-transform: uppercase; } .rd { font-size: 52px; line-height: 1; font-variant-numeric: tabular-nums; }",
         ".rb { width: 70%; height: 10px; border-radius: 5px; overflow: hidden; background: rgba(255,255,255,.08); } .rb i { display: block; height: 100%; }",
-        ".rs { font-size: 19px; } .rn { font-size: 11px; color: var(--dim); }",
-        ".eng { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: center; }",
-        ".dial { display: flex; flex-direction: column; align-items: center; } .dial svg { width: 100%; max-height: 260px; } .adv { font-size: 18px; letter-spacing: .14em; text-transform: uppercase; color: " + CAR_WARN + "; margin-top: -4px; min-height: 1.2em; text-align: center; }",
-        ".kv div { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--line); padding: 8px 0; } .kv span { font-size: 13px; color: var(--dim); } .kv b { font-weight: 400; font-size: 24px; font-variant-numeric: tabular-nums; }",
-        ".trip { height: 100%; display: flex; flex-direction: column; } .kpi { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; } .kpi span { display: block; font-size: 12px; color: var(--dim); } .kpi b { font-weight: 400; font-size: 32px; font-variant-numeric: tabular-nums; white-space: nowrap; } .kpi small { font-size: 12px; color: var(--dim); }",
-        ".spark { flex: 1; min-height: 60px; margin-top: 10px; } .spark svg { width: 100%; height: 100%; } .foot { display: flex; gap: 16px; font-size: 13px; color: var(--dim); flex-wrap: wrap; }",
-        ".fr { height: 100%; position: relative; } .fr .ln { position: absolute; left: 2%; right: 2%; top: 50%; height: 8px; margin-top: -4px; border-radius: 4px; background: #3b8cff; }",
-        ".fr .pt { position: absolute; top: 50%; width: 0; } .fr .pt i { position: absolute; left: -16px; top: -16px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 14px; font-weight: 700; color: #08090b; }",
-        ".fr .pt div { position: absolute; left: -80px; width: 160px; text-align: center; } .fr .pt.up div { bottom: 24px; } .fr .pt.dn div { top: 24px; } .fr .pt b { display: block; font-weight: 400; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .fr .pt small { font-size: 12px; color: var(--dim); }",
-        ".ok { color: " + CAR_OK + "; } .warn { color: " + CAR_WARN + "; } .bad { color: #e5323b; }"
+        ".rs { font-size: 19px; } .rn { font-size: 11px; color: var(--dim); } .none { height: 100%; display: grid; place-items: center; color: var(--dim); }",
+        // Engine
+        ".eng { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 16px; align-items: center; }",
+        ".dial { display: flex; flex-direction: column; align-items: center; min-height: 0; height: 100%; justify-content: center; } .dial svg { width: 100%; max-height: 230px; flex: 1; min-height: 0; } .adv { font-size: 19px; letter-spacing: .14em; text-transform: uppercase; color: " + CAR_WARN + "; margin-top: -4px; min-height: 1.2em; text-align: center; }",
+        ".bars > div { padding: 5px 0; } .bars .l { display: flex; justify-content: space-between; align-items: baseline; } .bars span { font-size: 13px; color: var(--dim); } .bars b { font-weight: 400; font-size: 24px; font-variant-numeric: tabular-nums; }",
+        ".bars .g { height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); margin-top: 4px; overflow: hidden; } .bars .g i { display: block; height: 100%; border-radius: 3px; transition: width .4s; }",
+        ".ef { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; } .ef span { display: block; font-size: 12px; color: var(--dim); } .ef b { font-weight: 400; font-size: 20px; white-space: nowrap; }",
+        // Trip and consumption
+        ".trip { height: 100%; display: flex; flex-direction: column; } .kpi { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; flex: none; } .kpi span { display: block; font-size: 12px; color: var(--dim); } .kpi b { font-weight: 400; font-size: 32px; font-variant-numeric: tabular-nums; white-space: nowrap; } .kpi small { font-size: 12px; color: var(--dim); }",
+        ".gh { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; flex: none; } .gh .h { margin: 0; } .gh .aside b { font-weight: 400; color: " + CAR_OK + "; }",
+        ".spark { flex: 1; min-height: 50px; margin-top: 6px; } .spark svg { width: 100%; height: 100%; display: block; } .foot { display: flex; gap: 16px; font-size: 13px; color: var(--dim); flex-wrap: wrap; flex: none; margin-top: 4px; }",
+        // The frieze: « vous » fixed on the left, the road coming towards it.
+        "ha-card.frz { flex: none; height: 118px; box-sizing: border-box; padding: 8px 14px 6px; display: flex; flex-direction: column; overflow: hidden; }",
+        ".trk { position: relative; flex: 1; }",
+        ".road { position: absolute; left: 6%; right: 3%; top: 34%; height: 10px; margin-top: -5px; border-radius: 5px; overflow: hidden; background: #3b8cff; }",
+        ".flow { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, rgba(255,255,255,0) 0 18px, rgba(255,255,255,.35) 18px 26px, rgba(255,255,255,0) 26px 44px); animation: igfl 1s linear infinite; }",
+        "@keyframes igfl { from { background-position: 0 0; } to { background-position: -44px 0; } }",
+        ".done { position: absolute; left: 0; width: 6%; top: 34%; height: 4px; margin-top: -2px; background: #2a2f36; border-radius: 2px; }",
+        ".you { position: absolute; left: 6%; top: 34%; transform: translate(-50%, -50%) rotate(90deg); color: #59d0e0; font-size: 24px; text-shadow: 0 0 12px #59d0e0; line-height: 1; }",
+        ".pin { position: absolute; top: 0; bottom: 0; width: 0; transition: left 1s linear, opacity .4s; }",
+        ".pin i { position: absolute; left: -14px; top: 34%; margin-top: -14px; width: 28px; height: 28px; border-radius: 50%; color: #08090b; display: grid; place-items: center; font-size: 13px; font-weight: 700; font-style: normal; box-shadow: 0 0 0 3px var(--card, #121418); }",
+        ".pin.near i { animation: igpu 1s ease-in-out infinite; } @keyframes igpu { 50% { box-shadow: 0 0 0 3px var(--card, #121418), 0 0 0 9px rgba(229,160,76,.4); } }",
+        ".pin div { position: absolute; left: -70px; width: 140px; top: calc(34% + 18px); text-align: center; font-size: 15px; line-height: 1.15; white-space: nowrap; }",
+        ".pin div small { display: block; font-size: 12px; color: var(--faint, #6b717a); } .pin.end div { left: auto; right: -14px; text-align: right; } .pin.quiet div { visibility: hidden; }",
+        "[hidden] { display: none !important; }"
       ].join("\n"));
-      var card = this.cardEl = el("ha-card", "", this.shadowRoot);
-      this.head = el("div", "h", card);
+      var wrap = el("div", "wrap", this.shadowRoot);
+      var card = this.cardEl = el("ha-card", "view", wrap);
+      var hr = el("div", "hr2", card); this.head = el("div", "h", hr); this.aside = el("div", "aside", hr);
       this.body = el("div", "body", card);
       this.tabsEl = el("div", "tabs", card);
       this.tabBtns = {};
-      [["trajet", "trajet"], ["radar", "radar"], ["moteur", "moteur"], ["conso", "conso"]].forEach((t) => {
-        var b = el("span", "", this.tabsEl, t[1]); this.tabBtns[t[0]] = b;
-        b.addEventListener("click", () => { this.manual = { view: t[0], until: Date.now() + this.tune("override_s", 60) * 1000 }; this.tick(true); });
+      ["radar", "moteur", "conso"].forEach((k) => {
+        var b = el("span", "", this.tabsEl, k); this.tabBtns[k] = b;
+        b.addEventListener("click", () => { this.manual = { view: k, until: Date.now() + this.tune("override_s", 60) * 1000 }; this.tick(true); });
       });
-      this.samples = []; this.cons = []; this.effort = 0; this.calmSince = 0;
+      var fz = this.frz = el("ha-card", "frz", wrap); fz.hidden = true;
+      var fh = el("div", "hr2", fz); el("div", "h", fh, "devant vous"); this.fzAside = el("div", "aside", fh);
+      var trk = this.trk = el("div", "trk", fz);
+      this.road = el("div", "road", trk); this.flow = el("div", "flow", this.road);
+      el("div", "done", trk); el("div", "you", trk, "▲");
+      this.pins = {};
+      this.samples = []; this.cons = []; this.consN = 0; this.effort = 0; this.calmSince = 0;
       this.timer = setInterval(() => this.tick(), 1000);
     }
     disconnectedCallback() { if (this.timer) { clearInterval(this.timer); this.timer = null; } }
@@ -11086,8 +11125,9 @@
       var sp = { t: t, v: v, load: this.n(c.load), boost: this.n(c.boost), rpm: this.n(c.rpm) };
       this.samples.push(sp);
       while (this.samples.length && t - this.samples[0].t > 20000) this.samples.shift();
+      // The consumption curve: a point every 10 s, the last 15 minutes.
       var cn = this.n(c.consumption);
-      if (cn != null && (!this.consAt || t - this.consAt > 2000)) { this.consAt = t; this.cons.push(Math.min(30, cn)); if (this.cons.length > 90) this.cons.shift(); }
+      if (cn != null && (!this.consAt || t - this.consAt >= 10000)) { this.consAt = t; this.cons.push(Math.max(0, Math.min(30, cn))); this.consN++; if (this.cons.length > 90) this.cons.shift(); }
       // The effort, smoothed over about six seconds: a gear change (a second
       // of no load) barely moves it; a real pull keeps it up.
       var past = this.samples.find((x) => t - x.t <= 2600 && x.v != null) || null;
@@ -11146,49 +11186,61 @@
       if (!this._hass || !this.body) return;
       var t = Date.now(), c = this.config, v = this.n(c.speed), on = !c.online || (this.st(c.online) || {}).state === "on";
       var rad = this.radar(t);
-      var turn = this.st(c.turn), guided = turn && turn.state && !/^(unknown|unavailable)?$/.test(turn.state);
       // The engine view: opened by a pull, held at least hold_s, closed after
       // calm_s of low effort; not reopened within cooldown_s unless strong.
       var p = this.pulling(t);
-      if (!this.sport && p.hit && (!this.sportEnd || t - this.sportEnd > this.tune("cooldown_s", 30) * 1000 || p.strong)) { this.sport = t; this.calmSince = 0; }
+      if (!this.sport && p.hit && (!this.sportEnd || t - this.sportEnd > this.tune("cooldown_s", 30) * 1000 || p.strong)) { this.sport = t; this.calmSince = 0; this.why = this.pullWhy(t, v); }
       if (this.sport) {
         if (this.effort < 0.35 && !p.hit) { if (!this.calmSince) this.calmSince = t; } else this.calmSince = 0;
         if (t - this.sport > this.tune("hold_s", 20) * 1000 && this.calmSince && t - this.calmSince > this.tune("calm_s", 8) * 1000) { this.sport = 0; this.sportEnd = t; }
       }
-      var want = rad && rad.d != null ? "radar" : this.sport ? "moteur" : !on && (v == null || v < 1) ? "arret" : guided ? "trajet" : "conso";
+      // Above, what the moment asks (radar > engine > the trip and its
+      // consumption, or the parked car); below, the route, whenever guided.
+      var want = rad && rad.d != null ? "radar" : this.sport ? "moteur" : !on && (v == null || v < 1) ? "arret" : "conso";
       if (this.manual && t < this.manual.until && want !== "radar") want = this.manual.view; else if (this.manual && t >= this.manual.until) this.manual = null;
-      if (want === "trajet" && !guided) want = "conso";
-      // Each view stays at least min_view_s, the radar excepted (safety first).
-      // The engine comes at once too (the pull is now); leaving it, or any
-      // calm view, waits its turn.
+      // A calm view stays at least min_view_s; the radar and the engine come at once.
       if (want !== this.view && this.view && want !== "radar" && want !== "moteur" && this.view !== "radar" && !force && t - this.viewAt < this.tune("min_view_s", 8) * 1000) want = this.view;
       if (want !== this.view) { this.view = want; this.viewAt = t; this.fadeTo(); }
       Object.keys(this.tabBtns).forEach((k) => { this.tabBtns[k].className = k === this.view ? (this.manual ? "lock" : "on") : ""; });
       this.tabsEl.hidden = this.view === "arret";
-      this.draw(rad, v, guided);
+      this.draw(rad, v);
+      this.drawFrieze(t, v);
+    }
+    // Why the car pulls, told once at the start: a toll booth just passed
+    // (the phone map knows it), a start, an overtaking, a relaunch.
+    pullWhy(t, v) {
+      var p = this.aheadParts || (this.st(this.config.ahead) ? String(this.st(this.config.ahead).state || "").split("|") : null);
+      if (p && p.length >= 5 && t - Number(p[0]) < 15000) {
+        var gone = Math.max(0, (t - Number(p[0])) / 1000) * Math.max(0, v || 0) / 3.6;
+        if ((p[4] || "").split(";").some((e) => { var q = e.split("~"); return q[0] === "p" && Number(q[1]) - gone <= 80 && Number(q[1]) - gone >= -1500; })) return "sortie de péage";
+      }
+      var back = this.samples.find((x) => t - x.t <= this.tune("gain_s", 4) * 1000 + 1000 && x.v != null), from = back ? back.v : v;
+      if (from == null) return "";
+      return from < 15 ? "démarrage" : (v || 0) >= 70 && from >= 55 ? "dépassement" : "relance";
     }
     fadeTo() { this.body.classList.add("fade"); setTimeout(() => this.body.classList.remove("fade"), 280); this.drawn = null; }
-    draw(rad, v, guided) {
-      var k = this.view, b = this.body, c = this.config, card = this.cardEl;
+    draw(rad, v) {
+      var k = this.view, card = this.cardEl;
       card.style.background = ""; card.style.borderColor = "transparent"; card.style.borderLeft = "";
+      this.aside.textContent = "";
       if (k === "radar") return this.drawRadar(rad, v);
       if (k === "moteur") return this.drawEngine();
-      if (k === "trajet") return this.drawRoute();
       if (k === "arret") return this.drawStopped();
       return this.drawTrip();
     }
     drawRadar(rad, v) {
+      this.head.textContent = "radar";
+      if (!rad) { if (this.drawn !== "r0") { this.drawn = "r0"; this.body.innerHTML = ""; el("div", "none", this.body, "aucun radar devant vous"); } return; }
       var lim = rad.limit || this.n(this.config.limit), over = v != null && lim ? v - lim : null;
       var lvl = rad.noSpeed || over == null ? "warn" : over <= 0 ? "ok" : over <= 5 ? "warn" : "bad";
       var col = { ok: CAR_OK, warn: CAR_WARN, bad: "#e5323b" }[lvl], bg = { ok: "#101a15", warn: "#1c1710", bad: "#200f10" }[lvl];
       this.cardEl.style.background = bg; this.cardEl.style.borderColor = col;
-      this.head.textContent = "radar";
       var reach = (v || 0) > 90 ? 1000 : 500, d = Math.max(0, rad.d);
       var key = "r" + lvl + Math.round(d / 10) + (lim || "") + Math.round(v || 0);
       if (key === this.drawn) return; this.drawn = key;
       var b = this.body; b.innerHTML = "";
       var w = el("div", "rad", b);
-      var sg = el("div", "sign" + (rad.noSpeed || !lim ? " nos" : ""), w, rad.noSpeed ? "feu" : lim ? String(lim) : "?");
+      el("div", "sign" + (rad.noSpeed || !lim ? " nos" : ""), w, rad.noSpeed ? "feu" : lim ? String(lim) : "?");
       el("div", "rk", w, (rad.what || "radar") + (rad.approx ? " · environ" : "")).style.color = col;
       el("div", "rd", w, (rad.approx ? "≈ " : "") + gpsMetres(d));
       var bar = el("div", "rb", w), fill = el("i", "", bar); fill.style.width = Math.round(Math.max(0, Math.min(1, 1 - d / reach)) * 100) + "%"; fill.style.background = col;
@@ -11198,7 +11250,10 @@
     }
     drawEngine() {
       var c = this.config, rpm = this.n(c.rpm), max = Number(c.rpm_max) || 5000, warn = Number(c.rpm_warn) || 3500, bad = Number(c.rpm_bad) || 4300;
-      this.cardEl.style.borderColor = CAR_WARN; this.head.textContent = "conduite sportive";
+      var card = this.cardEl; card.style.borderColor = "transparent"; card.style.borderLeft = "3px solid " + CAR_WARN; card.style.background = "linear-gradient(90deg, #1c1710, transparent 60%)";
+      this.head.textContent = "accélération" + (this.why ? " · " + this.why : "");
+      var secs = this.sport ? Math.round((Date.now() - this.sport) / 1000) : 0;
+      this.aside.textContent = secs ? "depuis " + secs + " s" : "";
       var a0 = Math.PI * 0.75, a1 = Math.PI * 2.25, f = (x) => a0 + Math.max(0, Math.min(1, x / max)) * (a1 - a0);
       var col = rpm == null ? "#4b5159" : rpm >= bad ? "#e5323b" : rpm >= warn ? CAR_WARN : CAR_OK;
       var svg = '<svg viewBox="0 0 200 170"><path d="' + carArc(100, 100, 80, a0, a1) + '" stroke="rgba(255,255,255,.08)" stroke-width="16" fill="none"/>' +
@@ -11206,23 +11261,30 @@
         (rpm ? '<path d="' + carArc(100, 100, 80, a0, f(rpm)) + '" stroke="' + col + '" stroke-width="16" fill="none"/>' : "") +
         '<text x="100" y="104" text-anchor="middle" fill="#e8e4dc" font-size="40" font-family="inherit">' + (rpm == null ? "—" : Math.round(rpm)) + '</text><text x="100" y="128" text-anchor="middle" fill="#8a9099" font-size="13">tr/min</text></svg>';
       var adv = this.st(c.advice), advTxt = adv && !/^(aucun|unknown|unavailable)$/i.test(adv.state) ? "▲ " + adv.state : "";
-      var g = (this.accel || 0) / 9.81;
-      var rows = [["turbo", this.n(c.boost) != null ? fr(this.n(c.boost), 2) + " bar" : "—"], ["moteur", this.n(c.coolant) != null ? Math.round(this.n(c.coolant)) + " °C" : "—"],
-        ["admission", this.n(c.intake) != null ? Math.round(this.n(c.intake)) + " °C" : "—"], ["charge", this.n(c.load) != null ? Math.round(this.n(c.load)) + " %" : "—"], ["accélération", g > 0.02 ? fr(g, 2) + " g" : "—"]];
-      var key = "e" + svg.length + (rpm || 0) + advTxt + rows.map((r) => r[1]).join();
+      var g = Math.max(0, (this.accel || 0) / 9.81), boost = this.n(c.boost), load = this.n(c.load), d = this.tripData() || {};
+      var bars = [["turbo", boost != null ? fr(boost, 1) + " bar" : "—", boost != null ? boost / (Number(c.boost_max) || 2) : 0],
+        ["charge", load != null ? Math.round(load) + " %" : "—", load != null ? load / 100 : 0],
+        ["accélération", g > 0.02 ? fr(g, 2) + " g" : "—", g / 0.6]];
+      var foot = [["moteur", this.n(c.coolant) != null ? Math.round(this.n(c.coolant)) + " °C" : "—", CAR_OK], ["admission", this.n(c.intake) != null ? Math.round(this.n(c.intake)) + " °C" : "—", CAR_BLUE],
+        ["0 → 100", d.t0_100 ? fr(Number(d.t0_100), 1) + " s" : "—", "var(--fg)"]];
+      var key = "e" + Math.round((rpm || 0) / 25) + advTxt + bars.map((r) => r[1]).join() + foot.map((r) => r[1]).join();
       if (key === this.drawn) return; this.drawn = key;
       var b = this.body; b.innerHTML = "";
-      var w = el("div", "eng", b), d = el("div", "dial", w); d.innerHTML = svg; el("div", "adv", d, advTxt);
-      var kv = el("div", "kv", w);
-      rows.forEach((r) => { var x = el("div", "", kv); el("span", "", x, r[0]); el("b", "", x, r[1]); });
+      var w = el("div", "eng", b), dl = el("div", "dial", w); dl.innerHTML = svg; el("div", "adv", dl, advTxt);
+      var right = el("div", "", w), bs = el("div", "bars", right);
+      bars.forEach((r) => { var x = el("div", "", bs), l = el("div", "l", x); el("span", "", l, r[0]); var bb = el("b", "", l, r[1]); bb.style.color = CAR_WARN; var gg = el("div", "g", x), i = el("i", "", gg); i.style.width = Math.round(Math.max(0, Math.min(1, r[2])) * 100) + "%"; i.style.background = CAR_WARN; });
+      var ef = el("div", "ef", right);
+      foot.forEach((r) => { var x = el("div", "", ef); el("span", "", x, r[0]); el("b", "", x, r[1]).style.color = r[2]; });
     }
     tripData() { var tr = this.config.trip, s = tr && this.st(tr.entity); return s ? (tr.attribute ? s.attributes[tr.attribute] : s.attributes) || null : null; }
     drawTrip() {
-      var d = this.tripData() || {}, price = this.n(this.config.price);
+      var d = this.tripData() || {}, price = this.n(this.config.price), now = this.n(this.config.consumption);
       var cost = d.fuel_l != null && price != null ? d.fuel_l * price : null, eco = Number(d.eco_score);
-      this.cardEl.style.borderColor = "transparent"; this.cardEl.style.borderLeft = "3px solid " + CAR_OK;
-      this.head.textContent = d.active ? "ce trajet" : "dernier trajet";
-      var key = "t" + JSON.stringify(d).length + d.distance_km + d.l100 + this.cons.length;
+      this.cardEl.style.borderLeft = "3px solid " + CAR_OK;
+      var style = !isFinite(eco) ? "" : eco >= 80 ? " · conduite souple" : eco >= 60 ? " · conduite dynamique" : " · conduite sportive";
+      this.head.textContent = (d.active ? "trajet en cours" : "dernier trajet") + style;
+      this.aside.textContent = d.start ? "parti à " + hhmm(new Date(Number(d.start))) + (d.duration_min != null ? " · " + Math.round(d.duration_min) + " min" : "") : "";
+      var key = "t" + JSON.stringify(d) + this.consN + "|" + (now != null ? Math.round(now * 10) : "");
       if (key === this.drawn) return; this.drawn = key;
       var b = this.body; b.innerHTML = "";
       var w = el("div", "trip", b), k = el("div", "kpi", w);
@@ -11230,50 +11292,81 @@
        ["coût", cost != null ? fr(cost, 2) : "—", "€", ""], ["éco", isFinite(eco) ? String(Math.round(eco)) : "—", "/100", eco >= 80 ? "ok" : eco >= 60 ? "warn" : "bad"]].forEach((x) => {
         var cell = el("div", "", k); el("span", "", cell, x[0]); var bb = el("b", x[3], cell, x[1] + " "); el("small", "", bb, x[2]);
       });
-      el("div", "h", w, "consommation instantanée").style.marginTop = "12px";
-      var sp = el("div", "spark", w), v = this.cons.slice(-60);
+      var gh = el("div", "gh", w), mins = Math.round(this.cons.length / 6);
+      el("div", "h", gh, this.cons.length >= 90 ? "consommation · 15 dernières minutes" : mins >= 1 ? "consommation · depuis " + mins + " min" : "consommation");
+      var ga = el("div", "aside", gh); if (now != null) { ga.appendChild(document.createTextNode("maintenant ")); el("b", "", ga, fr(Math.min(now, 30), 1) + " L/100"); }
+      var sp = el("div", "spark", w), v = this.cons.slice();
       if (v.length > 2) {
-        var mx = Math.max(10, Math.max.apply(null, v)), W = 600, Hh = 100;
-        var pts = v.map((y, i) => (i / (v.length - 1) * W).toFixed(1) + "," + (Hh - 2 - y / mx * (Hh - 6)).toFixed(1)).join(" ");
-        sp.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + Hh + '" preserveAspectRatio="none"><polygon points="0,' + Hh + " " + pts + " " + W + "," + Hh + '" fill="' + CAR_OK + '" opacity=".12"/><polyline points="' + pts + '" fill="none" stroke="' + CAR_OK + '" stroke-width="2"/></svg>';
+        // A fixed scale (0 to 12 L/100 at least): a steady drive draws a calm
+        // line, a pull stands out; the trip's average dashed across.
+        var mx = Math.max(12, Math.ceil(Math.max.apply(null, v))), W = 900, H = 130, y = (q) => (H - 2 - q / mx * (H - 8)).toFixed(1);
+        var pts = v.map((q, i) => (i / (v.length - 1) * W).toFixed(1) + "," + y(q)).join(" "), last = W;
+        var avg = Number(d.l100), svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">';
+        if (isFinite(avg) && avg > 0) svg += '<line x1="0" x2="' + W + '" y1="' + y(avg) + '" y2="' + y(avg) + '" stroke="' + CAR_OK + '" stroke-dasharray="4 6" opacity=".5" vector-effect="non-scaling-stroke"/>';
+        svg += '<polygon points="0,' + H + " " + pts + " " + last + "," + H + '" fill="' + CAR_OK + '" opacity=".12"/><polyline points="' + pts + '" fill="none" stroke="' + CAR_OK + '" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>';
+        sp.innerHTML = svg;
       } else el("div", "", sp, "la courbe se dessine en roulant").style.cssText = "color:var(--dim);font-size:13px;padding-top:20px";
       var ft = el("div", "foot", w);
-      if (d.duration_min != null) el("span", "", ft, Math.round(d.duration_min) + " min");
-      if (d.harsh_accel != null) el("span", "", ft, d.harsh_accel + " accélération" + (d.harsh_accel > 1 ? "s" : "") + " forte" + (d.harsh_accel > 1 ? "s" : ""));
-      if (d.harsh_brake != null) el("span", "", ft, d.harsh_brake + " freinage" + (d.harsh_brake > 1 ? "s" : "") + " fort" + (d.harsh_brake > 1 ? "s" : ""));
-      if (d.t0_100) el("span", "", ft, "0 → 100 en " + fr(Number(d.t0_100), 1) + " s");
+      if (isFinite(Number(d.l100))) el("span", "ok", ft, "- - moyenne " + fr(Number(d.l100), 1) + " L/100");
+      if (d.fuel_l != null) el("span", "", ft, fr(Number(d.fuel_l), 1) + " L consommés");
+      if (d.harsh_accel) el("span", "", ft, d.harsh_accel + " accélération" + (d.harsh_accel > 1 ? "s" : "") + " forte" + (d.harsh_accel > 1 ? "s" : ""));
+      if (d.harsh_brake) el("span", "", ft, d.harsh_brake + " freinage" + (d.harsh_brake > 1 ? "s" : "") + " fort" + (d.harsh_brake > 1 ? "s" : ""));
     }
-    drawRoute() {
-      var p = this.aheadParts, b = this.body;
-      this.cardEl.style.borderColor = "transparent"; this.cardEl.style.borderLeft = "3px solid #59d0e0";
-      var left = p ? Number(p[2]) || 0 : 0;
-      this.head.textContent = "le trajet devant vous" + (left ? " · " + gpsMetres(left) : "");
-      var key = "f" + (p ? p.slice(2).join("|").replace(/\d+(?=~)/g, (m) => Math.round(Number(m) / 200)) : "none");
-      if (key === this.drawn) return; this.drawn = key;
-      b.innerHTML = "";
-      if (!p) { el("div", "", b, "en attente de la carte du téléphone…").style.cssText = "color:var(--dim);padding-top:30px;text-align:center"; return; }
-      var fr0 = el("div", "fr", b); el("div", "ln", fr0);
-      var span = Math.min(left || 1, 30000), x = (d) => 2 + Math.max(0, Math.min(1, d / span)) * 96;
-      var LOOK = { c: ["📷", CAR_WARN], f: ["⛽", CAR_OK], j: ["!", "#e5823b"] };
-      var pts = [{ t: "me", d: 0, l: "vous", s: "" }];
-      (p[4] || "").split(";").filter(Boolean).forEach((e) => { var q = e.split("~"); if (Number(q[1]) <= span) pts.push({ t: q[0], d: Number(q[1]), l: q[2], s: gpsMetres(Number(q[1])) }); });
-      pts.push({ t: "dest", d: left > span ? span : left, l: left > span ? "à " + gpsMetres(left) + " ›" : "arrivée", s: "" });
-      var lastUp = -100, lastDn = -100;
-      pts.forEach((q) => {
-        var X = x(q.d), up = X - lastUp >= X - lastDn ? (X - lastUp >= 14) : (X - lastDn < 14);
-        if (up) lastUp = X; else lastDn = X;
-        var e = el("div", "pt " + (up ? "up" : "dn"), fr0); e.style.left = X + "%";
-        var look = q.t === "me" ? ["●", "#59d0e0"] : q.t === "dest" ? ["⚑", "#e8e4dc"] : LOOK[q.t] || ["•", "#8a9099"];
-        var i = el("i", "", e, look[0]); i.style.background = look[1];
-        var t = el("div", "", e); var bb = el("b", "", t, q.l); bb.style.color = look[1]; if (q.s) el("small", "", t, q.s);
-        // At the ends, the label leans inwards instead of leaving the card.
-        if (X < 10) { t.style.left = "-16px"; t.style.textAlign = "left"; } else if (X > 90) { t.style.left = "auto"; t.style.right = "-16px"; t.style.textAlign = "right"; }
+    // The frieze under the view, whenever the phone map guides: the next
+    // 30 km (or what is left), « vous » fixed on the left and the road
+    // coming to it. Between two messages from the map (2 to 8 s), the
+    // distances are carried on with the speed, so the points glide.
+    drawFrieze(t, v) {
+      var p = this.aheadParts, guided = !!(p && p[1] === "1");
+      this.frz.hidden = !guided;
+      if (!guided) { this.flowSpeed = null; return; }
+      var at = Number(p[0]), gone = Math.max(0, Math.min(12, (t - at) / 1000)) * Math.max(0, v || 0) / 3.6;
+      var left = Math.max(0, (Number(p[2]) || 0) - gone), span = Math.max(500, Math.min(left, 30000));
+      var YOU = 6, END = 97, X = (d) => YOU + Math.max(0, Math.min(1, d / span)) * (END - YOU), R = (d) => Math.max(0, Math.min(100, d / span * 100));
+      // The header: what is left, when the end is in the frieze.
+      var tn = this.st(this.config.turn), g = tn ? String(tn.state || "").split("|") : [];
+      this.fzAside.textContent = left <= 30000 ? [gpsMetres(left), g[6] ? g[6] + " min" : "", g[4] ? "arrivée " + g[4] : ""].filter(Boolean).join(" · ") : "les 30 prochains km";
+      // The dashes run with the car (stopped: still).
+      var kmh = Math.max(0, v || 0), sp = kmh < 3 ? 0 : Math.round(kmh / 10);
+      if (sp !== this.flowSpeed) { this.flowSpeed = sp; this.flow.style.animationPlayState = sp ? "running" : "paused"; if (sp) this.flow.style.animationDuration = (44 / (20 + kmh * 0.9)).toFixed(2) + "s"; }
+      var ev = (p[4] || "").split(";").filter(Boolean).map((e) => { var q = e.split("~"); return { t: q[0], d: Number(q[1]) - gone, l: q[2] || "", len: Number(q[3]) || 0, lvl: Number(q[4]) || 2 }; });
+      // The road's colours: blue, orange where it slows, red where it jams.
+      var stops = [], bg = "#3b8cff";
+      ev.filter((e) => e.t === "j" && e.d + e.len > 0 && e.d < span).forEach((e) => { var a = R(e.d), z = R(e.d + Math.max(e.len, span / 60)), c = e.lvl === 2 ? "#e5323b" : "#e5823b"; stops.push("#3b8cff " + a.toFixed(1) + "%", c + " " + a.toFixed(1) + "%", c + " " + z.toFixed(1) + "%", "#3b8cff " + z.toFixed(1) + "%"); });
+      bg = stops.length ? "linear-gradient(90deg, #3b8cff 0%, " + stops.join(", ") + ", #3b8cff 100%)" : "#3b8cff";
+      if (bg !== this.roadBg) { this.roadBg = bg; this.road.style.background = bg; }
+      // The points: kept from one second to the next (by kind and label), so they glide.
+      var LOOK = { c: ["📷", CAR_WARN], f: ["⛽", CAR_OK], j: ["!", "#e5823b"], p: ["€", "#c792ea"] };
+      var list = ev.filter((e) => e.d > -150 && e.d <= span && LOOK[e.t]).map((e) => {
+        var lab = e.t === "c" ? ((e.l.match(/\d{2,3}/) || [])[0] || "radar") : e.t === "f" ? ((e.l.match(/\d+,\d+/) || [])[0] ? e.l.match(/\d+,\d+/)[0] + " €" : e.l) : e.l;
+        return { id: e.t + "|" + e.l, t: e.t, d: e.d, lab: lab, sub: e.d > 0 ? gpsMetres(e.d) : "", look: e.t === "j" && e.lvl === 2 ? ["!", "#e5323b"] : LOOK[e.t] };
       });
+      if (left <= 30000) list.push({ id: "dest", t: "dest", d: left, lab: g[4] || "arrivée", sub: g[4] ? "arrivée" : "", look: ["⚑", "#e8e4dc"] });
+      else list.push({ id: "more", t: "more", d: span, lab: "", sub: "+ " + gpsMetres(left - span), look: ["›", "#8a9099"] });
+      var seen = {}, lastX = -100;
+      list.sort((a, b) => a.d - b.d).forEach((q) => {
+        var id = q.id; while (seen[id]) id += "'"; seen[id] = 1;
+        var e = this.pins[id];
+        if (!e) {
+          e = this.pins[id] = el("div", "pin", this.trk); e.style.transition = "none"; e.style.left = X(Math.max(q.d, 0)) + "%";
+          e._i = el("i", "", e); e._t = el("div", "", e); e._b = el("span", "", e._t); e._s = el("small", "", e._t);
+          void e.offsetWidth; e.style.transition = "";
+        }
+        var x = X(Math.max(q.d, 0));
+        e.style.left = x.toFixed(2) + "%"; e.style.opacity = q.d < 0 ? "0" : "1";
+        e._i.textContent = q.look[0]; e._i.style.background = q.look[1];
+        e._b.textContent = q.lab; e._b.style.color = q.look[1]; e._s.textContent = q.sub;
+        // Close to the next one: its label gives way (the dot stays).
+        var near = (q.t === "c" && q.d < 1500) || (q.t !== "dest" && q.t !== "more" && q.d < 400);
+        e.className = "pin" + (near ? " near" : "") + (x > 90 ? " end" : "") + (x - lastX < 11 ? " quiet" : "");
+        if (x - lastX >= 11) lastX = x;
+      });
+      Object.keys(this.pins).forEach((id) => { if (!seen[id]) { this.pins[id].remove(); delete this.pins[id]; } });
     }
     drawStopped() {
       var d = this.tripData() || {}, c = this.config, price = this.n(c.price);
-      this.cardEl.style.borderColor = "transparent";
-      this.head.textContent = "dernier trajet" + (d.end ? " · arrivé à " + new Date(Number(d.end)).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "");
+      this.head.textContent = "dernier trajet";
+      this.aside.textContent = d.end ? "arrivé à " + hhmm(new Date(Number(d.end))) : "";
       var key = "s" + JSON.stringify(d).length + (this.st(c.next_service) || {}).state;
       if (key === this.drawn) return; this.drawn = key;
       var b = this.body; b.innerHTML = "";

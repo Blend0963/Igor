@@ -1,3 +1,11 @@
+## 0.42.0 — La frise sous la console, la vue moteur qui sait pourquoi
+
+- **`igor-drive-card`** en deux étages :
+  - **en haut**, ce que le moment demande : le radar, le moteur à la grosse accélération, sinon **le trajet en cours et sa conso** (distance, L/100, coût, score éco ; courbe des 15 dernières minutes à échelle fixe avec la moyenne en pointillé ; « maintenant 5,2 L/100 ») ; voiture arrêtée : le dernier trajet. Onglets radar · moteur · conso.
+  - **en dessous, la frise « devant vous »**, en permanence pendant un guidage (aucune sans itinéraire) : les 30 prochains km ou ce qui reste. « Vous » est fixe à gauche, la route vient à vous : des tirets défilent à la vitesse de la voiture, les points glissent d'une seconde à l'autre (les distances sont prolongées avec la vitesse entre deux messages de la carte), le radar proche pulse, les bouchons et ralentissements colorent leur tronçon (rouge, orange). Étiquettes courtes : limite du radar, prix de la station, péage, retard du bouchon, heure d'arrivée.
+- **Vue moteur** refaite : compte-tours et conseil de rapport à gauche ; turbo, charge et accélération en barres à droite ; moteur, admission, 0 → 100 en pied. Son titre dit pourquoi : **sortie de péage** (un péage passé il y a moins de 1,5 km, d'après la carte du téléphone), **démarrage**, **dépassement** ou **relance**.
+- `igor-gps-card` (`publish_ahead`) : les péages (entrée et sortie de chaque tronçon payant, et celui qu'on vient de passer), la longueur et la gravité de chaque bouchon.
+
 ## 0.41.0 — La page Route qui suit la route
 
 - **`igor-drive-card`** — le centre de l'autoradio change de lui-même selon la route, par priorité :
