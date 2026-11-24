@@ -10540,8 +10540,9 @@
         ":host([big]) .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; border-top: 1px solid var(--line); padding-top: 10px; margin-top: auto; }",
         ".grid span { display: block; font-size: 11px; color: var(--dim); } .grid b { font-weight: 400; font-size: 28px; font-variant-numeric: tabular-nums; } .grid b.s { font-size: 18px; } .grid .ok { color: " + CAR_OK + "; } .grid .warn { color: " + CAR_WARN + "; }",
         // the buttons row
-        ".bar { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; height: 100%; }",
-        ".bar button.b { flex-direction: column; gap: 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; --mdc-icon-size: 24px; min-height: 0; height: 100%; }",
+        ".bar { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; height: 100%; min-height: 64px; }",
+        ".bar button.b { flex-direction: column; gap: 4px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; --mdc-icon-size: 24px; min-height: 0; min-width: 0; height: 100%; padding: 4px 2px; overflow: hidden; } .bar button.b span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+        ".bar button.waze { border-color: #59d0e0; color: #59d0e0; } .bar button.waze ha-icon { color: #59d0e0; }",
         ".bar button.red { border-color: " + CAR_BAD + "; color: " + CAR_BAD + "; } .bar button.red ha-icon { color: " + CAR_BAD + "; }",
         ".bar button.on { border-color: var(--acc); color: var(--acc); }",
         // the finder (search, stations): over the whole screen
@@ -10568,6 +10569,16 @@
         icon(b, i === 0 ? "mdi:home" : "mdi:star-outline"); el("span", "", b, f.name);
         b.addEventListener("click", () => this.send({ cmd: "fav", index: i }));
       });
+      // big (the head unit): the search in large, the favourites, then the
+      // last places chosen here (this screen keeps them).
+      if (this.config.big) {
+        go.style.minHeight = "56px"; go.style.fontSize = "13px"; go.style.letterSpacing = ".14em";
+        favs.style.display = "grid"; favs.style.gridTemplateColumns = "1fr 1fr";
+        Array.prototype.forEach.call(favs.children, (b) => { b.style.minHeight = "52px"; });
+        this.recentEl = el("div", "", this.idle); this.recentEl.style.marginTop = "8px";
+        this.idle.style.display = "flex"; this.idle.style.flexDirection = "column"; this.idle.style.height = "100%";
+        this.drawRecent();
+      }
       this.guide = el("div", "", card);
       if (this.remote()) { this.guide.style.display = "flex"; this.guide.style.flexDirection = "column"; this.guide.style.flex = "1"; this.guide.style.minHeight = "0"; el("div", "h", this.guide, "guidage"); }
       var t = el("div", "turn", this.guide);
@@ -10598,7 +10609,7 @@
       this.barBtns = {};
       list.forEach((k) => {
         var d = defs[k]; if (!d) return;
-        var b = el("button", "b" + (k === "stop" ? " red" : ""), bar); b.type = "button";
+        var b = el("button", "b" + (k === "stop" ? " red" : k === "waze" ? " waze" : ""), bar); b.type = "button";
         this.barBtns[k] = b; this.barIcon = this.barIcon || {};
         this.barIcon[k] = icon(b, d[0]); el("span", "", b, d[1]);
         b.addEventListener("click", () => {
@@ -10655,6 +10666,28 @@
         return;
       }
       if (c.destination) h.callService("input_text", "set_value", { entity_id: c.destination, value: Number(p.lat).toFixed(5) + "," + Number(p.lon).toFixed(5) + ";" + name });
+      this.remember({ name: name, sub: p.address || p.city || "", lat: Number(p.lat), lon: Number(p.lon) });
+    }
+    recents() { try { var v = JSON.parse(window.localStorage.getItem("igor-guide-recent") || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+    remember(p) {
+      var l = this.recents().filter((x) => x.name !== p.name).slice(0, 5);
+      l.unshift(p);
+      try { window.localStorage.setItem("igor-guide-recent", JSON.stringify(l.slice(0, 5))); } catch (e) { /* private mode */ }
+      this.drawRecent();
+    }
+    drawRecent() {
+      if (!this.recentEl) return;
+      this.recentEl.innerHTML = "";
+      this.recents().slice(0, 3).forEach((p) => {
+        var r = el("div", "", this.recentEl); r.style.cssText = "display:flex;align-items:center;gap:12px;padding:9px 2px;border-bottom:1px solid var(--line);cursor:pointer";
+        var ic = icon(r, "mdi:history"); ic.style.color = "var(--dim)"; ic.style.setProperty("--mdc-icon-size", "18px");
+        var t = el("div", "", r); t.style.minWidth = "0"; t.style.flex = "1";
+        var n = el("div", "", t, p.name); n.style.cssText = "font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+        if (p.sub) { var sb = el("div", "", t, p.sub); sb.style.cssText = "font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"; }
+        var ar = el("span", "", r, "▸"); ar.style.color = "var(--acc)";
+        r.addEventListener("click", () => { this.findKind = "search"; this.pick(p); });
+      });
+      if (!this.recentEl.children.length) { var hint = el("div", "", this.recentEl, "ou dites « Igor, emmène-moi à la maison »"); hint.style.cssText = "font-size:12px;color:var(--dim);padding:8px 2px"; }
     }
     row(name, sub, right, onClick) {
       var it = el("div", "it", this.findList), l = el("div", "", it);
@@ -10822,6 +10855,189 @@
         this.gJam.className = "s " + (g.jam ? "warn" : "ok");
         this.gDest.textContent = g.dest || "—";
       } else this.gLeft.textContent = [g.left, g.min ? g.min + " min" : "", g.jam ? "dont " + g.jam + " min de bouchons" : (g.dest || "")].filter(Boolean).join(" · ");
+    }
+  }
+
+  // ----- igor-messages-card: the phone's messages (and the call, above them) -----
+  //   type: custom:igor-messages-card
+  //   entity: sensor.historique_notifications_ia   # attribute `liste`: [{date, app, titre, message}]
+  //   count: 5
+  //   read: input_boolean.telephone_lire_messages   # the header's « Igor lit les nouveaux » switch
+  //   call: { state: sensor.phone_state, caller: sensor.caller, answer: script.x, hangup: script.y, sms: script.y, sms_text: "…" }
+  var MSG_APPS = { whatsapp: ["#5cc28f", "W"], sms: ["#6cc4f5", "S"], messaging: ["#6cc4f5", "S"], gmail: ["#e5a04c", "@"], gm: ["#e5a04c", "@"], telegram: ["#4fa3e0", "T"],
+    teams: ["#c792ea", "T"], agenda: ["#f4d35e", "A"], calendar: ["#f4d35e", "A"], téléphone: ["#e5323b", "✆"], dialer: ["#e5323b", "✆"], messenger: ["#4f7df3", "M"], instagram: ["#e1306c", "I"], signal: ["#3a76f0", "S"] };
+  // One message, whatever wrote it: Igor's own list, the old Node-RED one, or
+  // Tasker's relay « HA_NOTIF · %anapp|package|title|text ».
+  function msgOf(n) {
+    n = n || {};
+    var app = String(n.app || n.appli || ""), titre = String(n.titre || ""), txt = String(n.message || n.texte || ""), date = String(n.date || n.heure || "");
+    if (/^HA_NOTIF$/i.test(titre) && txt.indexOf("|") >= 0) {
+      var p = txt.split("|");
+      app = String(p[1] || app).split(".").pop(); titre = p[2] || ""; txt = p.slice(3).join("|");
+    }
+    var low = app.toLowerCase(), key = Object.keys(MSG_APPS).find((k) => low.indexOf(k) >= 0);
+    var look = key ? MSG_APPS[key] : ["#8a9099", (app[0] || "•").toUpperCase()];
+    var name = key === "whatsapp" ? "WhatsApp" : key === "gmail" || key === "gm" ? "Gmail" : key === "sms" || key === "messaging" ? "SMS" : app ? app[0].toUpperCase() + app.slice(1) : "";
+    return { app: name, titre: titre, txt: txt, time: (date.match(/\d{1,2}:\d{2}/) || [""])[0], color: look[0], letter: look[1] };
+  }
+  class IgorMessagesCard extends IgorCard {
+    setConfig(config) { if (!config || !config.entity) throw new Error("igor-messages-card: entity est requis"); this.config = config; }
+    getCardSize() { return 6; }
+    build() {
+      this.style(CAR_HEAD + "\n" + [
+        "ha-card { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 12px 16px; overflow: hidden; }",
+        ".top { display: flex; align-items: center; justify-content: space-between; } .rd { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); cursor: pointer; } .rd.on { color: " + CAR_BLUE + "; }",
+        ".list { flex: 1; min-height: 0; overflow: hidden; }",
+        ".m { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; padding: 10px 6px; border-bottom: 1px solid var(--line); align-items: start; }",
+        ".m.new { background: rgba(108,196,245,.07); box-shadow: inset 3px 0 " + CAR_BLUE + "; }",
+        ".a { width: 32px; height: 32px; border-radius: 7px; display: grid; place-items: center; color: #08090b; font-weight: 700; font-size: 15px; }",
+        ".w { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .w span { font-size: 12px; color: var(--dim); }",
+        ".t { font-size: 14px; color: #c2c6cc; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
+        ".hr { font-size: 12px; color: var(--dim); white-space: nowrap; } .empty { color: var(--dim); padding: 14px 4px; }",
+        ".call { display: grid; grid-template-columns: minmax(0, 1fr) 46%; gap: 14px; border: 1px solid var(--line); border-left: 3px solid " + CAR_OK + "; padding: 12px 14px; margin-bottom: 10px; }",
+        ".call .who { display: flex; align-items: center; gap: 14px; } .av { width: 62px; height: 62px; border-radius: 50%; border: 3px solid " + CAR_OK + "; color: " + CAR_OK + "; display: grid; place-items: center; font-size: 28px; flex: none; }",
+        ".call .n { font-size: 30px; line-height: 1.1; } .call .st { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: " + CAR_OK + "; margin-bottom: 6px; }",
+        ".cb { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr auto; gap: 8px; } .cb button.b { min-height: 64px; --mdc-icon-size: 28px; flex-direction: column; gap: 4px; }",
+        ".cb .y { border-color: " + CAR_OK + "; color: " + CAR_OK + "; } .cb .y ha-icon { color: " + CAR_OK + "; } .cb .x { border-color: #e5323b; color: #e5323b; } .cb .x ha-icon { color: #e5323b; }",
+        ".cb .s { grid-column: 1 / 3; min-height: 42px !important; flex-direction: row !important; gap: 8px; }",
+        "[hidden] { display: none !important; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var c = this.config, cl = c.call || {};
+      this.callEl = el("div", "call", card); this.callEl.hidden = true;
+      var who = el("div", "", this.callEl); this.callSt = el("div", "st", who);
+      var w = el("div", "who", who); this.av = el("div", "av", w); this.callN = el("div", "n", w);
+      var cb = el("div", "cb", this.callEl);
+      var btn = (cls, ic, label, fn) => { var b = el("button", "b " + cls, cb); b.type = "button"; icon(b, ic); el("span", "", b, label); b.addEventListener("click", fn); return b; };
+      var run = (svc, data) => { if (!svc || !this._hass) return; var p = String(svc).split("."); this._hass.callService(p[0], p[1], data || {}); };
+      btn("y", "mdi:phone", "décrocher", () => run(cl.answer));
+      btn("x", "mdi:phone-hangup", "refuser", () => run(cl.hangup));
+      btn("s", "mdi:message-text-outline", "refuser + « je conduis »", () => run(cl.sms || cl.hangup, { sms: cl.sms_text || "Je conduis, je vous rappelle dès que possible." }));
+      var top = el("div", "top", card);
+      this.head = el("div", "h", top, "messages");
+      this.rd = el("div", "rd", top, "Igor lit les nouveaux ▸");
+      this.rd.hidden = !c.read;
+      this.rd.addEventListener("click", () => { if (c.read && this._hass) this._hass.callService("input_boolean", "toggle", { entity_id: c.read }); });
+      this.list = el("div", "list", card);
+    }
+    update() {
+      var h = this._hass, c = this.config, cl = c.call || {};
+      if (!h || !this.list) return;
+      var ps = cl.state && h.states[cl.state], ph = ps ? ps.state : "idle";
+      var inCall = ph === "ringing" || ph === "offhook";
+      this.callEl.hidden = !inCall;
+      if (inCall) {
+        var cs = cl.caller && h.states[cl.caller], n = cs ? String(cs.state) : "";
+        if (!n || ["—", "unknown", "unavailable"].indexOf(n) >= 0) n = "Numéro inconnu";
+        this.callN.textContent = n; this.av.textContent = n === "Numéro inconnu" ? "?" : n[0].toUpperCase();
+        this.callSt.textContent = ph === "ringing" ? "appel entrant" : "en communication";
+      }
+      if (this.rd && c.read) { var on = h.states[c.read] && h.states[c.read].state === "on"; this.rd.classList.toggle("on", on); this.rd.textContent = on ? "Igor lit les nouveaux ▸" : "lecture coupée"; }
+      var st = h.states[c.entity], l = (st && st.attributes && st.attributes.liste) || [];
+      var sig = JSON.stringify(l).length + "|" + (l[0] && JSON.stringify(l[0])) + "|" + inCall;
+      if (sig === this.sig) return;
+      this.sig = sig;
+      this.head.textContent = "messages · " + l.length;
+      this.list.innerHTML = "";
+      if (!l.length) { el("div", "empty", this.list, "Aucun message"); return; }
+      l.slice(0, inCall ? Math.min(3, c.count || 5) : (c.count || 5)).forEach((raw, i) => {
+        var m = msgOf(raw), row = el("div", "m" + (i ? "" : " new"), this.list);
+        var a = el("div", "a", row, m.letter); a.style.background = m.color;
+        var mid = el("div", "", row), w = el("div", "w", mid); w.appendChild(document.createTextNode(m.titre + " ")); el("span", "", w, m.app ? "· " + m.app : "");
+        el("div", "t", mid, m.txt);
+        el("div", "hr", row, m.time);
+      });
+    }
+  }
+
+  // ----- igor-phone-card: the phone on its dock (favourites), or absent (Waze) -----
+  //   type: custom:igor-phone-card
+  //   present: binary_sensor.phone_in_car
+  //   battery: sensor.phone_battery_level
+  //   favorites: [ { name: Maman, color: "#5cc28f", service: script.x, data: {…} }, … ]
+  //   keypad: app://com.autochips.bluetooth      # the head unit's phone app
+  //   destination: input_text.car_dest            # « Vers Waze » takes the trip under way there
+  //   waze_notify: notify.mobile_app_headunit
+  class IgorPhoneCard extends IgorCard {
+    setConfig(config) { this.config = config || {}; }
+    getCardSize() { return 4; }
+    build() {
+      this.style(CAR_HEAD + "\n" + [
+        "ha-card { padding: 12px 14px; }",
+        ".top { display: flex; align-items: center; justify-content: space-between; } .tel { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #59d0e0; display: flex; align-items: center; gap: 6px; } .tel::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }",
+        ".fav { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .fav button.b { flex-direction: row; justify-content: flex-start; gap: 10px; padding: 10px; min-height: 54px; text-transform: none; letter-spacing: .02em; font-size: 15px; color: var(--fg); }",
+        ".av { width: 32px; height: 32px; border-radius: 50%; border: 2px solid currentColor; display: grid; place-items: center; font-size: 15px; flex: none; }",
+        ".row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; } .row2 button.b { min-height: 44px; flex-direction: row; gap: 8px; --mdc-icon-size: 18px; }",
+        ".abs { border: 1px dashed " + CAR_WARN + "; margin: -12px -14px; padding: 12px 14px; } .abs .tel { color: " + CAR_WARN + "; }",
+        ".ph { display: flex; gap: 14px; align-items: center; margin: 6px 0 10px; } .pi { width: 40px; height: 66px; border: 2px solid " + CAR_WARN + "; border-radius: 8px; display: grid; place-items: center; color: " + CAR_WARN + "; --mdc-icon-size: 22px; flex: none; }",
+        ".ph b { font-weight: 400; font-size: 17px; display: block; } .ph small { color: var(--dim); font-size: 13px; }",
+        ".wz button.b { min-height: 56px; flex-direction: row; gap: 10px; --mdc-icon-size: 22px; } .wz .go { border-color: #59d0e0; color: #59d0e0; } .wz .go ha-icon { color: #59d0e0; }",
+        "[hidden] { display: none !important; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot), c = this.config;
+      // On the dock
+      this.on = el("div", "", card);
+      var t = el("div", "top", this.on); el("div", "h", t, "téléphone"); this.bat = el("div", "tel", t, "sur le socle");
+      var fav = el("div", "fav", this.on);
+      (c.favorites || []).slice(0, 4).forEach((f) => {
+        var b = el("button", "b", fav); b.type = "button";
+        var av = el("span", "av", b, f.letter || String(f.name || "?")[0].toUpperCase()); av.style.color = f.color || CAR_BLUE;
+        el("span", "", b, f.name || "");
+        b.addEventListener("click", () => { if (f.service && this._hass) { var p = String(f.service).split("."); this._hass.callService(p[0], p[1], f.data || {}); } });
+      });
+      var r2 = el("div", "row2", this.on);
+      var kb = el("button", "b", r2); kb.type = "button"; icon(kb, "mdi:dialpad"); el("span", "", kb, "clavier");
+      kb.addEventListener("click", () => haAction(this, { action: "url", url_path: c.keypad || "app://com.autochips.bluetooth" }));
+      var rc = el("button", "b", r2); rc.type = "button"; icon(rc, "mdi:history"); el("span", "", rc, "derniers appels");
+      rc.addEventListener("click", () => haAction(this, { action: "url", url_path: c.recents || c.keypad || "app://com.autochips.bluetooth" }));
+      // Absent
+      this.off = el("div", "abs", card);
+      var t2 = el("div", "top", this.off); el("div", "h", t2, "téléphone"); el("div", "tel", t2, "absent");
+      var ph = el("div", "ph", this.off); icon(el("div", "pi", ph), "mdi:cellphone-arrow-down");
+      var tx = el("div", "", ph); el("b", "", tx, "Posez le téléphone sur le socle"); el("small", "", tx, "la carte s'affiche dessus · sinon, Waze");
+      var wz = el("div", "row2 wz", this.off);
+      var ow = el("button", "b go", wz); ow.type = "button"; icon(ow, "mdi:waze"); el("span", "", ow, "ouvrir waze");
+      ow.addEventListener("click", () => haAction(this, { action: "url", url_path: "app://com.waze" }));
+      var vw = el("button", "b", wz); vw.type = "button"; icon(vw, "mdi:arrow-right-bold-box-outline"); el("span", "", vw, "vers waze");
+      vw.addEventListener("click", () => IgorGuideCard.prototype.openWaze.call(this));
+    }
+    update() {
+      var h = this._hass, c = this.config;
+      if (!h || !this.on) return;
+      var p = c.present && h.states[c.present], here = !p || p.state === "on";
+      this.on.hidden = !here; this.off.hidden = here;
+      var b = c.battery && h.states[c.battery];
+      this.bat.textContent = "sur le socle" + (b && !isNaN(parseFloat(b.state)) ? " · " + Math.round(parseFloat(b.state)) + " %" : "");
+    }
+  }
+
+  // ----- igor-arrival-card: the next appointment, on time or late -----
+  //   type: custom:igor-arrival-card
+  //   entity: sensor.phone_at_arrival   # state « à l'heure » / « en retard » ; titre, heure, arrivee, anniversaire
+  class IgorArrivalCard extends IgorCard {
+    setConfig(config) { if (!config || !config.entity) throw new Error("igor-arrival-card: entity est requis"); this.config = config; }
+    getCardSize() { return 2; }
+    build() {
+      this.style(CAR_HEAD + "\n" + [
+        "ha-card { padding: 10px 14px; } .ti { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .st { font-size: 13px; margin-top: 2px; } .bd { font-size: 13px; color: " + CAR_WARN + "; margin-top: 2px; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      el("div", "h", card, this.config.title || "à l'arrivée");
+      this.ti = el("div", "ti", card); this.st = el("div", "st", card); this.bd = el("div", "bd", card);
+    }
+    update() {
+      var st = this._hass && this._hass.states[this.config.entity];
+      if (!st || !this.ti) return;
+      var a = st.attributes || {};
+      if (!a.titre) { this.ti.textContent = "Pas de rendez-vous"; this.ti.style.color = "var(--dim)"; this.st.textContent = ""; }
+      else {
+        this.ti.style.color = "";
+        this.ti.textContent = a.titre + (a.heure ? " · " + a.heure : "");
+        var late = /retard/i.test(st.state);
+        this.st.textContent = [st.state, a.arrivee ? "arrivée " + a.arrivee : ""].filter((x) => x && x !== "unknown").join(" · ");
+        this.st.style.color = late ? CAR_WARN : CAR_OK;
+      }
+      this.bd.textContent = a.anniversaire ? "🎂 " + a.anniversaire : "";
     }
   }
 
@@ -11343,6 +11559,9 @@
     window.customCards = window.customCards || [];
     window.customCards.push({ type: name, name: label, description: description });
   }
+  define("igor-messages-card", IgorMessagesCard, "Igor · messages", "Les derniers messages du téléphone, et l'appel en cours au-dessus.");
+  define("igor-phone-card", IgorPhoneCard, "Igor · téléphone", "Le téléphone sur le socle (favoris), ou absent (Waze).");
+  define("igor-arrival-card", IgorArrivalCard, "Igor · à l'arrivée", "Le prochain rendez-vous, à l'heure ou en retard.");
   define("igor-guide-card", IgorGuideCard, "Igor · guidage", "La colonne du GPS : la prochaine manœuvre et l'arrivée, ou « Où allons-nous ? » sans itinéraire.");
   define("igor-gear-card", IgorGearCard, "Igor · rapport", "Le compte-tours, le rapport engagé et le conseil de rapport.");
   define("igor-gauge-card", IgorGaugeCard, "Igor · jauge", "Une valeur sur un arc coloré.");
