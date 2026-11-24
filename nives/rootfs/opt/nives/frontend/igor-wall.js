@@ -6518,6 +6518,7 @@
         ".ftag { display: flex; align-items: center; gap: 5px; padding: 2px 7px; border-radius: 3px; background: rgba(7,8,10,0.88); border: 1px solid #22262c; font-family: 'Chakra Petch', " + MONO + "; font-size: 13px; font-weight: 600; color: #e9e4da; pointer-events: none; white-space: nowrap; }" +
         ".ftag img { height: 14px; max-width: 52px; object-fit: contain; background: #f4f1ea; border-radius: 2px; padding: 1px 3px; }" +
         ".ftag .dry { font-size: 10px; }" +
+        ".ftag.slim { padding: 1px 6px; font-size: 14px; } .ftag.slim img { display: none; }" +
         // The dry tap's word: the small red the road's warnings wear.
         ".dry { color: #d9704a; font-family: " + MONO + "; font-size: 12px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }" +
         ".np { color: #878c95; font-family: " + MONO + "; font-size: 12px; font-weight: 400; }" +
@@ -6786,10 +6787,9 @@
       var poiLayers = layers.filter((l) => l.type === "symbol" && /poi|point.of.interest/i.test(l.id + " " + (l["source-layer"] || "")));
       if (!this.basePois()) poiLayers.forEach((l) => map.setLayoutProperty(l.id, "visibility", "none"));
       else {
-        // TomTom's own places stay (shops, pharmacies, parkings…), but not its
-        // stations: Igor's show logo + price (the State's flux), one mark a
-        // station. Which property says « fuel » is read from the tiles
-        // themselves (the schema is TomTom's), then filtered out.
+        // TomTom's own places stay (shops, pharmacies, parkings, stations);
+        // Igor only hangs the State's price over TomTom's pumps. Which
+        // property says « fuel » is read from the tiles themselves.
         this.ttFuelDone = false;
         var hideFuel = () => {
           if (this.ttFuelDone || !this.map) return;
@@ -6799,17 +6799,10 @@
           feats.forEach((f) => { Object.keys(f.properties || {}).forEach((k) => { var v = f.properties[k]; if (typeof v === "string" && RX.test(v) && !/name/i.test(k)) { key = key || k; if (k === key) vals[v] = true; } }); });
           if (!key) return;
           this.ttFuelDone = true;
-          // Made invisible, not filtered: a paint expression is accepted
-          // whatever filter syntax the style's layer uses.
-          var isFuel = ["in", ["to-string", ["get", key]], ["literal", Object.keys(vals)]];
-          poiLayers.forEach((l) => {
-            ["icon-opacity", "text-opacity"].forEach((prop) => {
-              var old = map.getPaintProperty(l.id, prop);
-              // A zoom curve must stay at the top of its expression: left as it is.
-              if (old != null && (typeof old !== "number" && !Array.isArray(old) || JSON.stringify(old).indexOf('"zoom"') >= 0)) return;
-              try { map.setPaintProperty(l.id, prop, ["case", isFuel, 0, old == null ? 1 : old]); } catch (e) { /* left as it is */ }
-            });
-          });
+          // TomTom's pumps stay: Igor's price hangs on each of them
+          // (refreshFuelTags snaps the State's station to the pump drawn).
+          this.ttFuel = { key: key, vals: Object.keys(vals), layers: poiLayers.map((l) => l.id) };
+          this.refreshFuelTags();
         };
         map.on("idle", hideFuel);
       }
@@ -9358,7 +9351,8 @@
       // no dot, no pump icon under it — one station, one mark on the map.
       var fuelOn = !!(this.layers && this.layers.fuel);
       var tagged = (q) => fuelOn && q.kind === "fuel" && ((q.prices || {}).gazole != null || !!(q.rupture || {}).gazole);
-      var marks = shown.filter((q) => !tagged(q));
+      // On TomTom's 3D map its own pumps are the stations: Igor draws none.
+      var marks = shown.filter((q) => !tagged(q) && !(q.kind === "fuel" && this.basePois()));
       var near = car ? marks.filter((q) => q.kind !== "camera" && gpsDist(q.p, car) < GPS_ICON_M)
         .sort((a, b) => gpsDist(a.p, car) - gpsDist(b.p, car)).slice(0, GPS_ICON_MAX) : [];
       var iconed = shown.filter((q) => q.kind === "camera").concat(near);
@@ -9393,17 +9387,29 @@
         return;
       }
       var seen = {};
+      // On TomTom's 3D map: the price sits on TomTom's own pump (within 80 m
+      // of the State's station), no logo — the pump already says the brand.
+      var pumps = [], tt = this.basePois() && this.ttFuel;
+      if (tt) {
+        try {
+          pumps = (map.queryRenderedFeatures({ layers: tt.layers.filter((id) => map.getLayer(id)) }) || [])
+            .filter((f) => tt.vals.indexOf(String((f.properties || {})[tt.key])) >= 0 && f.geometry && f.geometry.type === "Point")
+            .map((f) => f.geometry.coordinates);
+        } catch (e) { pumps = []; }
+      }
       ((shown || this.pois) || []).forEach((q) => {
         if (q.kind !== "fuel") return;
         var pr = (q.prices || {}).gazole, ru = (q.rupture || {}).gazole;
         if (pr == null && !ru) return;
         seen[q.id] = true;
+        var at = q.p;
+        if (pumps.length) { var bd = 80; pumps.forEach((c) => { var d = gpsDist(c, q.p); if (d < bd) { bd = d; at = c; } }); }
         var m = this.fuelTags[q.id];
         if (!m) {
-          var el = document.createElement("div"); el.className = "ftag";
-          m = new window.maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -14] }).setLngLat(q.p).addTo(map);
+          var el = document.createElement("div"); el.className = "ftag" + (tt ? " slim" : "");
+          m = new window.maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, tt ? -18 : -14] }).setLngLat(at).addTo(map);
           this.fuelTags[q.id] = m;
-        }
+        } else if (tt) m.setLngLat(at);
         var el = m.getElement();
         if (el._igorSig === pr + "|" + ru) return;
         el._igorSig = pr + "|" + ru;
