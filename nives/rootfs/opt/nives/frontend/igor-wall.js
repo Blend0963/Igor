@@ -10679,7 +10679,7 @@
           var r = el("span", "r", it);
           if (p.price != null) { r.textContent = p.price.toFixed(3).replace(".", ",") + " €"; r.style.fontSize = "20px"; r.style.color = p.price === cheapest ? CAR_OK : "var(--fg)"; }
           else if (p.dry) { r.textContent = "rupture"; r.style.color = CAR_WARN; }
-          else { r.textContent = "prix ?"; r.style.color = "var(--dim)"; }
+          else { r.textContent = "prix non communiqué"; r.style.color = "var(--dim)"; r.style.fontSize = "13px"; }
           it.addEventListener("click", () => this.pick(p));
         });
       });
