@@ -5285,6 +5285,7 @@
   //   display_only: true                    # a second screen: the map only (no button, banner or sign); a tap on the map still picks a place or a route
   //   base_pois: true                       # with basemap: tomtom-3d, TomTom's own places (Igor adds only cameras and stations with prices)
   //   voice_to: input_text.car_voice        # what the guidance says goes there (« ms|kind|text »), said by the head unit's igor-guide-card
+  //   publish_routes: input_text.car_routes  # the routes offered, for the head unit to choose (route_choice: input_text.car_choice brings the answer)
   //   publish_turn: input_text.car_turn     # the whole guidance for igor-guide-card `entity` (« icon|dist|text|then|eta|left|min|jam|dest »)
   //   publish_guide: input_text.car_guide   # the guidance written for the other screens (« eta|km|min|destination »)
   //   announce: input_text.car_announce     # the house's announcements, said with the guidance's voice
@@ -6335,7 +6336,7 @@
       this._hass = hass;
       if (!this.root) this.build();
       // Only when what the card shows changed (not at every change in the house).
-      if (prev && this.loading && [c.entity, c.fallback_entity, c.speed_entity, c.speed_limit_entity, c.destination, c.announce, "sun.sun"].every(function (id) { return !id || prev.states[id] === hass.states[id]; })) return;
+      if (prev && this.loading && [c.entity, c.fallback_entity, c.speed_entity, c.speed_limit_entity, c.destination, c.announce, c.route_choice, "sun.sun"].every(function (id) { return !id || prev.states[id] === hass.states[id]; })) return;
       this.read();
     }
     connectedCallback() { if (this.map && !this.raf) this.raf = requestAnimationFrame(() => this.tick()); if (this.onCmd) window.addEventListener("igor-gps-cmd", this.onCmd); }
@@ -6932,6 +6933,17 @@
         var fresh = Date.now() - (Date.parse(an.last_changed) || 0) < 60000;
         var said = String(an.state || "").replace(/^[^|]*\|/, "").trim();
         if (!first && fresh && said && an.state !== "unknown" && an.state !== "unavailable") this.say(said, "alert");
+      }
+      // route_choice: the head unit chose among the routes offered (« ms|n »).
+      var rc = this.config.route_choice && this._hass.states[this.config.route_choice];
+      if (rc && rc.state !== this.choiceSeen) {
+        var firstRc = this.choiceSeen === undefined;
+        this.choiceSeen = rc.state;
+        var mm = /^(\d+)\|(\d+)$/.exec(rc.state || "");
+        if (!firstRc && mm && Date.now() - Number(mm[1]) < 120000 && this.routeOpts) {
+          var ro = this.routeOpts.opts[Number(mm[2])];
+          if (ro) this.routeOpts.pick(ro);
+        }
       }
       var de = this.config.destination && this._hass.states[this.config.destination];
       if (de && de.state !== this.destState) {
@@ -8556,6 +8568,8 @@
       if (!opts.length) return false;
       var pick = (o) => {
         clearTimeout(this.pickTimer);
+        this.routeOpts = null;
+        this.publishRoutes("");
         this.$("rpanel").hidden = true;
         this.alts = opts.filter((x) => x !== o);
         this.tripAvoid = o.types;
@@ -8565,6 +8579,14 @@
         if (o.route.lez && o.route.lez.length) this.toast("Zone à faibles émissions · vignette requise", 9000);
       };
       if (opts.length === 1) { pick(opts[0]); return true; }
+      // publish_routes: the choice offered on the head unit too (igor-guide-
+      // card `routes`), « ms|min~dist~bouchons~libellé~péage~zfe;… »; its
+      // answer comes back by route_choice (« ms|n »).
+      this.routeOpts = { opts: opts, pick: pick };
+      this.publishRoutes(Date.now() + "|" + opts.map((o) => {
+        var R0 = o.route;
+        return [Math.round(R0.duration / 60), gpsMetres(R0.distance), R0.delay >= 60 ? Math.round(R0.delay / 60) : 0, String(o.label).replace(/[~;|]/g, " "), R0.tolls && R0.tolls.length ? 1 : 0, R0.lez && R0.lez.length ? 1 : 0].join("~");
+      }).join(";"));
       var $ = this.$, list = $("rlist");
       list.innerHTML = "";
       $("rtitle").textContent = "vers " + d.name;
@@ -8603,8 +8625,14 @@
       $("fpanel").hidden = true;
       $("rpanel").hidden = false;
       clearTimeout(this.pickTimer);
-      this.pickTimer = setTimeout(() => { if (!$("rpanel").hidden) pick(opts[0]); }, 12000);
+      this.pickTimer = setTimeout(() => { if (!$("rpanel").hidden) pick(opts[0]); }, this.config.publish_routes ? 25000 : 12000);
       return true;
+    },
+    publishRoutes(v) {
+      var e = this.config.publish_routes;
+      if (!e || !this._hass || !this._hass.callService || v === this.routesSent) return;
+      this.routesSent = v;
+      this._hass.callService("input_text", "set_value", { entity_id: e, value: String(v).slice(0, 250) }).catch(() => { this.routesSent = null; });
     },
     useRoute(coords, raw, duration, source, extra) {
       var cum = [0];
@@ -10510,10 +10538,11 @@
         // big: the head unit's guidance column (remote), the turn in large
         ":host([big]) .turn { grid-template-columns: 86px minmax(0, 1fr); --mdc-icon-size: 82px; } :host([big]) .dist { font-size: 46px; } :host([big]) .tx { font-size: 18px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; } :host([big]) .then { font-size: 13px; margin-top: 4px; }",
         ":host([big]) .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; border-top: 1px solid var(--line); padding-top: 10px; margin-top: auto; }",
-        ".grid span { display: block; font-size: 11px; color: var(--dim); } .grid b { font-weight: 400; font-size: 28px; font-variant-numeric: tabular-nums; } .grid b.s { font-size: 18px; } .grid .ok { color: " + CAR_OK + "; } .grid .warn { color: " + CAR_WARN + "; }",
+        ".grid span { display: block; font-size: 11px; color: var(--dim); } .grid b { font-weight: 400; font-size: 28px; font-variant-numeric: tabular-nums; } .grid b.s { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; } .grid .ok { color: " + CAR_OK + "; } .grid .warn { color: " + CAR_WARN + "; }",
         // the buttons row
-        ".bar { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; height: 100%; }",
-        ".bar button.b { flex-direction: column; gap: 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; --mdc-icon-size: 24px; min-height: 0; height: 100%; }",
+        ".bar { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; height: 100%; min-height: 64px; }",
+        ".bar button.b { flex-direction: column; gap: 4px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; --mdc-icon-size: 24px; min-height: 0; min-width: 0; height: 100%; padding: 4px 2px; overflow: hidden; } .bar button.b span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+        ".bar button.waze { border-color: #59d0e0; color: #59d0e0; } .bar button.waze ha-icon { color: #59d0e0; }",
         ".bar button.red { border-color: " + CAR_BAD + "; color: " + CAR_BAD + "; } .bar button.red ha-icon { color: " + CAR_BAD + "; }",
         ".bar button.on { border-color: var(--acc); color: var(--acc); }",
         // the finder (search, stations): over the whole screen
@@ -10540,6 +10569,16 @@
         icon(b, i === 0 ? "mdi:home" : "mdi:star-outline"); el("span", "", b, f.name);
         b.addEventListener("click", () => this.send({ cmd: "fav", index: i }));
       });
+      // big (the head unit): the search in large, the favourites, then the
+      // last places chosen here (this screen keeps them).
+      if (this.config.big) {
+        go.style.minHeight = "56px"; go.style.fontSize = "13px"; go.style.letterSpacing = ".14em";
+        favs.style.display = "grid"; favs.style.gridTemplateColumns = "1fr 1fr";
+        Array.prototype.forEach.call(favs.children, (b) => { b.style.minHeight = "52px"; });
+        this.recentEl = el("div", "", this.idle); this.recentEl.style.marginTop = "8px";
+        this.idle.style.display = "flex"; this.idle.style.flexDirection = "column"; this.idle.style.height = "100%";
+        this.drawRecent();
+      }
       this.guide = el("div", "", card);
       if (this.remote()) { this.guide.style.display = "flex"; this.guide.style.flexDirection = "column"; this.guide.style.flex = "1"; this.guide.style.minHeight = "0"; el("div", "h", this.guide, "guidage"); }
       var t = el("div", "turn", this.guide);
@@ -10570,7 +10609,7 @@
       this.barBtns = {};
       list.forEach((k) => {
         var d = defs[k]; if (!d) return;
-        var b = el("button", "b" + (k === "stop" ? " red" : ""), bar); b.type = "button";
+        var b = el("button", "b" + (k === "stop" ? " red" : k === "waze" ? " waze" : ""), bar); b.type = "button";
         this.barBtns[k] = b; this.barIcon = this.barIcon || {};
         this.barIcon[k] = icon(b, d[0]); el("span", "", b, d[1]);
         b.addEventListener("click", () => {
@@ -10627,6 +10666,28 @@
         return;
       }
       if (c.destination) h.callService("input_text", "set_value", { entity_id: c.destination, value: Number(p.lat).toFixed(5) + "," + Number(p.lon).toFixed(5) + ";" + name });
+      this.remember({ name: name, sub: p.address || p.city || "", lat: Number(p.lat), lon: Number(p.lon) });
+    }
+    recents() { try { var v = JSON.parse(window.localStorage.getItem("igor-guide-recent") || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+    remember(p) {
+      var l = this.recents().filter((x) => x.name !== p.name).slice(0, 5);
+      l.unshift(p);
+      try { window.localStorage.setItem("igor-guide-recent", JSON.stringify(l.slice(0, 5))); } catch (e) { /* private mode */ }
+      this.drawRecent();
+    }
+    drawRecent() {
+      if (!this.recentEl) return;
+      this.recentEl.innerHTML = "";
+      this.recents().slice(0, 3).forEach((p) => {
+        var r = el("div", "", this.recentEl); r.style.cssText = "display:flex;align-items:center;gap:12px;padding:9px 2px;border-bottom:1px solid var(--line);cursor:pointer";
+        var ic = icon(r, "mdi:history"); ic.style.color = "var(--dim)"; ic.style.setProperty("--mdc-icon-size", "18px");
+        var t = el("div", "", r); t.style.minWidth = "0"; t.style.flex = "1";
+        var n = el("div", "", t, p.name); n.style.cssText = "font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+        if (p.sub) { var sb = el("div", "", t, p.sub); sb.style.cssText = "font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"; }
+        var ar = el("span", "", r, "▸"); ar.style.color = "var(--acc)";
+        r.addEventListener("click", () => { this.findKind = "search"; this.pick(p); });
+      });
+      if (!this.recentEl.children.length) { var hint = el("div", "", this.recentEl, "ou dites « Igor, emmène-moi à la maison »"); hint.style.cssText = "font-size:12px;color:var(--dim);padding:8px 2px"; }
     }
     row(name, sub, right, onClick) {
       var it = el("div", "it", this.findList), l = el("div", "", it);
@@ -10716,6 +10777,35 @@
       }
       this.hear(c.voice, "voiceSeen");
       this.hear(c.announce, "announceSeen");
+      this.offerRoutes();
+    }
+    // routes: the map's offer of routes (its publish_routes) — chosen here,
+    // the answer written to route_choice. Only the guidance card shows it.
+    offerRoutes() {
+      var c = this.config, st = c.routes && this.config.mode !== "buttons" && this._hass.states[c.routes];
+      if (!st || st.state === this.routesSeen) return;
+      this.routesSeen = st.state;
+      var m = /^(\d+)\|(.+)$/.exec(st.state || "");
+      if (!m || Date.now() - Number(m[1]) > 60000) { if (this.findKind === "routes") this.findEl.hidden = true; return; }
+      this.findKind = "routes";
+      this.findEl.hidden = false; this.findForm.hidden = true;
+      var dst = c.destination && this._hass.states[c.destination], nm = dst ? String(dst.state || "").split(";")[1] || "" : "";
+      this.findTitle.textContent = "itinéraires" + (nm ? " vers " + nm.split("|")[0] : "");
+      this.findList.innerHTML = "";
+      m[2].split(";").forEach((o, i) => {
+        var p = o.split("~"), mins = Number(p[0]) || 0, jam = Number(p[2]) || 0;
+        var t = mins >= 60 ? Math.floor(mins / 60) + " h " + String(mins % 60).padStart(2, "0") : mins + " min";
+        var it = el("div", "it", this.findList), l = el("div", "", it);
+        var big = el("div", "", l, t); big.style.fontSize = "24px";
+        el("small", "", l, [p[3], p[1], p[4] === "1" ? "péage" : "", p[5] === "1" ? "ZFE" : ""].filter(Boolean).join(" · "));
+        var r = el("span", "r", it, jam ? "+" + jam + " min de bouchons" : "fluide"); r.style.color = jam ? CAR_WARN : CAR_OK;
+        if (!i) it.style.boxShadow = "inset 3px 0 var(--acc)";
+        it.addEventListener("click", () => {
+          this.findEl.hidden = true;
+          if (c.route_choice) this._hass.callService("input_text", "set_value", { entity_id: c.route_choice, value: Date.now() + "|" + i });
+        });
+      });
+      el("div", "note", this.findList, "sans choix, le premier est pris au bout de 25 s");
     }
     // A sentence written into an input_text (« ms|kind|text » or
     // « time|text »): said once, here, if fresh and the voice is not off.
@@ -10765,6 +10855,258 @@
         this.gJam.className = "s " + (g.jam ? "warn" : "ok");
         this.gDest.textContent = g.dest || "—";
       } else this.gLeft.textContent = [g.left, g.min ? g.min + " min" : "", g.jam ? "dont " + g.jam + " min de bouchons" : (g.dest || "")].filter(Boolean).join(" · ");
+    }
+  }
+
+  // ----- igor-messages-card: the phone's messages (and the call, above them) -----
+  //   type: custom:igor-messages-card
+  //   entity: sensor.historique_notifications_ia   # attribute `liste`: [{date, app, titre, message}]
+  //   count: 5
+  //   read: input_boolean.telephone_lire_messages   # the header's « Igor lit les nouveaux » switch
+  //   call: { state: sensor.phone_state, caller: sensor.caller, answer: script.x, hangup: script.y, sms: script.y, sms_text: "…" }
+  //   say: script.voiture_dire                     # « Lire »: Igor says it aloud
+  //   reply: script.telephone_repondre             # « Répondre »: fields paquet, titre, texte
+  //   callback: script.telephone_rappeler          # a missed call: « Rappeler »
+  //   sms_callback: script.telephone_sms_rappel    # … « SMS » (field texte)
+  //   eta: input_text.car_guide                    # « J'arrive à 18:27 » from the guidance
+  //   replies: [ "Je conduis, je te rappelle", "OK 👍" ]
+  //   dictate_target: input_text.reply_to          # « Dicter à Igor »: the message answered, kept there
+  var MSG_APPS = { whatsapp: ["#5cc28f", "W"], sms: ["#6cc4f5", "S"], messaging: ["#6cc4f5", "S"], gmail: ["#e5a04c", "@"], gm: ["#e5a04c", "@"], telegram: ["#4fa3e0", "T"],
+    teams: ["#c792ea", "T"], agenda: ["#f4d35e", "A"], calendar: ["#f4d35e", "A"], téléphone: ["#e5323b", "✆"], dialer: ["#e5323b", "✆"], messenger: ["#4f7df3", "M"], instagram: ["#e1306c", "I"], signal: ["#3a76f0", "S"] };
+  // One message, whatever wrote it: Igor's own list, the old Node-RED one, or
+  // Tasker's relay « HA_NOTIF · %anapp|package|title|text ».
+  function msgOf(n) {
+    n = n || {};
+    var app = String(n.app || n.appli || ""), titre = String(n.titre || ""), txt = String(n.message || n.texte || ""), date = String(n.date || n.heure || "");
+    var pkg = String(n.paquet || "");
+    if (/^HA_NOTIF$/i.test(titre) && txt.indexOf("|") >= 0) {
+      var p = txt.split("|");
+      pkg = String(p[1] || ""); app = pkg.split(".").pop() || app; titre = p[2] || ""; txt = p.slice(3).join("|");
+    }
+    var low = app.toLowerCase(), key = Object.keys(MSG_APPS).find((k) => low.indexOf(k) >= 0);
+    var look = key ? MSG_APPS[key] : ["#8a9099", (app[0] || "•").toUpperCase()];
+    var name = key === "whatsapp" ? "WhatsApp" : key === "gmail" || key === "gm" ? "Gmail" : key === "sms" || key === "messaging" ? "SMS" : app ? app[0].toUpperCase() + app.slice(1) : "";
+    var call = /appel|dialer|téléphone/i.test(app) && /manqu|missed/i.test(titre + " " + txt);
+    return { app: name, pkg: pkg, titre: titre, txt: txt, time: (date.match(/\d{1,2}:\d{2}/) || [""])[0], color: call ? "#e5323b" : look[0], letter: call ? "✆" : look[1], call: call };
+  }
+  class IgorMessagesCard extends IgorCard {
+    setConfig(config) { if (!config || !config.entity) throw new Error("igor-messages-card: entity est requis"); this.config = config; }
+    getCardSize() { return 6; }
+    build() {
+      this.style(CAR_HEAD + "\n" + [
+        "ha-card { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 12px 16px; overflow: hidden; }",
+        ".top { display: flex; align-items: center; justify-content: space-between; } .rd { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); cursor: pointer; } .rd.on { color: " + CAR_BLUE + "; }",
+        ".list { flex: 1; min-height: 0; overflow: hidden; }",
+        ".m { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; padding: 10px 6px; border-bottom: 1px solid var(--line); align-items: start; }",
+        ".m.new { background: rgba(108,196,245,.07); box-shadow: inset 3px 0 " + CAR_BLUE + "; }",
+        ".a { width: 32px; height: 32px; border-radius: 7px; display: grid; place-items: center; color: #08090b; font-weight: 700; font-size: 15px; }",
+        ".w { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .w span { font-size: 12px; color: var(--dim); }",
+        ".t { font-size: 14px; color: #c2c6cc; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
+        ".hr { font-size: 12px; color: var(--dim); white-space: nowrap; } .empty { color: var(--dim); padding: 14px 4px; }",
+        // CarPlay: who and which app, Lire / Répondre — never the text.
+        ".cp { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 9px 6px; border-bottom: 1px solid var(--line); }",
+        ".cp.new { background: rgba(108,196,245,.07); box-shadow: inset 3px 0 " + CAR_BLUE + "; }",
+        ".cp .a { width: 42px; height: 42px; border-radius: 10px; font-size: 19px; }",
+        ".cp .w { font-size: 19px; } .cp .w small { display: block; font-size: 12px; color: var(--dim); letter-spacing: .06em; margin-top: 2px; }",
+        ".cnt { display: inline-block; min-width: 20px; padding: 0 5px; border-radius: 10px; background: #e5323b; color: #fff !important; font-weight: 700; line-height: 20px; font-size: 12px; text-align: center; margin-left: 8px; vertical-align: 3px; }",
+        ".cp button.b { flex-direction: row; gap: 6px; min-height: 46px; padding: 0 14px; --mdc-icon-size: 18px; }",
+        ".cp .l { border-color: " + CAR_BLUE + "; color: " + CAR_BLUE + "; } .cp .l ha-icon { color: " + CAR_BLUE + "; } .cp .r { border-color: " + CAR_OK + "; color: " + CAR_OK + "; } .cp .r ha-icon { color: " + CAR_OK + "; }",
+        ".rep { position: fixed; inset: 0; z-index: 2147482000; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }",
+        ".rep .dl { width: min(760px, 90vw); background: #0d0f12; border: 1px solid var(--line); padding: 16px 18px; color: var(--fg); }",
+        ".rep .q { display: flex; align-items: center; gap: 12px; padding: 15px 14px; border: 1px solid var(--line); margin-top: 10px; font-size: 19px; cursor: pointer; } .rep .q small { margin-left: auto; font-size: 12px; color: var(--dim); letter-spacing: .08em; }",
+        ".rep .q.v { border-color: " + CAR_BLUE + "; color: " + CAR_BLUE + "; } .rep .x { cursor: pointer; color: var(--dim); }",
+        ".call { display: grid; grid-template-columns: minmax(0, 1fr) 46%; gap: 14px; border: 1px solid var(--line); border-left: 3px solid " + CAR_OK + "; padding: 12px 14px; margin-bottom: 10px; }",
+        ".call .who { display: flex; align-items: center; gap: 14px; } .av { width: 62px; height: 62px; border-radius: 50%; border: 3px solid " + CAR_OK + "; color: " + CAR_OK + "; display: grid; place-items: center; font-size: 28px; flex: none; }",
+        ".call .n { font-size: 30px; line-height: 1.1; } .call .st { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: " + CAR_OK + "; margin-bottom: 6px; }",
+        ".cb { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr auto; gap: 8px; } .cb button.b { min-height: 64px; --mdc-icon-size: 28px; flex-direction: column; gap: 4px; }",
+        ".cb .y { border-color: " + CAR_OK + "; color: " + CAR_OK + "; } .cb .y ha-icon { color: " + CAR_OK + "; } .cb .x { border-color: #e5323b; color: #e5323b; } .cb .x ha-icon { color: #e5323b; }",
+        ".cb .s { grid-column: 1 / 3; min-height: 42px !important; flex-direction: row !important; gap: 8px; }",
+        "[hidden] { display: none !important; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var c = this.config, cl = c.call || {};
+      this.callEl = el("div", "call", card); this.callEl.hidden = true;
+      var who = el("div", "", this.callEl); this.callSt = el("div", "st", who);
+      var w = el("div", "who", who); this.av = el("div", "av", w); this.callN = el("div", "n", w);
+      var cb = el("div", "cb", this.callEl);
+      var btn = (cls, ic, label, fn) => { var b = el("button", "b " + cls, cb); b.type = "button"; icon(b, ic); el("span", "", b, label); b.addEventListener("click", fn); return b; };
+      var run = (svc, data) => { if (!svc || !this._hass) return; var p = String(svc).split("."); this._hass.callService(p[0], p[1], data || {}); };
+      btn("y", "mdi:phone", "décrocher", () => run(cl.answer));
+      btn("x", "mdi:phone-hangup", "refuser", () => run(cl.hangup));
+      btn("s", "mdi:message-text-outline", "refuser + « je conduis »", () => run(cl.sms || cl.hangup, { sms: cl.sms_text || "Je conduis, je vous rappelle dès que possible." }));
+      var top = el("div", "top", card);
+      this.head = el("div", "h", top, "messages");
+      this.rd = el("div", "rd", top, "● lecture auto");
+      this.rd.hidden = !c.read;
+      this.rd.addEventListener("click", () => { if (c.read && this._hass) this._hass.callService("input_boolean", "toggle", { entity_id: c.read }); });
+      this.list = el("div", "list", card);
+    }
+    run(svc, data) { if (!svc || !this._hass) return; var p = String(svc).split("."); this._hass.callService(p[0], p[1], data || {}); }
+    readOut(m) {
+      // Igor says it (the head unit's voice): who, which app, the message.
+      this.run(this.config.say || "script.voiture_dire", { message: (m.titre ? "Message de " + m.titre : "Message") + (m.app ? " sur " + m.app : "") + " : " + (m.txt || "sans texte") });
+    }
+    reply(m, sms) {
+      var c = this.config, h = this._hass;
+      if (this.repEl) this.repEl.remove();
+      var ov = this.repEl = el("div", "rep", this.shadowRoot), dl = el("div", "dl", ov);
+      ov.addEventListener("click", (ev) => { if (ev.target === ov) ov.remove(); });
+      var top = el("div", "top", dl); el("div", "h", top, "répondre à " + (m.titre || "") + (m.app ? " · " + m.app : ""));
+      var x = el("div", "x", top, "✕"); x.addEventListener("click", () => ov.remove());
+      var g = c.eta && h && h.states[c.eta], eta = g ? String(g.state || "").split("|")[0] : "";
+      var send = (text) => {
+        ov.remove();
+        if (sms) this.run(c.sms_callback, { texte: text });
+        else this.run(c.reply || "script.telephone_repondre", { paquet: m.pkg || "", titre: m.titre || "", texte: text });
+      };
+      var opts = (c.replies || ["Je conduis, je te rappelle", "OK 👍"]).slice();
+      if (/^\d{1,2}:\d{2}$/.test(eta)) opts.unshift("J'arrive à " + eta);
+      opts.forEach((t, i) => { var q = el("div", "q", dl, "« " + t + " »"); if (!i && /^J'arrive/.test(t)) el("small", "", q, "heure du GPS"); q.addEventListener("click", () => send(t)); });
+      // Dictated: the target is kept, Igor's voice asked; « réponds-lui que… »
+      // reaches script.telephone_repondre, which answers the kept one.
+      if (!sms && c.dictate_target) {
+        var v = el("div", "q v", dl); icon(v, "mdi:microphone"); el("span", "", v, "Dicter à Igor"); el("small", "", v, "appuyer, puis parler");
+        v.addEventListener("click", () => {
+          ov.remove();
+          h.callService("input_text", "set_value", { entity_id: c.dictate_target, value: ((m.pkg || "") + "|" + (m.titre || "")).slice(0, 250) });
+          haAction(this, { action: "assist", pipeline_id: "preferred", start_listening: true });
+        });
+      }
+    }
+    update() {
+      var h = this._hass, c = this.config, cl = c.call || {};
+      if (!h || !this.list) return;
+      var ps = cl.state && h.states[cl.state], ph = ps ? ps.state : "idle";
+      var inCall = ph === "ringing" || ph === "offhook";
+      this.callEl.hidden = !inCall;
+      if (inCall) {
+        var cs = cl.caller && h.states[cl.caller], n = cs ? String(cs.state) : "";
+        if (!n || ["—", "unknown", "unavailable"].indexOf(n) >= 0) n = "Numéro inconnu";
+        this.callN.textContent = n; this.av.textContent = n === "Numéro inconnu" ? "?" : n[0].toUpperCase();
+        this.callSt.textContent = ph === "ringing" ? "appel entrant" : "en communication";
+      }
+      if (this.rd && c.read) { var on = h.states[c.read] && h.states[c.read].state === "on"; this.rd.classList.toggle("on", on); this.rd.textContent = on ? "● lecture auto" : "lecture auto coupée"; }
+      var st = h.states[c.entity], l = (st && st.attributes && st.attributes.liste) || [];
+      var sig = JSON.stringify(l).length + "|" + (l[0] && JSON.stringify(l[0])) + "|" + inCall;
+      if (sig === this.sig) return;
+      this.sig = sig;
+      this.head.textContent = "messages · " + l.length;
+      this.list.innerHTML = "";
+      if (!l.length) { el("div", "empty", this.list, "Aucun message"); return; }
+      // One row a sender (and app): the newest first, the count of its messages.
+      var groups = [], byKey = {};
+      l.forEach((raw) => {
+        var m = msgOf(raw), k = m.app + "|" + m.titre;
+        if (byKey[k]) { byKey[k].n++; return; }
+        m.n = 1; byKey[k] = m; groups.push(m);
+      });
+      groups.slice(0, inCall ? Math.min(3, c.count || 5) : (c.count || 5)).forEach((m, i) => {
+        var row = el("div", "cp" + (i ? "" : " new"), this.list);
+        var a = el("div", "a", row, m.letter); a.style.background = m.color;
+        var w = el("div", "w", row); w.appendChild(document.createTextNode(m.titre || m.app));
+        if (m.n > 1) el("span", "cnt", w, String(m.n));
+        el("small", "", w, [m.call ? "appel manqué" : m.app, m.time].filter(Boolean).join(" · "));
+        var b1 = el("button", "b l", row); b1.type = "button";
+        var b2 = el("button", "b r", row); b2.type = "button";
+        if (m.call) {
+          icon(b1, "mdi:phone"); el("span", "", b1, "rappeler"); b1.addEventListener("click", () => this.run(c.callback));
+          icon(b2, "mdi:message-text-outline"); el("span", "", b2, "sms"); b2.addEventListener("click", () => this.reply(m, true));
+        } else {
+          icon(b1, "mdi:play"); el("span", "", b1, "lire"); b1.addEventListener("click", () => this.readOut(m));
+          icon(b2, "mdi:reply"); el("span", "", b2, "répondre"); b2.addEventListener("click", () => this.reply(m));
+        }
+      });
+    }
+  }
+
+  // ----- igor-phone-card: the phone on its dock (favourites), or absent (Waze) -----
+  //   type: custom:igor-phone-card
+  //   present: binary_sensor.phone_in_car
+  //   battery: sensor.phone_battery_level
+  //   favorites: [ { name: Maman, color: "#5cc28f", service: script.x, data: {…} }, … ]
+  //   keypad: app://com.autochips.bluetooth      # the head unit's phone app
+  //   destination: input_text.car_dest            # « Vers Waze » takes the trip under way there
+  //   waze_notify: notify.mobile_app_headunit
+  class IgorPhoneCard extends IgorCard {
+    setConfig(config) { this.config = config || {}; }
+    getCardSize() { return 4; }
+    build() {
+      this.style(CAR_HEAD + "\n" + [
+        "ha-card { padding: 12px 14px; }",
+        ".top { display: flex; align-items: center; justify-content: space-between; } .tel { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #59d0e0; display: flex; align-items: center; gap: 6px; } .tel::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }",
+        ".fav { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .fav button.b { flex-direction: row; justify-content: flex-start; gap: 10px; padding: 10px; min-height: 54px; text-transform: none; letter-spacing: .02em; font-size: 15px; color: var(--fg); }",
+        ".av { width: 32px; height: 32px; border-radius: 50%; border: 2px solid currentColor; display: grid; place-items: center; font-size: 15px; flex: none; }",
+        ".row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; } .row2 button.b { min-height: 44px; flex-direction: row; gap: 8px; --mdc-icon-size: 18px; }",
+        ".abs { border: 1px dashed " + CAR_WARN + "; margin: -12px -14px; padding: 12px 14px; } .abs .tel { color: " + CAR_WARN + "; }",
+        ".ph { display: flex; gap: 14px; align-items: center; margin: 6px 0 10px; } .pi { width: 40px; height: 66px; border: 2px solid " + CAR_WARN + "; border-radius: 8px; display: grid; place-items: center; color: " + CAR_WARN + "; --mdc-icon-size: 22px; flex: none; }",
+        ".ph b { font-weight: 400; font-size: 17px; display: block; } .ph small { color: var(--dim); font-size: 13px; }",
+        ".wz button.b { min-height: 56px; flex-direction: row; gap: 10px; --mdc-icon-size: 22px; } .wz .go { border-color: #59d0e0; color: #59d0e0; } .wz .go ha-icon { color: #59d0e0; }",
+        "[hidden] { display: none !important; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot), c = this.config;
+      // On the dock
+      this.on = el("div", "", card);
+      var t = el("div", "top", this.on); el("div", "h", t, "téléphone"); this.bat = el("div", "tel", t, "sur le socle");
+      var fav = el("div", "fav", this.on);
+      (c.favorites || []).slice(0, 4).forEach((f) => {
+        var b = el("button", "b", fav); b.type = "button";
+        var av = el("span", "av", b, f.letter || String(f.name || "?")[0].toUpperCase()); av.style.color = f.color || CAR_BLUE;
+        el("span", "", b, f.name || "");
+        b.addEventListener("click", () => { if (f.service && this._hass) { var p = String(f.service).split("."); this._hass.callService(p[0], p[1], f.data || {}); } });
+      });
+      var r2 = el("div", "row2", this.on);
+      var kb = el("button", "b", r2); kb.type = "button"; icon(kb, "mdi:dialpad"); el("span", "", kb, "clavier");
+      kb.addEventListener("click", () => haAction(this, { action: "url", url_path: c.keypad || "app://com.autochips.bluetooth" }));
+      var rc = el("button", "b", r2); rc.type = "button"; icon(rc, "mdi:history"); el("span", "", rc, "derniers appels");
+      rc.addEventListener("click", () => haAction(this, { action: "url", url_path: c.recents || c.keypad || "app://com.autochips.bluetooth" }));
+      // Absent
+      this.off = el("div", "abs", card);
+      var t2 = el("div", "top", this.off); el("div", "h", t2, "téléphone"); el("div", "tel", t2, "absent");
+      var ph = el("div", "ph", this.off); icon(el("div", "pi", ph), "mdi:cellphone-arrow-down");
+      var tx = el("div", "", ph); el("b", "", tx, "Posez le téléphone sur le socle"); el("small", "", tx, "la carte s'affiche dessus · sinon, Waze");
+      var wz = el("div", "row2 wz", this.off);
+      var ow = el("button", "b go", wz); ow.type = "button"; icon(ow, "mdi:waze"); el("span", "", ow, "ouvrir waze");
+      ow.addEventListener("click", () => haAction(this, { action: "url", url_path: "app://com.waze" }));
+      var vw = el("button", "b", wz); vw.type = "button"; icon(vw, "mdi:arrow-right-bold-box-outline"); el("span", "", vw, "vers waze");
+      vw.addEventListener("click", () => IgorGuideCard.prototype.openWaze.call(this));
+    }
+    update() {
+      var h = this._hass, c = this.config;
+      if (!h || !this.on) return;
+      var p = c.present && h.states[c.present], here = !p || p.state === "on";
+      this.on.hidden = !here; this.off.hidden = here;
+      var b = c.battery && h.states[c.battery];
+      this.bat.textContent = "sur le socle" + (b && !isNaN(parseFloat(b.state)) ? " · " + Math.round(parseFloat(b.state)) + " %" : "");
+    }
+  }
+
+  // ----- igor-arrival-card: the next appointment, on time or late -----
+  //   type: custom:igor-arrival-card
+  //   entity: sensor.phone_at_arrival   # state « à l'heure » / « en retard » ; titre, heure, arrivee, anniversaire
+  class IgorArrivalCard extends IgorCard {
+    setConfig(config) { if (!config || !config.entity) throw new Error("igor-arrival-card: entity est requis"); this.config = config; }
+    getCardSize() { return 2; }
+    build() {
+      this.style(CAR_HEAD + "\n" + [
+        "ha-card { padding: 10px 14px; } .ti { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .st { font-size: 13px; margin-top: 2px; } .bd { font-size: 13px; color: " + CAR_WARN + "; margin-top: 2px; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      el("div", "h", card, this.config.title || "à l'arrivée");
+      this.ti = el("div", "ti", card); this.st = el("div", "st", card); this.bd = el("div", "bd", card);
+    }
+    update() {
+      var st = this._hass && this._hass.states[this.config.entity];
+      if (!st || !this.ti) return;
+      var a = st.attributes || {};
+      if (!a.titre) { this.ti.textContent = "Pas de rendez-vous"; this.ti.style.color = "var(--dim)"; this.st.textContent = ""; }
+      else {
+        this.ti.style.color = "";
+        this.ti.textContent = a.titre + (a.heure ? " · " + a.heure : "");
+        var late = /retard/i.test(st.state);
+        this.st.textContent = [st.state, a.arrivee ? "arrivée " + a.arrivee : ""].filter((x) => x && x !== "unknown").join(" · ");
+        this.st.style.color = late ? CAR_WARN : CAR_OK;
+      }
+      this.bd.textContent = a.anniversaire ? "🎂 " + a.anniversaire : "";
     }
   }
 
@@ -11286,6 +11628,9 @@
     window.customCards = window.customCards || [];
     window.customCards.push({ type: name, name: label, description: description });
   }
+  define("igor-messages-card", IgorMessagesCard, "Igor · messages", "Les derniers messages du téléphone, et l'appel en cours au-dessus.");
+  define("igor-phone-card", IgorPhoneCard, "Igor · téléphone", "Le téléphone sur le socle (favoris), ou absent (Waze).");
+  define("igor-arrival-card", IgorArrivalCard, "Igor · à l'arrivée", "Le prochain rendez-vous, à l'heure ou en retard.");
   define("igor-guide-card", IgorGuideCard, "Igor · guidage", "La colonne du GPS : la prochaine manœuvre et l'arrivée, ou « Où allons-nous ? » sans itinéraire.");
   define("igor-gear-card", IgorGearCard, "Igor · rapport", "Le compte-tours, le rapport engagé et le conseil de rapport.");
   define("igor-gauge-card", IgorGaugeCard, "Igor · jauge", "Une valeur sur un arc coloré.");
