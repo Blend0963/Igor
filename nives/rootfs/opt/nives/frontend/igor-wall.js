@@ -5320,6 +5320,7 @@
   //   fullscreen_button: false              # no fullscreen button (a dashboard that is the map already)
   //   display_only: true                    # a second screen: the map only (no button, banner or sign); a tap on the map still picks a place or a route
   //   base_pois: true                       # with basemap: tomtom-3d, TomTom's own places (Igor adds only cameras and stations with prices)
+  //   debug: true                           # says in the message band how the relief was made (TomTom's 3D layers, or Igor's)
   //   voice_to: input_text.car_voice        # what the guidance says goes there (« ms|kind|text »), said by the head unit's igor-guide-card
   //   publish_ahead: input_text.car_ahead   # the radar within reach and what lies ahead on the route, for igor-drive-card
   //   publish_routes: input_text.car_routes  # the routes offered, for the head unit to choose (route_choice: input_text.car_choice brings the answer)
@@ -5392,7 +5393,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.43.1";
+  var GPS_CARD_VERSION = "0.43.2";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6851,16 +6852,37 @@
         try { if (map.setSky) map.setSky({ "sky-color": "#0b0e14", "horizon-color": "#1b2433", "fog-color": "#08090b", "sky-horizon-blend": 0.6, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.4 }); } catch (e) { /* older engine */ }
         try { map.setLight({ anchor: "viewport", color: "#cfd8e6", intensity: 0.45, position: [1.3, 210, 35] }); } catch (e) { /* no light */ }
       }
-      if (layers.some((l) => l.type === "fill-extrusion")) return;
+      // TomTom's own buildings in relief, made to show: from zoom 14.5 (a
+      // pitched view sees far), opaque, lit from the side with a darker
+      // foot, a touch lighter than the ground so the volumes read at night.
+      var ext = layers.filter((l) => l.type === "fill-extrusion");
+      this.diag3d = ext.length ? ext.length + " couches 3D TomTom" : "";
+      if (ext.length) {
+        ext.forEach((l) => {
+          try {
+            map.setLayerZoomRange(l.id, Math.min(l.minzoom != null ? l.minzoom : 15, 14.5), 24);
+            map.setLayoutProperty(l.id, "visibility", "visible");
+            map.setPaintProperty(l.id, "fill-extrusion-opacity", this.hq() ? 0.96 : 0.9);
+            map.setPaintProperty(l.id, "fill-extrusion-vertical-gradient", true);
+            // A colour too close to the ground (the dark style): lifted a little.
+            var col = map.getPaintProperty(l.id, "fill-extrusion-color");
+            if (typeof col !== "string" || /^#(0|1)[0-9a-f]{5}$/i.test(col) || /^#(0|1)[0-9a-f]{2}$/i.test(col)) map.setPaintProperty(l.id, "fill-extrusion-color", this.hq() ? "#2b323d" : "#262c35");
+          } catch (e) { /* a layer the engine refuses: left as it is */ }
+        });
+        if (this.config.debug) this.message("relief : " + this.diag3d);
+        return;
+      }
       var fp = layers.find((l) => l.type === "fill" && l.source && /build/i.test(l.id + " " + (l["source-layer"] || "")));
       if (!fp || map.getLayer("igor-3d")) return;
       var h = ["to-number", ["coalesce", ["get", "height"], ["get", "render_height"], ["get", "building_height"],
         ["*", 3, ["to-number", ["coalesce", ["get", "levels"], ["get", "building:levels"], 3], 3]]], 9];
       var first = layers.find((l) => l.type === "symbol");
-      map.addLayer({ id: "igor-3d", type: "fill-extrusion", source: fp.source, "source-layer": fp["source-layer"], minzoom: 15,
+      this.diag3d = "bâtiments en relief par Igor (" + (fp["source-layer"] || fp.id) + ")";
+      if (this.config.debug) this.message("relief : " + this.diag3d);
+      map.addLayer({ id: "igor-3d", type: "fill-extrusion", source: fp.source, "source-layer": fp["source-layer"], minzoom: 14.5,
         filter: fp.filter || ["all"],
-        paint: { "fill-extrusion-color": this.hq() ? ["interpolate", ["linear"], h, 0, "#1a1e25", 30, "#242a33", 80, "#2e3642"] : "#1d2128",
-          "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 15, 0, 16, h],
+        paint: { "fill-extrusion-color": this.hq() ? ["interpolate", ["linear"], h, 0, "#232932", 30, "#2b323d", 80, "#36404e"] : "#262c35",
+          "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 14.5, 0, 15.5, h],
           "fill-extrusion-base": 0, "fill-extrusion-opacity": this.hq() ? 0.95 : 0.85, "fill-extrusion-vertical-gradient": true } }, first ? first.id : undefined);
     }
     onlineStyle() {

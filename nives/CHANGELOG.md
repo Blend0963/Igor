@@ -1,3 +1,8 @@
+## 0.43.2 — La 3D bien visible sur le téléphone
+
+- `igor-gps-card` (`basemap: tomtom-3d`) : les bâtiments en relief de TomTom sont pris en main au lieu d'être laissés tels quels — visibles dès le zoom 14,5 (une vue inclinée voit loin), opaques, éclairés de côté avec le pied plus sombre, et un peu plus clairs que le sol quand le style sombre les fondait dans la nuit. Si le style n'a pas de couche 3D, Igor élève lui-même les bâtiments (dès le zoom 14,5 aussi).
+- `debug: true` : la bande de message dit comment le relief a été fait (couches 3D de TomTom, ou bâtiments élevés par Igor).
+
 ## 0.43.1 — Des changements doux, sans charger l'autoradio
 
 - `igor-drive-card` : un vrai fondu enchaîné entre les vues — l'ancienne s'efface (0,2 s ; 0,12 s vers le radar, urgent), puis la nouvelle est dessinée et apparaît (0,25 s). Avant, la nouvelle vue s'affichait d'un coup puis clignotait.
