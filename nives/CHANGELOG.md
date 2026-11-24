@@ -1,3 +1,10 @@
+## 0.40.7 — Finitions de l'autoradio
+
+- `igor-schedule-card` (Carnet) : l'échéancier ne s'écrase plus à droite. L'échelle suit l'échéance la plus lointaine (racine carrée : ce qui arrive bientôt a plus de place), et les étiquettes trop proches prennent une autre rangée (dessous, dessus, plus loin dessous, plus loin dessus) au lieu de s'écrire l'une sur l'autre.
+- Barre GPS : les boutons inactifs (téléphone absent) gardent le même fond, seuls l'icône et le texte s'estompent ; plus de fond gris derrière la rangée.
+- `igor-messages-card` : le nom de l'application vient d'abord du paquet (WhatsApp, SMS, Telegram…), plus de « Android » ou « App ».
+- Barre du haut : **`ticker: false`** retire la ligne défilante.
+
 ## 0.40.6 — Pas de vieux messages à l'écran
 
 - `igor-messages-card` : **`max_age_h`** (12 h par défaut) — seuls les messages des dernières heures s'affichent ; ceux de l'ancien historique (ou sans date) ne reviennent plus. « Aucun message » quand rien de récent.

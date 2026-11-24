@@ -311,6 +311,8 @@
       if (this.tabsEl) this.tabsEl.addEventListener("click", (ev) => ev.stopPropagation());
       var lane = el("div", "lane", this.root);
       this.lane = lane;
+      // ticker: false — no scrolling line (the tabs and the clock keep the room).
+      if (this.config.ticker === false) { lane.style.cssText = "flex: 1 1 0; min-width: 0; visibility: hidden"; }
       this.run = el("div", "run", lane);
       var speed = this.config.speed == null ? 60 : Number(this.config.speed);
       // speed: auto: the line stays still while it fits; longer, it goes round
@@ -5355,7 +5357,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.40.6";
+  var GPS_CARD_VERSION = "0.40.7";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -10584,6 +10586,7 @@
         ".bar { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; height: 100%; min-height: 64px; }",
         ".bar button.b { flex-direction: column; gap: 4px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; --mdc-icon-size: 24px; min-height: 0; min-width: 0; height: 100%; padding: 4px 2px; overflow: hidden; } .bar button.b span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
         ":host(.narrow) .bar button.b span { display: none; } :host(.narrow) .bar button.b { --mdc-icon-size: 26px; }",
+        ".bar button.b:disabled { opacity: 1; cursor: default; background: var(--card); border-color: var(--line); color: var(--faint); } .bar button.b:disabled ha-icon { color: var(--faint); opacity: .55; } .bar button.b:disabled span { opacity: .55; }",
         ".bar button.waze { border-color: #59d0e0; color: #59d0e0; } .bar button.waze ha-icon { color: #59d0e0; }",
         ".bar button.red { border-color: " + CAR_BAD + "; color: " + CAR_BAD + "; } .bar button.red ha-icon { color: " + CAR_BAD + "; }",
         ".bar button.on { border-color: var(--acc); color: var(--acc); }",
@@ -10599,7 +10602,9 @@
       if (this.config.big) this.setAttribute("big", "");
       var card = el("ha-card", "", this.shadowRoot);
       this.card = card;
-      if (this.config.mode === "buttons") { this.buildBar(card); this.buildFind(); return; }
+      // The row of buttons stands on the page itself, like the dock below it:
+      // no card behind it (a grey block around grey buttons).
+      if (this.config.mode === "buttons") { card.style.cssText += ";background:none;border:none;box-shadow:none;padding:0"; this.buildBar(card); this.buildFind(); return; }
       this.idle = el("div", "", card);
       el("div", "h", this.idle, this.config.title || "où allons-nous ?");
       var go = el("button", "b go", this.idle); go.type = "button"; go.style.width = "100%"; go.style.flexDirection = "row"; go.style.minHeight = "40px";
@@ -10826,7 +10831,7 @@
       var away = this.phoneAbsent();
       if (this.barBtns) ["search", "home", "work", "fuel", "stopover"].forEach((k) => {
         var b = this.barBtns[k]; if (!b) return;
-        b.disabled = away; b.style.opacity = away ? "0.35" : "";
+        b.disabled = away;
       });
       if (this.remote() && this.noPhone && away !== this.wasAway) { this.wasAway = away; this.show(this.lastTurn ? this.turnObj : null); }
       if (this.noPhone && !this.noPhone.hidden) this.drawPlace();
@@ -10966,9 +10971,15 @@
       var p = txt.split("|");
       pkg = String(p[1] || ""); app = pkg.split(".").pop() || app; titre = p[2] || ""; txt = p.slice(3).join("|");
     }
-    var low = app.toLowerCase(), key = Object.keys(MSG_APPS).find((k) => low.indexOf(k) >= 0);
+    // The application named from its package first (« Android » or « App »
+    // said nothing), then from the name given.
+    var PKG = { "com.whatsapp": "whatsapp", "com.whatsapp.w4b": "whatsapp", "com.google.android.apps.messaging": "sms", "com.samsung.android.messaging": "sms",
+      "org.telegram.messenger": "telegram", "org.forkclient.messenger.beta": "telegram", "org.thoughtcrime.securesms": "signal", "com.facebook.orca": "messenger",
+      "com.microsoft.teams": "teams", "com.google.android.gm": "gmail", "com.google.android.dialer": "téléphone", "com.instagram.android": "instagram" };
+    var low = (PKG[pkg] || app).toLowerCase(), key = Object.keys(MSG_APPS).find((k) => low.indexOf(k) >= 0);
     var look = key ? MSG_APPS[key] : ["#8a9099", (app[0] || "•").toUpperCase()];
-    var name = key === "whatsapp" ? "WhatsApp" : key === "gmail" || key === "gm" ? "Gmail" : key === "sms" || key === "messaging" ? "SMS" : app ? app[0].toUpperCase() + app.slice(1) : "";
+    var NAMES = { whatsapp: "WhatsApp", gmail: "Gmail", gm: "Gmail", sms: "SMS", messaging: "SMS", telegram: "Telegram", signal: "Signal", messenger: "Messenger", teams: "Teams", instagram: "Instagram", "téléphone": "Téléphone" };
+    var name = key && NAMES[key] ? NAMES[key] : app ? app[0].toUpperCase() + app.slice(1) : "";
     var call = /appel|dialer|téléphone/i.test(app) && /manqu|missed/i.test(titre + " " + txt);
     // A conversation (one can answer it) or a notification (franceinfo, a
     // parcel, an app): only a conversation gets « Répondre ».
@@ -11599,12 +11610,15 @@
         ".top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex: none; }",
         ".odo { font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; } .odo small { font-size: 12px; color: var(--dim); }",
         ".nx { text-align: right; } .nx span { display: block; font-size: 11px; color: var(--dim); } .nx b { font-weight: 400; font-size: 17px; }",
-        ".ax { position: relative; flex: 1 1 0; min-height: 110px; margin: 6px 44px 0; }",
+        ".ax { position: relative; flex: 1 1 0; min-height: 190px; margin: 6px 70px 0; }",
         ".ln { position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; background: var(--track); border-radius: 2px; }",
         ".now { position: absolute; left: 0; top: 18%; bottom: 18%; border-left: 2px solid var(--igor-signal, #e5323b); }",
         ".ev { position: absolute; top: 50%; width: 0; } .ev i { position: absolute; left: -8px; top: -8px; width: 16px; height: 16px; border-radius: 50%; }",
         ".ev div { position: absolute; left: -75px; width: 150px; text-align: center; } .ev div b { display: block; font-weight: 400; font-size: 15px; white-space: nowrap; } .ev div span { font-size: 11px; color: var(--dim); white-space: nowrap; }",
-        ".ev.up div { bottom: 14px; } .ev.dn div { top: 14px; }"
+        ".ev.up div { bottom: 14px; } .ev.dn div { top: 14px; } .ev.up2 div { bottom: 58px; } .ev.dn2 div { top: 58px; }",
+        ".ev.up2 i, .ev.dn2 i { box-shadow: 0 0 0 3px var(--card); }",
+        ".ev.up2 div::after, .ev.dn2 div::after { content: ''; position: absolute; left: 50%; width: 1px; background: var(--line); }",
+        ".ev.up2 div::after { top: 100%; height: 44px; } .ev.dn2 div::after { bottom: 100%; height: 44px; }"
       ].join("\n"));
       var card = el("ha-card", "", this.shadowRoot);
       el("div", "h", card, this.config.title || "échéancier");
@@ -11640,10 +11654,20 @@
       if (soon) nb.style.color = col[soon.lvl];
       this.ax.innerHTML = "";
       el("div", "ln", this.ax); el("div", "now", this.ax);
-      // Placed along the next H km: the overdue at the start, the unknown at the end.
-      evs.slice().sort((a, b) => (a.km == null ? Infinity : a.km) - (b.km == null ? Infinity : b.km)).forEach((e, i) => {
-        var x = e.km == null ? 100 : Math.max(0, Math.min(100, e.km / H * 100));
-        var d = el("div", "ev " + (i % 2 ? "up" : "dn"), this.ax); d.style.left = x + "%";
+      // The scale follows what is ahead: the farthest known item (with room),
+      // never less than `horizon` — nothing piled up at the right edge.
+      var far = evs.reduce((m, e) => e.km != null && e.km > m ? e.km : m, 0);
+      H = Math.max(H, far * 1.08);
+      // Placed along the next H km: the overdue at the start, the unknown at
+      // the end. Labels too close to each other take another row (below,
+      // above, then farther below / above), so none is written over another.
+      var rows = { dn: -1e9, up: -1e9, dn2: -1e9, up2: -1e9 }, GAP = 17;
+      evs.slice().sort((a, b) => (a.km == null ? Infinity : a.km) - (b.km == null ? Infinity : b.km)).forEach((e) => {
+        // A square-root scale: what comes soon gets more room than what is far.
+        var x = e.km == null ? 100 : Math.max(0, Math.min(100, Math.sqrt(Math.max(0, e.km) / H) * 100));
+        var row = ["dn", "up", "dn2", "up2"].find((r) => x - rows[r] >= GAP) || ["dn", "up", "dn2", "up2"].sort((p, q) => rows[p] - rows[q])[0];
+        rows[row] = x;
+        var d = el("div", "ev " + row, this.ax); d.style.left = x + "%";
         el("i", "", d).style.background = col[e.lvl];
         var t = el("div", "", d); var b = el("b", "", t, e.it.name); b.style.color = col[e.lvl]; el("span", "", t, e.label + (e.km != null && e.km > H ? " ›" : ""));
       });
