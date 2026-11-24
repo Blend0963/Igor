@@ -1,3 +1,8 @@
+## 0.39.6 — Le téléphone, écran compagnon de l'autoradio
+
+- `igor-wall` : **`publish_tab: input_text.…`** — l'écran écrit la page qu'il montre (l'autoradio). **`follow:`** — l'écran ouvre la page correspondant à celle d'un autre (`entity`, `views` : page de l'autre → page de celui-ci), seulement quand la page voulue change ; `enabled` (un `input_boolean`) le coupe ; `call` (l'état du téléphone) ouvre une page dédiée pendant une sonnerie ou un appel, puis revient. Testé : changement d'onglet, appel, fin d'appel, suivi coupé, publication.
+- `igor-gps-card` : **`publish_guide: input_text.…`** — le guidage écrit pour les autres écrans (« heure|km|min|destination »), à chaque changement, au plus toutes les 20 s, vidé à la fin du guidage.
+
 ## 0.39.5 — Téléphone en source GPS principale
 
 - `igor-gps-card` : `fallback_after` (secondes, 4 par défaut) — combien de temps la source principale peut se taire avant que la source de secours porte la flèche. Un téléphone qui envoie sa position toutes les 5 s gardait sinon la flèche en aller-retour entre les deux sources.

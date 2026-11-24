@@ -833,6 +833,41 @@
       this._pushed = performance.now();
       if (this.bar) this.bar.hass = hass;
       this.children_.forEach((c) => { c.hass = hass; });
+      this.linkScreens(hass);
+    }
+    // Two screens kept together (the head unit and the phone beside it):
+    //   publish_tab: input_text.car_tab      # this screen writes the page it shows
+    //   follow:                              # this screen shows the page matching the other's
+    //     entity: input_text.car_tab
+    //     views: { route: tel-route, moteur: tel-moteur, … }   # its pages, by the other's page
+    //     enabled: input_boolean.follow      # optional: off, the screen stays where it is
+    //     call: { entity: sensor.phone_phone_state, view: tel-appel }  # ringing or in a call: that page first
+    linkScreens(hass) {
+      var c = this.config || {};
+      if (!hass || !hass.states) return;
+      var parts = window.location.pathname.replace(/\/+$/, "").split("/"), here = parts[parts.length - 1], base = parts.slice(0, -1).join("/");
+      if (c.publish_tab && hass.callService) {
+        var st = hass.states[c.publish_tab];
+        if (st && st.state !== here && this.tabSent !== here) {
+          this.tabSent = here;
+          hass.callService("input_text", "set_value", { entity_id: c.publish_tab, value: here }).catch(() => { this.tabSent = null; });
+        }
+      }
+      var f = c.follow;
+      if (!f || !f.entity) return;
+      if (f.enabled && hass.states[f.enabled] && hass.states[f.enabled].state === "off") return;
+      var target = null;
+      var call = f.call && f.call.entity && hass.states[f.call.entity];
+      if (call && ["ringing", "offhook"].indexOf(call.state) >= 0) target = f.call.view;
+      else {
+        var other = hass.states[f.entity];
+        target = other && f.views ? f.views[other.state] || null : null;
+      }
+      // Only when the wanted page changes: a page opened by hand stays until
+      // the other screen moves (or a call comes).
+      if (!target || target === this.followed) return;
+      this.followed = target;
+      if (target !== here) navigate(base + "/" + target);
     }
     async render() {
       var root = this.shadowRoot;
@@ -5244,6 +5279,7 @@
   //   street_names: true                    # the road where the car is, at the bottom (false: off)
   //   fps: 20                               # the map drawn that many times a second while moving (lower: lighter)
   //   fullscreen_button: false              # no fullscreen button (a dashboard that is the map already)
+  //   publish_guide: input_text.car_guide   # the guidance written for the other screens (« eta|km|min|destination »)
   //   announce: input_text.car_announce     # the house's announcements, said with the guidance's voice
   //                                         # (written « time|message » by a script; see script.voiture_dire)
   //   voice_over_music: true                # the voice over the music (Web Audio, no audio focus); false: the
@@ -5299,7 +5335,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.39.5";
+  var GPS_CARD_VERSION = "0.39.6";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -8701,6 +8737,19 @@
       this.guideOn = !!g;
       window.__igorGuide = g;
       window.dispatchEvent(new CustomEvent("igor-gps-guide", { detail: g }));
+      // publish_guide: input_text.x — the guidance for the other screens of the
+      // house (the phone beside): « 18:27|14 km|22 min|Maison », "" without a
+      // route. Written when it changes, at most every 20 s (not each second).
+      var pg = this.config.publish_guide;
+      if (pg && this._hass && this._hass.callService) {
+        var left = g ? (/ km$/.test(g.left || "") ? Math.round(parseFloat(String(g.left).replace(",", "."))) + " km" : "< 1 km") : "";
+        var v = g ? [g.eta, left, g.min + " min", g.dest || ""].join("|") : "";
+        var t = Date.now();
+        if (v !== this.guideSent && (!v || !this.guideSentAt || t - this.guideSentAt > 20000)) {
+          this.guideSent = v; this.guideSentAt = t;
+          this._hass.callService("input_text", "set_value", { entity_id: pg, value: v }).catch(() => { this.guideSent = null; });
+        }
+      }
     }
   });
 
