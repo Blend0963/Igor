@@ -5282,6 +5282,9 @@
   //   street_names: true                    # the road where the car is, at the bottom (false: off)
   //   fps: 20                               # the map drawn that many times a second while moving (lower: lighter)
   //   fullscreen_button: false              # no fullscreen button (a dashboard that is the map already)
+  //   display_only: true                    # a second screen: the map only (no button, banner or sign; touches ignored)
+  //   voice_to: input_text.car_voice        # what the guidance says goes there (« ms|kind|text »), said by the head unit's igor-guide-card
+  //   publish_turn: input_text.car_turn     # the whole guidance for igor-guide-card `entity` (« icon|dist|text|then|eta|left|min|jam|dest »)
   //   publish_guide: input_text.car_guide   # the guidance written for the other screens (« eta|km|min|destination »)
   //   announce: input_text.car_announce     # the house's announcements, said with the guidance's voice
   //                                         # (written « time|message » by a script; see script.voiture_dire)
@@ -6611,6 +6614,15 @@
         '<div class="snap" id="snapEl"></div></ha-card>');
       var $ = (id) => this.root.getElementById(id);
       this.$ = $;
+      // display_only: a second screen (the phone under the head unit) — the
+      // map and nothing else: no button, no banner, no sign; a finger on it
+      // changes nothing. Everything is driven from the head unit (the shared
+      // destination) and said there (voice_to).
+      if (this.config.display_only) {
+        var dsp = document.createElement("style");
+        dsp.textContent = ".btns,.nav,.glow,.side,.street,.toast,.ask,.panel,.lpanel,.pprice,.eta,.hud,.snap,.maplibregl-ctrl-bottom-right,.maplibregl-ctrl-bottom-left { display: none !important; } #map { pointer-events: none; }";
+        this.root.appendChild(dsp);
+      }
       var mlCss = this.root.querySelector("link[data-ml-css]");
       if (mlCss) mlCss.addEventListener("error", function () { if (mlCss.href.indexOf(GPS_MAPLIBRE_CDN) < 0) mlCss.href = GPS_MAPLIBRE_CDN + ".css"; });
       $("card").classList.toggle("noattr", !!this.config.hide_attribution);
@@ -7847,7 +7859,8 @@
       // otherwise, or when TomTom does not answer.
       if (this.trafficOn()) {
         // A destination just chosen by hand: the routes to choose from.
-        if (this.chooseNext) { this.chooseNext = false; if (await this.chooseRoute(d, from)) return; if (this.dest !== d) return; }
+        if (this.chooseNext && !this.config.display_only) { this.chooseNext = false; if (await this.chooseRoute(d, from)) return; if (this.dest !== d) return; }
+        this.chooseNext = false;
         var tt = await this.askRoute(d, from, this.tripAvoid || []);
         if (this.dest !== d) return;
         if (tt && tt.ok && tt.route) { this.useTomTom(tt.route); return; }
@@ -8626,6 +8639,13 @@
     // browser's. `kind`: "nav" for a turn (only with the voice on « tout »),
     // else a warning (also with « alertes seulement »).
     say(text, kind) {
+      // voice_to: input_text.x — the words go to the screen that speaks (the
+      // head unit's igor-guide-card), not out of this one: « ms|kind|text ».
+      var vt = this.config.voice_to;
+      if (vt && text && this._hass && this._hass.callService) {
+        this._hass.callService("input_text", "set_value", { entity_id: vt, value: (Date.now() + "|" + (kind || "nav") + "|" + String(text)).slice(0, 250) }).catch(() => {});
+        return;
+      }
       var mode = this.voiceMode || "all";
       if (this.config.voice === false || mode === "off" || (mode === "alerts" && kind === "nav") || !text) return;
       var seq = this.saySeq = (this.saySeq || 0) + 1, engine = this.ttsEntity();
@@ -8811,6 +8831,19 @@
       // publish_guide: input_text.x — the guidance for the other screens of the
       // house (the phone beside): « 18:27|14 km|22 min|Maison », "" without a
       // route. Written when it changes, at most every 20 s (not each second).
+      // publish_turn: input_text.x — the whole guidance for the head unit
+      // (igor-guide-card `entity`): « icon|dist|text|then|eta|left|min|jam|dest »,
+      // at once when the turn changes, else at most every 2 s; "" at the end.
+      var pt = this.config.publish_turn;
+      if (pt && this._hass && this._hass.callService) {
+        var clean = (x) => String(x == null ? "" : x).replace(/\|/g, "/");
+        var tv = g ? [g.icon, g.dist, g.text, g.then, g.eta, g.left, g.min, g.jam || "", g.dest].map(clean).join("|").slice(0, 250) : "";
+        var tk = g ? g.icon + "|" + g.text : "", tn = Date.now();
+        if (tv !== this.turnSent && (!tv || tk !== this.turnKey || !this.turnAt || tn - this.turnAt > 2000)) {
+          this.turnSent = tv; this.turnKey = tk; this.turnAt = tn;
+          this._hass.callService("input_text", "set_value", { entity_id: pt, value: tv }).catch(() => { this.turnSent = null; });
+        }
+      }
       var pg = this.config.publish_guide;
       if (pg && this._hass && this._hass.callService) {
         var left = g ? (/ km$/.test(g.left || "") ? Math.round(parseFloat(String(g.left).replace(",", "."))) + " km" : "< 1 km") : "";
@@ -10360,14 +10393,51 @@
   // While guided: the next turn, how far, then the arrival (time, km, min).
   // Without a route: « Où allons-nous ? » — search and the favourites, small.
   // It talks to the igor-gps-card of the same page (events on window).
+  // ----- igor-guide-card: the guidance, and the GPS's buttons -----
+  // Beside the map (same screen): follows the GPS card's events, as before.
+  // On a head unit whose map is on another screen (the phone, display_only):
+  //   entity: input_text.car_turn          # the GPS card's publish_turn
+  //   destination: input_text.car_dest     # where Chercher / Maison / Stop write
+  //   position: device_tracker.car         # « near here » for the search
+  //   favorites: [ { name: Maison, zone: zone.home }, { name: Travail, location: [48.9, 2.3] } ]
+  //   voice: input_text.car_voice          # the GPS card's voice_to: said HERE
+  //   announce: input_text.car_announce    # the house's announcements, said here too
+  //   mute: input_boolean.car_voice_off    # on: nothing said (the Voix button)
+  //   mode: buttons                        # the row of GPS buttons instead of the guidance
   class IgorGuideCard extends IgorCard {
     setConfig(config) { this.config = config || {}; }
     getCardSize() { return 2; }
+    remote() { return !!this.config.entity; }
+    send(detail) {
+      if (!this.remote()) { window.dispatchEvent(new CustomEvent("igor-gps-cmd", { detail: detail })); return; }
+      var c = this.config, h = this._hass;
+      if (!h) return;
+      var dest = c.destination;
+      if (detail.cmd === "stop") { if (dest) h.callService("input_text", "set_value", { entity_id: dest, value: "" }); return; }
+      if (detail.cmd === "fav") {
+        var f = this.favs()[Number(detail.index) || 0], at = this.favAt(f);
+        if (at && dest) h.callService("input_text", "set_value", { entity_id: dest, value: at.lat.toFixed(5) + "," + at.lon.toFixed(5) + ";" + String(f.name || "destination").replace(/[;|]/g, " ").slice(0, 60) });
+        return;
+      }
+      if (detail.cmd === "search") { this.openFind("search"); return; }
+      if (detail.cmd === "fuel") { this.openFind("fuel"); return; }
+      if (detail.cmd === "stopover") { this.openFind("stopover"); return; }
+      if (detail.cmd === "voice" && c.mute) h.callService("input_boolean", "toggle", { entity_id: c.mute });
+    }
+    favs() { var f = this.config.favorites || [{ name: "Maison", zone: "zone.home" }]; return f.map((x) => typeof x === "string" ? { name: x, zone: x === "Maison" ? "zone.home" : null } : x); }
+    favAt(f) {
+      if (!f) return null;
+      var ent = f.zone || f.entity, st = ent && this._hass && this._hass.states[ent];
+      if (st && st.attributes.latitude != null) return { lat: Number(st.attributes.latitude), lon: Number(st.attributes.longitude) };
+      if (Array.isArray(f.location)) return { lat: Number(f.location[0]), lon: Number(f.location[1]) };
+      return null;
+    }
+    guided() { var st = this.config.entity && this._hass && this._hass.states[this.config.entity]; return !!(st && st.state && st.state !== "unknown" && st.state !== "unavailable"); }
     build() {
       this.style(CAR_HEAD + "\n" + [
         "ha-card { gap: 6px; }",
         ".turn { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 10px; align-items: center; --mdc-icon-size: 50px; }",
-        ".turn ha-icon { color: var(--fg); }",
+        ".turn ha-icon { color: #59d0e0; }",
         ".dist { font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }",
         ".tx { font-size: 13px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }",
         ".then { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
@@ -10376,33 +10446,208 @@
         ".row { display: flex; gap: 6px; } .row button.b { flex: 1; min-height: 38px; flex-direction: row; gap: 8px; --mdc-icon-size: 18px; }",
         "button.go { border-color: var(--acc); color: var(--acc); } button.go ha-icon { color: var(--acc); }",
         "button.stop { flex: none !important; padding: 6px 12px; }",
+        // big: the head unit's guidance column (remote), the turn in large
+        ":host([big]) .turn { grid-template-columns: 86px minmax(0, 1fr); --mdc-icon-size: 82px; } :host([big]) .dist { font-size: 46px; } :host([big]) .tx { font-size: 18px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; } :host([big]) .then { font-size: 13px; margin-top: 4px; }",
+        ":host([big]) .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; border-top: 1px solid var(--line); padding-top: 10px; margin-top: auto; }",
+        ".grid span { display: block; font-size: 11px; color: var(--dim); } .grid b { font-weight: 400; font-size: 28px; font-variant-numeric: tabular-nums; } .grid b.s { font-size: 18px; } .grid .ok { color: " + CAR_OK + "; } .grid .warn { color: " + CAR_WARN + "; }",
+        // the buttons row
+        ".bar { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; height: 100%; }",
+        ".bar button.b { flex-direction: column; gap: 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; --mdc-icon-size: 24px; min-height: 0; height: 100%; }",
+        ".bar button.red { border-color: " + CAR_BAD + "; color: " + CAR_BAD + "; } .bar button.red ha-icon { color: " + CAR_BAD + "; }",
+        ".bar button.on { border-color: var(--acc); color: var(--acc); }",
+        // the finder (search, stations): over the whole screen
+        ".find { position: fixed; inset: 6% 10%; z-index: 2147482000; background: #0d0f12; border: 1px solid var(--line); border-radius: var(--igor-radius, 3px); display: flex; flex-direction: column; padding: 14px 16px; gap: 10px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.6); }",
+        ".find .fh { display: flex; align-items: center; justify-content: space-between; font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: var(--dim); }",
+        ".find form { display: flex; gap: 8px; } .find input { flex: 1; min-width: 0; font: inherit; font-size: 20px; padding: 12px; background: #14171b; color: var(--fg); border: 1px solid var(--acc); border-radius: 3px; }",
+        ".find .list { flex: 1; overflow-y: auto; } .find .it { display: flex; gap: 12px; align-items: center; padding: 12px 6px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 17px; }",
+        ".find .it small { display: block; font-size: 13px; color: var(--dim); margin-top: 2px; } .find .it .r { margin-left: auto; color: var(--acc); white-space: nowrap; font-size: 15px; }",
+        ".find .note { color: var(--dim); font-size: 14px; padding: 10px 6px; }",
         "[hidden] { display: none !important; }"
       ].join("\n"));
+      if (this.config.big) this.setAttribute("big", "");
       var card = el("ha-card", "", this.shadowRoot);
+      this.card = card;
+      if (this.config.mode === "buttons") { this.buildBar(card); this.buildFind(); return; }
       this.idle = el("div", "", card);
       el("div", "h", this.idle, this.config.title || "où allons-nous ?");
-      var send = (detail) => window.dispatchEvent(new CustomEvent("igor-gps-cmd", { detail: detail }));
       var go = el("button", "b go", this.idle); go.type = "button"; go.style.width = "100%"; go.style.flexDirection = "row"; go.style.minHeight = "40px";
       icon(go, "mdi:magnify"); el("span", "", go, "Chercher une adresse");
-      go.addEventListener("click", () => send({ cmd: "search" }));
+      go.addEventListener("click", () => this.send({ cmd: "search" }));
       var favs = el("div", "row", this.idle); favs.style.marginTop = "6px";
-      (this.config.favorites || ["Maison"]).slice(0, 2).forEach((name, i) => {
+      this.favs().slice(0, 2).forEach((f, i) => {
         var b = el("button", "b", favs); b.type = "button";
-        icon(b, i === 0 ? "mdi:home" : "mdi:star-outline"); el("span", "", b, name);
-        b.addEventListener("click", () => send({ cmd: "fav", index: i }));
+        icon(b, i === 0 ? "mdi:home" : "mdi:star-outline"); el("span", "", b, f.name);
+        b.addEventListener("click", () => this.send({ cmd: "fav", index: i }));
       });
       this.guide = el("div", "", card);
+      if (this.remote()) { this.guide.style.display = "flex"; this.guide.style.flexDirection = "column"; this.guide.style.flex = "1"; this.guide.style.minHeight = "0"; el("div", "h", this.guide, "guidage"); }
       var t = el("div", "turn", this.guide);
       this.gIcon = icon(t, "mdi:arrow-up");
       var tt = el("div", "", t);
       this.gDist = el("div", "dist", tt); this.gText = el("div", "tx", tt); this.gThen = el("div", "then", tt);
-      var e = el("div", "eta", this.guide);
-      this.gEta = el("b", "", e); this.gLeft = el("span", "", e);
-      var st = el("button", "b stop", e); st.type = "button"; st.style.marginLeft = "auto"; icon(st, "mdi:stop"); st.title = "Arrêter le guidage";
-      st.addEventListener("click", () => send({ cmd: "stop" }));
-      this.onGuide = (ev) => this.show(ev.detail);
-      window.addEventListener("igor-gps-guide", this.onGuide);
-      this.show(window.__igorGuide || null);
+      if (this.config.big) {
+        var gr = el("div", "grid", this.guide);
+        var cell = (lab, cls) => { var d = el("div", "", gr); el("span", "", d, lab); return el("b", cls || "", d); };
+        this.gEta = cell("arrivée"); this.gLeft = cell("reste", "s"); this.gJam = cell("trafic", "s"); this.gDest = cell("destination", "s");
+      } else {
+        var e = el("div", "eta", this.guide);
+        this.gEta = el("b", "", e); this.gLeft = el("span", "", e);
+        var st = el("button", "b stop", e); st.type = "button"; st.style.marginLeft = "auto"; icon(st, "mdi:stop"); st.title = "Arrêter le guidage";
+        st.addEventListener("click", () => this.send({ cmd: "stop" }));
+      }
+      this.buildFind();
+      if (!this.remote()) {
+        this.onGuide = (ev) => this.show(ev.detail);
+        window.addEventListener("igor-gps-guide", this.onGuide);
+        this.show(window.__igorGuide || null);
+      }
+    }
+    buildBar(card) {
+      var bar = el("div", "bar", card);
+      var list = this.config.buttons || ["search", "home", "fuel", "stopover", "voice", "stop"];
+      var defs = { search: ["mdi:magnify", "chercher"], home: ["mdi:home", "maison"], work: ["mdi:briefcase", "travail"], fuel: ["mdi:gas-station", "stations"], stopover: ["mdi:flag-checkered", "étape"], voice: ["mdi:volume-high", "voix"], stop: ["mdi:stop", "stop"], waze: ["mdi:waze", "waze"] };
+      this.barBtns = {};
+      list.forEach((k) => {
+        var d = defs[k]; if (!d) return;
+        var b = el("button", "b" + (k === "stop" ? " red" : ""), bar); b.type = "button";
+        this.barBtns[k] = b; this.barIcon = this.barIcon || {};
+        this.barIcon[k] = icon(b, d[0]); el("span", "", b, d[1]);
+        b.addEventListener("click", () => {
+          if (k === "home") this.send({ cmd: "fav", index: 0 });
+          else if (k === "work") this.send({ cmd: "fav", index: 1 });
+          else if (k === "waze") this.openWaze();
+          else this.send({ cmd: k });
+        });
+      });
+    }
+    // Waze, with the destination under way when there is one (the head
+    // unit's companion app opens it: `waze_notify: notify.mobile_app_x`).
+    openWaze() {
+      var c = this.config, h = this._hass, st = c.destination && h && h.states[c.destination];
+      var d = st && /^\s*(-?\d+(\.\d+)?)\s*,\s*(-?\d+(\.\d+)?)/.exec(st.state || "");
+      var uri = d ? "https://waze.com/ul?ll=" + d[1] + "," + d[3] + "&navigate=yes" : "https://waze.com/ul";
+      if (c.waze_notify && h) {
+        var svc = String(c.waze_notify).split(".");
+        h.callService(svc[0], svc[1], { message: "command_activity", data: { intent_action: "android.intent.action.VIEW", intent_uri: uri, intent_package_name: "com.waze" } });
+      } else window.open(uri, "_blank");
+    }
+    buildFind() {
+      var f = this.findEl = el("div", "find", this.shadowRoot); f.hidden = true;
+      var h = el("div", "fh", f); this.findTitle = el("span", "", h, "destination");
+      var x = el("button", "b", h); x.type = "button"; icon(x, "mdi:close"); x.addEventListener("click", () => { f.hidden = true; });
+      this.findForm = el("form", "", f);
+      this.findIn = el("input", "", this.findForm); this.findIn.type = "text"; this.findIn.placeholder = "Adresse, ville, lieu…"; this.findIn.setAttribute("enterkeyhint", "search");
+      var g = el("button", "b go", this.findForm); g.type = "submit"; icon(g, "mdi:magnify");
+      this.findForm.addEventListener("submit", (ev) => { ev.preventDefault(); this.runSearch(this.findIn.value); });
+      this.findList = el("div", "list", f);
+    }
+    near() {
+      var p = this.config.position && this._hass && this._hass.states[this.config.position];
+      return p && p.attributes.latitude != null ? { latitude: Number(p.attributes.latitude), longitude: Number(p.attributes.longitude) } : {};
+    }
+    openFind(kind) {
+      this.findKind = kind;
+      this.findEl.hidden = false;
+      this.findList.innerHTML = "";
+      this.findForm.hidden = kind === "fuel";
+      this.findTitle.textContent = kind === "fuel" ? "stations-service" : kind === "stopover" ? "ajouter une étape" : "où allons-nous ?";
+      if (kind === "fuel") this.runFuel();
+      else { this.findIn.value = ""; setTimeout(() => this.findIn.focus(), 50); }
+    }
+    note(t) { this.findList.innerHTML = ""; el("div", "note", this.findList, t); }
+    pick(p) {
+      var c = this.config, h = this._hass;
+      this.findEl.hidden = true;
+      if (!h || !p) return;
+      var name = String(p.name || "destination").replace(/[;|]/g, " ").slice(0, 60);
+      // Guided: a stop on the way (Igor's own service keeps the destination).
+      if ((this.findKind === "stopover" || this.findKind === "fuel") && this.guided()) {
+        h.callWS({ type: "call_service", domain: "nives", service: "car_stop", return_response: true, service_data: { latitude: p.lat, longitude: p.lon, name: name } }).catch(() => {});
+        return;
+      }
+      if (c.destination) h.callService("input_text", "set_value", { entity_id: c.destination, value: Number(p.lat).toFixed(5) + "," + Number(p.lon).toFixed(5) + ";" + name });
+    }
+    row(name, sub, right, onClick) {
+      var it = el("div", "it", this.findList), l = el("div", "", it);
+      el("div", "", l, name); if (sub) el("small", "", l, sub);
+      if (right) el("span", "r", it, right);
+      it.addEventListener("click", onClick);
+    }
+    runSearch(q) {
+      q = String(q || "").trim(); if (!q || !this._hass) return;
+      this.note("recherche…");
+      this._hass.callWS({ type: "call_service", domain: "nives", service: "car_search", return_response: true, service_data: Object.assign({ query: q, limit: 8 }, this.near()) })
+        .then((res) => {
+          var r = (res && res.response) || {}, rows = r.results || [];
+          if (!rows.length) { this.note(r.error || "aucun résultat"); return; }
+          this.findList.innerHTML = "";
+          rows.forEach((p) => this.row(p.name, p.address || "", "▸", () => this.pick(p)));
+        }).catch(() => this.note("recherche impossible"));
+    }
+    runFuel() {
+      if (!this._hass) return;
+      this.note("stations autour…");
+      this._hass.callWS({ type: "call_service", domain: "nives", service: "car_nearby", return_response: true, service_data: Object.assign({ kind: "fuel", count: 8 }, this.near()) })
+        .then((res) => {
+          var r = (res && res.response) || {}, rows = r.places || [];
+          if (!rows.length) { this.note(r.error || r.note || "aucune station"); return; }
+          this.findList.innerHTML = "";
+          rows.forEach((p) => {
+            var right = p.detour_min != null ? "+" + Math.round(p.detour_min) + " min" : p.minutes != null ? p.minutes + " min" : (p.distance_km != null ? p.distance_km + " km" : "▸");
+            this.row([p.brand, p.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(" · "), [p.distance_km != null ? p.distance_km + " km" : "", p.service_area || "", p.city || ""].filter(Boolean).join(" · "), right, () => this.pick(p));
+          });
+        }).catch(() => this.note("recherche impossible"));
+    }
+    update() {
+      var c = this.config, h = this._hass;
+      if (!h || !this.card) return;
+      if (this.barBtns && this.barBtns.voice && c.mute) {
+        var off = h.states[c.mute] && h.states[c.mute].state === "on";
+        this.barIcon.voice.setAttribute("icon", off ? "mdi:volume-off" : "mdi:volume-high");
+      }
+      if (this.barBtns && this.barBtns.stop) this.barBtns.stop.disabled = !this.guided();
+      if (this.remote() && this.guide) {
+        var st = h.states[c.entity], v = st ? String(st.state || "") : "";
+        if (v === "unknown" || v === "unavailable") v = "";
+        if (v !== this.lastTurn) {
+          this.lastTurn = v;
+          var a = v.split("|");
+          this.show(v ? { icon: a[0], dist: a[1], text: a[2], then: a[3], eta: a[4], left: a[5], min: a[6], jam: Number(a[7]) || 0, dest: a[8] } : null);
+        }
+      }
+      this.hear(c.voice, "voiceSeen");
+      this.hear(c.announce, "announceSeen");
+    }
+    // A sentence written into an input_text (« ms|kind|text » or
+    // « time|text »): said once, here, if fresh and the voice is not off.
+    hear(ent, key) {
+      var st = ent && this._hass.states[ent];
+      if (!st || st.state === this[key]) return;
+      var first = this[key] === undefined;
+      this[key] = st.state;
+      if (first || st.state === "unknown" || st.state === "unavailable") return;
+      if (Date.now() - (Date.parse(st.last_changed) || 0) > 30000) return;
+      var parts = String(st.state).split("|"), text = parts.length >= 3 ? parts.slice(2).join("|") : parts.slice(1).join("|") || parts[0];
+      var off = this.config.mute && this._hass.states[this.config.mute] && this._hass.states[this.config.mute].state === "on";
+      if (off || !text.trim()) return;
+      this.speak(text.trim());
+    }
+    speak(text) {
+      var h = this._hass, engine = this.config.tts_entity || Object.keys(h.states).filter((id) => id.indexOf("tts.") === 0).find((id) => /igor|nives/.test(id));
+      var browser = () => { try { var u = new SpeechSynthesisUtterance(text); u.lang = "fr-FR"; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch (e) { /* no voice */ } };
+      if (!engine || !h.callApi) { browser(); return; }
+      var seq = this.speakSeq = (this.speakSeq || 0) + 1;
+      h.callApi("POST", "tts_get_url", { engine_id: engine, message: text, language: "fr" }).then((r) => {
+        var url = r && (r.path || r.url); if (!url || seq !== this.speakSeq) return;
+        // Web Audio: the voice over the music, without Android's audio focus.
+        var ctx = gpsAudioCtx();
+        var element = () => { try { var au = this.au || (this.au = new Audio()); au.src = url; au.play().catch(browser); } catch (e) { browser(); } };
+        if (!ctx) { element(); return; }
+        var run = () => fetch(url).then((x) => x.arrayBuffer()).then((ab) => new Promise((ok, ko) => ctx.decodeAudioData(ab, ok, ko)))
+          .then((buf) => { if (seq !== this.speakSeq) return; try { if (this.node) this.node.stop(); } catch (e) { /* ended */ } var s = ctx.createBufferSource(); s.buffer = buf; s.connect(ctx.destination); s.start(); this.node = s; })
+          .catch(element);
+        if (ctx.state === "suspended") ctx.resume().then(run, element); else run();
+      }).catch(browser);
     }
     connectedCallback() { super.connectedCallback(); if (this.onGuide) { window.addEventListener("igor-gps-guide", this.onGuide); this.show(window.__igorGuide || null); } }
     disconnectedCallback() { if (this.onGuide) window.removeEventListener("igor-gps-guide", this.onGuide); }
@@ -10415,7 +10660,12 @@
       this.gText.textContent = g.text || "";
       this.gThen.textContent = g.then || "";
       this.gEta.textContent = g.eta || "";
-      this.gLeft.textContent = [g.left, g.min ? g.min + " min" : "", g.jam ? "dont " + g.jam + " min de bouchons" : (g.dest || "")].filter(Boolean).join(" · ");
+      if (this.config.big) {
+        this.gLeft.textContent = [g.left, g.min ? g.min + " min" : ""].filter(Boolean).join(" · ");
+        this.gJam.textContent = g.jam ? g.jam + " min de bouchons" : "fluide";
+        this.gJam.className = "s " + (g.jam ? "warn" : "ok");
+        this.gDest.textContent = g.dest || "—";
+      } else this.gLeft.textContent = [g.left, g.min ? g.min + " min" : "", g.jam ? "dont " + g.jam + " min de bouchons" : (g.dest || "")].filter(Boolean).join(" · ");
     }
   }
 

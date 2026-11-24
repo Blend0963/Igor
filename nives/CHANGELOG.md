@@ -1,3 +1,10 @@
+## 0.40.0 — Le téléphone, écran déporté de l'autoradio
+
+- `igor-gps-card` : **`display_only: true`** — un second écran (le téléphone sous l'autoradio) : la carte seule, sans bouton, bandeau ni panneau ; un doigt dessus ne change rien. Pas de choix d'itinéraire sur cet écran : le premier est pris.
+- `igor-gps-card` : **`voice_to: input_text.…`** — ce que dit le guidage part vers l'écran qui parle (« ms|type|texte ») au lieu de sortir de celui-ci.
+- `igor-gps-card` : **`publish_turn: input_text.…`** — tout le guidage pour l'autoradio (« icône|distance|texte|puis|arrivée|reste|min|bouchons|destination »), tout de suite quand le virage change, sinon au plus toutes les 2 s ; vidé à la fin.
+- `igor-guide-card` sur un autre écran que la carte : **`entity`** (le `publish_turn`), **`destination`** (où Chercher / Maison / Stop écrivent), **`position`**, **`favorites`**, **`voice`** (dit ici, voix d'Igor, par-dessus la musique), **`announce`** (les annonces de la maison), **`mute`** (un `input_boolean`), **`big: true`** (le grand panneau de l'autoradio). **`mode: buttons`** : la rangée des boutons GPS (`buttons: [search, home, work, fuel, stopover, voice, stop, waze]`), avec une fenêtre de recherche d'adresse (`nives.car_search`) et la liste des stations (`nives.car_nearby`) ; en guidage, une station ou une étape s'ajoute au trajet (`nives.car_stop`). **`waze`** ouvre Waze sur la destination en cours (`waze_notify: notify.mobile_app_…` de l'autoradio). Testé dans un navigateur : guidage affiché, Maison, Stop, recherche, stations, étape, voix.
+
 ## 0.39.10 — Carte 3D derrière un proxy https
 
 - **Stations-service sans doublon** : une station qui porte son étiquette de prix (logo + prix du gazole, ou « rupture ») n'a plus en plus sa pastille ni son icône de pompe. Les stations sans prix connu gardent leur icône.
