@@ -5321,6 +5321,10 @@
   //   display_only: true                    # a second screen: the map only (no button, banner or sign); a tap on the map still picks a place or a route
   //   base_pois: true                       # with basemap: tomtom-3d, TomTom's own places (Igor adds only cameras and stations with prices)
   //   debug: true                           # says in the message band how the relief was made (TomTom's 3D layers, or Igor's)
+  //   sdk: true                             # with basemap: tomtom-3d, TomTom's Maps SDK (buildings with facades and lit windows, textured water and woods), fetched from a CDN; false: MapLibre alone
+  //   sdk_style: streetDarkDriving          # the SDK's style (streetLight, streetDark, streetLightDriving, streetDarkDriving, monoDark…)
+  //   sdk_surfaces: false                   # no textured surfaces (lighter); or its knobs, e.g. { wind: { speedFactor: 1 } }
+  //   trees: false                          # no 3D trees (OpenStreetMap's real trees, natural=tree and tree_row)
   //   voice_to: input_text.car_voice        # what the guidance says goes there (« ms|kind|text »), said by the head unit's igor-guide-card
   //   publish_ahead: input_text.car_ahead   # the radar within reach and what lies ahead on the route, for igor-drive-card
   //   publish_routes: input_text.car_routes  # the routes offered, for the head unit to choose (route_choice: input_text.car_choice brings the answer)
@@ -5396,7 +5400,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.44.0";
+  var GPS_CARD_VERSION = "0.45.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -5470,6 +5474,35 @@
       });
     }
     return window.__igorMapLibre;
+  }
+  // TomTom's Maps SDK for JavaScript, with its 3D plugin (buildings with
+  // facades, lit windows and shadows; water, woods and fields textured).
+  // Not shipped with Igor (its licence is not Igor's): the phone's browser
+  // fetches it from a public CDN (esm.sh by default, `sdk_cdn:`), or one
+  // bundle (`sdk_bundle:`). Its requests go through Igor's TomTom relay: the
+  // key never leaves Home Assistant. Whatever fails, the card goes on with
+  // MapLibre alone.
+  var GPS_TT_V = { ml: "6.19.0", sdk: "1.0.0", lm: "0.3.2", three: "0.186.1" };
+  function gpsTomTomKit(config) {
+    if (window.__igorTT) return window.__igorTT;
+    var imp;
+    try { imp = new Function("u", "return import(u)"); } catch (e) { return Promise.reject(e); }
+    var cdn = String(config.sdk_cdn || "https://esm.sh/").replace(/\/?$/, "/"), v = GPS_TT_V;
+    var deps = "?deps=maplibre-gl@" + v.ml + ",three@" + v.three + ",@tomtom-org/maps-sdk@" + v.sdk;
+    var load = config.sdk_bundle
+      ? imp(config.sdk_bundle).then(function (m) { return { ml: m.maplibregl || m.maplibre, sdk: m, lm: m }; })
+      : Promise.all([imp(cdn + "maplibre-gl@" + v.ml), imp(cdn + "@tomtom-org/maps-sdk@" + v.sdk + "/map" + deps), imp(cdn + "@tomtom-org/maps-sdk-plugin-landmarks-3d@" + v.lm + deps)])
+        .then(function (a) { return { ml: a[0], sdk: a[1], lm: a[2] }; });
+    var late = new Promise(function (ok, ko) { setTimeout(function () { ko(new Error("SDK TomTom : délai dépassé")); }, 20000); });
+    window.__igorTT = Promise.race([load, late]).then(function (k) {
+      var ml = k.ml && (k.ml.Map ? k.ml : k.ml.default);
+      // Its MapLibre's worker: Igor's own copy of the same version (a CDN's
+      // rebuilt module does not find its worker beside itself).
+      if (ml && ml.setWorkerUrl && !config.sdk_bundle) { try { ml.setWorkerUrl(window.location.origin + GPS_MAPLIBRE6.replace(/maplibre-gl$/, "maplibre-gl-worker.mjs")); } catch (e) { /* its own lookup */ } }
+      if (!k.sdk || !k.sdk.TomTomMap || !k.lm || !k.lm.Buildings3D) throw new Error("SDK TomTom incomplet");
+      return { ml: ml, sdk: k.sdk, lm: k.lm };
+    }).catch(function (e) { window.__igorTT = null; throw e; });
+    return window.__igorTT;
   }
   var gpsRad = function (d) { return (d * Math.PI) / 180; }, gpsDeg = function (r) { return (r * 180) / Math.PI; };
   function gpsProject(p, brg, dist) {
@@ -6876,6 +6909,23 @@
         };
         map.on("idle", hideFuel);
       }
+      // Real trees, where OpenStreetMap has them (with or without the SDK).
+      this.treesSetup(map);
+      // TomTom's SDK: its buildings (facades, lit windows, shadows) and its
+      // surfaces (rippling water, woods, fields, asphalt) — without its 3D
+      // trees, which it would place at random: the real ones are Igor's.
+      if (this.tt && this.ttKit) {
+        var lm = this.ttKit.lm, why = [];
+        if (!this.tt3d) { try { this.tt3d = new lm.Buildings3D(this.tt, this.config.sdk_buildings || {}); } catch (e) { why.push("bâtiments : " + (e && e.message)); } }
+        if (!this.ttSurf && this.config.sdk_surfaces !== false) {
+          try { this.ttSurf = new lm.GLSurfaces(this.tt, Object.assign({ trees: { visible: false }, wind: { speedFactor: 0 } }, typeof this.config.sdk_surfaces === "object" ? this.config.sdk_surfaces : {})); } catch (e) { why.push("surfaces : " + (e && e.message)); }
+        }
+        try { if (map.setSky) map.setSky({ "sky-color": "#0b0e14", "horizon-color": "#1b2433", "fog-color": "#08090b", "sky-horizon-blend": 0.6, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.4 }); } catch (e) { /* older engine */ }
+        this.diag3d = "SDK TomTom : " + [this.tt3d ? "bâtiments 3D" : "", this.ttSurf ? "surfaces" : ""].filter(Boolean).join(" + ") + (why.length ? " · " + why.join(" · ") : "");
+        if (this.config.debug) this.message("relief : " + this.diag3d);
+        return;
+      }
+      if (this.config.debug && this.sdkWhy) this.message("SDK TomTom non chargé : " + this.sdkWhy);
       if (this.hq()) {
         // A night sky over the horizon instead of a flat edge, and a light
         // that gives the buildings their faces.
@@ -7205,6 +7255,17 @@
       sign.classList.toggle("over", over);
     }
     trailData() { return { type: "Feature", geometry: { type: "MultiLineString", coordinates: this.trail.filter(function (x) { return x.length > 1; }) } }; }
+    // Each request of the map: Igor's addresses on the page's own origin (a
+    // reverse proxy may write them in http://), with the Home Assistant login.
+    mapRequest(url) {
+      if (!url) return undefined;
+      if (url.indexOf("/api/nives/") >= 0) this.lastNives = url;
+      var m = /^https?:\/\/([^/]+)(\/api\/nives\/.*)$/.exec(url);
+      if (m && m[1] === window.location.host) url = window.location.origin + m[2];
+      var tok = this._hass && this._hass.auth && this._hass.auth.data && this._hass.auth.data.access_token;
+      if (tok && url.indexOf(window.location.origin + "/api/nives/") === 0) return { url: url, headers: { Authorization: "Bearer " + tok } };
+      return m ? { url: url } : undefined;
+    }
     async init(p) {
       this.loading = true;
       this.offlineReady = false;
@@ -7249,7 +7310,36 @@
         }
       }
       var map;
-      try { map = new ml.Map({
+      // TomTom's SDK (basemap: tomtom-3d, the phone): its map, its 3D. A
+      // failure to load it, or a map that never shows, and the card starts
+      // again without it.
+      var kit = null;
+      if (this.config.basemap === "tomtom-3d" && this.config.sdk !== false && !this.sdkOff && !this.offlineReady && window.location.protocol === "https:" || this.config.sdk_bundle && !this.sdkOff) {
+        try { kit = await gpsTomTomKit(this.config); } catch (e) { kit = null; this.sdkWhy = (e && e.message) || "SDK indisponible"; }
+      }
+      if (kit) {
+        try {
+          var tt = new kit.sdk.TomTomMap({
+            commonBaseURL: window.location.origin + "/api/nives/tomtom", style: this.config.sdk_style || "streetDarkDriving",
+            transformRequest: (req) => { var t = this.mapRequest(req && req.url); return t ? Object.assign({}, req, t, { headers: Object.assign({}, req.headers || {}, t.headers || {}) }) : req; },
+            mapLibre: {
+              container: this.$("map"), center: p, zoom: this.config.zoom, pitch: this.config.pitch, bearing: this.headingUp ? this.heading : 0,
+              fadeDuration: 250, pixelRatio: window.devicePixelRatio || 1, antialias: true, maxPitch: 75, maxTileCacheSize: 600
+            }
+          });
+          map = tt.mapLibreMap; this.tt = tt; this.ttKit = kit; this.sdkWhy = "";
+          // A map that never comes (a worker refused, a module amiss): 25 s, then without the SDK.
+          clearTimeout(this.sdkWatch);
+          this.sdkWatch = setTimeout(() => {
+            if (this.map !== map || (map.isStyleLoaded && map.isStyleLoaded())) return;
+            this.sdkOff = true; this.sdkWhy = "la carte du SDK n'est pas venue";
+            try { if (this.marker) this.marker.remove(); map.remove(); } catch (e) { /* gone */ }
+            this.map = null; this.tt = null; this.ttKit = null; this.init(p);
+          }, 25000);
+          map.once("load", () => clearTimeout(this.sdkWatch));
+        } catch (e) { map = null; this.tt = null; this.ttKit = null; this.sdkWhy = (e && e.message) || "SDK refusé"; }
+      }
+      if (!map) try { map = new ml.Map({
         container: this.$("map"), style: style, center: p, zoom: this.config.zoom, pitch: this.config.pitch,
         bearing: this.headingUp ? this.heading : 0, attributionControl: this.config.hide_attribution ? false : { compact: true },
         // Light on a small screen: no label fade (it redraws for 300 ms at
@@ -7260,18 +7350,7 @@
         // view tipped further, more tiles kept — the best the screen can show.
         antialias: this.hq(), maxPitch: this.hq() ? 75 : 60, maxTileCacheSize: this.hq() ? 600 : null,
         // Igor's own tiles (traffic) need the Home Assistant login, as every API call.
-        transformRequest: (url) => {
-          if (url.indexOf("/api/nives/") >= 0) this.lastNives = url;
-          // Home Assistant behind a reverse proxy sees its own requests in
-          // http: the addresses it writes into a relayed style (TomTom 3D)
-          // then say http:// while the page is https — the browser refuses
-          // them. Same house, so the page's own origin, whatever they say.
-          var m = /^https?:\/\/([^/]+)(\/api\/nives\/.*)$/.exec(url);
-          if (m && m[1] === window.location.host) url = window.location.origin + m[2];
-          var tok = this._hass && this._hass.auth && this._hass.auth.data && this._hass.auth.data.access_token;
-          if (tok && url.indexOf(window.location.origin + "/api/nives/") === 0) return { url: url, headers: { Authorization: "Bearer " + tok } };
-          return m ? { url: url } : undefined;
-        }
+        transformRequest: (url) => this.mapRequest(url)
       }); } catch (e) { this.message("carte : " + (e && e.message || "WebGL indisponible sur cet appareil")); this.loading = false; return; }
       this.map = map;
       var arrow = document.createElement("div");
@@ -7533,7 +7612,7 @@
       else if (!this.route && this.guideOn) this.publishGuide(null);
       if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > (this.offlineReady ? 3000 : 800))) { this.limitAt = now; this.limitTick(now, moving); }
       if (!this.alertAt || now - this.alertAt > 500) { this.alertAt = now; this.alertTick(now, speed); }
-      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); this.publishAhead(now); }
+      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); this.publishAhead(now); this.treesTick(); }
       // The stations' panel, left open, follows the car: gone far enough from
       // where it last asked (400 m, and never twice within ten seconds), it
       // asks again — the list is the stations around the car, not the ones
@@ -8761,6 +8840,84 @@
     //   « j~distance~libellé~longueur~1|2 »), « ; »-separated.
     // Written when it changes (the radar at once), at most every 2 s, and at
     // least every 8 s: its time is also the map's heartbeat.
+    // ----- the trees, real ones: OpenStreetMap's (natural=tree, tree_row) -----
+    // Each tree where it is mapped, a trunk and a crown in 3D, its own height
+    // and crown when the map says them (height, diameter_crown), a common
+    // street tree otherwise. A row of trees (tree_row) is planted every 9 m
+    // along its line — the row is real, the spacing is the usual one. Read by
+    // squares of about 1.2 km (zoom 15) around the car, kept for the session.
+    treesOn() { return this.config.trees !== false && this.config.basemap === "tomtom-3d" && !this.offlineReady; },
+    treesSetup(map) {
+      if (!this.treesOn() || !map || map.getSource("igor-trees")) return;
+      var layers = map.getStyle().layers || [], first = layers.find((l) => l.type === "symbol");
+      map.addSource("igor-trees", { type: "geojson", data: this.treesData() });
+      map.addLayer({ id: "igor-trunks", type: "fill-extrusion", source: "igor-trees", minzoom: 15.5, filter: ["==", ["get", "k"], "t"],
+        paint: { "fill-extrusion-color": "#4a3b2e", "fill-extrusion-height": ["get", "h"], "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.95 } }, first ? first.id : undefined);
+      map.addLayer({ id: "igor-crowns", type: "fill-extrusion", source: "igor-trees", minzoom: 15.5, filter: ["==", ["get", "k"], "c"],
+        paint: { "fill-extrusion-color": ["match", ["get", "v"], 0, "#2d5838", 1, "#33613d", "#294f33"],
+          "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 15.5, ["*", 0.4, ["get", "h"]], 16.5, ["get", "h"]],
+          "fill-extrusion-base": ["interpolate", ["linear"], ["zoom"], 15.5, ["*", 0.4, ["get", "b"]], 16.5, ["get", "b"]],
+          "fill-extrusion-opacity": 0.93, "fill-extrusion-vertical-gradient": true } }, first ? first.id : undefined);
+    },
+    treesTick() {
+      if (!this.treesOn() || !this.map || !this.pos || !this.map.getSource("igor-trees") || this.treesBusy) return;
+      if (this.map.getZoom() < 14.5) return;
+      var T = this.treeTiles || (this.treeTiles = {}), c = gpsTileOf(this.pos, 15), want = [];
+      // The car's square and the eight around it, the nearest first.
+      for (var dx = -1; dx <= 1; dx++) for (var dy = -1; dy <= 1; dy++) want.push([c[0] + dx, c[1] + dy, Math.abs(dx) + Math.abs(dy)]);
+      want.sort((a, b) => a[2] - b[2]);
+      var t = Date.now(), next = want.find((w) => { var k = w[0] + "/" + w[1], e = T[k]; return !e || (e.fail && t - e.at > 60000); });
+      if (!next) return;
+      var key = next[0] + "/" + next[1], b = gpsTileBox(next[0], next[1], 15), bb = [b.s, b.w, b.n, b.e].map((x) => x.toFixed(6)).join(",");
+      this.treesBusy = true;
+      gpsOverpass(this.config, "[out:json][timeout:25];(node[natural=tree](" + bb + ");way[natural=tree_row](" + bb + "););out geom;")
+        .then((res) => { T[key] = { at: Date.now(), els: (res && res.elements) || [] }; this.treesDraw(); })
+        .catch(() => { T[key] = { at: Date.now(), fail: true, els: [] }; })
+        .then(() => { this.treesBusy = false; });
+    },
+    treesDraw() {
+      var src = this.map && this.map.getSource("igor-trees");
+      if (!src) return;
+      // Only the squares near the car stay drawn (2 squares around it).
+      var T = this.treeTiles || {}, c = this.pos ? gpsTileOf(this.pos, 15) : null;
+      Object.keys(T).forEach((k) => { var xy = k.split("/").map(Number); if (c && (Math.abs(xy[0] - c[0]) > 2 || Math.abs(xy[1] - c[1]) > 2)) delete T[k]; });
+      src.setData(this.treesData());
+    },
+    treesData() {
+      var feats = [], T = this.treeTiles || {}, seen = {};
+      var ring = (p, r) => {
+        var kx = 1 / (111320 * Math.cos(gpsRad(p[1]))), ky = 1 / 110540, out = [];
+        for (var i = 0; i <= 8; i++) { var a = (i % 8) * Math.PI / 4; out.push([p[0] + Math.cos(a) * r * kx, p[1] + Math.sin(a) * r * ky]); }
+        return [out];
+      };
+      var plant = (p, tags) => {
+        var id = p[0].toFixed(6) + "," + p[1].toFixed(6); if (seen[id]) return; seen[id] = 1;
+        var h = parseFloat(tags && tags.height), d = parseFloat(tags && tags.diameter_crown);
+        h = isFinite(h) && h > 1 ? Math.min(35, h) : 9;
+        var r = isFinite(d) && d > 0.5 ? Math.min(9, d / 2) : Math.max(1.6, Math.min(4, h * 0.3));
+        var trunkH = Math.max(1.6, Math.min(4.5, h * 0.32));
+        feats.push({ type: "Feature", properties: { k: "t", h: trunkH }, geometry: { type: "Polygon", coordinates: ring(p, Math.max(0.2, Math.min(0.5, r * 0.12))) } });
+        // The crown in three tiers, widest in the middle: a rounded tree,
+        // not a column, still only a few faces for the phone to draw.
+        var cb = trunkH * 0.85, ch = h - cb, tone = (Math.abs(Math.round(p[0] * 1e5 + p[1] * 1e5)) % 3);
+        [[cb, cb + ch * 0.28, 0.72], [cb + ch * 0.28, cb + ch * 0.72, 1], [cb + ch * 0.72, h, 0.62]].forEach((t) => {
+          feats.push({ type: "Feature", properties: { k: "c", b: t[0], h: t[1], v: tone }, geometry: { type: "Polygon", coordinates: ring(p, r * t[2]) } });
+        });
+      };
+      Object.keys(T).forEach((k) => (T[k].els || []).forEach((e) => {
+        if (feats.length > 16000) return;
+        if (e.type === "node" && e.lon != null) plant([e.lon, e.lat], e.tags);
+        else if (e.type === "way" && e.geometry && e.geometry.length > 1) {
+          var g = e.geometry.map((q) => [q.lon, q.lat]), carry = 0;
+          for (var i = 1; i < g.length; i++) {
+            var len = gpsDist(g[i - 1], g[i]), d = carry;
+            for (; d <= len; d += 9) { var f = len ? d / len : 0; plant([g[i - 1][0] + (g[i][0] - g[i - 1][0]) * f, g[i - 1][1] + (g[i][1] - g[i - 1][1]) * f], e.tags); }
+            carry = d - len;
+          }
+        }
+      }));
+      return { type: "FeatureCollection", features: feats };
+    },
     publishAhead(now) {
       var e = this.config.publish_ahead;
       if (!e || !this._hass || !this._hass.callService || !this.pos) return;

@@ -1,3 +1,10 @@
+## 0.45.0 — Le SDK TomTom sur le téléphone, et les vrais arbres
+
+- **SDK TomTom pour JavaScript** (`basemap: tomtom-3d`, page en https) : la carte du téléphone est créée par le Maps SDK de TomTom, avec son module 3D — **bâtiments à façades**, fenêtres éclairées la nuit, ombres (`Buildings3D`) et **surfaces texturées** : eau, bois, champs, asphalte (`GLSurfaces`, sans ses arbres placés au hasard ni le vent qui redessine sans cesse). Il n'est pas livré avec Igor (sa licence n'est pas celle d'Igor) : le navigateur du téléphone le charge depuis esm.sh (`sdk_cdn:` pour un autre CDN). Ses requêtes passent par le relais TomTom d'Igor : la clé ne quitte pas Home Assistant. S'il ne se charge pas, ou si sa carte ne vient pas en 25 s, la carte repart d'elle-même avec MapLibre 6 seul (`sdk: false` pour s'en passer). `sdk_style:` choisit le style (par défaut `streetDarkDriving`).
+- **Les monuments 3D** (Orbis 3D Landmarks : tour Eiffel, Colisée…) ne sont pas activés : TomTom les réserve aux clés qui en ont reçu le droit (accès anticipé privé).
+- **Les arbres, les vrais** : ceux qu'OpenStreetMap recense un par un (`natural=tree`) et les alignements (`tree_row`, un arbre tous les 9 m le long de la ligne), en 3D — un tronc et une couronne arrondie en trois étages, à leur hauteur et à leur largeur quand la carte les donne. Lus par carrés d'environ 1,2 km autour de la voiture (Overpass), gardés pendant la séance. `trees: false` pour s'en passer.
+- Testé dans Chromium : SDK assemblé depuis npm, faux serveur TomTom (style par le relais, bâtiments et surfaces du SDK créés), faux Overpass (317 couronnes dessinées dans une rue plantée) ; et la carte sans SDK, inchangée.
+
 ## 0.44.0 — La 3D de TomTom, le tracé et la flèche façon TomTom
 
 - **MapLibre 6** pour la carte GPS : c'est la version pour laquelle les styles Orbis de TomTom sont écrits (le Maps SDK de TomTom l'exige). Servie par Igor avec les cartes, chargée en premier ; si l'appareil ne sait pas la charger, MapLibre 4.7.1 prend le relais comme avant.
