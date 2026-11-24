@@ -6743,7 +6743,7 @@
       // black for as long as the server had not downloaded the whole region.
       // The local copy is used when it is complete (car_map_update raster: true).
       var os0 = this.config.offline_style;
-      if (!os0 && !(this.offlineInfo && this.offlineInfo.raster_ready)) return GPS_ONLINE_STYLE;
+      if (!os0 && !(this.offlineInfo && this.offlineInfo.raster_ready)) return this.onlineStyle();
       // Offline only, no online mode left: the local raster basemap by default
       // (pre-rendered CARTO dark PNGs served by HA — pixel-identical to the old
       // online CARTO dark, zero vector decode on the head unit, like Waze).
@@ -6754,6 +6754,21 @@
       if (os === "full") return window.location.origin + "/api/nives/offline/style.json";
       if (os === "lite") return window.location.origin + "/api/nives/offline/style-lite.json";
       return window.location.origin + "/api/nives/offline/style-raster.json";
+    }
+    // `tiles:` (card option) — your own raster basemap, e.g. CARTO Dark Matter
+    // or Stadia with your key in the URL: "https://…/{z}/{x}/{y}.png?api_key=…".
+    // The key stays in your dashboard, never in Igor. Labels are in those
+    // tiles already, so Esri's label layer goes away. `tiles_maxzoom` (20).
+    onlineStyle() {
+      var t = this.config.tiles;
+      if (!t) return GPS_ONLINE_STYLE;
+      return {
+        version: 8, name: "Igor sombre",
+        sources: { fond: { type: "raster", tileSize: 256, maxzoom: +this.config.tiles_maxzoom || 20,
+          tiles: (Array.isArray(t) ? t : [t]).map(String),
+          attribution: this.config.tiles_attribution || "© OpenStreetMap" } },
+        layers: [GPS_ONLINE_STYLE.layers[0], Object.assign({}, GPS_ONLINE_STYLE.layers[1], { paint: { "raster-contrast": 0.35, "raster-brightness-max": 0.92, "raster-saturation": -0.5, "raster-fade-duration": 0 } })]
+      };
     }
     message(text) { this.$("msg").textContent = text; this.$("msg").hidden = !text; }
     // The position to believe: the head unit's (`entity`) or the phone's

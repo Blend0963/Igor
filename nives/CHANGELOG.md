@@ -1,6 +1,7 @@
 ## 0.39.7 — Fond de carte sans clé API
 
 - `igor-gps-card` : CARTO exige désormais une clé API (chaque tuile affichait « API KEY REQUIRED »). Le fond de carte en ligne passe sur **Esri Dark Gray Canvas** : gratuit, sans clé. Le fond sombre et les noms sont deux couches d'images (aucun décodage vectoriel sur l'autoradio), sur le noir d'Igor, routes contrastées.
+- Option de carte **`tiles:`** : votre propre fond raster avec votre clé dans l'adresse (ex. CARTO Dark Matter, Stadia Alidade Smooth Dark), `tiles_maxzoom` (20 par défaut), `tiles_attribution`. La clé reste dans votre dashboard.
 - Cartes hors ligne : le téléchargement du fond raster CARTO est désactivé (il n'aurait enregistré que l'image « API KEY REQUIRED »). Les styles hors ligne vectoriels `full` et `lite` ne changent pas.
 
 ## 0.39.6 — Le téléphone, écran compagnon de l'autoradio
