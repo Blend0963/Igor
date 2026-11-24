@@ -6312,6 +6312,7 @@
     setConfig(config) {
       if (!config || !config.entity) throw new Error("igor-gps-card: entity est requis (le device_tracker de l'autoradio)");
       this.config = Object.assign({ zoom: 16, pitch: 45, heading_up: true, follow_pause: 15, theme: "sombre", snap: 50 }, config);
+      this._ttStyle = this._tilesStyle = null;
       this.headingUp = this.config.heading_up !== false;
       // compact: the card standing small in a dashboard's view — no buttons
       // (too small for a finger, and the map is a window, not a cockpit), a
@@ -6761,8 +6762,21 @@
     // tiles already, so Esri's label layer goes away. `tiles_maxzoom` (20).
     onlineStyle() {
       var t = this.config.tiles;
+      // `basemap: tomtom` — TomTom's dark map through Home Assistant, with the
+      // key of Igor's options (never in the dashboard). 512 px pictures.
+      if (this.config.basemap === "tomtom") {
+        if (!this._ttStyle) this._ttStyle = {
+          version: 8, name: "Igor sombre",
+          sources: { fond: { type: "raster", tileSize: 512, maxzoom: 22,
+            tiles: [window.location.origin + "/api/nives/basemap/{z}/{x}/{y}.png"], attribution: "© TomTom" } },
+          layers: [GPS_ONLINE_STYLE.layers[0], { id: "fond", type: "raster", source: "fond", paint: { "raster-saturation": -0.3, "raster-fade-duration": 0 } }]
+        };
+        return this._ttStyle;
+      }
       if (!t) return GPS_ONLINE_STYLE;
-      return {
+      // The same object every time: the card compares it to decide a reload.
+      if (this._tilesStyle) return this._tilesStyle;
+      return this._tilesStyle = {
         version: 8, name: "Igor sombre",
         sources: { fond: { type: "raster", tileSize: 256, maxzoom: +this.config.tiles_maxzoom || 20,
           tiles: (Array.isArray(t) ? t : [t]).map(String),

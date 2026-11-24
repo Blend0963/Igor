@@ -293,3 +293,32 @@ def _parse_one(r: dict) -> dict[str, Any] | None:
         "delay": float(summary.get("trafficDelayInSeconds") or 0),
         "steps": steps,
     }
+
+
+# ----- the basemap: TomTom's dark raster map, relayed with the same key -----
+# The card never sees the key: it asks /api/nives/basemap/{z}/{x}/{y}.png
+# (Home Assistant, logged in), which asks TomTom. Pre-drawn 512 px PNG = nothing
+# for the head unit to compute. TomTom has three generations of this API; the
+# first that answers with a picture is kept for the following tiles.
+BASEMAP_URLS = (
+    # Orbis Maps v2
+    "https://api.tomtom.com/maps/orbis/display/raster/tile/{z}/{x}/{y}"
+    "?apiVersion=2&style=street-dark&tileSize=512&key={key}",
+    # Orbis Maps v1
+    "https://api.tomtom.com/maps/orbis/map-display/tile/{z}/{x}/{y}.png"
+    "?apiVersion=1&style=street-dark&tileSize=512&key={key}",
+    # TomTom Maps (Genesis): the « night » style
+    "https://api.tomtom.com/map/1/tile/basic/night/{z}/{x}/{y}.png?tileSize=512&key={key}",
+)
+BASEMAP_MAXZOOM = 22
+
+
+def basemap_urls(key: str, z: int, x: int, y: int, first: int = 0) -> list[tuple[int, str]]:
+    """The tile's addresses, the one known to work first: [(index, url), …]."""
+    order = [first] + [i for i in range(len(BASEMAP_URLS)) if i != first]
+    return [(i, BASEMAP_URLS[i].format(z=z, x=x, y=y, key=key)) for i in order]
+
+
+def tile_ok(z: int, x: int, y: int) -> bool:
+    """A real tile address (no request to TomTom for nonsense)."""
+    return 0 <= z <= BASEMAP_MAXZOOM and 0 <= x < 2 ** z and 0 <= y < 2 ** z
