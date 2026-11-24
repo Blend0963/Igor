@@ -1690,7 +1690,7 @@ def _async_register_offline_services(hass: HomeAssistant) -> None:
         kinds = [k.strip() for k in str(call.data.get("kinds") or "").split(",") if k.strip()]
         if not maps.db_path.exists():
             return {"ok": False, "error": "base hors ligne absente — nives.car_map_update d'abord", "pois": []}
-        return {"ok": True, "source": "offline", "kinds": kinds, "pois": maps.nearby(kinds, lat, lon, radius_m)}
+        return {"ok": True, "source": "offline", "kinds": kinds, "pois": await hass.async_add_executor_job(maps.nearby, kinds, lat, lon, radius_m)}
 
     async def _map_search(call: ServiceCall) -> ServiceResponse:
         query = str(call.data.get("query") or "").strip()
@@ -1699,10 +1699,10 @@ def _async_register_offline_services(hass: HomeAssistant) -> None:
             near = (float(call.data["longitude"]), float(call.data["latitude"]))
         if not maps.db_path.exists():
             return {"ok": False, "error": "base hors ligne absente", "results": []}
-        return {"ok": True, "source": "offline", "results": maps.search(query, near)}
+        return {"ok": True, "source": "offline", "results": await hass.async_add_executor_job(maps.search, query, near)}
 
     async def _map_info(call: ServiceCall) -> ServiceResponse:
-        info = maps.poi_info(int(call.data["id"]))
+        info = await hass.async_add_executor_job(maps.poi_info, int(call.data["id"]))
         if info is None:
             return {"ok": False, "error": "POI inconnu"}
         return {"ok": True, "source": "offline", "poi": info}

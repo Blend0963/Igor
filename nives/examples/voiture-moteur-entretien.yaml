@@ -1,0 +1,149 @@
+# Vues « Moteur » et « Entretien » du dashboard voiture (autoradio 1024×600).
+# À coller dans l'éditeur brut du dashboard (⋮ → Modifier → ⋮ → Éditeur de
+# configuration brut), sous `views:`. Cartes natives + cartes Igor
+# (igor-wall.js), aucun composant HACS.
+# Les entités marquées « À VÉRIFIER » sont déduites des packages : contrôlez
+# leur nom exact dans Outils de développement → États avant de coller.
+
+- title: Moteur
+  path: moteur
+  icon: mdi:engine
+  type: panel
+  cards:
+    - type: vertical-stack
+      cards:
+        # Conseil de rapport : vert « Aucun », orange « Passez la Xe »,
+        # rouge « Rétrogradez en Xe » (attribut `couleur` du capteur).
+        - type: markdown
+          content: >-
+            {% set s = states('sensor.voiture_conseil_rapport') %}
+            {% set c = state_attr('sensor.voiture_conseil_rapport', 'couleur') or 'vert' %}
+            {% set hex = {'vert': '#4caf50', 'orange': '#ff9800', 'rouge': '#f44336'}[c] | default('#4caf50') %}
+            <ha-alert alert-type="{{ 'success' if c == 'vert' else 'warning' if c == 'orange' else 'error' }}">
+            <b style="color:{{ hex }};font-size:1.3em">{{ s if s not in ['unknown','unavailable'] else '—' }}</b>
+            {% if is_state('binary_sensor.voiture_reprise_proposee', 'on') %} · reprise proposée{% endif %}
+            </ha-alert>
+        - type: grid
+          columns: 4
+          square: false
+          cards:
+            - type: gauge
+              entity: sensor.peugeot_407_regime_moteur
+              name: Régime
+              min: 0
+              max: 5000
+              needle: true
+              severity: { green: 0, yellow: 3500, red: 4300 }
+            - type: gauge
+              entity: sensor.peugeot_407_vitesse
+              name: Vitesse
+              min: 0
+              max: 200
+              needle: true
+            - type: gauge
+              entity: sensor.voiture_pression_turbo
+              name: Turbo
+              min: -1
+              max: 2
+              needle: true
+              severity: { green: -1, yellow: 1.3, red: 1.6 }
+            - type: gauge
+              entity: sensor.peugeot_407_charge_moteur
+              name: Charge
+              min: 0
+              max: 100
+              severity: { green: 0, yellow: 75, red: 90 }
+            - type: gauge
+              entity: sensor.peugeot_407_temperature_liquide_refroidissement   # À VÉRIFIER
+              name: Eau
+              min: 40
+              max: 130
+              severity: { green: 60, yellow: 100, red: 110 }
+            - type: gauge
+              entity: sensor.peugeot_407_temperature_air_admission   # À VÉRIFIER
+              name: Air adm.
+              min: -10
+              max: 80
+            - type: gauge
+              entity: sensor.peugeot_407_debit_air   # À VÉRIFIER
+              name: Débit air
+              min: 0
+              max: 150
+            - type: gauge
+              entity: sensor.voiture_conso_instantanee   # À VÉRIFIER (L/100 km)
+              name: L/100
+              min: 0
+              max: 20
+              severity: { green: 0, yellow: 8, red: 12 }
+        - type: custom:igor-history-card
+          title: Dernière heure
+          hours: 1
+          entities:
+            - { entity: sensor.peugeot_407_regime_moteur, name: régime, color: "#6cc4f5" }
+            - { entity: sensor.peugeot_407_vitesse, name: vitesse, color: "#4caf50" }
+            - { entity: sensor.voiture_pression_turbo, name: turbo, color: "#ff9800" }
+            - { entity: sensor.peugeot_407_charge_moteur, name: charge, color: "#ba68c8" }
+
+- title: Entretien
+  path: entretien
+  icon: mdi:wrench
+  type: panel
+  cards:
+    - type: vertical-stack
+      cards:
+        - type: glance
+          show_state: true
+          columns: 4
+          entities:
+            - { entity: sensor.voiture_kilometrage, name: Km }
+            - { entity: sensor.voiture_cout_mois, name: Carburant (mois) }
+            - { entity: sensor.voiture_filtre_gasoil, name: Filtre gasoil }
+            - { entity: sensor.peugeot_407_tests_antipollution_incomplets, name: Antipollution }
+        # « Plein fait » : km / litres / prix au litre → total calculé à l'écran,
+        # les trois valeurs passées telles quelles à script.voiture_plein_fait.
+        - type: custom:igor-buttons-card
+          size: big
+          columns: 1
+          buttons:
+            - icon: mdi:gas-station
+              name: Plein fait
+              color: "#4caf50"
+              service: script.voiture_plein_fait
+              form:
+                title: Plein
+                total: €
+                fields:
+                  - { key: km, name: Kilométrage, unit: km, in_total: false }
+                  - { key: litres, name: Litres, unit: L }
+                  - { key: prix_litre, name: Prix du litre, unit: €/L }
+        # Un bouton par entretien : choisit le type dans input_select.voiture_entretien,
+        # demande confirmation, puis lance script.voiture_entretien_fait.
+        - type: custom:igor-buttons-card
+          size: big
+          columns: 3
+          buttons:
+            - icon: mdi:oil
+              name: Vidange
+              service: script.voiture_entretien_fait
+              select: { entity: input_select.voiture_entretien, option: Vidange }
+              form: { title: "Vidange faite ?" }
+            - icon: mdi:filter
+              name: Filtre à gasoil
+              service: script.voiture_entretien_fait
+              select: { entity: input_select.voiture_entretien, option: Filtre à gasoil }
+              form: { title: "Filtre à gasoil changé ?" }
+            - icon: mdi:air-filter
+              name: Filtre à air
+              service: script.voiture_entretien_fait
+              select: { entity: input_select.voiture_entretien, option: Filtre à air }
+              form: { title: "Filtre à air changé ?" }
+            - icon: mdi:cog-sync
+              name: Distribution
+              service: script.voiture_entretien_fait
+              select: { entity: input_select.voiture_entretien, option: Distribution }
+              form: { title: "Distribution faite ?" }
+            - icon: mdi:clipboard-check
+              name: Contrôle technique
+              service: script.voiture_entretien_fait
+              select: { entity: input_select.voiture_entretien, option: Contrôle technique }
+              form: { title: "Contrôle technique passé ?" }

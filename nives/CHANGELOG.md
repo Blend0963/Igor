@@ -1,3 +1,13 @@
+## 0.38.99 — Vouvoiement dans le fil, GPS sans retour en mode lourd, MapLibre local, formulaires voiture
+
+- **Fil de discussion : vouvoiement systématique** (`THREAD_STYLE`, `prompts.ts`) — Igor dit « vous » dans chaque réponse du fil, même si on lui écrit « tu » ou si un souvenir dit « tu ». La voix et Assist ne changent pas (test `prompts.modes.test.ts`).
+- **Fil plus direct** : la réponse d'abord, plus de formule finale (« N'hésitez pas… », « Puis-je vous aider… ? »), une demande en plusieurs étapes menée jusqu'au bout dans la même réponse.
+- **GPS — bug de lag corrigé** : une zone sans POI dans la base hors ligne (route de campagne) levait une erreur qui passait `offlineReady` à faux pour tout le trajet — 20 images/s au lieu de 8, accrochage à la route 5× plus fréquent, trafic TomTom et Overpass réactivés. Une zone vide est désormais une réponse normale (mise en cache comme telle) ; une vraie erreur bascule sur Overpass pour cette zone seulement.
+- **MapLibre servi par Home Assistant** : la bibliothèque est intégrée à l'image (`frontend/vendor/`, tarball npm 4.7.1, SHA-256 vérifié au build) et chargée depuis `/nives_static/vendor/` ; unpkg reste en secours si la copie locale manque. La carte démarre sans internet.
+- **POI / recherche hors ligne hors de la boucle de HA** : `car_map_pois`, `car_map_search` et `car_map_info` lisent SQLite dans l'exécuteur.
+- **`igor-buttons-card` — formulaires** : un champ peut porter `key:` (valeur passée au service, ex. champs `km` / `litres` / `prix_litre` de `script.voiture_plein_fait`), `in_total: false` (exclu du total : le kilométrage n'est pas multiplié) ; `select: { entity, option }` choisit l'option d'un `input_select` avant le service (un bouton par entretien, un seul script) ; un formulaire sans champ sert de confirmation.
+- **Exemple de vues** `nives/examples/voiture-moteur-entretien.yaml` : conseil de rapport coloré, jauges OBD dont la **pression turbo** (`sensor.voiture_pression_turbo`), courbes sur 1 h, « Plein fait » et un bouton par entretien.
+
 ## 0.38.98 — Carte 100 % hors ligne, auto-maintenue (plus de mode en ligne ni de bouton)
 
 - **Téléchargement automatique au démarrage** : si aucune carte locale n'existe (install neuve, `/config` perdu), l'add-on lance tout seul la construction (extrait Geofabrik + POI SQLite + tuiles PMTiles + **raster CARTO dark z0–14**) à `homeassistant.start`; puis **toutes les 24 h** un `ensure()` vérifie l'âge de la source et applique les diffs quotidiens Geofabrik si besoin (no-op sinon). Échec = log + nouvel essai au tick suivant, jamais fatal. `nives.car_map_update` reste disponible en manuel.

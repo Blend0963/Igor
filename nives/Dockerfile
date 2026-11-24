@@ -169,6 +169,19 @@ COPY server/src/home-mind-server/public ./public
 # Copy s6-overlay service definitions and scripts
 COPY nives/rootfs /
 
+# MapLibre for the car's GPS card, served by Home Assistant with the cards
+# (frontend/vendor/) so the map starts without internet; the card falls back
+# to unpkg only if this copy is missing. npm tarball, checksum pinned.
+ARG MAPLIBRE_VERSION=4.7.1
+ARG MAPLIBRE_SHA256="7e8a778cff03abad64ae19674977058616e1cf7c3712cabd1c35461ae465f923"
+RUN verify() { got=$(sha256sum "$1" | cut -d' ' -f1); echo "sha256 $(basename "$1") $got"; [ -n "$2" ] && [ "$got" = "$2" ] || { echo "CHECKSUM MISMATCH for $1 (expected '$2')"; exit 1; }; } \
+    && curl -fsSL "https://registry.npmjs.org/maplibre-gl/-/maplibre-gl-${MAPLIBRE_VERSION}.tgz" -o /tmp/maplibre.tgz \
+    && verify /tmp/maplibre.tgz "$MAPLIBRE_SHA256" \
+    && mkdir -p /opt/nives/frontend/vendor \
+    && tar -xzf /tmp/maplibre.tgz -C /opt/nives/frontend/vendor --strip-components=2 package/dist/maplibre-gl.js package/dist/maplibre-gl.css \
+    && rm -f /tmp/maplibre.tgz \
+    && test -s /opt/nives/frontend/vendor/maplibre-gl.js
+
 # Ensure all scripts are executable
 RUN find /etc/s6-overlay -name 'run' -exec chmod +x {} \; \
     && find /etc/s6-overlay -name 'finish' -exec chmod +x {} \; \

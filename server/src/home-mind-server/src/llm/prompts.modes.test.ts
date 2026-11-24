@@ -35,6 +35,15 @@ describe("prompt modes", () => {
     }
   });
 
+  it("addresses the owner with vous in a thread only", () => {
+    expect(thread).toMatch(/ALWAYS use "vous" \(vouvoiement\)/);
+    expect(thread).toMatch(/NEVER end with an offer/);
+    const blocks = buildSystemPrompt([], "thread") as Array<{ text: string }>;
+    expect(blocks.map((b) => b.text).join("\n")).toMatch(/vouvoiement/);
+    expect(voice).not.toMatch(/vouvoiement/);
+    expect(text).not.toMatch(/vouvoiement/);
+  });
+
   it("drops the plain-text and speech-to-text rules from a thread", () => {
     expect(thread).not.toContain("PLAIN TEXT ONLY");
     expect(thread).not.toContain("Speech-to-Text) Awareness");

@@ -1648,6 +1648,13 @@
   //           - { entity: input_number.fuel_litres, name: Litres, unit: L }
   //           - { entity: input_number.fuel_price, name: Prix du litre, unit: €/L }
   //       service: script.fuel_done              # or tap_action
+  //   A field may also carry `key:` — its value then goes to the service as
+  //   that field (a script's fields: km, litres, prix_litre), with or without
+  //   an entity to save it in — and `in_total: false` to stay out of the
+  //   total (the odometer is not multiplied by the price). A form without
+  //   fields is a confirmation (« Vidange faite ? » → Valider).
+  //   select: { entity: input_select.x, option: Vidange } picks that option
+  //   before the service runs (one button per kind of servicing, one script).
   class IgorButtonsCard extends IgorCard {
     setConfig(config) {
       if (!config || !Array.isArray(config.buttons) || !config.buttons.length) throw new Error("igor-buttons-card: buttons est requis");
@@ -1683,6 +1690,8 @@
           // form: the numbers asked first (each saved in its input_number), then the action.
           if (b.form && !btn._formOk) { this.openForm(b, btn); return; }
           btn._formOk = false;
+          var sent = btn._formData || {};
+          btn._formData = null;
           // tap_action: any Home Assistant action (url: app://…, assist…).
           if (b.tap_action) { haAction(this, b.form ? Object.assign({}, b.tap_action, { confirmation: undefined }) : b.tap_action); return; }
           if (b.edit) { editDashboard(this, this._hass); return; }
@@ -1691,7 +1700,9 @@
           if (b.navigate) { navigate(String(b.navigate)); return; }
           if (b.menu) { this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })); return; }
           if (!this._hass) return;
-          service(this._hass, b.service, b.data, b.target).then(() => {
+          var data = Object.keys(sent).length ? Object.assign({}, b.data || {}, sent) : b.data;
+          var pick = b.select && b.select.entity ? this._hass.callService(String(b.select.entity).split(".")[0] === "select" ? "select" : "input_select", "select_option", { entity_id: b.select.entity, option: b.select.option }) : Promise.resolve();
+          pick.then(() => service(this._hass, b.service, data, b.target)).then(() => {
             btn.classList.add("done");
             setTimeout(() => btn.classList.remove("done"), 800);
           }).catch((e) => { btn.title = String(e && e.message || e); });
@@ -1728,9 +1739,9 @@
       var inputs = (f.fields || []).map((fd) => {
         var st = fd.entity && hass.states[fd.entity], a = (st && st.attributes) || {};
         var cur = st ? parseFloat(st.state) : NaN;
-        var start = !isNaN(cur) && cur > 0 ? cur : parseFloat(mem(fd.entity));
+        var start = !isNaN(cur) && cur > 0 ? cur : parseFloat(mem(fd.entity || "key:" + fd.key));
         var lab = el("label", "fl", box);
-        el("span", "", lab, fd.name || a.friendly_name || fd.entity);
+        el("span", "", lab, fd.name || a.friendly_name || fd.entity || fd.key);
         var wrap = el("div", "fin", lab);
         var inp = el("input", "", wrap);
         inp.type = "text"; inp.inputMode = "decimal"; inp.autocomplete = "off";
@@ -1742,7 +1753,7 @@
       var tot = f.total ? el("div", "ftot", box) : null;
       var showTot = () => {
         if (!tot) return;
-        var v = inputs.reduce((acc, x) => acc * num(x), 1);
+        var v = inputs.filter((x) => x.fd.in_total !== false).reduce((acc, x) => acc * num(x), 1);
         tot.innerHTML = ""; tot.appendChild(document.createTextNode("total"));
         el("b", "", tot, isNaN(v) ? "—" : fr(v, 2) + " " + (f.total === true ? "" : f.total));
       };
@@ -1765,16 +1776,20 @@
           }
         }
         ok.disabled = true;
+        var sent = {};
         try {
           for (var j = 0; j < inputs.length; j++) {
             var y = inputs[j], val = num(y);
-            try { window.localStorage.setItem("igor-form:" + y.fd.entity, String(val)); } catch (e) { /* no storage */ }
+            if (y.fd.key) sent[y.fd.key] = val;
+            try { window.localStorage.setItem("igor-form:" + (y.fd.entity || "key:" + y.fd.key), String(val)); } catch (e) { /* no storage */ }
+            if (!y.fd.entity) continue;
             var dom = String(y.fd.entity).split(".")[0];
             await hass.callService(dom === "input_text" ? "input_text" : dom === "number" ? "number" : "input_number", "set_value", { entity_id: y.fd.entity, value: dom === "input_text" ? String(val) : val });
           }
         } catch (e) { err.textContent = "Enregistrement impossible : " + (e && e.message || e); ok.disabled = false; return; }
         close();
         btn._formOk = true;
+        btn._formData = sent;
         btn.click();
       });
       setTimeout(() => { if (inputs[0]) { inputs[0].inp.focus(); inputs[0].inp.select(); } }, 50);
@@ -5234,7 +5249,13 @@
   // longer drives through houses; farther than `snap`, a car park, it keeps
   // the real position), and between two fixes it goes on along that road for
   // at most 4 seconds instead of 8 straight ahead.
-  var GPS_MAPLIBRE = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl";
+  // MapLibre ships in the add-on image (frontend/vendor/, served by Home
+  // Assistant with these cards): the map starts without internet and the
+  // head unit's browser caches it. unpkg is only the fallback when the local
+  // copy is missing (an integration copied by hand, without vendor/).
+  var GPS_MAPLIBRE_LOCAL = "/nives_static/vendor/maplibre-gl";
+  var GPS_MAPLIBRE_CDN = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl";
+  var GPS_MAPLIBRE = GPS_MAPLIBRE_LOCAL;
   var GPS_R = 6378137, GPS_PREDICT_S = 4, GPS_MOVING = 0.8, GPS_TRAIL = 600;
   // The drawn lines breathe with the zoom: thin on the overview (they must not
   // smother the map), road-wide at the zooms one drives at. Pure paint — the
@@ -5242,7 +5263,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.83";
+  var GPS_CARD_VERSION = "0.38.99";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -5270,12 +5291,21 @@
   function gpsMapLibre() {
     if (window.maplibregl) return Promise.resolve(window.maplibregl);
     if (!window.__igorMapLibre) {
-      window.__igorMapLibre = new Promise(function (resolve, reject) {
-        var sc = document.createElement("script");
-        sc.src = GPS_MAPLIBRE + ".js";
-        sc.onload = function () { resolve(window.maplibregl); };
-        sc.onerror = function () { window.__igorMapLibre = null; reject(new Error("Carte indisponible (pas d'internet ?)")); };
-        document.head.appendChild(sc);
+      var load = function (base) {
+        return new Promise(function (resolve, reject) {
+          var sc = document.createElement("script");
+          sc.src = base + ".js";
+          sc.onload = function () { window.maplibregl ? resolve(window.maplibregl) : reject(new Error("maplibre")); };
+          sc.onerror = function () { sc.remove(); reject(new Error("maplibre")); };
+          document.head.appendChild(sc);
+        });
+      };
+      window.__igorMapLibre = load(GPS_MAPLIBRE_LOCAL).catch(function () {
+        GPS_MAPLIBRE = GPS_MAPLIBRE_CDN;
+        return load(GPS_MAPLIBRE_CDN);
+      }).catch(function () {
+        window.__igorMapLibre = null;
+        throw new Error("Carte indisponible (pas d'internet ?)");
       });
     }
     return window.__igorMapLibre;
@@ -6204,7 +6234,7 @@
     build() {
       this.root = this.attachShadow({ mode: "open" });
       this.root.innerHTML = scaled(
-        '<link rel="stylesheet" href="' + GPS_MAPLIBRE + '.css"><style>' +
+        '<link rel="stylesheet" href="' + GPS_MAPLIBRE + '.css" data-ml-css><style>' +
         ":host { display: block; height: 100%; }" +
         "ha-card { display: block; position: relative; height: 100%; min-height: 240px; overflow: hidden; background: #07080a; border-radius: var(--igor-radius, 3px); }" +
         "#map { position: absolute; inset: 0; touch-action: none; } #map .maplibregl-canvas { touch-action: none; }" +
@@ -6439,6 +6469,8 @@
         '<div class="snap" id="snapEl"></div></ha-card>');
       var $ = (id) => this.root.getElementById(id);
       this.$ = $;
+      var mlCss = this.root.querySelector("link[data-ml-css]");
+      if (mlCss) mlCss.addEventListener("error", function () { if (mlCss.href.indexOf(GPS_MAPLIBRE_CDN) < 0) mlCss.href = GPS_MAPLIBRE_CDN + ".css"; });
       $("card").classList.toggle("noattr", !!this.config.hide_attribution);
       $("card").classList.toggle("withspeed", this.config.show_speed !== false);
       $("card").classList.toggle("withattr", !this.config.hide_attribution);
@@ -8733,11 +8765,15 @@
             service_data: { latitude: c[1], longitude: c[0], radius_km: Math.min(20, rad), kinds: kinds } })
             .then((res) => {
               var r = (res && res.response) || {};
-              if (!r.ok || !Array.isArray(r.pois) || !r.pois.length) throw new Error(r.error || "offline vide");
+              // An empty square (a country road) is an answer, not a failure:
+              // throwing here used to switch offlineReady off for the rest of
+              // the trip — 20 fps, snapping 5× more often, TomTom traffic and
+              // Overpass back on — the head unit's lag.
+              if (!r.ok || !Array.isArray(r.pois)) throw new Error(r.error || "offline");
               return (r.pois).map((q) => ({ id: "off" + q.id, kind: q.kind, p: [q.lon, q.lat], label: (q.name || q.brand || "").slice(0, 18), brand: q.brand || "", offId: q.id }));
             })
             .then((items) => { if (key === this.poiKey) keep(items); })
-            .catch(() => { this.offlineReady = false; return fromOverpass(); });
+            .catch(() => fromOverpass());
         }
         if (this._hass && this.config.tomtom_pois !== false && kinds) {
         var ttFailed = 0;
