@@ -1,3 +1,7 @@
+## 0.39.10 — Carte 3D derrière un proxy https
+
+- Carte 3D du téléphone (`basemap: tomtom-3d`) : « Failed to fetch » sur chaque morceau de carte. Derrière un proxy inverse, Home Assistant voit ses requêtes en http et écrivait des adresses `http://` dans le style relayé ; la page étant en https, le navigateur les refusait. La carte ramène désormais toute adresse `/api/nives/…` de la même maison sur l'origine de la page, et le relais suit `X-Forwarded-Proto` quand le proxy l'envoie.
+
 ## 0.39.9 — Le relais TomTom répond enfin
 
 - **Plus de téléchargement automatique de la carte hors ligne** : ni au démarrage de Home Assistant, ni chaque jour, ni à l'ouverture de la carte GPS. L'extrait France fait 4,5 Go, l'image n'a pas `osmium`, et chaque essai finissait en notification « Échec du téléchargement de la carte ». Le service `nives.car_map_update` reste disponible pour un téléchargement demandé à la main.

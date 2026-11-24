@@ -7081,8 +7081,15 @@
         // Igor's own tiles (traffic) need the Home Assistant login, as every API call.
         transformRequest: (url) => {
           if (url.indexOf("/api/nives/") >= 0) this.lastNives = url;
+          // Home Assistant behind a reverse proxy sees its own requests in
+          // http: the addresses it writes into a relayed style (TomTom 3D)
+          // then say http:// while the page is https — the browser refuses
+          // them. Same house, so the page's own origin, whatever they say.
+          var m = /^https?:\/\/([^/]+)(\/api\/nives\/.*)$/.exec(url);
+          if (m && m[1] === window.location.host) url = window.location.origin + m[2];
           var tok = this._hass && this._hass.auth && this._hass.auth.data && this._hass.auth.data.access_token;
-          return tok && url.indexOf(window.location.origin + "/api/nives/") === 0 ? { url: url, headers: { Authorization: "Bearer " + tok } } : undefined;
+          if (tok && url.indexOf(window.location.origin + "/api/nives/") === 0) return { url: url, headers: { Authorization: "Bearer " + tok } };
+          return m ? { url: url } : undefined;
         }
       }); } catch (e) { this.message("carte : " + (e && e.message || "WebGL indisponible sur cet appareil")); this.loading = false; return; }
       this.map = map;

@@ -929,7 +929,10 @@ def _async_register_basemap(hass: HomeAssistant) -> None:
             key = _traffic_key(hass)
             if not key:
                 return web.Response(status=404, text="clé TomTom absente des options d'Igor")
-            base = str(request.url.with_path(prefix).with_query(None))
+            # The scheme the browser used (a reverse proxy says it in
+            # X-Forwarded-Proto), not the one Home Assistant sees behind it.
+            proto = (request.headers.get("X-Forwarded-Proto") or request.url.scheme).split(",")[0].strip()
+            base = str(request.url.with_scheme(proto if proto in ("http", "https") else request.url.scheme).with_path(prefix).with_query(None))
             raw = request.rel_url.raw_path[len(prefix):]
             qs = request.rel_url.raw_query_string
             session = async_get_clientsession(hass)
