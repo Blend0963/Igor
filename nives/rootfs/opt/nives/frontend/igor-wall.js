@@ -10492,6 +10492,9 @@
   //   voice: input_text.car_voice          # the GPS card's voice_to: said HERE
   //   announce: input_text.car_announce    # the house's announcements, said here too
   //   mute: input_boolean.car_voice_off    # on: nothing said (the Voix button)
+  //   phone: binary_sensor.phone_in_car    # absent: no route offered (Chercher, Maison, Stations, Étape greyed); the block shows where the car is:
+  //   address: sensor.headunit_geocoded_location   # the street and the town
+  //   weather: weather.home                # the weather, at the foot of the block in every state
   //   mode: buttons                        # the row of GPS buttons instead of the guidance
   class IgorGuideCard extends IgorCard {
     setConfig(config) { this.config = config || {}; }
@@ -10502,6 +10505,7 @@
       var c = this.config, h = this._hass;
       if (!h) return;
       var dest = c.destination;
+      if (this.phoneAbsent() && /^(fav|search|fuel|stopover)$/.test(detail.cmd)) return;
       if (detail.cmd === "stop") { if (dest) h.callService("input_text", "set_value", { entity_id: dest, value: "" }); return; }
       if (detail.cmd === "fav") {
         var f = this.favs()[Number(detail.index) || 0], at = this.favAt(f);
@@ -10520,6 +10524,43 @@
       if (st && st.attributes.latitude != null) return { lat: Number(st.attributes.latitude), lon: Number(st.attributes.longitude) };
       if (Array.isArray(f.location)) return { lat: Number(f.location[0]), lon: Number(f.location[1]) };
       return null;
+    }
+    // `phone` says the phone (its map computes the routes) is not there.
+    phoneAbsent() { var c = this.config, ph = c.phone && this._hass && this._hass.states[c.phone]; return !!(ph && ph.state !== "on"); }
+    // The weather (`weather`), at the foot of the block, whatever it shows.
+    drawWx() {
+      var c = this.config, h = this._hass, box = this.wxEl, w = c.weather && h && h.states[c.weather];
+      if (!box) return;
+      box.hidden = !w;
+      if (!w) return;
+      var key = w.state + "|" + w.attributes.temperature + "|" + w.attributes.wind_speed + "|" + w.attributes.humidity;
+      if (key === this.wxKey) return;
+      this.wxKey = key;
+      box.innerHTML = "";
+      var FR = { "clear-night": ["mdi:weather-night", "nuit claire"], cloudy: ["mdi:weather-cloudy", "couvert"], fog: ["mdi:weather-fog", "brouillard"], hail: ["mdi:weather-hail", "grêle"],
+        lightning: ["mdi:weather-lightning", "orage"], "lightning-rainy": ["mdi:weather-lightning-rainy", "orage"], partlycloudy: ["mdi:weather-partly-cloudy", "éclaircies"],
+        pouring: ["mdi:weather-pouring", "forte pluie"], rainy: ["mdi:weather-rainy", "pluie"], snowy: ["mdi:weather-snowy", "neige"], "snowy-rainy": ["mdi:weather-snowy-rainy", "neige et pluie"],
+        sunny: ["mdi:weather-sunny", "soleil"], windy: ["mdi:weather-windy", "vent"], "windy-variant": ["mdi:weather-windy-variant", "vent"], exceptional: ["mdi:alert", "exceptionnel"] };
+      var k = FR[w.state] || ["mdi:weather-partly-cloudy", w.state];
+      var ic = icon(box, k[0]); ic.style.setProperty("--mdc-icon-size", "30px"); ic.style.color = "var(--fg)";
+      var tp = el("div", "", box, w.attributes.temperature != null ? Math.round(w.attributes.temperature) + " °C" : ""); tp.style.cssText = "font-size:24px;white-space:nowrap";
+      el("div", "", box, k[1]).style.cssText = "font-size:13px;color:var(--dim);white-space:nowrap";
+      var extra = [w.attributes.wind_speed != null ? "vent " + Math.round(w.attributes.wind_speed) + " km/h" : "", w.attributes.humidity != null ? Math.round(w.attributes.humidity) + " %" : ""].filter(Boolean).join(" · ");
+      if (extra) { var ex = el("div", "", box, extra); ex.style.cssText = "margin-left:auto;min-width:0;font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"; }
+    }
+    // Where the car is: `address` (the head unit's geocoded location sensor:
+    // thoroughfare, locality) and `weather` (a weather entity).
+    drawPlace() {
+      var c = this.config, h = this._hass;
+      var ad = c.address && h.states[c.address], a = (ad && ad.attributes) || {};
+      var full = ad ? String(ad.state || "") : "", parts = full.split(",").map((x) => x.trim()).filter(Boolean);
+      var street = a.thoroughfare || a.Thoroughfare || parts[0] || "";
+      var num = a.sub_thoroughfare || a["Sub Thoroughfare"] || "";
+      var town = [a.postal_code || a["Postal Code"], a.locality || a.Locality || parts[1]].filter(Boolean).join(" ");
+      if (/^(unknown|unavailable)$/.test(full)) { street = ""; town = ""; }
+      this.npStreet.textContent = street ? (num && !/^\d/.test(street) ? num + " " : "") + street : "Position inconnue";
+      this.npTown.textContent = town;
+      this.drawWx();
     }
     guided() { var st = this.config.entity && this._hass && this._hass.states[this.config.entity]; return !!(st && st.state && st.state !== "unknown" && st.state !== "unavailable"); }
     build() {
@@ -10579,6 +10620,14 @@
         this.idle.style.display = "flex"; this.idle.style.flexDirection = "column"; this.idle.style.height = "100%";
         this.drawRecent();
       }
+      // No phone, no route: the block says where the car is instead — the
+      // street, the town, the weather there (the right column already says
+      // the phone is missing, and offers Waze).
+      this.noPhone = el("div", "", card); this.noPhone.hidden = true;
+      this.noPhone.style.cssText = "display:flex;flex-direction:column;height:100%";
+      el("div", "h", this.noPhone, "sur la route");
+      this.npStreet = el("div", "", this.noPhone); this.npStreet.style.cssText = "font-size:26px;line-height:1.15;margin-top:4px";
+      this.npTown = el("div", "", this.noPhone); this.npTown.style.cssText = "font-size:16px;color:var(--dim);margin-top:6px";
       this.guide = el("div", "", card);
       if (this.remote()) { this.guide.style.display = "flex"; this.guide.style.flexDirection = "column"; this.guide.style.flex = "1"; this.guide.style.minHeight = "0"; el("div", "h", this.guide, "guidage"); }
       var t = el("div", "turn", this.guide);
@@ -10595,6 +10644,12 @@
         var st = el("button", "b stop", e); st.type = "button"; st.style.marginLeft = "auto"; icon(st, "mdi:stop"); st.title = "Arrêter le guidage";
         st.addEventListener("click", () => this.send({ cmd: "stop" }));
       }
+      // The weather at the foot, in every state (route, no route, no phone).
+      this.wxEl = el("div", "", card);
+      this.wxEl.style.cssText = "margin-top:10px;border-top:1px solid var(--line);padding-top:10px;display:flex;align-items:center;gap:12px;flex:none;overflow:hidden";
+      this.wxEl.hidden = true;
+      card.style.display = "flex"; card.style.flexDirection = "column";
+      [this.idle, this.noPhone, this.guide].forEach((x) => { if (x) { x.style.flex = "1"; x.style.minHeight = "0"; } });
       this.buildFind();
       if (!this.remote()) {
         this.onGuide = (ev) => this.show(ev.detail);
@@ -10766,15 +10821,38 @@
         this.barIcon.voice.setAttribute("icon", off ? "mdi:volume-off" : "mdi:volume-high");
       }
       if (this.barBtns && this.barBtns.stop) this.barBtns.stop.disabled = !this.guided();
+      var away = this.phoneAbsent();
+      if (this.barBtns) ["search", "home", "work", "fuel", "stopover"].forEach((k) => {
+        var b = this.barBtns[k]; if (!b) return;
+        b.disabled = away; b.style.opacity = away ? "0.35" : "";
+      });
+      if (this.remote() && this.noPhone && away !== this.wasAway) { this.wasAway = away; this.show(this.lastTurn ? this.turnObj : null); }
+      if (this.noPhone && !this.noPhone.hidden) this.drawPlace();
+      // A destination chosen here, and no guidance back: the map that
+      // computes the route (the phone's) is not running. Said, not silent.
+      if (this.remote() && this.idle && c.destination) {
+        if (!this.waitEl) { this.waitEl = el("div", "", this.idle); this.waitEl.style.cssText = "margin-top:8px;padding:10px 12px;border:1px dashed " + CAR_WARN + ";color:" + CAR_WARN + ";font-size:13px;line-height:1.4"; }
+        var ds = h.states[c.destination], dv = ds ? String(ds.state || "") : "", hasDest = /^-?\d/.test(dv);
+        var waiting = hasDest && !this.guided() && Date.now() - (Date.parse(ds.last_changed) || 0) > 6000;
+        var ph = c.phone && h.states[c.phone], absent = ph && ph.state !== "on";
+        this.waitEl.hidden = !waiting;
+        if (waiting) this.waitEl.textContent = "Destination : " + (dv.split(";")[1] || "").split("|")[0] + " — " + (absent
+          ? "posez le téléphone sur le socle : c'est sa carte qui calcule l'itinéraire."
+          : "en attente de la carte du téléphone (page « tel-carte » ouverte ?).");
+        clearTimeout(this.waitTimer);
+        if (hasDest && !this.guided()) this.waitTimer = setTimeout(() => this.update(), 7000);
+      }
       if (this.remote() && this.guide) {
         var st = h.states[c.entity], v = st ? String(st.state || "") : "";
         if (v === "unknown" || v === "unavailable") v = "";
         if (v !== this.lastTurn) {
           this.lastTurn = v;
           var a = v.split("|");
-          this.show(v ? { icon: a[0], dist: a[1], text: a[2], then: a[3], eta: a[4], left: a[5], min: a[6], jam: Number(a[7]) || 0, dest: a[8] } : null);
+          this.turnObj = v ? { icon: a[0], dist: a[1], text: a[2], then: a[3], eta: a[4], left: a[5], min: a[6], jam: Number(a[7]) || 0, dest: a[8] } : null;
+          this.show(this.turnObj);
         }
       }
+      this.drawWx();
       this.hear(c.voice, "voiceSeen");
       this.hear(c.announce, "announceSeen");
       this.offerRoutes();
@@ -10842,7 +10920,9 @@
     disconnectedCallback() { if (this.onGuide) window.removeEventListener("igor-gps-guide", this.onGuide); }
     show(g) {
       if (!this.guide) return;
-      this.idle.hidden = !!g; this.guide.hidden = !g;
+      var away = this.remote() && this.phoneAbsent() && !g;
+      if (this.noPhone) { this.noPhone.hidden = !away; if (away) this.drawPlace(); }
+      this.idle.hidden = !!g || away; this.guide.hidden = !g;
       if (!g) return;
       this.gIcon.setAttribute("icon", g.icon || "mdi:arrow-up");
       this.gDist.textContent = g.dist || "";
@@ -10887,7 +10967,10 @@
     var look = key ? MSG_APPS[key] : ["#8a9099", (app[0] || "•").toUpperCase()];
     var name = key === "whatsapp" ? "WhatsApp" : key === "gmail" || key === "gm" ? "Gmail" : key === "sms" || key === "messaging" ? "SMS" : app ? app[0].toUpperCase() + app.slice(1) : "";
     var call = /appel|dialer|téléphone/i.test(app) && /manqu|missed/i.test(titre + " " + txt);
-    return { app: name, pkg: pkg, titre: titre, txt: txt, time: (date.match(/\d{1,2}:\d{2}/) || [""])[0], color: call ? "#e5323b" : look[0], letter: call ? "✆" : look[1], call: call };
+    // A conversation (one can answer it) or a notification (franceinfo, a
+    // parcel, an app): only a conversation gets « Répondre ».
+    var chat = /whatsapp|messaging|\.mms|sms|telegram|securesms|signal|facebook\.orca|messenger|teams|instagram|discord|slack|viber|skype/i.test(pkg + " " + app) && !/fork/i.test(pkg + app);
+    return { app: name, pkg: pkg, titre: titre, txt: txt, time: (date.match(/\d{1,2}:\d{2}/) || [""])[0], color: call ? "#e5323b" : look[0], letter: call ? "✆" : look[1], call: call, chat: chat };
   }
   class IgorMessagesCard extends IgorCard {
     setConfig(config) { if (!config || !config.entity) throw new Error("igor-messages-card: entity est requis"); this.config = config; }
@@ -11000,7 +11083,12 @@
         if (byKey[k]) { byKey[k].n++; return; }
         m.n = 1; byKey[k] = m; groups.push(m);
       });
-      groups.slice(0, inCall ? Math.min(3, c.count || 5) : (c.count || 5)).forEach((m, i) => {
+      var others = groups.filter((m) => !m.chat && !m.call);
+      groups = groups.filter((m) => m.chat || m.call);
+      this.head.textContent = "messages · " + groups.reduce((t, m) => t + m.n, 0);
+      var max = (inCall ? Math.min(3, c.count || 5) : (c.count || 5)) - (others.length ? 1 : 0);
+      if (!groups.length) el("div", "empty", this.list, "Aucun message");
+      groups.slice(0, Math.max(1, max)).forEach((m, i) => {
         var row = el("div", "cp" + (i ? "" : " new"), this.list);
         var a = el("div", "a", row, m.letter); a.style.background = m.color;
         var w = el("div", "w", row); w.appendChild(document.createTextNode(m.titre || m.app));
@@ -11016,6 +11104,17 @@
           icon(b2, "mdi:reply"); el("span", "", b2, "répondre"); b2.addEventListener("click", () => this.reply(m));
         }
       });
+      // Everything else in one quiet line: no answer to give, Igor reads it if asked.
+      if (others.length) {
+        var row = el("div", "cp", this.list); row.style.opacity = "0.85";
+        var ic = el("div", "a", row, "🔔"); ic.style.background = "#2a2f36"; ic.style.color = "var(--fg)";
+        var w = el("div", "w", row), n = others.reduce((t, m) => t + m.n, 0);
+        w.appendChild(document.createTextNode(n + (n > 1 ? " autres notifications" : " autre notification")));
+        el("small", "", w, others.slice(0, 4).map((m) => m.app || m.titre).filter((v, i, a) => v && a.indexOf(v) === i).join(" · "));
+        var b1 = el("button", "b l", row); b1.type = "button"; icon(b1, "mdi:play"); el("span", "", b1, "lire");
+        b1.addEventListener("click", () => this.run(this.config.say || "script.voiture_dire", { message: others.slice(0, 3).map((m) => (m.app ? m.app + " : " : "") + (m.titre || "") + (m.txt ? ". " + m.txt : "")).join(". ") }));
+        el("div", "", row);
+      }
     }
   }
 
@@ -11063,12 +11162,11 @@
       this.off = el("div", "abs", card);
       var t2 = el("div", "top", this.off); el("div", "h", t2, "téléphone"); el("div", "tel", t2, "absent");
       var ph = el("div", "ph", this.off); icon(el("div", "pi", ph), "mdi:cellphone-arrow-down");
-      var tx = el("div", "", ph); el("b", "", tx, "Posez le téléphone sur le socle"); el("small", "", tx, "la carte s'affiche dessus · sinon, Waze");
-      var wz = el("div", "row2 wz", this.off);
-      var ow = el("button", "b go", wz); ow.type = "button"; icon(ow, "mdi:waze"); el("span", "", ow, "ouvrir waze");
+      var tx = el("div", "", ph); el("b", "", tx, "Posez le téléphone sur le socle"); el("small", "", tx, "pour la carte et le guidage · sinon, Waze");
+      // No phone, no destination chosen here: Waze is simply opened.
+      var wz = el("div", "wz", this.off);
+      var ow = el("button", "b go", wz); ow.type = "button"; ow.style.width = "100%"; icon(ow, "mdi:waze"); el("span", "", ow, "ouvrir waze");
       ow.addEventListener("click", () => haAction(this, { action: "url", url_path: "app://com.waze" }));
-      var vw = el("button", "b", wz); vw.type = "button"; icon(vw, "mdi:arrow-right-bold-box-outline"); el("span", "", vw, "vers waze");
-      vw.addEventListener("click", () => IgorGuideCard.prototype.openWaze.call(this));
     }
     update() {
       var h = this._hass, c = this.config;

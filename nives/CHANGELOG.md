@@ -1,3 +1,12 @@
+## 0.40.3 — Sans téléphone, pas d'itinéraire proposé
+
+- `igor-guide-card`, téléphone absent : le bloc ne répète plus « pas de téléphone » (la colonne Téléphone le dit) ; il montre **où est la voiture** — la rue et la ville (`address` : le capteur « Geocoded location » de l'autoradio).
+- `igor-guide-card` : **`weather`** — la météo (icône, température, ciel, vent, humidité) au pied du bloc, dans tous les états : guidage, sans itinéraire, sans téléphone.
+- `igor-phone-card` : téléphone absent, un seul bouton **Ouvrir Waze** (plus de « Vers Waze » : sans téléphone, aucune destination n'est choisie dans Igor).
+- `igor-messages-card` : **les conversations seulement** (WhatsApp, SMS, Telegram, Signal, Messenger, Teams…) ont **Répondre** ; un appel manqué a Rappeler / SMS ; toutes les autres notifications (franceinfo, colis, applications) sont réunies sur une seule ligne discrète « N autres notifications », avec **Lire** seulement.
+- `igor-guide-card` (option `phone`) : téléphone absent du socle, **aucun itinéraire n'est proposé** — Chercher, Maison, Stations et Étape sont grisés et inactifs, et le bloc de guidage affiche « Pas de téléphone sur le socle : pas d'itinéraire Igor » avec un grand bouton **Ouvrir Waze**. Le téléphone reposé, tout revient.
+- `igor-guide-card` (autoradio) : une destination choisie sans guidage en retour au bout de 6 s affiche pourquoi, en orange : « posez le téléphone sur le socle : c'est sa carte qui calcule l'itinéraire » (option `phone`), ou « en attente de la carte du téléphone ».
+
 ## 0.40.2 — L'autoradio comme sur les croquis
 
 - **`igor-messages-card`** — les messages façon CarPlay : l'icône de l'application, l'expéditeur, le nombre de messages, l'heure, et deux boutons, **Lire** (Igor le dit à voix haute, `say`) et **Répondre** (« J'arrive à 18:27 » avec l'heure du guidage, « Je conduis, je te rappelle », « OK 👍 », ou **Dicter à Igor**) ; jamais le texte à l'écran. Un appel manqué : **Rappeler** et **SMS**. Pendant un appel, un grand panneau au-dessus (Décrocher, Refuser, Refuser + « je conduis »). Les anciens relais Tasker « HA_NOTIF · %anapp|paquet|titre|texte » sont décodés.
