@@ -1,3 +1,43 @@
+## 0.42.1 — Les imprévus en route
+
+- **Connexion perdue** : la barre d'Igor vérifie Home Assistant toutes les 10 s ; sans réponse, un bandeau rouge « connexion perdue · valeurs figées depuis 18:05 · reconnexion… » remplace la ligne du haut, et la dernière flèche du guidage est estompée (le téléphone continue de guider sur son écran). Tout revient seul avec le réseau.
+- **Guidage interrompu, quelle qu'en soit la cause** : `igor-guide-card` suit le signe de vie de la carte du téléphone (`ahead`, son `publish_ahead`). Muette 20 s pendant un guidage (téléphone retiré, appli fermée, écran éteint, batterie vide), la dernière flèche n'est plus affichée : « Vers Maison », la raison, « Continuer avec Waze » sur la même destination, « reposez le téléphone : le guidage reprend ». Sans connexion, « Continuer avec Waze » ouvre le lien Waze directement.
+- **La voix de secours** : si l'autoradio ne peut pas recevoir une annonce (Home Assistant injoignable), la carte du téléphone la dit elle-même — relié en Bluetooth, le son sort quand même dans la voiture.
+
+## 0.42.0 — La frise sous la console, la vue moteur qui sait pourquoi
+
+- **`igor-drive-card`** en deux étages :
+  - **en haut**, ce que le moment demande : le radar, le moteur à la grosse accélération, sinon **le trajet en cours et sa conso** (distance, L/100, coût, score éco ; courbe des 15 dernières minutes à échelle fixe avec la moyenne en pointillé ; « maintenant 5,2 L/100 ») ; voiture arrêtée : le dernier trajet. Onglets radar · moteur · conso.
+  - **en dessous, la frise « devant vous »**, en permanence pendant un guidage (aucune sans itinéraire) : les 30 prochains km ou ce qui reste. « Vous » est fixe à gauche, la route vient à vous : des tirets défilent à la vitesse de la voiture, les points glissent d'une seconde à l'autre (les distances sont prolongées avec la vitesse entre deux messages de la carte), le radar proche pulse, les bouchons et ralentissements colorent leur tronçon (rouge, orange). Étiquettes courtes : limite du radar, prix de la station, péage, retard du bouchon, heure d'arrivée.
+- **Vue moteur** refaite : compte-tours et conseil de rapport à gauche ; turbo, charge et accélération en barres à droite ; moteur, admission, 0 → 100 en pied. Son titre dit pourquoi : **sortie de péage** (un péage passé il y a moins de 1,5 km, d'après la carte du téléphone), **démarrage**, **dépassement** ou **relance**.
+- `igor-gps-card` (`publish_ahead`) : les péages (entrée et sortie de chaque tronçon payant, et celui qu'on vient de passer), la longueur et la gravité de chaque bouchon.
+
+## 0.41.0 — La page Route qui suit la route
+
+- **`igor-drive-card`** — le centre de l'autoradio change de lui-même selon la route, par priorité :
+  - **radar** à moins de 1 km (500 m en ville) : grand panneau, distance, barre qui se vide ; vert à la limite ou en dessous, orange jusqu'à +5 km/h, rouge au-delà (« ralentissez de 13 km/h ») ; sans téléphone, d'après la liste officielle et la position de l'autoradio (« ≈ », moins précis) ;
+  - **moteur** à la première grosse accélération (charge au plancher en accélérant, +15 km/h en 4 s, ou turbo à pleine pression — jamais le régime seul) : compte-tours, conseil de rapport, turbo, températures, charge, accélération en g ; tenu tant que dure l'effort lissé sur 6 s (les changements de rapport ne le ferment pas), au moins 20 s, fermé après 8 s de calme, pas rouvert avant 30 s sauf nouvelle forte accélération ;
+  - **trajet** pendant un guidage : la frise des 30 prochains km (radars, stations les moins chères avec leur prix, bouchons, arrivée) ;
+  - **conso** sinon : distance, L/100, coût, score éco, courbe de consommation instantanée, accélérations et freinages forts ;
+  - **voiture arrêtée** : le dernier trajet et la prochaine échéance.
+  Chaque vue reste au moins 8 s (radar et moteur exceptés) ; un toucher sur un onglet la fixe 60 s. Seuils réglables (`tune`). Testé en simulation : sortie de péage pied au plancher avec changements de rapport → moteur tenu jusqu'au retour au calme ; relances en ville et démarrage doux → rien.
+- `igor-gps-card` : **`publish_ahead`** — le radar à portée et ce qui vient sur l'itinéraire (radars, 2 stations les moins chères avec prix, bouchons), toutes les 2 à 8 s : c'est aussi le signe de vie de la carte du téléphone.
+- `igor-phone-card` : trois états — sur le socle, **dans la voiture** (Bluetooth seul, `nearby` : favoris et rappel « posez-le pour la carte »), absent ; batterie faible en orange sous 15 %.
+- `igor-messages-card` : **`present`** — téléphone hors de la voiture : « les messages reviennent dès qu'il se connecte ».
+- `igor-guide-card` : **guidage interrompu** (téléphone retiré en cours de trajet) — la destination, « Continuer avec Waze » (sur cette destination), « reposez le téléphone : le guidage reprend ».
+- `igor-car-card` : **`limit`** — le panneau de limitation à côté de la vitesse, la vitesse en vert / orange / rouge.
+
+## 0.40.7 — Finitions de l'autoradio
+
+- `igor-schedule-card` (Carnet) : l'échéancier ne s'écrase plus à droite. L'échelle suit l'échéance la plus lointaine (racine carrée : ce qui arrive bientôt a plus de place), et les étiquettes trop proches prennent une autre rangée (dessous, dessus, plus loin dessous, plus loin dessus) au lieu de s'écrire l'une sur l'autre.
+- Barre GPS : les boutons inactifs (téléphone absent) gardent le même fond, seuls l'icône et le texte s'estompent ; plus de fond gris derrière la rangée.
+- `igor-messages-card` : le nom de l'application vient d'abord du paquet (WhatsApp, SMS, Telegram…), plus de « Android » ou « App ».
+- Barre du haut : **`ticker: false`** retire la ligne défilante.
+
+## 0.40.6 — Pas de vieux messages à l'écran
+
+- `igor-messages-card` : **`max_age_h`** (12 h par défaut) — seuls les messages des dernières heures s'affichent ; ceux de l'ancien historique (ou sans date) ne reviennent plus. « Aucun message » quand rien de récent.
+
 ## 0.40.5 — Chaque mise à jour arrive vraiment sur les écrans
 
 - Les deux scripts des pages (`igor-wall.js`, `igor-tablet.js`) sont servis par Igor lui-même sous `/nives_scripts/…`, en « no-cache » : à chaque chargement de page, l'écran demande à Home Assistant si le fichier a changé. L'application compagnon (web view Android) gardait sinon l'ancienne copie des jours entiers sous la même adresse, quels que soient les caches vidés — les nouveautés des 0.40.2 à 0.40.4 n'apparaissaient pas. Un dernier redémarrage complet de Home Assistant est nécessaire pour l'activer ; ensuite, plus jamais.
