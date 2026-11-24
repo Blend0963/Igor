@@ -1,3 +1,7 @@
+## 0.40.1 — La carte déportée en plein écran
+
+- La page d'une carte `display_only` s'affiche **sans la barre du haut de Home Assistant** (comme les murs `kiosk: true`) : la carte prend tout l'écran.
+
 ## 0.40.0 — Le téléphone, écran déporté de l'autoradio
 
 - `igor-gps-card` : **`display_only: true`** — un second écran (le téléphone sous l'autoradio) : la carte seule, sans bouton, bandeau ni panneau. Le doigt agit toujours sur la carte : un lieu touché (y aller, en faire une étape), les prix d'une station, le choix entre les itinéraires.
