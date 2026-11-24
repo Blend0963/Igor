@@ -1,5 +1,7 @@
 ## 0.39.10 — Carte 3D derrière un proxy https
 
+- **Stations-service sans doublon** : une station qui porte son étiquette de prix (logo + prix du gazole, ou « rupture ») n'a plus en plus sa pastille ni son icône de pompe. Les stations sans prix connu gardent leur icône.
+- **Points d'intérêt sans TomTom par défaut** : la carte demandait à TomTom une recherche par catégorie et par carré (jusqu'à 28 par carré), ce qui a épuisé le quota mensuel de recherche de la clé (2 500) — la recherche d'adresse et le bouton « Stations » en ont besoin. Les points d'intérêt viennent désormais d'OpenStreetMap ; `tomtom_pois: true` remet TomTom.
 - Carte 3D du téléphone (`basemap: tomtom-3d`) : « Failed to fetch » sur chaque morceau de carte. Derrière un proxy inverse, Home Assistant voit ses requêtes en http et écrivait des adresses `http://` dans le style relayé ; la page étant en https, le navigateur les refusait. La carte ramène désormais toute adresse `/api/nives/…` de la même maison sur l'origine de la page, et le relais suit `X-Forwarded-Proto` quand le proxy l'envoie.
 
 ## 0.39.9 — Le relais TomTom répond enfin

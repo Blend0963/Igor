@@ -5297,6 +5297,7 @@
   //   buildings: true                       # false: the map without its buildings (lighter on a head unit)
   //   pixel_ratio: 2                        # at most that many device pixels per pixel (1: lighter)
   //   dead_reckoning: true                  # in a tunnel, on at the OBD speed (speed_entity) for 3 min (false: off)
+  //   tomtom_pois: true                     # the places from TomTom's search (one ask a kind and a square: heavy on the key's quota); OpenStreetMap by default
   //   traffic: true                         # the route's jams (orange, red) and the incidents on the map once a TomTom key is set (false: never)
   //   closure_ask: false                    # a closed road on the route (TomTom): round it at once (true: ask first)
   //   compact: true                         # small in a dashboard's view: no buttons, a tap anywhere opens full screen (false: off)
@@ -9084,7 +9085,11 @@
             .then((items) => { if (key === this.poiKey) keep(items); })
             .catch(() => fromOverpass());
         }
-        if (this._hass && this.config.tomtom_pois !== false && kinds) {
+        // TomTom's places only when asked (`tomtom_pois: true`): one search a
+        // kind and a square, up to 28 a square — it emptied the key's monthly
+        // Search quota (2 500), which the address search and « Stations »
+        // need. OpenStreetMap is the map's source for places by default.
+        if (this._hass && this.config.tomtom_pois === true && kinds) {
         var ttFailed = 0;
           var tt = this._hass.callWS({ type: "call_service", domain: "nives", service: "car_pois", return_response: true,
             service_data: { latitude: c[1], longitude: c[0], radius_km: 3, kinds: kinds } })
@@ -9274,7 +9279,12 @@
       // out; a dot costs almost nothing — so every place is a dot of its
       // kind's colour, and the ones close enough to matter get their icon.
       var car = this.pos || (this.fix && this.fix.point);
-      var near = car ? shown.filter((q) => q.kind !== "camera" && gpsDist(q.p, car) < GPS_ICON_M)
+      // A station that wears its price tag (logo + price) is that tag only:
+      // no dot, no pump icon under it — one station, one mark on the map.
+      var fuelOn = !!(this.layers && this.layers.fuel);
+      var tagged = (q) => fuelOn && q.kind === "fuel" && ((q.prices || {}).gazole != null || !!(q.rupture || {}).gazole);
+      var marks = shown.filter((q) => !tagged(q));
+      var near = car ? marks.filter((q) => q.kind !== "camera" && gpsDist(q.p, car) < GPS_ICON_M)
         .sort((a, b) => gpsDist(a.p, car) - gpsDist(b.p, car)).slice(0, GPS_ICON_MAX) : [];
       var iconed = shown.filter((q) => q.kind === "camera").concat(near);
       var sig = ids.join(","), isig = iconed.map((q) => q.id).join(",");
@@ -9283,7 +9293,7 @@
       if (sig !== this.poiShown) {
         this.poiShown = sig;
         var src = map && map.getSource("pois");
-        if (src) src.setData({ type: "FeatureCollection", features: shown.filter((q) => q.kind !== "camera").map(asFeat) });
+        if (src) src.setData({ type: "FeatureCollection", features: marks.filter((q) => q.kind !== "camera").map(asFeat) });
         this.refreshFuelTags(shown);
       }
       if (isig !== this.poiIconSig) {
