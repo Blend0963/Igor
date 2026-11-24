@@ -5392,7 +5392,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.43.0";
+  var GPS_CARD_VERSION = "0.43.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -10606,6 +10606,13 @@
   // « ≈ », the announcements a little earlier. What lies ahead (the official
   // radars along the route, jams, tolls) goes to igor-drive-card's frieze on
   // window.__igorRelay, in publish_ahead's own words.
+  // A short entrance for a block that changes (opacity and a few pixels:
+  // the head unit's GPU does it alone, no layout). `motion: false` on a card:
+  // none at all.
+  function carIn(node, card, dy, ms) {
+    if (!node || !node.animate || (card && card.config && card.config.motion === false)) return;
+    try { node.animate([{ opacity: 0, transform: "translateY(" + (dy || 0) + "px)" }, { opacity: 1, transform: "none" }], { duration: ms || 250, easing: "ease-out" }); } catch (e) { /* no animation */ }
+  }
   class CarRelay {
     constructor(card) { this.card = card; this.R = null; this.spoken = {}; }
     hass() { return this.card._hass; }
@@ -11235,7 +11242,11 @@
       var to = r.dest && r.dest.name !== "destination" ? r.dest.name : "";
       if (back && r.R && this.toastEl) {
         this.toastEl.textContent = "✓ téléphone sur le socle · sa carte reprend le guidage" + (to ? " vers " + to : "");
-        this.toastEl.hidden = false; clearTimeout(this.toastT); this.toastT = setTimeout(() => { this.toastEl.hidden = true; }, 6000);
+        this.toastEl.hidden = false; carIn(this.toastEl, this, -10, 250); clearTimeout(this.toastT);
+        this.toastT = setTimeout(() => {
+          var te = this.toastEl, a = te.animate && this.config.motion !== false ? te.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 }) : null;
+          if (a) a.onfinish = () => { te.hidden = true; }; else te.hidden = true;
+        }, 6000);
       }
       r.stop(); r.destKey = null;
       clearInterval(this.relayTick); this.relayTick = null;
@@ -11264,6 +11275,11 @@
       if (this.relayTag) { var rl = !!(g && g.relay); this.relayTag.hidden = !rl; this.relayBox.hidden = !rl; this.guide.style.borderLeft = rl ? "3px solid " + CAR_WARN : ""; this.guide.style.paddingLeft = rl ? "10px" : ""; this.gIcon.style.color = rl ? CAR_WARN : ""; }
       if (this.noPhone) { this.noPhone.hidden = !away || cut; if (away && !cut) this.drawPlace(); }
       this.idle.hidden = !!g || away; this.guide.hidden = !g;
+      // The block's state changing (guidance, cut, mode dégradé, no phone,
+      // idle): the new one fades in. A new arrow, though, comes at once.
+      var sk = g ? (g.relay ? "relay" : "guide") : cut ? "cut" : away ? "away" : "idle";
+      if (this.stateKey && sk !== this.stateKey) carIn(sk === "relay" || sk === "guide" ? this.guide : sk === "cut" ? this.cut : sk === "away" ? this.noPhone : this.idle, this, 0, 280);
+      this.stateKey = sk;
       if (!g) return;
       this.gIcon.setAttribute("icon", g.icon || "mdi:arrow-up");
       // « ≈ » (mode dégradé) small before the figure: the distance stays on one line.
@@ -11316,7 +11332,8 @@
         ".wrap { height: 100%; display: flex; flex-direction: column; gap: 10px; }",
         "ha-card.view { flex: 1; min-height: 0; display: flex; flex-direction: column; box-sizing: border-box; padding: 12px 18px; overflow: hidden; transition: background .3s, border-color .3s; border: 2px solid transparent; }",
         ".hr2 { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex: none; } .hr2 .h { margin-bottom: 4px; } .aside { font-size: 13px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
-        ".body { flex: 1; min-height: 0; position: relative; transition: opacity .3s; } .body.fade { opacity: 0; }",
+        ".body { flex: 1; min-height: 0; position: relative; transition: opacity .25s ease-out; will-change: opacity; } .body.fade { opacity: 0; transition-duration: .2s; } .body.fade.fast { transition-duration: .12s; }",
+        "ha-card.frz { transition: opacity .35s ease-out, transform .35s ease-out; } ha-card.frz.off { opacity: 0; transform: translateY(16px); }",
         ".tabs { display: flex; gap: 6px; justify-content: center; flex: none; margin-top: 6px; } .tabs span { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; padding: 4px 9px; border: 1px solid var(--line); color: var(--faint); cursor: pointer; }",
         ".tabs span.on { border-color: #59d0e0; color: #59d0e0; } .tabs span.lock { border-color: var(--fg); color: var(--fg); }",
         // Radar
@@ -11465,7 +11482,9 @@
       if (want !== this.view) { this.view = want; this.viewAt = t; this.fadeTo(); }
       Object.keys(this.tabBtns).forEach((k) => { this.tabBtns[k].className = k === this.view ? (this.manual ? "lock" : "on") : ""; });
       this.tabsEl.hidden = this.view === "arret";
-      this.draw(rad, v);
+      this.lastRad = rad; this.lastV = v;
+      // While the old view fades out, it is left as it is.
+      if (!this.swapping) this.draw(rad, v);
       this.drawFrieze(t, v);
     }
     // Why the car pulls, told once at the start: a toll booth just passed
@@ -11480,7 +11499,20 @@
       if (from == null) return "";
       return from < 15 ? "démarrage" : (v || 0) >= 70 && from >= 55 ? "dépassement" : "relance";
     }
-    fadeTo() { this.body.classList.add("fade"); setTimeout(() => this.body.classList.remove("fade"), 280); this.drawn = null; }
+    // A view changing: the old one fades out (0.2 s; the radar, urgent:
+    // 0.12 s), then the new one is drawn and fades in (0.25 s).
+    fadeTo() {
+      this.drawn = null;
+      if (this.config.motion === false || !this.view) return;
+      var fast = this.view === "radar", b = this.body;
+      this.swapping = true; b.classList.toggle("fast", fast); b.classList.add("fade");
+      clearTimeout(this.swapT);
+      this.swapT = setTimeout(() => {
+        this.swapping = false; this.drawn = null;
+        this.draw(this.lastRad, this.lastV);
+        b.classList.remove("fade"); b.classList.remove("fast");
+      }, fast ? 120 : 200);
+    }
     draw(rad, v) {
       var k = this.view, card = this.cardEl;
       card.style.background = ""; card.style.borderColor = "transparent"; card.style.borderLeft = "";
@@ -11580,7 +11612,11 @@
     // distances are carried on with the speed, so the points glide.
     drawFrieze(t, v) {
       var p = this.aheadParts, guided = !!(p && p[1] === "1");
-      this.frz.hidden = !guided;
+      // In: it rises from below; out: it sinks and fades, then leaves its room.
+      var fz = this.frz, anim = this.config.motion !== false;
+      if (guided && fz.hidden) { fz.hidden = false; clearTimeout(this.frzT); if (anim) { fz.classList.add("off"); void fz.offsetWidth; fz.classList.remove("off"); } }
+      else if (guided) { clearTimeout(this.frzT); this.frzT = null; fz.classList.remove("off"); }
+      else if (!fz.hidden && !this.frzT) { if (anim) { fz.classList.add("off"); this.frzT = setTimeout(() => { fz.hidden = true; fz.classList.remove("off"); this.frzT = null; }, 350); } else fz.hidden = true; }
       if (!guided) { this.flowSpeed = null; return; }
       var at = Number(p[0]), gone = Math.max(0, Math.min(12, (t - at) / 1000)) * Math.max(0, v || 0) / 3.6;
       var left = Math.max(0, (Number(p[2]) || 0) - gone), span = Math.max(500, Math.min(left, 30000));

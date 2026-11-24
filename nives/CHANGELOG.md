@@ -1,3 +1,10 @@
+## 0.43.1 — Des changements doux, sans charger l'autoradio
+
+- `igor-drive-card` : un vrai fondu enchaîné entre les vues — l'ancienne s'efface (0,2 s ; 0,12 s vers le radar, urgent), puis la nouvelle est dessinée et apparaît (0,25 s). Avant, la nouvelle vue s'affichait d'un coup puis clignotait.
+- La frise « devant vous » monte doucement au début d'un guidage et redescend à la fin.
+- `igor-guide-card` : le bloc qui change d'état (guidage, interrompu, mode dégradé, sans téléphone) apparaît en fondu ; une nouvelle flèche, elle, s'affiche tout de suite. Le bandeau « téléphone sur le socle » glisse depuis le haut et s'efface.
+- Seuls l'opacité et un léger déplacement sont animés (le processeur graphique s'en charge, sans recalcul de la page) ; rien ne tourne quand rien ne change. `motion: false` sur une carte : plus aucune animation.
+
 ## 0.43.0 — Le mode dégradé : l'autoradio reprend le guidage
 
 - **`igor-guide-card` · `relay`** — un trajet était en cours et la carte du téléphone se tait (retiré du socle, appli fermée, batterie vide) : au lieu de s'arrêter, l'autoradio reprend **la même destination** lui-même. Il redemande l'itinéraire à Igor (TomTom), suit la voiture sur son propre GPS (`relay: device_tracker.…`, l'appli Home Assistant de l'autoradio) et la fait avancer entre deux positions avec la vitesse OBD (`relay_speed`).
