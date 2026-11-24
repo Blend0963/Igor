@@ -1,3 +1,16 @@
+## 0.39.2 — Dashboard voiture : nouvelles cartes Route, Moteur, Diagnostic, Carnet
+
+Sept cartes légères pour l'autoradio (DOM et petits SVG, redessinées seulement quand leur valeur change, aucune bibliothèque), testées en 1280×720 et 1024×600 sans débordement :
+
+- **`igor-guide-card`** (Route) : la prochaine manœuvre, la suivante, l'arrivée (heure, km, min, bouchons) et un bouton Stop pendant le guidage ; sans itinéraire, « Où allons-nous ? » compact (chercher, deux favoris). Elle dialogue avec `igor-gps-card` par des événements `igor-gps-guide` / `igor-gps-cmd`.
+- **`igor-gear-card`** (Moteur) : compte-tours à aiguille avec zones, rapport engagé au centre, rangée 1–6 (actuel vert, conseillé orange/rouge), conseil, trois valeurs en pied.
+- **`igor-live-card`** : les N dernières secondes de quelques capteurs, une bande chacun, gardées par l'écran (1 point/s, rien demandé à Home Assistant), avec le pic de la fenêtre.
+- **`igor-gauge-card`** : une valeur sur un arc à zones (`warn`/`bad` ou `zones`).
+- **`igor-diag-card`** (Diagnostic) : bilan « 5/7 », systèmes (voyant, codes, batterie, refroidissement, antipollution, turbo, liaison OBD), défaut en cours en grand avec l'explication d'Igor (demandée une fois par code et gardée par l'écran ; « Demander à Igor » la redemande), tests antipollution, Effacer / Relire.
+- **`igor-schedule-card`** (Carnet) : les entretiens placés sur les 15 000 km à venir, les dates converties au rythme de conduite du mois, « à renseigner » en fin d'axe.
+- **`igor-fuel-card`** : carburant par mois (statistiques du compteur mensuel), ce mois, derniers pleins, conso réelle et coût au km.
+- **`igor-gps-card`** : `fullscreen_button: false` masque le bouton plein écran ; la carte publie son guidage pour la colonne.
+
 ## 0.39.1 — Carte GPS : fin du lag (mesuré)
 
 Mesuré sur la vraie carte, processeur ralenti ×6 pour imiter l'autoradio, 400 POI, réglages du dashboard voiture :
