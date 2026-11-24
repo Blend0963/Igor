@@ -1,3 +1,19 @@
+## 0.39.1 — Carte GPS : fin du lag (mesuré)
+
+Mesuré sur la vraie carte, processeur ralenti ×6 pour imiter l'autoradio, 400 POI, réglages du dashboard voiture :
+
+| | avant | après |
+|---|---|---|
+| images/s affichées | 5,6 | 20,6 |
+| réaction au doigt (déplacement → image) | 104 ms | 26 ms |
+| retard de la boucle d'événements (médiane) | 194 ms | 107 ms |
+
+- **Cause** : `refreshPois()` tournait à **chaque image** (événement `move` de la carte, qui suit la voiture en continu) : chaque POI reprojeté, toute la liste renvoyée à MapLibre (`setData`), toutes les icônes remises en page — même quand rien n'avait changé.
+- Le rafraîchissement des POI pendant un mouvement est limité à 1 fois/s (immédiat à la fin d'un mouvement), la liste n'est renvoyée que si elle a changé, sans projection point par point.
+- **Tous les POI restent affichés**, en deux couches : une pastille de la couleur de sa catégorie pour chacun (couche `circle`, quasi gratuite) et l'icône complète pour les 25 plus proches de la voiture (1,5 km) et tous les radars. Avec 2 000 POI : 16 images/s, 31 ms au doigt.
+- Les touches sur un POI interrogent les deux couches.
+- `pitch: 0` est enfin respecté pendant le suivi (il revenait toujours à 45°).
+
 ## 0.39.0 — GPS au GPS de l'autoradio, tous les POI, cases du mur réparées, veille sans écrans Browser Mod
 
 - **Carte GPS — `local_gps: true`** : la flèche suit le GPS de l'écran lui-même (géolocalisation du navigateur, environ 1 fois/s, comme une appli de navigation) au lieu de l'aller-retour GPSLogger → Home Assistant → écran, qui arrivait avec plusieurs secondes de retard. La vitesse affichée vient aussi de ce GPS tant qu'il répond (l'OBD passe par Home Assistant et arrive en retard). Les traceurs restent la source de secours ; un écran à plus de 3 km de la voiture (un téléphone à la maison) est ignoré. Nécessite HTTPS et l'autorisation de localisation.

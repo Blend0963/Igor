@@ -5272,7 +5272,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.39.0";
+  var GPS_CARD_VERSION = "0.39.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -5712,6 +5712,9 @@
   // Every kind by default (the owner's choice: all the places matter). They
   // come from the local SQLite base, one symbol layer, squares cached on the
   // screen; `pois:` in the card config can still list fewer.
+  // The places drawn as full icons: the nearest GPS_ICON_MAX within
+  // GPS_ICON_M of the car (and every camera); the others are coloured dots.
+  var GPS_ICON_MAX = 25, GPS_ICON_M = 1500;
   var GPS_POI_DEFAULT = Object.keys(GPS_POI).filter(function (k) { return k !== "camera"; });
   // The pumps' own order: the gazole first, then the Sans Plomb, the ethanol
   // and the gas — the board every station's window reads in this order.
@@ -6904,9 +6907,14 @@
       ["dragstart", "zoomstart", "rotatestart", "pitchstart", "drag", "zoom", "dragend", "zoomend", "rotateend", "pitchend"].forEach((ev) => map.on(ev, (e) => { if (e.originalEvent) this.setFollow(false); }));
       // The screen's moves rebuild the points: what the eye leaves is let
       // go, what it finds is drawn, and the zoom re-sorts the piled ones.
-      map.on("move", () => this.refreshPois());
+      // The map moves at every frame while it follows the car: the places
+      // are weighed again at most once a second then (it used to be every
+      // frame — the whole list re-sent to MapLibre, every icon laid out
+      // again: the head unit's lag), and at once when a move ends.
+      var poiSoon = () => { var t = performance.now(); if (!this.poiMoveAt || t - this.poiMoveAt > 1000) { this.poiMoveAt = t; this.refreshPois(); } };
+      map.on("move", poiSoon);
       map.on("moveend", () => this.refreshPois());
-      map.on("zoom", () => this.refreshPois());
+      map.on("zoom", poiSoon);
       map.on("zoomend", () => this.refreshPois());
       map.on("pitchend", () => this.refreshPois());
       // A tap on the map asks what to do with the place under the finger.
@@ -7155,7 +7163,7 @@
         // The recentered view is the navigator's own: the car back at its
         // place, the road ahead, and the tilt with it — a map the finger
         // laid flat stands up again the moment the card takes the wheel back.
-        var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, pitch: Number(this.config.pitch) || 45, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } };
+        var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, pitch: this.config.pitch != null && !isNaN(Number(this.config.pitch)) ? Number(this.config.pitch) : 45, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } };
         // As a navigator: farther out the faster (more road ahead), closer
         // before a turn, back out after it; eased, never a jump.
         if (this.config.auto_zoom !== false) {
@@ -7874,7 +7882,7 @@
       // A station of the map's own layer: its prices first, then the two ways.
       var fuel = null;
       try {
-        var pf = (map.getLayer("pois") ? map.queryRenderedFeatures(e.point, { layers: ["pois"] }) : []) || [];
+        var pf = (map.getLayer("pois") ? map.queryRenderedFeatures(e.point, { layers: ["pois", "pois-icons"] }) : []) || [];
         for (var i = 0; i < pf.length; i++) if (pf[i].properties && pf[i].properties.kind === "fuel") { fuel = pf[i]; break; }
       } catch (err) { fuel = null; }
       // A station the flux knows but no marker showed (its ask still
@@ -7904,7 +7912,7 @@
       // « Ce point » — the two ways (a new route, a stop) stand under it.
       if (!name) {
         var pq = [];
-        try { pq = (map.getLayer("pois") ? map.queryRenderedFeatures(e.point, { layers: ["pois"] }) : []) || []; } catch (err) { pq = []; }
+        try { pq = (map.getLayer("pois") ? map.queryRenderedFeatures(e.point, { layers: ["pois", "pois-icons"] }) : []) || []; } catch (err) { pq = []; }
         var pr = pq.length && pq[0].properties ? pq[0].properties : null;
         if (pr && pr.label && String(pr.label).trim()) name = String(pr.label).trim().slice(0, 40);
         else if (pr && pr.kind && GPS_POI[pr.kind] && GPS_POI[pr.kind].name) name = GPS_POI[pr.kind].name;
@@ -7941,7 +7949,7 @@
       var offId = (fuel && fuel.properties && fuel.properties.offId) || null;
       if (!offId) {
         try {
-          var pfs = map.queryRenderedFeatures(e.point, { layers: ["pois"] }) || [];
+          var pfs = map.queryRenderedFeatures(e.point, { layers: ["pois", "pois-icons"] }) || [];
           for (var i = 0; i < pfs.length; i++) if (pfs[i].properties && pfs[i].properties.offId) { offId = pfs[i].properties.offId; break; }
         } catch (err) { offId = null; }
       }
@@ -8680,7 +8688,8 @@
       map.addLayer({ id: "incidents-pt", type: "circle", source: "incidents", filter: ["==", ["get", "n"], 1],
         paint: { "circle-radius": 7, "circle-color": ["get", "color"], "circle-stroke-color": "#07080a", "circle-stroke-width": 2 } });
       map.addSource("pois", { type: "geojson", data: this.poiData() });
-      this.poiShown = null;
+      map.addSource("pois-icons", { type: "geojson", data: this.poiData() });
+      this.poiShown = null; this.poiIconSig = null;
       // A checked place is drawn wherever the eye rests: no zoom law hides
       // it (a law weighed on the square would keep the zoom of its birth),
       // no row of piled places — every icon owns its place, always.
@@ -8690,7 +8699,11 @@
       // only the cameras keep theirs - the limit under the radar.
       if (font) Object.assign(layout, { "text-field": ["case", ["==", ["get", "kind"], "camera"], ["get", "label"], ""], "text-font": font, "text-size": 16, "text-offset": [0, 1.7], "text-anchor": "top", "text-optional": true });
       var paint = font ? { "text-color": "#e9e4da", "text-halo-color": "#07080a", "text-halo-width": 1.5 } : {};
-      map.addLayer({ id: "pois", type: "symbol", source: "pois", layout: layout, paint: paint });
+      // Every place: a dot of its kind's colour, ringed in the map's black.
+      map.addLayer({ id: "pois", type: "circle", source: "pois", paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 12, 3.5, 16, 7], "circle-color": ["get", "color"],
+        "circle-stroke-color": "#07080a", "circle-stroke-width": 1.5, "circle-pitch-alignment": "viewport" } });
+      map.addLayer({ id: "pois-icons", type: "symbol", source: "pois-icons", layout: layout, paint: paint });
       this.applyLayers();
     },
     poiData() { return { type: "FeatureCollection", features: [] }; },
@@ -8996,12 +9009,7 @@
       }
       (this.pois || []).forEach((q) => {
         if (q.kind === "camera") { if (!this.onMap || !this.onMap[q.id]) return; }
-        else {
-          if (bb && (q.p[0] < w || q.p[0] > e || q.p[1] < s || q.p[1] > n)) return;
-          var px = null;
-          try { px = map.project(q.p); } catch (err) { px = null; }
-          if (!(px && px.x >= -M && px.x <= cw + M && px.y >= -M && px.y <= ch + M)) return;
-        }
+        else if (bb && (q.p[0] < w || q.p[0] > e || q.p[1] < s || q.p[1] > n)) return;
         ids.push(q.id); shown.push(q);
       });
       if (cap !== Infinity && shown.length > cap) {
@@ -9010,12 +9018,28 @@
         shown = shown.slice(0, cap);
         ids = shown.map((q) => q.id);
       }
-      var sig = ids.join(",");
-      this.poiShown = sig;
-      var feats = shown.map((q) => ({ type: "Feature", geometry: { type: "Point", coordinates: q.p }, properties: { kind: q.kind, label: q.label || "", brand: q.brand || "" } }));
-      var src = map && map.getSource("pois");
-      if (src) src.setData({ type: "FeatureCollection", features: feats });
-      this.refreshFuelTags(shown);
+      // The icons: the cameras and the GPS_ICON_MAX places nearest the car
+      // (within GPS_ICON_M). Each icon costs the small machine a lot to lay
+      // out; a dot costs almost nothing — so every place is a dot of its
+      // kind's colour, and the ones close enough to matter get their icon.
+      var car = this.pos || (this.fix && this.fix.point);
+      var near = car ? shown.filter((q) => q.kind !== "camera" && gpsDist(q.p, car) < GPS_ICON_M)
+        .sort((a, b) => gpsDist(a.p, car) - gpsDist(b.p, car)).slice(0, GPS_ICON_MAX) : [];
+      var iconed = shown.filter((q) => q.kind === "camera").concat(near);
+      var sig = ids.join(","), isig = iconed.map((q) => q.id).join(",");
+      if (sig === this.poiShown && isig === this.poiIconSig) return;
+      var asFeat = (q) => ({ type: "Feature", geometry: { type: "Point", coordinates: q.p }, properties: { kind: q.kind, label: q.label || "", brand: q.brand || "", color: (GPS_POI[q.kind] || {}).color || "#8a9099" } });
+      if (sig !== this.poiShown) {
+        this.poiShown = sig;
+        var src = map && map.getSource("pois");
+        if (src) src.setData({ type: "FeatureCollection", features: shown.filter((q) => q.kind !== "camera").map(asFeat) });
+        this.refreshFuelTags(shown);
+      }
+      if (isig !== this.poiIconSig) {
+        this.poiIconSig = isig;
+        var isrc = map && map.getSource("pois-icons");
+        if (isrc) isrc.setData({ type: "FeatureCollection", features: iconed.map(asFeat) });
+      }
     },
 
     // The gazole's price standing over its station: a small tag the eye reads
