@@ -1,3 +1,14 @@
+## 0.43.0 — Le mode dégradé : l'autoradio reprend le guidage
+
+- **`igor-guide-card` · `relay`** — un trajet était en cours et la carte du téléphone se tait (retiré du socle, appli fermée, batterie vide) : au lieu de s'arrêter, l'autoradio reprend **la même destination** lui-même. Il redemande l'itinéraire à Igor (TomTom), suit la voiture sur son propre GPS (`relay: device_tracker.…`, l'appli Home Assistant de l'autoradio) et la fait avancer entre deux positions avec la vitesse OBD (`relay_speed`).
+  - Bloc guidage en orange, étiquette « mode dégradé », distances « ≈ » arrondies, annonces plus tôt (« Dans 800 mètres, tournez à gauche », puis « Tournez à gauche »), « Continuer avec Waze » à portée de doigt ; « Le téléphone ne guide plus. Je reprends le guidage vers Maison. » au départ.
+  - Hors de l'itinéraire : recalculé, au plus une fois par minute. Arrivée : « Vous êtes arrivé », le guidage s'arrête.
+  - Coupure de Home Assistant pendant le mode dégradé : il continue (l'itinéraire est sur l'autoradio), la voiture avance à la vitesse connue jusqu'au retour des positions.
+  - Le téléphone revient : sa carte reprend, « ✓ téléphone sur le socle · sa carte reprend le guidage vers Maison », le mode dégradé s'arrête de lui-même.
+  - Jamais de nouvel itinéraire sans téléphone : seulement la suite d'un trajet déjà lancé.
+- `igor-drive-card` : en mode dégradé, la frise montre les radars de la liste officielle le long de l'itinéraire, les bouchons et les péages (« radars : liste officielle · sans stations ») ; le radar s'affiche « ≈ ».
+- Le signe de vie de la carte est vérifié toutes les 2 s (au lieu de 5).
+
 ## 0.42.1 — Les imprévus en route
 
 - **Connexion perdue** : la barre d'Igor vérifie Home Assistant toutes les 10 s ; sans réponse, un bandeau rouge « connexion perdue · valeurs figées depuis 18:05 · reconnexion… » remplace la ligne du haut, et la dernière flèche du guidage est estompée (le téléphone continue de guider sur son écran). Tout revient seul avec le réseau.
