@@ -1,5 +1,6 @@
 ## 0.40.3 — Sans téléphone, pas d'itinéraire proposé
 
+- `igor-guide-card`, téléphone absent : le bloc ne répète plus « pas de téléphone » (la colonne Téléphone le dit) ; il montre **où est la voiture** — la rue et la ville (`address` : le capteur « Geocoded location » de l'autoradio) — et **la météo** si `weather` est donné.
 - `igor-phone-card` : téléphone absent, un seul bouton **Ouvrir Waze** (plus de « Vers Waze » : sans téléphone, aucune destination n'est choisie dans Igor).
 - `igor-messages-card` : **les conversations seulement** (WhatsApp, SMS, Telegram, Signal, Messenger, Teams…) ont **Répondre** ; un appel manqué a Rappeler / SMS ; toutes les autres notifications (franceinfo, colis, applications) sont réunies sur une seule ligne discrète « N autres notifications », avec **Lire** seulement.
 - `igor-guide-card` (option `phone`) : téléphone absent du socle, **aucun itinéraire n'est proposé** — Chercher, Maison, Stations et Étape sont grisés et inactifs, et le bloc de guidage affiche « Pas de téléphone sur le socle : pas d'itinéraire Igor » avec un grand bouton **Ouvrir Waze**. Le téléphone reposé, tout revient.

@@ -10492,7 +10492,9 @@
   //   voice: input_text.car_voice          # the GPS card's voice_to: said HERE
   //   announce: input_text.car_announce    # the house's announcements, said here too
   //   mute: input_boolean.car_voice_off    # on: nothing said (the Voix button)
-  //   phone: binary_sensor.phone_in_car    # absent: no route offered (Chercher, Maison, Stations, Étape greyed; Waze instead)
+  //   phone: binary_sensor.phone_in_car    # absent: no route offered (Chercher, Maison, Stations, Étape greyed); the block shows where the car is:
+  //   address: sensor.headunit_geocoded_location   # the street and the town
+  //   weather: weather.home                # the weather there
   //   mode: buttons                        # the row of GPS buttons instead of the guidance
   class IgorGuideCard extends IgorCard {
     setConfig(config) { this.config = config || {}; }
@@ -10525,6 +10527,34 @@
     }
     // `phone` says the phone (its map computes the routes) is not there.
     phoneAbsent() { var c = this.config, ph = c.phone && this._hass && this._hass.states[c.phone]; return !!(ph && ph.state !== "on"); }
+    // Where the car is: `address` (the head unit's geocoded location sensor:
+    // thoroughfare, locality) and `weather` (a weather entity).
+    drawPlace() {
+      var c = this.config, h = this._hass;
+      var ad = c.address && h.states[c.address], a = (ad && ad.attributes) || {};
+      var full = ad ? String(ad.state || "") : "", parts = full.split(",").map((x) => x.trim()).filter(Boolean);
+      var street = a.thoroughfare || a.Thoroughfare || parts[0] || "";
+      var num = a.sub_thoroughfare || a["Sub Thoroughfare"] || "";
+      var town = [a.postal_code || a["Postal Code"], a.locality || a.Locality || parts[1]].filter(Boolean).join(" ");
+      if (/^(unknown|unavailable)$/.test(full)) { street = ""; town = ""; }
+      this.npStreet.textContent = street ? (num && !/^\d/.test(street) ? num + " " : "") + street : "Position inconnue";
+      this.npTown.textContent = town;
+      var w = c.weather && h.states[c.weather];
+      this.npWx.innerHTML = "";
+      this.npWx.hidden = !w;
+      if (w) {
+        var FR = { "clear-night": ["mdi:weather-night", "nuit claire"], cloudy: ["mdi:weather-cloudy", "couvert"], fog: ["mdi:weather-fog", "brouillard"], hail: ["mdi:weather-hail", "grêle"],
+          lightning: ["mdi:weather-lightning", "orage"], "lightning-rainy": ["mdi:weather-lightning-rainy", "orage"], partlycloudy: ["mdi:weather-partly-cloudy", "éclaircies"],
+          pouring: ["mdi:weather-pouring", "forte pluie"], rainy: ["mdi:weather-rainy", "pluie"], snowy: ["mdi:weather-snowy", "neige"], "snowy-rainy": ["mdi:weather-snowy-rainy", "neige et pluie"],
+          sunny: ["mdi:weather-sunny", "soleil"], windy: ["mdi:weather-windy", "vent"], "windy-variant": ["mdi:weather-windy-variant", "vent"], exceptional: ["mdi:alert", "exceptionnel"] };
+        var k = FR[w.state] || ["mdi:weather-partly-cloudy", w.state];
+        var ic = icon(this.npWx, k[0]); ic.style.setProperty("--mdc-icon-size", "38px"); ic.style.color = "var(--fg)";
+        var t = el("div", "", this.npWx); var tp = el("div", "", t, w.attributes.temperature != null ? Math.round(w.attributes.temperature) + " °C" : "");
+        tp.style.cssText = "font-size:30px;white-space:nowrap"; el("div", "", t, k[1]).style.cssText = "font-size:13px;color:var(--dim)";
+        var extra = [w.attributes.wind_speed != null ? "vent " + Math.round(w.attributes.wind_speed) + " km/h" : "", w.attributes.humidity != null ? "humidité " + Math.round(w.attributes.humidity) + " %" : ""].filter(Boolean).join(" · ");
+        if (extra) { var ex = el("div", "", this.npWx, extra); ex.style.cssText = "margin-left:auto;font-size:12px;color:var(--dim);text-align:right"; }
+      }
+    }
     guided() { var st = this.config.entity && this._hass && this._hass.states[this.config.entity]; return !!(st && st.state && st.state !== "unknown" && st.state !== "unavailable"); }
     build() {
       this.style(CAR_HEAD + "\n" + [
@@ -10583,16 +10613,15 @@
         this.idle.style.display = "flex"; this.idle.style.flexDirection = "column"; this.idle.style.height = "100%";
         this.drawRecent();
       }
-      // No phone, no route: the search and the favourites give way to Waze.
+      // No phone, no route: the block says where the car is instead — the
+      // street, the town, the weather there (the right column already says
+      // the phone is missing, and offers Waze).
       this.noPhone = el("div", "", card); this.noPhone.hidden = true;
-      el("div", "h", this.noPhone, "guidage");
-      var np = el("div", "", this.noPhone, "Pas de téléphone sur le socle : pas d'itinéraire Igor.");
-      np.style.cssText = "border:1px dashed " + CAR_WARN + ";color:" + CAR_WARN + ";padding:12px;font-size:15px;line-height:1.4";
-      var nps = el("div", "", this.noPhone, "Posez le téléphone pour la carte et le guidage, ou utilisez Waze.");
-      nps.style.cssText = "color:var(--dim);font-size:13px;margin:8px 0 10px";
-      var wz = el("button", "b go", this.noPhone); wz.type = "button"; wz.style.cssText = "width:100%;min-height:56px;flex-direction:row;gap:10px;font-size:13px;letter-spacing:.14em";
-      icon(wz, "mdi:waze"); el("span", "", wz, "Ouvrir Waze");
-      wz.addEventListener("click", () => haAction(this, { action: "url", url_path: "app://com.waze" }));
+      this.noPhone.style.cssText = "display:flex;flex-direction:column;height:100%";
+      el("div", "h", this.noPhone, "sur la route");
+      this.npStreet = el("div", "", this.noPhone); this.npStreet.style.cssText = "font-size:26px;line-height:1.15;margin-top:4px";
+      this.npTown = el("div", "", this.noPhone); this.npTown.style.cssText = "font-size:16px;color:var(--dim);margin-top:6px";
+      this.npWx = el("div", "", this.noPhone); this.npWx.style.cssText = "margin-top:auto;border-top:1px solid var(--line);padding-top:12px;display:flex;align-items:center;gap:14px";
       this.guide = el("div", "", card);
       if (this.remote()) { this.guide.style.display = "flex"; this.guide.style.flexDirection = "column"; this.guide.style.flex = "1"; this.guide.style.minHeight = "0"; el("div", "h", this.guide, "guidage"); }
       var t = el("div", "turn", this.guide);
@@ -10786,6 +10815,7 @@
         b.disabled = away; b.style.opacity = away ? "0.35" : "";
       });
       if (this.remote() && this.noPhone && away !== this.wasAway) { this.wasAway = away; this.show(this.lastTurn ? this.turnObj : null); }
+      if (this.noPhone && !this.noPhone.hidden) this.drawPlace();
       // A destination chosen here, and no guidance back: the map that
       // computes the route (the phone's) is not running. Said, not silent.
       if (this.remote() && this.idle && c.destination) {
@@ -10878,7 +10908,7 @@
     show(g) {
       if (!this.guide) return;
       var away = this.remote() && this.phoneAbsent() && !g;
-      if (this.noPhone) this.noPhone.hidden = !away;
+      if (this.noPhone) { this.noPhone.hidden = !away; if (away) this.drawPlace(); }
       this.idle.hidden = !!g || away; this.guide.hidden = !g;
       if (!g) return;
       this.gIcon.setAttribute("icon", g.icon || "mdi:arrow-up");
