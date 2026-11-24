@@ -11349,12 +11349,13 @@
     }
     return cfg.views[/^\d+$/.test(seg) ? Number(seg) : 0] || null;
   }
-  // A wall with `kiosk: true` (a car's head unit): no top bar on its pages,
-  // whatever the device's theme.
+  // A wall with `kiosk: true` (a car's head unit), or a map that is a second
+  // screen (`display_only: true`, the phone under it): no top bar on its
+  // pages, whatever the device's theme.
   function viewKiosk(root) {
     var view = currentView(root);
     if (!view) return false;
-    try { return /"type":"custom:igor-wall"[^]*?"kiosk":true|"kiosk":true[^]*?"type":"custom:igor-wall"/.test(JSON.stringify(view)); } catch (e) { return false; }
+    try { return /"type":"custom:igor-wall"[^]*?"kiosk":true|"kiosk":true[^]*?"type":"custom:igor-wall"|"display_only":true/.test(JSON.stringify(view)); } catch (e) { return false; }
   }
   function viewHasWall(root) {
     var cfg = root && root.lovelace && root.lovelace.config;
