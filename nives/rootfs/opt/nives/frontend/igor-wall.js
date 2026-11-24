@@ -1652,6 +1652,8 @@
   //           - { entity: input_number.fuel_litres, name: Litres, unit: L }
   //           - { entity: input_number.fuel_price, name: Prix du litre, unit: €/L }
   //       service: script.fuel_done              # or tap_action
+  //   `from: sensor.odometer` fills a field with that sensor's value when the
+  //   form opens (corrected by hand if needed).
   //   A field may also carry `key:` — its value then goes to the service as
   //   that field (a script's fields: km, litres, prix_litre), with or without
   //   an entity to save it in — and `in_total: false` to stay out of the
@@ -1743,7 +1745,10 @@
       var inputs = (f.fields || []).map((fd) => {
         var st = fd.entity && hass.states[fd.entity], a = (st && st.attributes) || {};
         var cur = st ? parseFloat(st.state) : NaN;
-        var start = !isNaN(cur) && cur > 0 ? cur : parseFloat(mem(fd.entity || "key:" + fd.key));
+        // from: a sensor that gives the starting value (the odometer for a
+        // servicing): its value now, corrected by hand if needed.
+        var fromSt = fd.from && hass.states[fd.from], fromV = fromSt ? parseFloat(fromSt.state) : NaN;
+        var start = !isNaN(fromV) ? Math.round(fromV * 10) / 10 : !isNaN(cur) && cur > 0 ? cur : parseFloat(mem(fd.entity || "key:" + fd.key));
         var lab = el("label", "fl", box);
         el("span", "", lab, fd.name || a.friendly_name || fd.entity || fd.key);
         var wrap = el("div", "fin", lab);
@@ -5238,6 +5243,12 @@
   //   street_names: true                    # the road where the car is, at the bottom (false: off)
   //   fps: 20                               # the map drawn that many times a second while moving (lower: lighter)
   //   fullscreen_button: false              # no fullscreen button (a dashboard that is the map already)
+  //   announce: input_text.car_announce     # the house's announcements, said with the guidance's voice
+  //                                         # (written « time|message » by a script; see script.voiture_dire)
+  //   voice_over_music: true                # the voice over the music (Web Audio, no audio focus); false: the
+  //                                         # old <audio> element, which pauses the player app on Android
+  //   controls: rail                        # the head unit's dashboard (with igor-guide-card beside): big written
+  //                                         # buttons on the right, no turn banner / arrival bar / layers / fullscreen
   //   local_gps: true                       # on the head unit itself: the arrow follows the screen's own GPS
   //                                         # (browser geolocation, about once a second, like a navigation app)
   //                                         # instead of the tracker's round trip through Home Assistant; the
@@ -5266,6 +5277,14 @@
   var GPS_MAPLIBRE_LOCAL = "/nives_static/vendor/maplibre-gl";
   var GPS_MAPLIBRE_CDN = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl";
   var GPS_MAPLIBRE = GPS_MAPLIBRE_LOCAL;
+  // The base map online: CARTO's dark raster tiles (OpenStreetMap data).
+  var GPS_ONLINE_STYLE = {
+    version: 8, name: "Igor sombre",
+    sources: { carto: { type: "raster", tileSize: 256, maxzoom: 20,
+      tiles: ["a", "b", "c", "d"].map(function (h) { return "https://" + h + ".basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"; }),
+      attribution: "© OpenStreetMap · © CARTO" } },
+    layers: [{ id: "carto", type: "raster", source: "carto" }]
+  };
   var GPS_R = 6378137, GPS_PREDICT_S = 4, GPS_MOVING = 0.8, GPS_TRAIL = 600;
   // The drawn lines breathe with the zoom: thin on the overview (they must not
   // smother the map), road-wide at the zooms one drives at. Pure paint — the
@@ -5273,7 +5292,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.39.2";
+  var GPS_CARD_VERSION = "0.39.3";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -5298,6 +5317,18 @@
   // between two fixes is a reflection, a network fix, not the truth.
   var GPS_UTURN = 2.8, GPS_JUMP_MS = 55;
   window.__igorGps = { step: function (st, fix) { return gpsHeadingStep(st, fix); } };
+  // One Web Audio context for the page, unlocked by the first touch (the
+  // browsers keep it silent until a gesture).
+  function gpsAudioCtx() {
+    if (window.__igorAudio !== undefined) return window.__igorAudio;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    window.__igorAudio = AC ? new AC() : null;
+    if (window.__igorAudio) {
+      var wake = function () { if (window.__igorAudio.state === "suspended") window.__igorAudio.resume().catch(function () {}); };
+      ["pointerdown", "touchstart", "keydown"].forEach(function (t) { window.addEventListener(t, wake, { capture: true, passive: true }); });
+    }
+    return window.__igorAudio;
+  }
   function gpsMapLibre() {
     if (window.maplibregl) return Promise.resolve(window.maplibregl);
     if (!window.__igorMapLibre) {
@@ -6241,7 +6272,7 @@
       this._hass = hass;
       if (!this.root) this.build();
       // Only when what the card shows changed (not at every change in the house).
-      if (prev && this.loading && [c.entity, c.fallback_entity, c.speed_entity, c.speed_limit_entity, c.destination, "sun.sun"].every(function (id) { return !id || prev.states[id] === hass.states[id]; })) return;
+      if (prev && this.loading && [c.entity, c.fallback_entity, c.speed_entity, c.speed_limit_entity, c.destination, c.announce, "sun.sun"].every(function (id) { return !id || prev.states[id] === hass.states[id]; })) return;
       this.read();
     }
     connectedCallback() { if (this.map && !this.raf) this.raf = requestAnimationFrame(() => this.tick()); if (this.onCmd) window.addEventListener("igor-gps-cmd", this.onCmd); }
@@ -6290,6 +6321,17 @@
         ".full .nav { left: 76px; }" +
         ".btns button { width: 44px; height: 44px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; cursor: pointer; background: rgba(7,8,10,0.85); color: #e9e4da; display: grid; place-items: center; --mdc-icon-size: 22px; }" +
         ".btns button[hidden] { display: none; }" +
+        // controls: rail — the head unit's dashboard: big written buttons on
+        // the right; what the guidance column beside already shows (the next
+        // turn, the arrival, the destination) and what it does not need
+        // (fullscreen, layers, the unknown-limit sign) are not drawn.
+        ".rail .btns { left: auto; right: 10px; gap: 8px; }" +
+        ".rail .btns button { width: 118px; height: 52px; display: flex; gap: 8px; justify-content: center; font-family: inherit; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; --mdc-icon-size: 18px; color: #c9cdd2; }" +
+        ".rail .btns button::after { content: attr(data-l); }" +
+        ".rail .btns button[hidden] { display: none; }" +
+        ".rail #full, .rail #layers, .rail .nav, .rail .eta, .rail .snap, .rail .sign.unk { display: none !important; }" +
+        ".rail:not(.withnav) #dest { display: none !important; }" +
+        ".rail .hud.lim { right: auto; left: 12px; } .rail .side { right: auto; left: 10px; } .rail .toast { bottom: 24px; }" +
         // The layers' panel: one switch a kind, the driver's own map. It
         // opens beside the buttons' column and follows them when full.
         ".lpanel { position: absolute; top: 10px; left: 64px; z-index: 3; background: rgba(7,8,10,0.94); border: 1px solid #22262c; border-radius: var(--igor-radius, 3px); padding: 12px 14px; display: grid; gap: 8px; max-height: 80%; overflow-y: auto; font-family: " + MONO + "; }" +
@@ -6482,14 +6524,14 @@
         // never the dashboard's page (the swipe-between-tabs module above
         // reads this very class).
         '</style><ha-card id="card"><div id="map" class="no-swipe"></div><div class="msg" id="msg">Chargement de la carte…</div>' +
-        '<div class="btns"><button id="recenter" title="Recentrer" hidden><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' +
-        '<button id="orient" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button>' +
-        '<button id="dest" title="Destination"><ha-icon icon="mdi:flag-checkered"></ha-icon></button>' +
-        '<button id="fuel" title="Stations-service"><ha-icon icon="mdi:gas-station"></ha-icon></button>' +
-        '<button id="voice" title="Voix du guidage"><ha-icon icon="mdi:volume-high"></ha-icon></button>' +
-        '<button id="overview" title="Choisir l’itinéraire" hidden><ha-icon icon="mdi:map-search"></ha-icon></button>' +
-        '<button id="layers" title="Couches"><ha-icon icon="mdi:layers"></ha-icon></button>' +
-        '<button id="full" title="Plein écran"><ha-icon icon="mdi:fullscreen"></ha-icon></button></div>' +
+        '<div class="btns"><button id="recenter" data-l="Recentrer" title="Recentrer" hidden><ha-icon icon="mdi:crosshairs-gps"></ha-icon></button>' +
+        '<button id="orient" data-l="Nord" title="Orientation"><ha-icon icon="mdi:navigation-variant"></ha-icon></button>' +
+        '<button id="dest" data-l="Étape" title="Destination"><ha-icon icon="mdi:flag-checkered"></ha-icon></button>' +
+        '<button id="fuel" data-l="Stations" title="Stations-service"><ha-icon icon="mdi:gas-station"></ha-icon></button>' +
+        '<button id="voice" data-l="Voix" title="Voix du guidage"><ha-icon icon="mdi:volume-high"></ha-icon></button>' +
+        '<button id="overview" data-l="Itinéraires" title="Choisir l’itinéraire" hidden><ha-icon icon="mdi:map-search"></ha-icon></button>' +
+        '<button id="layers" data-l="Couches" title="Couches"><ha-icon icon="mdi:layers"></ha-icon></button>' +
+        '<button id="full" data-l="Plein écran" title="Plein écran"><ha-icon icon="mdi:fullscreen"></ha-icon></button></div>' +
         '<div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div style="min-width:0"><div class="d" id="navD"></div><div class="t" id="navT"></div><div class="x" id="navX" hidden></div><div class="l" id="navL" hidden></div></div></div>' +
         '<div class="glow" id="glow" hidden></div>' +
         '<div class="side"><div class="alert" id="alert" hidden><ha-icon id="alIcon" icon="mdi:cctv"></ha-icon><div id="alS"></div><b id="alT"></b><div class="bar2"><i id="alBar"></i></div></div>' +
@@ -6556,6 +6598,7 @@
       $("full").addEventListener("click", () => this.setFull(!this.full));
       // fullscreen_button: false — the car's dashboard is the map already.
       if (this.config.fullscreen_button === false) $("full").hidden = true;
+      $("card").classList.toggle("rail", this.config.controls === "rail");
       // The guidance column (igor-guide-card) asks: the destination panel,
       // a favourite, the end of the guidance.
       this.onCmd = (ev) => {
@@ -6632,6 +6675,7 @@
       // screen (the car's dashboard reads the OBD speed only in fullscreen);
       // the eta bar steps aside to leave it room.
       this.$("card").classList.toggle("withspeed", this.config.show_speed !== false || this.full);
+      this.$("card").classList.toggle("rail", this.config.controls === "rail");
       // Now, not at the next position read: parked, the fixes are rare and the
       // box would stay hidden until the car moves.
       this.$("speed").hidden = this.config.show_speed === false && !this.full;
@@ -6640,6 +6684,13 @@
     }
     styleUrl() {
       if (this.config.style) return this.config.style;
+      // The CARTO dark PNG tiles online by default (cached by the browser):
+      // the same images the offline basemap would serve, so the same drawing
+      // cost — 0.38.98 made the local copy the only one, and the map stayed
+      // black for as long as the server had not downloaded the whole region.
+      // The local copy is used when it is complete (car_map_update raster: true).
+      var os0 = this.config.offline_style;
+      if (!os0 && !(this.offlineInfo && this.offlineInfo.raster_ready)) return GPS_ONLINE_STYLE;
       // Offline only, no online mode left: the local raster basemap by default
       // (pre-rendered CARTO dark PNGs served by HA — pixel-identical to the old
       // online CARTO dark, zero vector decode on the head unit, like Waze).
@@ -6718,6 +6769,17 @@
       this.overlays();
       this.lostCheck();
       // A destination set elsewhere (the phone, Igor): guidance there.
+      // announce: an input_text the house writes « time|message » into
+      // (script.voiture_dire): said here with the guidance's voice. Only a
+      // change seen while the card runs, and fresh (a minute), is said.
+      var an = this.config.announce && this._hass.states[this.config.announce];
+      if (an && an.state !== this.announceSeen) {
+        var first = this.announceSeen === undefined;
+        this.announceSeen = an.state;
+        var fresh = Date.now() - (Date.parse(an.last_changed) || 0) < 60000;
+        var said = String(an.state || "").replace(/^[^|]*\|/, "").trim();
+        if (!first && fresh && said && an.state !== "unknown" && an.state !== "unavailable") this.say(said, "alert");
+      }
       var de = this.config.destination && this._hass.states[this.config.destination];
       if (de && de.state !== this.destState) {
         this.destState = de.state;
@@ -6885,7 +6947,7 @@
       // head unit). The fetched style is handed to the map, so nothing is
       // asked twice.
       var style = (this.styleNow = this.styleUrl());
-      if (style.indexOf(window.location.origin + "/api/nives/") === 0) {
+      if (typeof style === "string" && style.indexOf(window.location.origin + "/api/nives/") === 0) {
         try {
           var tok = this._hass && this._hass.auth && this._hass.auth.data && this._hass.auth.data.access_token;
           var r = await fetch(style, tok ? { headers: { Authorization: "Bearer " + tok } } : undefined);
@@ -8456,11 +8518,35 @@
       };
       if (!engine || !this._hass || !this._hass.callApi || this.ttsBroken > 2) { browser(); return; }
       var cache = this.ttsCache || (this.ttsCache = {});
-      var play = (url) => {
-        if (seq !== this.saySeq) return;
+      // An <audio> element takes Android's audio focus: Deezer pauses and
+      // does not always come back. The Web Audio graph does not ask for the
+      // focus — the voice plays over the music. The element is only the
+      // fallback when Web Audio cannot play (no context, still locked).
+      var element = (url) => {
         var a = this.audio || (this.audio = new Audio());
         try { a.pause(); a.src = url; var pr = a.play(); if (pr && pr.catch) pr.catch(() => { this.ttsBroken = (this.ttsBroken || 0) + 1; browser(); }); }
         catch (e) { browser(); }
+      };
+      var play = (url) => {
+        if (seq !== this.saySeq) return;
+        var ctx = gpsAudioCtx();
+        if (!ctx || this.config.voice_over_music === false) { element(url); return; }
+        var bufs = this.ttsBufs || (this.ttsBufs = {});
+        var go = (buf) => {
+          if (seq !== this.saySeq) return;
+          try { if (this.voiceNode) this.voiceNode.stop(); } catch (e) { /* already ended */ }
+          var src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination);
+          src.start(); this.voiceNode = src;
+        };
+        var run = () => {
+          if (ctx.state !== "running") { element(url); return; }
+          if (bufs[url]) { go(bufs[url]); return; }
+          fetch(url).then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.arrayBuffer(); })
+            .then((ab) => new Promise((ok, ko) => ctx.decodeAudioData(ab, ok, ko)))
+            .then((buf) => { var k = Object.keys(bufs); if (k.length > 60) delete bufs[k[0]]; bufs[url] = buf; go(buf); })
+            .catch(() => element(url));
+        };
+        if (ctx.state === "suspended") ctx.resume().then(run, run); else run();
       };
       if (cache[text]) { play(cache[text]); return; }
       this._hass.callApi("POST", "tts_get_url", { engine_id: engine, message: text, language: "fr" })

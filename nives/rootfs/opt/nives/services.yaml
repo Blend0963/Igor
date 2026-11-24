@@ -370,6 +370,10 @@ car_map_update:
       default: false
       selector:
         boolean:
+    raster:
+      default: false
+      selector:
+        boolean:
 car_map_pois:
   fields:
     latitude:

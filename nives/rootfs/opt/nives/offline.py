@@ -285,12 +285,12 @@ class OfflineMaps:
 
     # ------------------------------------------------------------- update ---
 
-    async def update(self, region: str = "france", force: bool = False) -> dict:
+    async def update(self, region: str = "france", force: bool = False, raster: bool = False) -> dict:
         """Download (or refresh with the daily diffs) the region, rebuild the
         POI base and the tiles. Heavy: runs in the executor."""
         async with self.lock():
             loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(None, self._update_blocking, region, force)
+            return await loop.run_in_executor(None, self._update_blocking, region, force, raster)
 
     async def ensure(self, region: str = DEFAULT_REGION, force: bool = False,
                      max_age_hours: float = DAILY_REFRESH_HOURS) -> dict:
@@ -598,14 +598,19 @@ class OfflineMaps:
         self._write_state(step="raster", progress=70)
         return self._download_raster(region)
 
-    def _update_blocking(self, region: str, force: bool) -> dict:
+    def _update_blocking(self, region: str, force: bool, raster: bool = False) -> dict:
         region_path = GEOFABRIK_REGIONS.get(region, region)
         self._write_state(updating=True, region=region, step="download", progress=0, error="", downloaded=0)
         try:
             stamp = self._download(region_path, force)
             n_pois = self._build_pois()
             n_tiles = self._build_tiles()
-            n_raster = self._build_raster(region)
+            # The raster basemap (the whole region's PNG tiles, z0-14) only on
+            # request: for France it is hundreds of thousands of tiles fetched
+            # one by one, days of download during which the card showed a
+            # black map. The card uses the same tiles online, cached by the
+            # browser — the rendering cost is the same either way.
+            n_raster = self._build_raster(region) if raster else self.raster_count()
             self._write_state(updating=False, step="done", progress=100, error="", region=region,
                               updated=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), pois=n_pois)
             return {"ok": True, "region": region, "stamp": stamp, "pois": n_pois, "tiles_bytes": n_tiles, "raster_tiles": n_raster}
