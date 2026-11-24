@@ -1,3 +1,7 @@
+## 0.40.3 — Une destination qui attend sa carte le dit
+
+- `igor-guide-card` (autoradio) : une destination choisie sans guidage en retour au bout de 6 s affiche pourquoi, en orange : « posez le téléphone sur le socle : c'est sa carte qui calcule l'itinéraire » (option `phone`), ou « en attente de la carte du téléphone ».
+
 ## 0.40.2 — L'autoradio comme sur les croquis
 
 - **`igor-messages-card`** — les messages façon CarPlay : l'icône de l'application, l'expéditeur, le nombre de messages, l'heure, et deux boutons, **Lire** (Igor le dit à voix haute, `say`) et **Répondre** (« J'arrive à 18:27 » avec l'heure du guidage, « Je conduis, je te rappelle », « OK 👍 », ou **Dicter à Igor**) ; jamais le texte à l'écran. Un appel manqué : **Rappeler** et **SMS**. Pendant un appel, un grand panneau au-dessus (Décrocher, Refuser, Refuser + « je conduis »). Les anciens relais Tasker « HA_NOTIF · %anapp|paquet|titre|texte » sont décodés.

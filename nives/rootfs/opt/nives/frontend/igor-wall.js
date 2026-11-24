@@ -10492,6 +10492,7 @@
   //   voice: input_text.car_voice          # the GPS card's voice_to: said HERE
   //   announce: input_text.car_announce    # the house's announcements, said here too
   //   mute: input_boolean.car_voice_off    # on: nothing said (the Voix button)
+  //   phone: binary_sensor.phone_in_car    # absent: « posez le téléphone » when a destination waits for its map
   //   mode: buttons                        # the row of GPS buttons instead of the guidance
   class IgorGuideCard extends IgorCard {
     setConfig(config) { this.config = config || {}; }
@@ -10766,6 +10767,20 @@
         this.barIcon.voice.setAttribute("icon", off ? "mdi:volume-off" : "mdi:volume-high");
       }
       if (this.barBtns && this.barBtns.stop) this.barBtns.stop.disabled = !this.guided();
+      // A destination chosen here, and no guidance back: the map that
+      // computes the route (the phone's) is not running. Said, not silent.
+      if (this.remote() && this.idle && c.destination) {
+        if (!this.waitEl) { this.waitEl = el("div", "", this.idle); this.waitEl.style.cssText = "margin-top:8px;padding:10px 12px;border:1px dashed " + CAR_WARN + ";color:" + CAR_WARN + ";font-size:13px;line-height:1.4"; }
+        var ds = h.states[c.destination], dv = ds ? String(ds.state || "") : "", hasDest = /^-?\d/.test(dv);
+        var waiting = hasDest && !this.guided() && Date.now() - (Date.parse(ds.last_changed) || 0) > 6000;
+        var ph = c.phone && h.states[c.phone], absent = ph && ph.state !== "on";
+        this.waitEl.hidden = !waiting;
+        if (waiting) this.waitEl.textContent = "Destination : " + (dv.split(";")[1] || "").split("|")[0] + " — " + (absent
+          ? "posez le téléphone sur le socle : c'est sa carte qui calcule l'itinéraire."
+          : "en attente de la carte du téléphone (page « tel-carte » ouverte ?).");
+        clearTimeout(this.waitTimer);
+        if (hasDest && !this.guided()) this.waitTimer = setTimeout(() => this.update(), 7000);
+      }
       if (this.remote() && this.guide) {
         var st = h.states[c.entity], v = st ? String(st.state || "") : "";
         if (v === "unknown" || v === "unavailable") v = "";
