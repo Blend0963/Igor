@@ -10494,7 +10494,7 @@
   //   mute: input_boolean.car_voice_off    # on: nothing said (the Voix button)
   //   phone: binary_sensor.phone_in_car    # absent: no route offered (Chercher, Maison, Stations, Étape greyed); the block shows where the car is:
   //   address: sensor.headunit_geocoded_location   # the street and the town
-  //   weather: weather.home                # the weather there
+  //   weather: weather.home                # the weather, at the foot of the block in every state
   //   mode: buttons                        # the row of GPS buttons instead of the guidance
   class IgorGuideCard extends IgorCard {
     setConfig(config) { this.config = config || {}; }
@@ -10527,6 +10527,27 @@
     }
     // `phone` says the phone (its map computes the routes) is not there.
     phoneAbsent() { var c = this.config, ph = c.phone && this._hass && this._hass.states[c.phone]; return !!(ph && ph.state !== "on"); }
+    // The weather (`weather`), at the foot of the block, whatever it shows.
+    drawWx() {
+      var c = this.config, h = this._hass, box = this.wxEl, w = c.weather && h && h.states[c.weather];
+      if (!box) return;
+      box.hidden = !w;
+      if (!w) return;
+      var key = w.state + "|" + w.attributes.temperature + "|" + w.attributes.wind_speed + "|" + w.attributes.humidity;
+      if (key === this.wxKey) return;
+      this.wxKey = key;
+      box.innerHTML = "";
+      var FR = { "clear-night": ["mdi:weather-night", "nuit claire"], cloudy: ["mdi:weather-cloudy", "couvert"], fog: ["mdi:weather-fog", "brouillard"], hail: ["mdi:weather-hail", "grêle"],
+        lightning: ["mdi:weather-lightning", "orage"], "lightning-rainy": ["mdi:weather-lightning-rainy", "orage"], partlycloudy: ["mdi:weather-partly-cloudy", "éclaircies"],
+        pouring: ["mdi:weather-pouring", "forte pluie"], rainy: ["mdi:weather-rainy", "pluie"], snowy: ["mdi:weather-snowy", "neige"], "snowy-rainy": ["mdi:weather-snowy-rainy", "neige et pluie"],
+        sunny: ["mdi:weather-sunny", "soleil"], windy: ["mdi:weather-windy", "vent"], "windy-variant": ["mdi:weather-windy-variant", "vent"], exceptional: ["mdi:alert", "exceptionnel"] };
+      var k = FR[w.state] || ["mdi:weather-partly-cloudy", w.state];
+      var ic = icon(box, k[0]); ic.style.setProperty("--mdc-icon-size", "30px"); ic.style.color = "var(--fg)";
+      var tp = el("div", "", box, w.attributes.temperature != null ? Math.round(w.attributes.temperature) + " °C" : ""); tp.style.cssText = "font-size:24px;white-space:nowrap";
+      el("div", "", box, k[1]).style.cssText = "font-size:13px;color:var(--dim);white-space:nowrap";
+      var extra = [w.attributes.wind_speed != null ? "vent " + Math.round(w.attributes.wind_speed) + " km/h" : "", w.attributes.humidity != null ? Math.round(w.attributes.humidity) + " %" : ""].filter(Boolean).join(" · ");
+      if (extra) { var ex = el("div", "", box, extra); ex.style.cssText = "margin-left:auto;min-width:0;font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"; }
+    }
     // Where the car is: `address` (the head unit's geocoded location sensor:
     // thoroughfare, locality) and `weather` (a weather entity).
     drawPlace() {
@@ -10539,21 +10560,7 @@
       if (/^(unknown|unavailable)$/.test(full)) { street = ""; town = ""; }
       this.npStreet.textContent = street ? (num && !/^\d/.test(street) ? num + " " : "") + street : "Position inconnue";
       this.npTown.textContent = town;
-      var w = c.weather && h.states[c.weather];
-      this.npWx.innerHTML = "";
-      this.npWx.hidden = !w;
-      if (w) {
-        var FR = { "clear-night": ["mdi:weather-night", "nuit claire"], cloudy: ["mdi:weather-cloudy", "couvert"], fog: ["mdi:weather-fog", "brouillard"], hail: ["mdi:weather-hail", "grêle"],
-          lightning: ["mdi:weather-lightning", "orage"], "lightning-rainy": ["mdi:weather-lightning-rainy", "orage"], partlycloudy: ["mdi:weather-partly-cloudy", "éclaircies"],
-          pouring: ["mdi:weather-pouring", "forte pluie"], rainy: ["mdi:weather-rainy", "pluie"], snowy: ["mdi:weather-snowy", "neige"], "snowy-rainy": ["mdi:weather-snowy-rainy", "neige et pluie"],
-          sunny: ["mdi:weather-sunny", "soleil"], windy: ["mdi:weather-windy", "vent"], "windy-variant": ["mdi:weather-windy-variant", "vent"], exceptional: ["mdi:alert", "exceptionnel"] };
-        var k = FR[w.state] || ["mdi:weather-partly-cloudy", w.state];
-        var ic = icon(this.npWx, k[0]); ic.style.setProperty("--mdc-icon-size", "38px"); ic.style.color = "var(--fg)";
-        var t = el("div", "", this.npWx); var tp = el("div", "", t, w.attributes.temperature != null ? Math.round(w.attributes.temperature) + " °C" : "");
-        tp.style.cssText = "font-size:30px;white-space:nowrap"; el("div", "", t, k[1]).style.cssText = "font-size:13px;color:var(--dim)";
-        var extra = [w.attributes.wind_speed != null ? "vent " + Math.round(w.attributes.wind_speed) + " km/h" : "", w.attributes.humidity != null ? "humidité " + Math.round(w.attributes.humidity) + " %" : ""].filter(Boolean).join(" · ");
-        if (extra) { var ex = el("div", "", this.npWx, extra); ex.style.cssText = "margin-left:auto;font-size:12px;color:var(--dim);text-align:right"; }
-      }
+      this.drawWx();
     }
     guided() { var st = this.config.entity && this._hass && this._hass.states[this.config.entity]; return !!(st && st.state && st.state !== "unknown" && st.state !== "unavailable"); }
     build() {
@@ -10621,7 +10628,6 @@
       el("div", "h", this.noPhone, "sur la route");
       this.npStreet = el("div", "", this.noPhone); this.npStreet.style.cssText = "font-size:26px;line-height:1.15;margin-top:4px";
       this.npTown = el("div", "", this.noPhone); this.npTown.style.cssText = "font-size:16px;color:var(--dim);margin-top:6px";
-      this.npWx = el("div", "", this.noPhone); this.npWx.style.cssText = "margin-top:auto;border-top:1px solid var(--line);padding-top:12px;display:flex;align-items:center;gap:14px";
       this.guide = el("div", "", card);
       if (this.remote()) { this.guide.style.display = "flex"; this.guide.style.flexDirection = "column"; this.guide.style.flex = "1"; this.guide.style.minHeight = "0"; el("div", "h", this.guide, "guidage"); }
       var t = el("div", "turn", this.guide);
@@ -10638,6 +10644,12 @@
         var st = el("button", "b stop", e); st.type = "button"; st.style.marginLeft = "auto"; icon(st, "mdi:stop"); st.title = "Arrêter le guidage";
         st.addEventListener("click", () => this.send({ cmd: "stop" }));
       }
+      // The weather at the foot, in every state (route, no route, no phone).
+      this.wxEl = el("div", "", card);
+      this.wxEl.style.cssText = "margin-top:10px;border-top:1px solid var(--line);padding-top:10px;display:flex;align-items:center;gap:12px;flex:none;overflow:hidden";
+      this.wxEl.hidden = true;
+      card.style.display = "flex"; card.style.flexDirection = "column";
+      [this.idle, this.noPhone, this.guide].forEach((x) => { if (x) { x.style.flex = "1"; x.style.minHeight = "0"; } });
       this.buildFind();
       if (!this.remote()) {
         this.onGuide = (ev) => this.show(ev.detail);
@@ -10840,6 +10852,7 @@
           this.show(this.turnObj);
         }
       }
+      this.drawWx();
       this.hear(c.voice, "voiceSeen");
       this.hear(c.announce, "announceSeen");
       this.offerRoutes();
