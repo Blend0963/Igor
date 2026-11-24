@@ -10492,7 +10492,7 @@
   //   voice: input_text.car_voice          # the GPS card's voice_to: said HERE
   //   announce: input_text.car_announce    # the house's announcements, said here too
   //   mute: input_boolean.car_voice_off    # on: nothing said (the Voix button)
-  //   phone: binary_sensor.phone_in_car    # absent: « posez le téléphone » when a destination waits for its map
+  //   phone: binary_sensor.phone_in_car    # absent: no route offered (Chercher, Maison, Stations, Étape greyed; Waze instead)
   //   mode: buttons                        # the row of GPS buttons instead of the guidance
   class IgorGuideCard extends IgorCard {
     setConfig(config) { this.config = config || {}; }
@@ -10503,6 +10503,7 @@
       var c = this.config, h = this._hass;
       if (!h) return;
       var dest = c.destination;
+      if (this.phoneAbsent() && /^(fav|search|fuel|stopover)$/.test(detail.cmd)) return;
       if (detail.cmd === "stop") { if (dest) h.callService("input_text", "set_value", { entity_id: dest, value: "" }); return; }
       if (detail.cmd === "fav") {
         var f = this.favs()[Number(detail.index) || 0], at = this.favAt(f);
@@ -10522,6 +10523,8 @@
       if (Array.isArray(f.location)) return { lat: Number(f.location[0]), lon: Number(f.location[1]) };
       return null;
     }
+    // `phone` says the phone (its map computes the routes) is not there.
+    phoneAbsent() { var c = this.config, ph = c.phone && this._hass && this._hass.states[c.phone]; return !!(ph && ph.state !== "on"); }
     guided() { var st = this.config.entity && this._hass && this._hass.states[this.config.entity]; return !!(st && st.state && st.state !== "unknown" && st.state !== "unavailable"); }
     build() {
       this.style(CAR_HEAD + "\n" + [
@@ -10580,6 +10583,16 @@
         this.idle.style.display = "flex"; this.idle.style.flexDirection = "column"; this.idle.style.height = "100%";
         this.drawRecent();
       }
+      // No phone, no route: the search and the favourites give way to Waze.
+      this.noPhone = el("div", "", card); this.noPhone.hidden = true;
+      el("div", "h", this.noPhone, "guidage");
+      var np = el("div", "", this.noPhone, "Pas de téléphone sur le socle : pas d'itinéraire Igor.");
+      np.style.cssText = "border:1px dashed " + CAR_WARN + ";color:" + CAR_WARN + ";padding:12px;font-size:15px;line-height:1.4";
+      var nps = el("div", "", this.noPhone, "Posez le téléphone pour la carte et le guidage, ou utilisez Waze.");
+      nps.style.cssText = "color:var(--dim);font-size:13px;margin:8px 0 10px";
+      var wz = el("button", "b go", this.noPhone); wz.type = "button"; wz.style.cssText = "width:100%;min-height:56px;flex-direction:row;gap:10px;font-size:13px;letter-spacing:.14em";
+      icon(wz, "mdi:waze"); el("span", "", wz, "Ouvrir Waze");
+      wz.addEventListener("click", () => this.openWaze());
       this.guide = el("div", "", card);
       if (this.remote()) { this.guide.style.display = "flex"; this.guide.style.flexDirection = "column"; this.guide.style.flex = "1"; this.guide.style.minHeight = "0"; el("div", "h", this.guide, "guidage"); }
       var t = el("div", "turn", this.guide);
@@ -10767,6 +10780,12 @@
         this.barIcon.voice.setAttribute("icon", off ? "mdi:volume-off" : "mdi:volume-high");
       }
       if (this.barBtns && this.barBtns.stop) this.barBtns.stop.disabled = !this.guided();
+      var away = this.phoneAbsent();
+      if (this.barBtns) ["search", "home", "work", "fuel", "stopover"].forEach((k) => {
+        var b = this.barBtns[k]; if (!b) return;
+        b.disabled = away; b.style.opacity = away ? "0.35" : "";
+      });
+      if (this.remote() && this.noPhone && away !== this.wasAway) { this.wasAway = away; this.show(this.lastTurn ? this.turnObj : null); }
       // A destination chosen here, and no guidance back: the map that
       // computes the route (the phone's) is not running. Said, not silent.
       if (this.remote() && this.idle && c.destination) {
@@ -10787,7 +10806,8 @@
         if (v !== this.lastTurn) {
           this.lastTurn = v;
           var a = v.split("|");
-          this.show(v ? { icon: a[0], dist: a[1], text: a[2], then: a[3], eta: a[4], left: a[5], min: a[6], jam: Number(a[7]) || 0, dest: a[8] } : null);
+          this.turnObj = v ? { icon: a[0], dist: a[1], text: a[2], then: a[3], eta: a[4], left: a[5], min: a[6], jam: Number(a[7]) || 0, dest: a[8] } : null;
+          this.show(this.turnObj);
         }
       }
       this.hear(c.voice, "voiceSeen");
@@ -10857,7 +10877,9 @@
     disconnectedCallback() { if (this.onGuide) window.removeEventListener("igor-gps-guide", this.onGuide); }
     show(g) {
       if (!this.guide) return;
-      this.idle.hidden = !!g; this.guide.hidden = !g;
+      var away = this.remote() && this.phoneAbsent() && !g;
+      if (this.noPhone) this.noPhone.hidden = !away;
+      this.idle.hidden = !!g || away; this.guide.hidden = !g;
       if (!g) return;
       this.gIcon.setAttribute("icon", g.icon || "mdi:arrow-up");
       this.gDist.textContent = g.dist || "";

@@ -1,5 +1,6 @@
-## 0.40.3 — Une destination qui attend sa carte le dit
+## 0.40.3 — Sans téléphone, pas d'itinéraire proposé
 
+- `igor-guide-card` (option `phone`) : téléphone absent du socle, **aucun itinéraire n'est proposé** — Chercher, Maison, Stations et Étape sont grisés et inactifs, et le bloc de guidage affiche « Pas de téléphone sur le socle : pas d'itinéraire Igor » avec un grand bouton **Ouvrir Waze**. Le téléphone reposé, tout revient.
 - `igor-guide-card` (autoradio) : une destination choisie sans guidage en retour au bout de 6 s affiche pourquoi, en orange : « posez le téléphone sur le socle : c'est sa carte qui calcule l'itinéraire » (option `phone`), ou « en attente de la carte du téléphone ».
 
 ## 0.40.2 — L'autoradio comme sur les croquis
