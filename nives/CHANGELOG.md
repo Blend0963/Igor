@@ -1,3 +1,8 @@
+## 0.39.9 — Le relais TomTom répond enfin
+
+- **Plus de téléchargement automatique de la carte hors ligne** : ni au démarrage de Home Assistant, ni chaque jour, ni à l'ouverture de la carte GPS. L'extrait France fait 4,5 Go, l'image n'a pas `osmium`, et chaque essai finissait en notification « Échec du téléchargement de la carte ». Le service `nives.car_map_update` reste disponible pour un téléchargement demandé à la main.
+- Fond de carte TomTom (`basemap: tomtom`), carte 3D (`basemap: tomtom-3d`) et fond hors ligne raster : chaque demande finissait en **erreur 500 avant même d'appeler TomTom**. Home Assistant passe les morceaux de l'adresse (`z`, `x`, `y`, `path`) à la vue, qui ne les acceptait pas. Corrigé, avec un test qui vérifie toutes les vues à paramètres.
+
 ## 0.39.8 — Fond TomTom : le journal dit pourquoi
 
 - Fond de carte TomTom (`basemap: tomtom`, `tomtom-3d`) : quand TomTom refuse, le journal de Home Assistant dit maintenant ce que TomTom a répondu pour chaque adresse essayée (code et début du message, la clé masquée), au plus une fois par minute. La carte reçoit une erreur 502 explicite au lieu de recopier le code de TomTom (une « 500 » qui faisait croire à une panne d'Igor).

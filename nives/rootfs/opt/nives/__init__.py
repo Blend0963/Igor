@@ -19,7 +19,7 @@ from aiohttp import web
 from homeassistant.components import persistent_notification
 from homeassistant.components.http import KEY_HASS, HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EVENT_HOMEASSISTANT_START, Platform
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import issue_registry as ir
@@ -491,7 +491,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     _async_register_route(hass)
     _async_register_car(hass)
     _async_register_offline_maps(hass)
-    await _async_autostart_offline_map(hass)
+    # No automatic offline-map download any more (0.39.10): France is a 4.5 GB
+    # extract, the image lacks osmium, and the online maps cover the car. The
+    # service nives.car_map_update stays, for whoever asks for it by hand.
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await _async_setup_update_watch(hass, entry)
@@ -873,7 +875,7 @@ def _async_register_basemap(hass: HomeAssistant) -> None:
         name = "api:nives:basemap"
         requires_auth = True
 
-        async def get(self, request: web.Request) -> web.Response:
+        async def get(self, request: web.Request, **_route: str) -> web.Response:
             try:
                 z, x, y = (int(request.match_info[k]) for k in ("z", "x", "y"))
             except ValueError:
@@ -923,7 +925,7 @@ def _async_register_basemap(hass: HomeAssistant) -> None:
         name = "api:nives:tomtom"
         requires_auth = True
 
-        async def get(self, request: web.Request) -> web.Response:
+        async def get(self, request: web.Request, **_route: str) -> web.Response:
             key = _traffic_key(hass)
             if not key:
                 return web.Response(status=404, text="clé TomTom absente des options d'Igor")
@@ -1606,35 +1608,6 @@ def _async_register_car(hass: HomeAssistant) -> None:
 OFFLINE_DIR_NAME = "nives_offline"
 
 
-async def _async_autostart_offline_map(hass: HomeAssistant) -> None:
-    """No download button any more: the offline map maintains itself.
-    At Home Assistant's startup, if no region is downloaded yet (fresh install,
-    lost /config), `nives.car_map_update`-equivalent runs in the background;
-    every 24 h after, the daily refresh (Geofabrik diffs) is checked — a no-op
-    when the local extract is fresh. Failures are logged and retried at the
-    next daily tick, never fatal to the add-on."""
-    from .offline import DEFAULT_REGION, DAILY_REFRESH_HOURS
-
-    maps = _offline_maps(hass)
-
-    async def _ensure(_now=None) -> None:
-        try:
-            if maps.status().get("updating"):
-                return
-            res = await maps.ensure(region=DEFAULT_REGION, max_age_hours=DAILY_REFRESH_HOURS)
-            if res.get("ok") and not res.get("skipped"):
-                _LOGGER.info("Carte hors ligne : région « %s » à jour (%s POI, %s tuiles raster)",
-                             res.get("region"), res.get("pois"), res.get("raster_tiles"))
-        except Exception as err:  # noqa: BLE001 - retried at the next tick
-            _LOGGER.warning("Carte hors ligne : mise à jour auto échouée (%s) — nouvel essai au prochain tick", err)
-
-    def _on_start(_event) -> None:
-        hass.async_create_background_task(hass, _ensure(), "nives_offline_autostart")
-
-    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_START, _on_start)
-    async_track_time_interval(hass, _ensure, timedelta(hours=DAILY_REFRESH_HOURS))
-
-
 def _offline_maps(hass: HomeAssistant):
     """The region's offline maps (offline.py), created once per Core run."""
     store = hass.data.setdefault(DOMAIN, {})
@@ -1757,7 +1730,7 @@ def _async_register_offline_maps(hass: HomeAssistant) -> None:
         name = "api:nives:offline_raster_tile"
         requires_auth = True
 
-        async def get(self, request: web.Request) -> web.Response:
+        async def get(self, request: web.Request, **_route: str) -> web.Response:
             z = request.match_info["z"]
             x = request.match_info["x"]
             y = request.match_info["y"]
