@@ -5300,6 +5300,7 @@
   //                                         # location allowed); ignored when the screen is more than 3 km from the car.
   //   buildings: true                       # false: the map without its buildings (lighter on a head unit)
   //   pixel_ratio: 2                        # at most that many device pixels per pixel (1: lighter)
+  //   quality: max                          # a phone: full resolution, smoothed edges, 60 fps, sky and lit 3D buildings
   //   dead_reckoning: true                  # in a tunnel, on at the OBD speed (speed_entity) for 3 min (false: off)
   //   tomtom_pois: true                     # the places from TomTom's search (one ask a kind and a square: heavy on the key's quota); OpenStreetMap by default
   //   traffic: true                         # the route's jams (orange, red) and the incidents on the map once a TomTom key is set (false: never)
@@ -6806,6 +6807,12 @@
         };
         map.on("idle", hideFuel);
       }
+      if (this.hq()) {
+        // A night sky over the horizon instead of a flat edge, and a light
+        // that gives the buildings their faces.
+        try { if (map.setSky) map.setSky({ "sky-color": "#0b0e14", "horizon-color": "#1b2433", "fog-color": "#08090b", "sky-horizon-blend": 0.6, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.4 }); } catch (e) { /* older engine */ }
+        try { map.setLight({ anchor: "viewport", color: "#cfd8e6", intensity: 0.45, position: [1.3, 210, 35] }); } catch (e) { /* no light */ }
+      }
       if (layers.some((l) => l.type === "fill-extrusion")) return;
       var fp = layers.find((l) => l.type === "fill" && l.source && /build/i.test(l.id + " " + (l["source-layer"] || "")));
       if (!fp || map.getLayer("igor-3d")) return;
@@ -6814,8 +6821,9 @@
       var first = layers.find((l) => l.type === "symbol");
       map.addLayer({ id: "igor-3d", type: "fill-extrusion", source: fp.source, "source-layer": fp["source-layer"], minzoom: 15,
         filter: fp.filter || ["all"],
-        paint: { "fill-extrusion-color": "#1d2128", "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 15, 0, 16, h],
-          "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.85 } }, first ? first.id : undefined);
+        paint: { "fill-extrusion-color": this.hq() ? ["interpolate", ["linear"], h, 0, "#1a1e25", 30, "#242a33", 80, "#2e3642"] : "#1d2128",
+          "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 15, 0, 16, h],
+          "fill-extrusion-base": 0, "fill-extrusion-opacity": this.hq() ? 0.95 : 0.85, "fill-extrusion-vertical-gradient": true } }, first ? first.id : undefined);
     }
     onlineStyle() {
       var t = this.config.tiles;
@@ -7112,7 +7120,11 @@
         bearing: this.headingUp ? this.heading : 0, attributionControl: this.config.hide_attribution ? false : { compact: true },
         // Light on a small screen: no label fade (it redraws for 300 ms at
         // each label), at most 2 device pixels per pixel.
-        fadeDuration: 0, pixelRatio: Math.min(window.devicePixelRatio || 1, Number(this.config.pixel_ratio) || (this.offlineReady ? 1 : 2)),
+        fadeDuration: this.hq() ? 250 : 0,
+        pixelRatio: this.hq() ? (window.devicePixelRatio || 1) : Math.min(window.devicePixelRatio || 1, Number(this.config.pixel_ratio) || (this.offlineReady ? 1 : 2)),
+        // quality: max (a phone): every device pixel, smoothed edges, the
+        // view tipped further, more tiles kept — the best the screen can show.
+        antialias: this.hq(), maxPitch: this.hq() ? 75 : 60, maxTileCacheSize: this.hq() ? 600 : null,
         // Igor's own tiles (traffic) need the Home Assistant login, as every API call.
         transformRequest: (url) => {
           if (url.indexOf("/api/nives/") >= 0) this.lastNives = url;
@@ -7286,7 +7298,7 @@
       var gap = this.rafAt ? now - this.rafAt : 16;
       this.rafAt = now;
       this.rafAvg = this.rafAvg == null ? gap : this.rafAvg + (Math.min(gap, 500) - this.rafAvg) * 0.05;
-      var want = Math.max(5, Math.min(60, Number(this.config.fps) || (this.offlineReady ? 8 : 20)));
+      var want = Math.max(5, Math.min(60, Number(this.config.fps) || (this.hq() ? 60 : this.offlineReady ? 8 : 20)));
       if (!this.fpsNow || this.fpsNow > want) this.fpsNow = want;
       if (!this.paceAt) this.paceAt = now;
       if (now - this.paceAt > 5000) {
@@ -8982,6 +8994,7 @@
       return out;
     },
     basePois() { return this.config.basemap === "tomtom-3d" && this.config.base_pois !== false; },
+    hq() { return this.config.quality === "max"; },
     applyLayers() {
       var map = this.map;
       if (!map || !map.getLayer || !map.getLayer("pois")) return;
