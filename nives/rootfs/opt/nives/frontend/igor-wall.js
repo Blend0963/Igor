@@ -5285,6 +5285,7 @@
   //   display_only: true                    # a second screen: the map only (no button, banner or sign); a tap on the map still picks a place or a route
   //   base_pois: true                       # with basemap: tomtom-3d, TomTom's own places (Igor adds only cameras and stations with prices)
   //   voice_to: input_text.car_voice        # what the guidance says goes there (« ms|kind|text »), said by the head unit's igor-guide-card
+  //   publish_routes: input_text.car_routes  # the routes offered, for the head unit to choose (route_choice: input_text.car_choice brings the answer)
   //   publish_turn: input_text.car_turn     # the whole guidance for igor-guide-card `entity` (« icon|dist|text|then|eta|left|min|jam|dest »)
   //   publish_guide: input_text.car_guide   # the guidance written for the other screens (« eta|km|min|destination »)
   //   announce: input_text.car_announce     # the house's announcements, said with the guidance's voice
@@ -6335,7 +6336,7 @@
       this._hass = hass;
       if (!this.root) this.build();
       // Only when what the card shows changed (not at every change in the house).
-      if (prev && this.loading && [c.entity, c.fallback_entity, c.speed_entity, c.speed_limit_entity, c.destination, c.announce, "sun.sun"].every(function (id) { return !id || prev.states[id] === hass.states[id]; })) return;
+      if (prev && this.loading && [c.entity, c.fallback_entity, c.speed_entity, c.speed_limit_entity, c.destination, c.announce, c.route_choice, "sun.sun"].every(function (id) { return !id || prev.states[id] === hass.states[id]; })) return;
       this.read();
     }
     connectedCallback() { if (this.map && !this.raf) this.raf = requestAnimationFrame(() => this.tick()); if (this.onCmd) window.addEventListener("igor-gps-cmd", this.onCmd); }
@@ -6932,6 +6933,17 @@
         var fresh = Date.now() - (Date.parse(an.last_changed) || 0) < 60000;
         var said = String(an.state || "").replace(/^[^|]*\|/, "").trim();
         if (!first && fresh && said && an.state !== "unknown" && an.state !== "unavailable") this.say(said, "alert");
+      }
+      // route_choice: the head unit chose among the routes offered (« ms|n »).
+      var rc = this.config.route_choice && this._hass.states[this.config.route_choice];
+      if (rc && rc.state !== this.choiceSeen) {
+        var firstRc = this.choiceSeen === undefined;
+        this.choiceSeen = rc.state;
+        var mm = /^(\d+)\|(\d+)$/.exec(rc.state || "");
+        if (!firstRc && mm && Date.now() - Number(mm[1]) < 120000 && this.routeOpts) {
+          var ro = this.routeOpts.opts[Number(mm[2])];
+          if (ro) this.routeOpts.pick(ro);
+        }
       }
       var de = this.config.destination && this._hass.states[this.config.destination];
       if (de && de.state !== this.destState) {
@@ -8556,6 +8568,8 @@
       if (!opts.length) return false;
       var pick = (o) => {
         clearTimeout(this.pickTimer);
+        this.routeOpts = null;
+        this.publishRoutes("");
         this.$("rpanel").hidden = true;
         this.alts = opts.filter((x) => x !== o);
         this.tripAvoid = o.types;
@@ -8565,6 +8579,14 @@
         if (o.route.lez && o.route.lez.length) this.toast("Zone à faibles émissions · vignette requise", 9000);
       };
       if (opts.length === 1) { pick(opts[0]); return true; }
+      // publish_routes: the choice offered on the head unit too (igor-guide-
+      // card `routes`), « ms|min~dist~bouchons~libellé~péage~zfe;… »; its
+      // answer comes back by route_choice (« ms|n »).
+      this.routeOpts = { opts: opts, pick: pick };
+      this.publishRoutes(Date.now() + "|" + opts.map((o) => {
+        var R0 = o.route;
+        return [Math.round(R0.duration / 60), gpsMetres(R0.distance), R0.delay >= 60 ? Math.round(R0.delay / 60) : 0, String(o.label).replace(/[~;|]/g, " "), R0.tolls && R0.tolls.length ? 1 : 0, R0.lez && R0.lez.length ? 1 : 0].join("~");
+      }).join(";"));
       var $ = this.$, list = $("rlist");
       list.innerHTML = "";
       $("rtitle").textContent = "vers " + d.name;
@@ -8603,8 +8625,14 @@
       $("fpanel").hidden = true;
       $("rpanel").hidden = false;
       clearTimeout(this.pickTimer);
-      this.pickTimer = setTimeout(() => { if (!$("rpanel").hidden) pick(opts[0]); }, 12000);
+      this.pickTimer = setTimeout(() => { if (!$("rpanel").hidden) pick(opts[0]); }, this.config.publish_routes ? 25000 : 12000);
       return true;
+    },
+    publishRoutes(v) {
+      var e = this.config.publish_routes;
+      if (!e || !this._hass || !this._hass.callService || v === this.routesSent) return;
+      this.routesSent = v;
+      this._hass.callService("input_text", "set_value", { entity_id: e, value: String(v).slice(0, 250) }).catch(() => { this.routesSent = null; });
     },
     useRoute(coords, raw, duration, source, extra) {
       var cum = [0];
@@ -10716,6 +10744,35 @@
       }
       this.hear(c.voice, "voiceSeen");
       this.hear(c.announce, "announceSeen");
+      this.offerRoutes();
+    }
+    // routes: the map's offer of routes (its publish_routes) — chosen here,
+    // the answer written to route_choice. Only the guidance card shows it.
+    offerRoutes() {
+      var c = this.config, st = c.routes && this.config.mode !== "buttons" && this._hass.states[c.routes];
+      if (!st || st.state === this.routesSeen) return;
+      this.routesSeen = st.state;
+      var m = /^(\d+)\|(.+)$/.exec(st.state || "");
+      if (!m || Date.now() - Number(m[1]) > 60000) { if (this.findKind === "routes") this.findEl.hidden = true; return; }
+      this.findKind = "routes";
+      this.findEl.hidden = false; this.findForm.hidden = true;
+      var dst = c.destination && this._hass.states[c.destination], nm = dst ? String(dst.state || "").split(";")[1] || "" : "";
+      this.findTitle.textContent = "itinéraires" + (nm ? " vers " + nm.split("|")[0] : "");
+      this.findList.innerHTML = "";
+      m[2].split(";").forEach((o, i) => {
+        var p = o.split("~"), mins = Number(p[0]) || 0, jam = Number(p[2]) || 0;
+        var t = mins >= 60 ? Math.floor(mins / 60) + " h " + String(mins % 60).padStart(2, "0") : mins + " min";
+        var it = el("div", "it", this.findList), l = el("div", "", it);
+        var big = el("div", "", l, t); big.style.fontSize = "24px";
+        el("small", "", l, [p[3], p[1], p[4] === "1" ? "péage" : "", p[5] === "1" ? "ZFE" : ""].filter(Boolean).join(" · "));
+        var r = el("span", "r", it, jam ? "+" + jam + " min de bouchons" : "fluide"); r.style.color = jam ? CAR_WARN : CAR_OK;
+        if (!i) it.style.boxShadow = "inset 3px 0 var(--acc)";
+        it.addEventListener("click", () => {
+          this.findEl.hidden = true;
+          if (c.route_choice) this._hass.callService("input_text", "set_value", { entity_id: c.route_choice, value: Date.now() + "|" + i });
+        });
+      });
+      el("div", "note", this.findList, "sans choix, le premier est pris au bout de 25 s");
     }
     // A sentence written into an input_text (« ms|kind|text » or
     // « time|text »): said once, here, if fresh and the voice is not off.

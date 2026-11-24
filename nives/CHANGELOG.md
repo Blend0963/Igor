@@ -1,3 +1,8 @@
+## 0.40.2 — Le choix de l'itinéraire sur l'autoradio
+
+- `igor-gps-card` : **`publish_routes: input_text.…`** et **`route_choice: input_text.…`** — quand plusieurs itinéraires sont possibles, la carte (le téléphone) les publie (« ms|min~distance~bouchons~libellé~péage~ZFE;… ») et applique le choix revenu (« ms|n »). Sans choix, le premier est pris au bout de 25 s (12 s sans autoradio).
+- `igor-guide-card` : **`routes`** et **`route_choice`** — la grande carte de guidage de l'autoradio ouvre la liste des itinéraires (durée, distance, péage, ZFE, bouchons) dès que la carte les propose ; un toucher choisit.
+
 ## 0.40.1 — La carte déportée en plein écran
 
 - La page d'une carte `display_only` s'affiche **sans la barre du haut de Home Assistant** (comme les murs `kiosk: true`) : la carte prend tout l'écran.
