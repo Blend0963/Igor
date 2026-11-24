@@ -381,6 +381,12 @@
       this.lastText = 0;
       if (this.paged) this.pager = setInterval(() => this.nextPage(), 8000);
       this.tick = setInterval(() => this.clock(), 15000);
+      // Home Assistant out of reach (a tunnel, no network): the screen keeps
+      // its last values; a red strip says so, and since when. A ping every
+      // 10 s, because a connection cut on the road is not always reported.
+      this.lostEl = el("div", "", this.root); this.lostEl.hidden = true;
+      this.lostEl.style.cssText = "flex: 1 1 auto; min-width: 0; align-self: stretch; display: flex; align-items: center; justify-content: center; gap: 10px; margin: 6px 14px; padding: 0 14px; border: 1px solid #e5323b; background: #2a0f11; color: #ff8a80; font-size: 12px; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; overflow: hidden";
+      this.pingTimer = setInterval(() => this.pingHa(), 10000);
       this.clock();
     }
     buildCopy(copy) {
@@ -432,6 +438,7 @@
     }
     set hass(hass) {
       this._hass = hass;
+      if (hass && hass.connected === false) this.setLost(true); else if (hass && hass.connected && this.lostAt && Date.now() - this.lostAt.getTime() > 2000) this.pingHa();
       if (this.editEl) this.editEl.hidden = !isAdmin(hass);
       if (this.bellEl && !this.unbell && hass.connection) {
         this.waitingN = 0;
@@ -691,7 +698,24 @@
       this.tabInSight();
       this.bellEl.title = (n ? n + " à traiter" : "") + (n && fresh ? " · " : "") + (fresh ? "nouvelle notification" : "");
     }
-    destroy() { this.dead = true; if (this.unbell) { this.unbell(); this.unbell = null; } clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); clearTimeout(this.autoTimer); }
+    pingHa() {
+      var h = this._hass, cn = h && h.connection;
+      if (!cn || typeof cn.ping !== "function") return;
+      var done = false;
+      cn.ping().then(() => { done = true; this.setLost(false); }, () => {});
+      setTimeout(() => { if (!done) this.setLost(true); }, 8000);
+    }
+    setLost(lost) {
+      if (!this.lostEl) return;
+      lost = !!lost;
+      if (lost && !this.lostAt) this.lostAt = new Date();
+      if (!lost) this.lostAt = null;
+      if (window.__igorLost !== lost) { window.__igorLost = lost; window.dispatchEvent(new CustomEvent("igor-connection", { detail: { lost: lost } })); }
+      this.lostEl.hidden = !lost;
+      this.lane.style.display = lost ? "none" : "";
+      if (lost) this.lostEl.textContent = "⚠ connexion perdue · valeurs figées depuis " + hhmm(this.lostAt) + " · reconnexion…";
+    }
+    destroy() { this.dead = true; clearInterval(this.pingTimer); if (this.unbell) { this.unbell(); this.unbell = null; } clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); clearTimeout(this.autoTimer); }
   }
 
   // ===== igor-wall: the whole screen =====
@@ -5368,7 +5392,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.42.0";
+  var GPS_CARD_VERSION = "0.42.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -8774,14 +8798,19 @@
     // played here; each sentence kept, said again at no cost), else the
     // browser's. `kind`: "nav" for a turn (only with the voice on « tout »),
     // else a warning (also with « alertes seulement »).
-    say(text, kind) {
+    say(text, kind, here) {
       // voice_to: input_text.x — the words go to the screen that speaks (the
       // head unit's igor-guide-card), not out of this one: « ms|kind|text ».
+      // Home Assistant out of reach: said here instead — the phone is on the
+      // head unit's Bluetooth, the voice still comes out of the car.
       var vt = this.config.voice_to;
-      if (vt && text && this._hass && this._hass.callService) {
-        this._hass.callService("input_text", "set_value", { entity_id: vt, value: (Date.now() + "|" + (kind || "nav") + "|" + String(text)).slice(0, 250) }).catch(() => {});
+      if (vt && text && !here && this._hass && this._hass.callService && this._hass.connected !== false) {
+        var sent = false, msg = (Date.now() + "|" + (kind || "nav") + "|" + String(text)).slice(0, 250);
+        this._hass.callService("input_text", "set_value", { entity_id: vt, value: msg }).then(() => { sent = true; }, () => { if (!sent) { sent = true; this.say(text, kind, true); } });
+        setTimeout(() => { if (!sent) { sent = true; this.say(text, kind, true); } }, 6000);
         return;
       }
+      if (vt && text && !here && this._hass && this._hass.connected === false) here = true;
       var mode = this.voiceMode || "all";
       if (this.config.voice === false || mode === "off" || (mode === "alerts" && kind === "nav") || !text) return;
       var seq = this.saySeq = (this.saySeq || 0) + 1, engine = this.ttsEntity();
@@ -8789,6 +8818,8 @@
         if (!window.speechSynthesis) return;
         try { var u = new SpeechSynthesisUtterance(text); u.lang = "fr-FR"; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch (e) { /* no voice on this screen */ }
       };
+      // The head unit unreachable: Home Assistant's voice is too — the phone's own.
+      if (here && vt) { browser(); return; }
       if (!engine || !this._hass || !this._hass.callApi || this.ttsBroken > 2) { browser(); return; }
       var cache = this.ttsCache || (this.ttsCache = {});
       // An <audio> element takes Android's audio focus: Deezer pauses and
@@ -10561,6 +10592,7 @@
   //   mute: input_boolean.car_voice_off    # on: nothing said (the Voix button)
   //   phone: binary_sensor.phone_in_car    # absent: no route offered (Chercher, Maison, Stations, Étape greyed); the block shows where the car is:
   //   address: sensor.headunit_geocoded_location   # the street and the town
+  //   ahead: input_text.car_ahead          # the map's heartbeat (its publish_ahead): silent 20 s while guided → « guidage interrompu », Waze offered
   //   weather: weather.home                # the weather, at the foot of the block in every state
   //   mode: buttons                        # the row of GPS buttons instead of the guidance
   class IgorGuideCard extends IgorCard {
@@ -10697,7 +10729,7 @@
       this.cut.style.cssText = "display:flex;flex-direction:column;height:100%;border-left:3px solid " + CAR_WARN + ";padding-left:10px";
       el("div", "h", this.cut, "guidage interrompu");
       this.cutTo = el("div", "", this.cut); this.cutTo.style.cssText = "font-size:20px;line-height:1.35;margin-top:2px";
-      el("div", "", this.cut, "Le téléphone a quitté le socle : sa carte ne guide plus.").style.cssText = "font-size:13px;color:var(--dim);margin:10px 0";
+      this.cutWhy = el("div", "", this.cut, "Le téléphone a quitté le socle : sa carte ne guide plus."); this.cutWhy.style.cssText = "font-size:13px;color:var(--dim);margin:10px 0";
       var cw = el("button", "b go", this.cut); cw.type = "button"; cw.style.cssText = "width:100%;min-height:56px;flex-direction:row;gap:10px;font-size:13px;letter-spacing:.14em";
       icon(cw, "mdi:waze"); el("span", "", cw, "Continuer avec Waze");
       cw.addEventListener("click", () => this.openWaze());
@@ -10764,7 +10796,7 @@
       var c = this.config, h = this._hass, st = c.destination && h && h.states[c.destination];
       var d = st && /^\s*(-?\d+(\.\d+)?)\s*,\s*(-?\d+(\.\d+)?)/.exec(st.state || "");
       var uri = d ? "https://waze.com/ul?ll=" + d[1] + "," + d[3] + "&navigate=yes" : "https://waze.com/ul";
-      if (c.waze_notify && h) {
+      if (c.waze_notify && h && !window.__igorLost && h.connected !== false) {
         var svc = String(c.waze_notify).split(".");
         h.callService(svc[0], svc[1], { message: "command_activity", data: { intent_action: "android.intent.action.VIEW", intent_uri: uri, intent_package_name: "com.waze" } });
       } else window.open(uri, "_blank");
@@ -11000,15 +11032,47 @@
         if (ctx.state === "suspended") ctx.resume().then(run, element); else run();
       }).catch(browser);
     }
-    connectedCallback() { super.connectedCallback(); if (this.onGuide) { window.addEventListener("igor-gps-guide", this.onGuide); this.show(window.__igorGuide || null); } }
-    disconnectedCallback() { if (this.onGuide) window.removeEventListener("igor-gps-guide", this.onGuide); }
+    connectedCallback() {
+      super.connectedCallback();
+      if (this.onGuide) { window.addEventListener("igor-gps-guide", this.onGuide); this.show(window.__igorGuide || null); }
+      // Remote: the heartbeat is judged every 5 s (no news is the news), and
+      // again when the connection to Home Assistant goes or comes back.
+      if (this.config && this.config.entity && !this.beat) {
+        this.beat = setInterval(() => { if (this.guide && this._hass) this.show(this.turnObj || null); }, 5000);
+        this.onConn = () => { if (this.guide && this._hass) this.show(this.turnObj || null); };
+        window.addEventListener("igor-connection", this.onConn);
+      }
+    }
+    disconnectedCallback() {
+      if (this.onGuide) window.removeEventListener("igor-gps-guide", this.onGuide);
+      if (this.beat) { clearInterval(this.beat); this.beat = null; window.removeEventListener("igor-connection", this.onConn); }
+    }
+    // The phone map alive? Its heartbeat (publish_ahead, every 2 to 8 s).
+    // Unknown without `ahead`; not judged while Home Assistant is out of
+    // reach (then nothing comes, from anyone: the bar says so).
+    mapSilent() {
+      var c = this.config, h = this._hass, a = c.ahead && h && h.states[c.ahead];
+      if (!a || window.__igorLost || (h && h.connected === false)) return false;
+      var t = Number(String(a.state || "").split("|")[0]);
+      return !(t > 0) || Date.now() - t > 20000;
+    }
     show(g) {
       if (!this.guide) return;
-      var away = this.remote() && this.phoneAbsent() && !g;
-      // A destination still set while the phone is away: the trip was cut.
+      // The map gone quiet while guiding (phone off its dock, app closed,
+      // battery out): its last arrow would lie — the trip is cut.
+      var silent = !!(this.remote() && g && this.config.ahead && this.mapSilent());
+      if (silent) g = null;
+      var away = this.remote() && (this.phoneAbsent() || silent) && !g;
+      // A destination still set while the map is away: the trip was cut.
       var ds = away && this.config.destination && this._hass && this._hass.states[this.config.destination], dv = ds ? String(ds.state || "") : "";
       var cut = away && /^-?\d/.test(dv);
-      if (this.cut) { this.cut.hidden = !cut; if (cut) this.cutTo.textContent = "Vers " + ((dv.split(";")[1] || "votre destination").split("|")[0]); }
+      if (this.cut) {
+        this.cut.hidden = !cut;
+        if (cut) { this.cutTo.textContent = "Vers " + ((dv.split(";")[1] || "votre destination").split("|")[0]); this.cutWhy.textContent = this.phoneAbsent() ? "Le téléphone a quitté le socle : sa carte ne guide plus." : "La carte du téléphone ne répond plus (appli fermée, écran éteint, batterie…)."; }
+      }
+      // Home Assistant out of reach: the last arrow stays, dimmed (the phone
+      // still guides on its own screen).
+      this.guide.style.opacity = window.__igorLost ? "0.45" : "";
       if (this.noPhone) { this.noPhone.hidden = !away || cut; if (away && !cut) this.drawPlace(); }
       this.idle.hidden = !!g || away; this.guide.hidden = !g;
       if (!g) return;

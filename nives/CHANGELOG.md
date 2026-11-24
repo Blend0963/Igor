@@ -1,3 +1,9 @@
+## 0.42.1 — Les imprévus en route
+
+- **Connexion perdue** : la barre d'Igor vérifie Home Assistant toutes les 10 s ; sans réponse, un bandeau rouge « connexion perdue · valeurs figées depuis 18:05 · reconnexion… » remplace la ligne du haut, et la dernière flèche du guidage est estompée (le téléphone continue de guider sur son écran). Tout revient seul avec le réseau.
+- **Guidage interrompu, quelle qu'en soit la cause** : `igor-guide-card` suit le signe de vie de la carte du téléphone (`ahead`, son `publish_ahead`). Muette 20 s pendant un guidage (téléphone retiré, appli fermée, écran éteint, batterie vide), la dernière flèche n'est plus affichée : « Vers Maison », la raison, « Continuer avec Waze » sur la même destination, « reposez le téléphone : le guidage reprend ». Sans connexion, « Continuer avec Waze » ouvre le lien Waze directement.
+- **La voix de secours** : si l'autoradio ne peut pas recevoir une annonce (Home Assistant injoignable), la carte du téléphone la dit elle-même — relié en Bluetooth, le son sort quand même dans la voiture.
+
 ## 0.42.0 — La frise sous la console, la vue moteur qui sait pourquoi
 
 - **`igor-drive-card`** en deux étages :
