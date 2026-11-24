@@ -182,6 +182,19 @@ RUN verify() { got=$(sha256sum "$1" | cut -d' ' -f1); echo "sha256 $(basename "$
     && rm -f /tmp/maplibre.tgz \
     && test -s /opt/nives/frontend/vendor/maplibre-gl.js
 
+# MapLibre 6 (ES modules: the main file, its shared part and its worker, side
+# by side) — the version TomTom's Orbis styles are written for, their 3D
+# buildings included. The card loads it first and falls back to 4.7.1 above.
+ARG MAPLIBRE6_VERSION=6.19.0
+ARG MAPLIBRE6_SHA256="8a0648e7a1f3baf757f3a9d994c3fdc7383ea0ebfc52ce1e90f3e7264dc9a20f"
+RUN verify() { got=$(sha256sum "$1" | cut -d' ' -f1); echo "sha256 $(basename "$1") $got"; [ -n "$2" ] && [ "$got" = "$2" ] || { echo "CHECKSUM MISMATCH for $1 (expected '$2')"; exit 1; }; } \
+    && curl -fsSL "https://registry.npmjs.org/maplibre-gl/-/maplibre-gl-${MAPLIBRE6_VERSION}.tgz" -o /tmp/maplibre6.tgz \
+    && verify /tmp/maplibre6.tgz "$MAPLIBRE6_SHA256" \
+    && mkdir -p /opt/nives/frontend/vendor/maplibre6 \
+    && tar -xzf /tmp/maplibre6.tgz -C /opt/nives/frontend/vendor/maplibre6 --strip-components=2 package/dist/maplibre-gl.mjs package/dist/maplibre-gl-shared.mjs package/dist/maplibre-gl-worker.mjs package/dist/maplibre-gl.css \
+    && rm -f /tmp/maplibre6.tgz \
+    && test -s /opt/nives/frontend/vendor/maplibre6/maplibre-gl.mjs
+
 # Ensure all scripts are executable
 RUN find /etc/s6-overlay -name 'run' -exec chmod +x {} \; \
     && find /etc/s6-overlay -name 'finish' -exec chmod +x {} \; \

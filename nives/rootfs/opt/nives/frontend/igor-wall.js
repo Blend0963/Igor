@@ -5360,6 +5360,9 @@
   // head unit's browser caches it. unpkg is only the fallback when the local
   // copy is missing (an integration copied by hand, without vendor/).
   var GPS_MAPLIBRE_LOCAL = "/nives_static/vendor/maplibre-gl";
+  // MapLibre 6 (ES modules), the version TomTom's Orbis styles are made for —
+  // their buildings in relief included. Tried first; 4.7.1 if it cannot load.
+  var GPS_MAPLIBRE6 = "/nives_static/vendor/maplibre6/maplibre-gl";
   var GPS_MAPLIBRE_CDN = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl";
   var GPS_MAPLIBRE = GPS_MAPLIBRE_LOCAL;
   // The base map online: CARTO's dark raster tiles (OpenStreetMap data).
@@ -5393,10 +5396,14 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.43.3";
+  var GPS_CARD_VERSION = "0.44.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
+  // The route, TomTom's way: a soft halo, a deep blue edge, a bright body
+  // and a light line down its middle.
+  var GPS_GLOW_W = ["interpolate", ["linear"], ["zoom"], 10, 12, 13, 18, 16, 28, 18, 38];
+  var GPS_CORE_W = ["interpolate", ["linear"], ["zoom"], 10, 0.8, 13, 1.4, 16, 2.4, 18, 3.4];
   // Speeds (m/s, from the car itself when it says, else the GPS):
   // above GPS_FWD (15 km/h) a car only drives forward, so where it goes is
   // where it faces; under GPS_SLOW (9 km/h) it may be manoeuvring or reversing,
@@ -5433,6 +5440,18 @@
   function gpsMapLibre() {
     if (window.maplibregl) return Promise.resolve(window.maplibregl);
     if (!window.__igorMapLibre) {
+      // The module first: `import()` written through Function, so an old
+      // browser that does not know it still reads this file.
+      var six = function () {
+        var imp;
+        try { imp = new Function("u", "return import(u)"); } catch (e) { return Promise.reject(e); }
+        return imp(window.location.origin + GPS_MAPLIBRE6 + ".mjs").then(function (m) {
+          var ml = m && (m.Map ? m : m.default);
+          if (!ml || !ml.Map) throw new Error("maplibre 6");
+          window.maplibregl = ml; GPS_MAPLIBRE = GPS_MAPLIBRE6;
+          return ml;
+        });
+      };
       var load = function (base) {
         return new Promise(function (resolve, reject) {
           var sc = document.createElement("script");
@@ -5442,7 +5461,7 @@
           document.head.appendChild(sc);
         });
       };
-      window.__igorMapLibre = load(GPS_MAPLIBRE_LOCAL).catch(function () {
+      window.__igorMapLibre = six().catch(function () { return load(GPS_MAPLIBRE_LOCAL); }).catch(function () {
         GPS_MAPLIBRE = GPS_MAPLIBRE_CDN;
         return load(GPS_MAPLIBRE_CDN);
       }).catch(function () {
@@ -5682,8 +5701,15 @@
     return out;
   }
   window.__igorGpsMath = { roadPath: gpsRoadPath, nearest: gpsNearest, along: gpsAlong, alongLine: gpsAlongLine, project: gpsProject, dist: gpsDist };
-  var GPS_ARROW = '<svg viewBox="0 0 40 40" width="46" height="46"><circle cx="20" cy="20" r="18" fill="rgba(89,208,224,0.18)"/>' +
-    '<path d="M20 4 L32 33 L20 26 L8 33 Z" fill="#59d0e0" stroke="#07080a" stroke-width="2.5" stroke-linejoin="round"/></svg>';
+  // The car: a chevron lying on the road (it tilts with the map), lit from
+  // the left, a soft light on the ground under it — as TomTom draws it.
+  var GPS_ARROW = '<svg viewBox="0 0 60 60" width="62" height="62"><defs>' +
+    '<radialGradient id="igglow"><stop offset="0" stop-color="#5fd0ff" stop-opacity=".55"/><stop offset="1" stop-color="#5fd0ff" stop-opacity="0"/></radialGradient>' +
+    '<linearGradient id="igl" x1="0" x2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#cfefff"/></linearGradient>' +
+    '<linearGradient id="igr" x1="0" x2="1"><stop offset="0" stop-color="#7fd3ff"/><stop offset="1" stop-color="#2f9be6"/></linearGradient></defs>' +
+    '<circle cx="30" cy="32" r="27" fill="url(#igglow)"/>' +
+    '<path d="M30 8 L30 38 L12 47 Z" fill="url(#igl)"/><path d="M30 8 L48 47 L30 38 Z" fill="url(#igr)"/>' +
+    '<path d="M30 8 L48 47 L30 38 L12 47 Z" fill="none" stroke="#0b3f86" stroke-width="2" stroke-linejoin="round"/></svg>';
   // The French speed limit sign (B14): kept as the real thing, readable at a glance.
   var GPS_SIGN = '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="49.5" fill="#fff" stroke="rgba(0,0,0,0.35)" stroke-width="1"/>' +
     '<circle cx="50" cy="50" r="42.5" fill="none" stroke="#c8102e" stroke-width="11"/>' +
@@ -6856,11 +6882,30 @@
         try { if (map.setSky) map.setSky({ "sky-color": "#0b0e14", "horizon-color": "#1b2433", "fog-color": "#08090b", "sky-horizon-blend": 0.6, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.4 }); } catch (e) { /* older engine */ }
         try { map.setLight({ anchor: "viewport", color: "#cfd8e6", intensity: 0.45, position: [1.3, 210, 35] }); } catch (e) { /* no light */ }
       }
-      // The buildings in relief, built by Igor from the buildings TomTom
-      // draws flat: the same tiles, the same polygons, raised to their own
-      // height (Orbis: `height` in metres, `ground_height` for what stands
-      // above the ground, `extrude` false: not to be raised). The style's own
-      // 3D layers, when it has any, are put away: one relief, not two.
+      // The buildings in relief: TomTom's own, from its style (MapLibre 6
+      // draws them as TomTom designed them, rounded corners and all). Only a
+      // style without any 3D layer gets Igor's: the flat buildings raised to
+      // their height (Orbis: `height`, `ground_height`, `extrude` false: flat).
+      var tt3d = layers.filter((l) => l.type === "fill-extrusion");
+      if (tt3d.length) {
+        tt3d.forEach((l) => {
+          try {
+            map.setLayoutProperty(l.id, "visibility", "visible");
+            if (l.minzoom != null && l.minzoom > 15) map.setLayerZoomRange(l.id, 15, l.maxzoom != null ? l.maxzoom : 24);
+            if (this.hq()) map.setPaintProperty(l.id, "fill-extrusion-vertical-gradient", true);
+          } catch (e) { /* left as TomTom made it */ }
+        });
+        this.diag3d = "bâtiments 3D de TomTom (" + tt3d.length + " couches, MapLibre " + (window.maplibregl && window.maplibregl.getVersion ? window.maplibregl.getVersion() : "?") + ")";
+        if (this.config.debug) {
+          this.message("relief : " + this.diag3d);
+          map.once("idle", () => {
+            var f = [];
+            try { f = map.queryRenderedFeatures({ layers: tt3d.map((l) => l.id) }); } catch (e) { f = []; }
+            this.message("relief : " + this.diag3d + " · " + f.length + " à l'écran");
+          });
+        }
+        return;
+      }
       var hq = this.hq(), flats = layers.filter((l) => l.type === "fill" && /build/i.test(l.id + " " + (l["source-layer"] || "")));
       layers.filter((l) => l.type === "fill-extrusion").forEach((l) => { try { map.setLayoutProperty(l.id, "visibility", "none"); } catch (e) { /* kept */ } });
       var h = ["to-number", ["coalesce", ["get", "height"], ["get", "render_height"], ["get", "building_height"],
@@ -7176,6 +7221,9 @@
       } catch (e) { this.offlineReady = false; }
       var ml;
       try { ml = await gpsMapLibre(); } catch (e) { this.message(e.message); this.loading = false; return; }
+      // The stylesheet of the version actually loaded (6, or 4.7.1).
+      var mlLink = this.root.querySelector("link[data-ml-css]");
+      if (mlLink && mlLink.getAttribute("href") !== GPS_MAPLIBRE + ".css" && GPS_MAPLIBRE.indexOf("unpkg") < 0) mlLink.setAttribute("href", GPS_MAPLIBRE + ".css");
       // The style is fetched by hand first: left to MapLibre, its failure on
       // it is a grey map and a buried console line. Fetched here, the wound
       // keeps its name — the house unreachable, an answer refused, a portal
@@ -7267,9 +7315,13 @@
         if (!map.getSource("route")) {
           map.addSource("route", { type: "geojson", data: this.routeData() });
           map.addLayer({ id: "route-case", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#07080a", "line-width": GPS_CASE_W, "line-opacity": 0.8 } });
+            paint: { "line-color": "#0b3f86", "line-width": GPS_CASE_W, "line-opacity": 0.95 } });
+          map.addLayer({ id: "route-glow", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": "#3fa9ff", "line-width": GPS_GLOW_W, "line-blur": ["interpolate", ["linear"], ["zoom"], 10, 6, 16, 14, 18, 20], "line-opacity": 0.32 } }, "route-case");
           map.addLayer({ id: "route", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#3b8cff", "line-width": GPS_ROUTE_W } });
+            paint: { "line-color": "#46b4ff", "line-width": GPS_ROUTE_W } });
+          map.addLayer({ id: "route-core", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": "#d4f0ff", "line-width": GPS_CORE_W, "line-opacity": 0.75, "line-blur": 0.6 } });
         }
         // The route's slow stretches (TomTom): orange when it slows, red when it is jammed.
         if (!map.getSource("routejam")) {

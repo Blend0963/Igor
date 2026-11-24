@@ -1,3 +1,11 @@
+## 0.44.0 — La 3D de TomTom, le tracé et la flèche façon TomTom
+
+- **MapLibre 6** pour la carte GPS : c'est la version pour laquelle les styles Orbis de TomTom sont écrits (le Maps SDK de TomTom l'exige). Servie par Igor avec les cartes, chargée en premier ; si l'appareil ne sait pas la charger, MapLibre 4.7.1 prend le relais comme avant.
+- **Les bâtiments 3D de TomTom** : quand le style en a, ce sont les siens qui s'affichent, tels que TomTom les a dessinés (coins arrondis compris). Igor n'élève lui-même les bâtiments que pour un style qui n'a aucune couche 3D.
+- **Le style de conduite sombre d'Orbis** (`basic_street-dark-driving`, version 0.6.0-0, celle du Maps SDK), puis les anciens styles en secours.
+- **Le tracé** : un halo bleu doux, un bord bleu profond, un corps bleu vif et une fine ligne claire au milieu. **La voiture** : un chevron couché sur la route, éclairé d'un côté, une lueur au sol.
+- Testé dans Chromium : la carte GPS complète sous MapLibre 6 (style 3D, itinéraire, bâtiments à l'écran), et le retour sur 4.7.1.
+
 ## 0.43.3 — Les bâtiments en 3D pour de bon, la carte jusqu'au bord
 
 - `igor-gps-card` (`basemap: tomtom-3d`) : les bâtiments en relief sont maintenant construits par Igor à partir de ceux que TomTom dessine à plat — mêmes tuiles, mêmes contours, élevés à leur hauteur (`height` d'Orbis, `ground_height` pour ce qui ne touche pas le sol ; ceux marqués `extrude: false` restent plats). Les couches 3D du style, qui ne montraient rien, sont mises de côté. Visibles dès le zoom 14,5, éclairés, plus clairs en hauteur. Testé avec le moteur de carte (MapLibre) sur des bâtiments d'essai.
