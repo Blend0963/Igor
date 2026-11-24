@@ -5265,6 +5265,9 @@
   //   theme: sombre                         # sombre, clair, or auto (light by day, dark at night)
   //   hide_attribution: false
   //   style: <a MapLibre style URL>         # another base map (the theme's CARTO one by default)
+  //   basemap: tomtom                       # TomTom's dark map (PNG), with the TomTom key of Igor's options, relayed by HA
+  //   basemap: tomtom-3d                    # TomTom's vector map, buildings in relief (a phone; heavy for a head unit)
+  //   tiles: https://…/{z}/{x}/{y}.png?key=…  # your own raster base map (tiles_maxzoom: 20, tiles_attribution)
   //   destination: input_text.car_destination  # « lat,lon;Nom »: guidance there (set it from a phone, or the card's flag)
   //   favorites:                            # the flag's quick places
   //     - { name: Maison, zone: zone.home }
@@ -6760,10 +6763,32 @@
     // or Stadia with your key in the URL: "https://…/{z}/{x}/{y}.png?api_key=…".
     // The key stays in your dashboard, never in Igor. Labels are in those
     // tiles already, so Esri's label layer goes away. `tiles_maxzoom` (20).
+    // The 3D map's finish: TomTom's own points of interest hidden (Igor draws
+    // its own — prices, radars — no doubles), and the buildings raised from
+    // their footprints with whatever height the tiles carry (else ~3 floors).
+    tomtom3d(map) {
+      var layers = map.getStyle().layers || [];
+      layers.forEach((l) => {
+        if (l.type === "symbol" && /poi|point.of.interest/i.test(l.id + " " + (l["source-layer"] || ""))) map.setLayoutProperty(l.id, "visibility", "none");
+      });
+      if (layers.some((l) => l.type === "fill-extrusion")) return;
+      var fp = layers.find((l) => l.type === "fill" && l.source && /build/i.test(l.id + " " + (l["source-layer"] || "")));
+      if (!fp || map.getLayer("igor-3d")) return;
+      var h = ["to-number", ["coalesce", ["get", "height"], ["get", "render_height"], ["get", "building_height"],
+        ["*", 3, ["to-number", ["coalesce", ["get", "levels"], ["get", "building:levels"], 3], 3]]], 9];
+      var first = layers.find((l) => l.type === "symbol");
+      map.addLayer({ id: "igor-3d", type: "fill-extrusion", source: fp.source, "source-layer": fp["source-layer"], minzoom: 15,
+        filter: fp.filter || ["all"],
+        paint: { "fill-extrusion-color": "#1d2128", "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 15, 0, 16, h],
+          "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.85 } }, first ? first.id : undefined);
+    }
     onlineStyle() {
       var t = this.config.tiles;
       // `basemap: tomtom` — TomTom's dark map through Home Assistant, with the
       // key of Igor's options (never in the dashboard). 512 px pictures.
+      // `basemap: tomtom-3d` (the phone): TomTom's vector map, relayed whole
+      // by Home Assistant (style, tiles, fonts, icons), buildings in relief.
+      if (this.config.basemap === "tomtom-3d") return window.location.origin + "/api/nives/tomtom/style.json";
       if (this.config.basemap === "tomtom") {
         if (!this._ttStyle) this._ttStyle = {
           version: 8, name: "Igor sombre",
@@ -7124,6 +7149,7 @@
         if (this.config.buildings === false) (map.getStyle().layers || []).forEach((l) => {
           if (/building/i.test(l.id + " " + (l["source-layer"] || ""))) map.setLayoutProperty(l.id, "visibility", "none");
         });
+        if (this.config.basemap === "tomtom-3d") this.tomtom3d(map);
         this.styleLayers();
         this.msgShown = null;
         this.message("");
