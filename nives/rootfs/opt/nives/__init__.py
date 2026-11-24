@@ -873,7 +873,7 @@ def _async_register_basemap(hass: HomeAssistant) -> None:
         name = "api:nives:basemap"
         requires_auth = True
 
-        async def get(self, request: web.Request) -> web.Response:
+        async def get(self, request: web.Request, **_route: str) -> web.Response:
             try:
                 z, x, y = (int(request.match_info[k]) for k in ("z", "x", "y"))
             except ValueError:
@@ -923,7 +923,7 @@ def _async_register_basemap(hass: HomeAssistant) -> None:
         name = "api:nives:tomtom"
         requires_auth = True
 
-        async def get(self, request: web.Request) -> web.Response:
+        async def get(self, request: web.Request, **_route: str) -> web.Response:
             key = _traffic_key(hass)
             if not key:
                 return web.Response(status=404, text="clé TomTom absente des options d'Igor")
@@ -1757,7 +1757,7 @@ def _async_register_offline_maps(hass: HomeAssistant) -> None:
         name = "api:nives:offline_raster_tile"
         requires_auth = True
 
-        async def get(self, request: web.Request) -> web.Response:
+        async def get(self, request: web.Request, **_route: str) -> web.Response:
             z = request.match_info["z"]
             x = request.match_info["x"]
             y = request.match_info["y"]
