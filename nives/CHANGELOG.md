@@ -1,3 +1,49 @@
+## 0.39.2 — Dashboard voiture : nouvelles cartes Route, Moteur, Diagnostic, Carnet
+
+Sept cartes légères pour l'autoradio (DOM et petits SVG, redessinées seulement quand leur valeur change, aucune bibliothèque), testées en 1280×720 et 1024×600 sans débordement :
+
+- **`igor-guide-card`** (Route) : la prochaine manœuvre, la suivante, l'arrivée (heure, km, min, bouchons) et un bouton Stop pendant le guidage ; sans itinéraire, « Où allons-nous ? » compact (chercher, deux favoris). Elle dialogue avec `igor-gps-card` par des événements `igor-gps-guide` / `igor-gps-cmd`.
+- **`igor-gear-card`** (Moteur) : compte-tours à aiguille avec zones, rapport engagé au centre, rangée 1–6 (actuel vert, conseillé orange/rouge), conseil, trois valeurs en pied.
+- **`igor-live-card`** : les N dernières secondes de quelques capteurs, une bande chacun, gardées par l'écran (1 point/s, rien demandé à Home Assistant), avec le pic de la fenêtre.
+- **`igor-gauge-card`** : une valeur sur un arc à zones (`warn`/`bad` ou `zones`).
+- **`igor-diag-card`** (Diagnostic) : bilan « 5/7 », systèmes (voyant, codes, batterie, refroidissement, antipollution, turbo, liaison OBD), défaut en cours en grand avec l'explication d'Igor (demandée une fois par code et gardée par l'écran ; « Demander à Igor » la redemande), tests antipollution, Effacer / Relire.
+- **`igor-schedule-card`** (Carnet) : les entretiens placés sur les 15 000 km à venir, les dates converties au rythme de conduite du mois, « à renseigner » en fin d'axe.
+- **`igor-fuel-card`** : carburant par mois (statistiques du compteur mensuel), ce mois, derniers pleins, conso réelle et coût au km.
+- **`igor-gps-card`** : `fullscreen_button: false` masque le bouton plein écran ; la carte publie son guidage pour la colonne.
+
+## 0.39.1 — Carte GPS : fin du lag (mesuré)
+
+Mesuré sur la vraie carte, processeur ralenti ×6 pour imiter l'autoradio, 400 POI, réglages du dashboard voiture :
+
+| | avant | après |
+|---|---|---|
+| images/s affichées | 5,6 | 20,6 |
+| réaction au doigt (déplacement → image) | 104 ms | 26 ms |
+| retard de la boucle d'événements (médiane) | 194 ms | 107 ms |
+
+- **Cause** : `refreshPois()` tournait à **chaque image** (événement `move` de la carte, qui suit la voiture en continu) : chaque POI reprojeté, toute la liste renvoyée à MapLibre (`setData`), toutes les icônes remises en page — même quand rien n'avait changé.
+- Le rafraîchissement des POI pendant un mouvement est limité à 1 fois/s (immédiat à la fin d'un mouvement), la liste n'est renvoyée que si elle a changé, sans projection point par point.
+- **Tous les POI restent affichés**, en deux couches : une pastille de la couleur de sa catégorie pour chacun (couche `circle`, quasi gratuite) et l'icône complète pour les 25 plus proches de la voiture (1,5 km) et tous les radars. Avec 2 000 POI : 16 images/s, 31 ms au doigt.
+- Les touches sur un POI interrogent les deux couches.
+- `pitch: 0` est enfin respecté pendant le suivi (il revenait toujours à 45°).
+
+## 0.39.0 — GPS au GPS de l'autoradio, tous les POI, cases du mur réparées, veille sans écrans Browser Mod
+
+- **Carte GPS — `local_gps: true`** : la flèche suit le GPS de l'écran lui-même (géolocalisation du navigateur, environ 1 fois/s, comme une appli de navigation) au lieu de l'aller-retour GPSLogger → Home Assistant → écran, qui arrivait avec plusieurs secondes de retard. La vitesse affichée vient aussi de ce GPS tant qu'il répond (l'OBD passe par Home Assistant et arrive en retard). Les traceurs restent la source de secours ; un écran à plus de 3 km de la voiture (un téléphone à la maison) est ignoré. Nécessite HTTPS et l'autorisation de localisation.
+- **Tous les POI par défaut** (les 29 catégories de la base hors ligne, au lieu de 11). La mémoire des calques de l'écran repart de zéro (nouvelle clé) pour que les anciennes catégories masquées réapparaissent.
+- **`igor-wall` : `- card:` sans `grow`** est maintenant déballé comme avec `grow: true` — ces cases affichaient « Erreur de configuration ».
+- **Veille de la maison** : les entités Browser Mod (écrans de tablette / autoradio qui s'endorment) ne sont plus signalées « ne répond plus » (test ajouté).
+
+## 0.38.99 — Vouvoiement dans le fil, GPS sans retour en mode lourd, MapLibre local, formulaires voiture
+
+- **Fil de discussion : vouvoiement systématique** (`THREAD_STYLE`, `prompts.ts`) — Igor dit « vous » dans chaque réponse du fil, même si on lui écrit « tu » ou si un souvenir dit « tu ». La voix et Assist ne changent pas (test `prompts.modes.test.ts`).
+- **Fil plus direct** : la réponse d'abord, plus de formule finale (« N'hésitez pas… », « Puis-je vous aider… ? »), une demande en plusieurs étapes menée jusqu'au bout dans la même réponse.
+- **GPS — bug de lag corrigé** : une zone sans POI dans la base hors ligne (route de campagne) levait une erreur qui passait `offlineReady` à faux pour tout le trajet — 20 images/s au lieu de 8, accrochage à la route 5× plus fréquent, trafic TomTom et Overpass réactivés. Une zone vide est désormais une réponse normale (mise en cache comme telle) ; une vraie erreur bascule sur Overpass pour cette zone seulement.
+- **MapLibre servi par Home Assistant** : la bibliothèque est intégrée à l'image (`frontend/vendor/`, tarball npm 4.7.1, SHA-256 vérifié au build) et chargée depuis `/nives_static/vendor/` ; unpkg reste en secours si la copie locale manque. La carte démarre sans internet.
+- **POI / recherche hors ligne hors de la boucle de HA** : `car_map_pois`, `car_map_search` et `car_map_info` lisent SQLite dans l'exécuteur.
+- **`igor-buttons-card` — formulaires** : un champ peut porter `key:` (valeur passée au service, ex. champs `km` / `litres` / `prix_litre` de `script.voiture_plein_fait`), `in_total: false` (exclu du total : le kilométrage n'est pas multiplié) ; `select: { entity, option }` choisit l'option d'un `input_select` avant le service (un bouton par entretien, un seul script) ; un formulaire sans champ sert de confirmation.
+- **Exemple de vues** `nives/examples/voiture-moteur-entretien.yaml` : conseil de rapport coloré, jauges OBD dont la **pression turbo** (`sensor.voiture_pression_turbo`), courbes sur 1 h, « Plein fait » et un bouton par entretien.
+
 ## 0.38.98 — Carte 100 % hors ligne, auto-maintenue (plus de mode en ligne ni de bouton)
 
 - **Téléchargement automatique au démarrage** : si aucune carte locale n'existe (install neuve, `/config` perdu), l'add-on lance tout seul la construction (extrait Geofabrik + POI SQLite + tuiles PMTiles + **raster CARTO dark z0–14**) à `homeassistant.start`; puis **toutes les 24 h** un `ensure()` vérifie l'âge de la source et applique les diffs quotidiens Geofabrik si besoin (no-op sinon). Échec = log + nouvel essai au tick suivant, jamais fatal. `nives.car_map_update` reste disponible en manuel.

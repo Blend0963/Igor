@@ -868,8 +868,12 @@
         var col = el("div", "col", cols);
         (c.cards || []).forEach((item) => {
           if (item && item.heading != null && !item.type) { el("div", "hd", col, item.heading); return; }
-          var grow = !!(item && item.grow && item.card);
-          var cfg = grow ? item.card : item;
+          // `- card: {...}` with or without `grow`: the card inside. It used to be
+          // unwrapped only with grow: true, and a plain `- card:` reached Home
+          // Assistant without a type — « Erreur de configuration ».
+          var wrapped = !!(item && item.card && !item.type);
+          var grow = !!(wrapped && item.grow);
+          var cfg = wrapped ? item.card : item;
           var slot = el("div", "slot" + (grow ? " grow" : ""), col);
           var card;
           try {
@@ -1648,6 +1652,13 @@
   //           - { entity: input_number.fuel_litres, name: Litres, unit: L }
   //           - { entity: input_number.fuel_price, name: Prix du litre, unit: €/L }
   //       service: script.fuel_done              # or tap_action
+  //   A field may also carry `key:` — its value then goes to the service as
+  //   that field (a script's fields: km, litres, prix_litre), with or without
+  //   an entity to save it in — and `in_total: false` to stay out of the
+  //   total (the odometer is not multiplied by the price). A form without
+  //   fields is a confirmation (« Vidange faite ? » → Valider).
+  //   select: { entity: input_select.x, option: Vidange } picks that option
+  //   before the service runs (one button per kind of servicing, one script).
   class IgorButtonsCard extends IgorCard {
     setConfig(config) {
       if (!config || !Array.isArray(config.buttons) || !config.buttons.length) throw new Error("igor-buttons-card: buttons est requis");
@@ -1683,6 +1694,8 @@
           // form: the numbers asked first (each saved in its input_number), then the action.
           if (b.form && !btn._formOk) { this.openForm(b, btn); return; }
           btn._formOk = false;
+          var sent = btn._formData || {};
+          btn._formData = null;
           // tap_action: any Home Assistant action (url: app://…, assist…).
           if (b.tap_action) { haAction(this, b.form ? Object.assign({}, b.tap_action, { confirmation: undefined }) : b.tap_action); return; }
           if (b.edit) { editDashboard(this, this._hass); return; }
@@ -1691,7 +1704,9 @@
           if (b.navigate) { navigate(String(b.navigate)); return; }
           if (b.menu) { this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })); return; }
           if (!this._hass) return;
-          service(this._hass, b.service, b.data, b.target).then(() => {
+          var data = Object.keys(sent).length ? Object.assign({}, b.data || {}, sent) : b.data;
+          var pick = b.select && b.select.entity ? this._hass.callService(String(b.select.entity).split(".")[0] === "select" ? "select" : "input_select", "select_option", { entity_id: b.select.entity, option: b.select.option }) : Promise.resolve();
+          pick.then(() => service(this._hass, b.service, data, b.target)).then(() => {
             btn.classList.add("done");
             setTimeout(() => btn.classList.remove("done"), 800);
           }).catch((e) => { btn.title = String(e && e.message || e); });
@@ -1728,9 +1743,9 @@
       var inputs = (f.fields || []).map((fd) => {
         var st = fd.entity && hass.states[fd.entity], a = (st && st.attributes) || {};
         var cur = st ? parseFloat(st.state) : NaN;
-        var start = !isNaN(cur) && cur > 0 ? cur : parseFloat(mem(fd.entity));
+        var start = !isNaN(cur) && cur > 0 ? cur : parseFloat(mem(fd.entity || "key:" + fd.key));
         var lab = el("label", "fl", box);
-        el("span", "", lab, fd.name || a.friendly_name || fd.entity);
+        el("span", "", lab, fd.name || a.friendly_name || fd.entity || fd.key);
         var wrap = el("div", "fin", lab);
         var inp = el("input", "", wrap);
         inp.type = "text"; inp.inputMode = "decimal"; inp.autocomplete = "off";
@@ -1742,7 +1757,7 @@
       var tot = f.total ? el("div", "ftot", box) : null;
       var showTot = () => {
         if (!tot) return;
-        var v = inputs.reduce((acc, x) => acc * num(x), 1);
+        var v = inputs.filter((x) => x.fd.in_total !== false).reduce((acc, x) => acc * num(x), 1);
         tot.innerHTML = ""; tot.appendChild(document.createTextNode("total"));
         el("b", "", tot, isNaN(v) ? "—" : fr(v, 2) + " " + (f.total === true ? "" : f.total));
       };
@@ -1765,16 +1780,20 @@
           }
         }
         ok.disabled = true;
+        var sent = {};
         try {
           for (var j = 0; j < inputs.length; j++) {
             var y = inputs[j], val = num(y);
-            try { window.localStorage.setItem("igor-form:" + y.fd.entity, String(val)); } catch (e) { /* no storage */ }
+            if (y.fd.key) sent[y.fd.key] = val;
+            try { window.localStorage.setItem("igor-form:" + (y.fd.entity || "key:" + y.fd.key), String(val)); } catch (e) { /* no storage */ }
+            if (!y.fd.entity) continue;
             var dom = String(y.fd.entity).split(".")[0];
             await hass.callService(dom === "input_text" ? "input_text" : dom === "number" ? "number" : "input_number", "set_value", { entity_id: y.fd.entity, value: dom === "input_text" ? String(val) : val });
           }
         } catch (e) { err.textContent = "Enregistrement impossible : " + (e && e.message || e); ok.disabled = false; return; }
         close();
         btn._formOk = true;
+        btn._formData = sent;
         btn.click();
       });
       setTimeout(() => { if (inputs[0]) { inputs[0].inp.focus(); inputs[0].inp.select(); } }, 50);
@@ -5218,6 +5237,12 @@
   //                                         #   fuel, charging, parking, rest, toilets, hospital
   //   street_names: true                    # the road where the car is, at the bottom (false: off)
   //   fps: 20                               # the map drawn that many times a second while moving (lower: lighter)
+  //   fullscreen_button: false              # no fullscreen button (a dashboard that is the map already)
+  //   local_gps: true                       # on the head unit itself: the arrow follows the screen's own GPS
+  //                                         # (browser geolocation, about once a second, like a navigation app)
+  //                                         # instead of the tracker's round trip through Home Assistant; the
+  //                                         # tracker stays the fallback. Needs HTTPS (or the app's WebView with
+  //                                         # location allowed); ignored when the screen is more than 3 km from the car.
   //   buildings: true                       # false: the map without its buildings (lighter on a head unit)
   //   pixel_ratio: 2                        # at most that many device pixels per pixel (1: lighter)
   //   dead_reckoning: true                  # in a tunnel, on at the OBD speed (speed_entity) for 3 min (false: off)
@@ -5234,7 +5259,13 @@
   // longer drives through houses; farther than `snap`, a car park, it keeps
   // the real position), and between two fixes it goes on along that road for
   // at most 4 seconds instead of 8 straight ahead.
-  var GPS_MAPLIBRE = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl";
+  // MapLibre ships in the add-on image (frontend/vendor/, served by Home
+  // Assistant with these cards): the map starts without internet and the
+  // head unit's browser caches it. unpkg is only the fallback when the local
+  // copy is missing (an integration copied by hand, without vendor/).
+  var GPS_MAPLIBRE_LOCAL = "/nives_static/vendor/maplibre-gl";
+  var GPS_MAPLIBRE_CDN = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl";
+  var GPS_MAPLIBRE = GPS_MAPLIBRE_LOCAL;
   var GPS_R = 6378137, GPS_PREDICT_S = 4, GPS_MOVING = 0.8, GPS_TRAIL = 600;
   // The drawn lines breathe with the zoom: thin on the overview (they must not
   // smother the map), road-wide at the zooms one drives at. Pure paint — the
@@ -5242,7 +5273,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.38.83";
+  var GPS_CARD_VERSION = "0.39.2";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -5270,12 +5301,21 @@
   function gpsMapLibre() {
     if (window.maplibregl) return Promise.resolve(window.maplibregl);
     if (!window.__igorMapLibre) {
-      window.__igorMapLibre = new Promise(function (resolve, reject) {
-        var sc = document.createElement("script");
-        sc.src = GPS_MAPLIBRE + ".js";
-        sc.onload = function () { resolve(window.maplibregl); };
-        sc.onerror = function () { window.__igorMapLibre = null; reject(new Error("Carte indisponible (pas d'internet ?)")); };
-        document.head.appendChild(sc);
+      var load = function (base) {
+        return new Promise(function (resolve, reject) {
+          var sc = document.createElement("script");
+          sc.src = base + ".js";
+          sc.onload = function () { window.maplibregl ? resolve(window.maplibregl) : reject(new Error("maplibre")); };
+          sc.onerror = function () { sc.remove(); reject(new Error("maplibre")); };
+          document.head.appendChild(sc);
+        });
+      };
+      window.__igorMapLibre = load(GPS_MAPLIBRE_LOCAL).catch(function () {
+        GPS_MAPLIBRE = GPS_MAPLIBRE_CDN;
+        return load(GPS_MAPLIBRE_CDN);
+      }).catch(function () {
+        window.__igorMapLibre = null;
+        throw new Error("Carte indisponible (pas d'internet ?)");
       });
     }
     return window.__igorMapLibre;
@@ -5670,8 +5710,13 @@
     airport: {  color: "#607d8b", name: "Aéroports" },
     car_rental: {  color: "#a1887f", name: "Locations de voitures" }
   };
-  // Default kinds kept short on purpose: offline POI are read from the local SQLite base (free), but every kind drawn is a symbol the head unit renders — a long list costs CPU on a weak autoradio. The full base stays on the server; `pois:` in the card config can list more.
-  var GPS_POI_DEFAULT = ["fuel", "charging", "parking", "rest", "restaurant", "toilets", "hospital", "pharmacy", "atm", "supermarket", "car_repair"];
+  // Every kind by default (the owner's choice: all the places matter). They
+  // come from the local SQLite base, one symbol layer, squares cached on the
+  // screen; `pois:` in the card config can still list fewer.
+  // The places drawn as full icons: the nearest GPS_ICON_MAX within
+  // GPS_ICON_M of the car (and every camera); the others are coloured dots.
+  var GPS_ICON_MAX = 25, GPS_ICON_M = 1500;
+  var GPS_POI_DEFAULT = Object.keys(GPS_POI).filter(function (k) { return k !== "camera"; });
   // The pumps' own order: the gazole first, then the Sans Plomb, the ethanol
   // and the gas — the board every station's window reads in this order.
   var GPS_FUELS = [["gazole", "Gazole"], ["sp95", "SP95"], ["sp98", "SP98"], ["e10", "E10"], ["e85", "E85"], ["gplc", "GPL"]];
@@ -6199,12 +6244,39 @@
       if (prev && this.loading && [c.entity, c.fallback_entity, c.speed_entity, c.speed_limit_entity, c.destination, "sun.sun"].every(function (id) { return !id || prev.states[id] === hass.states[id]; })) return;
       this.read();
     }
-    connectedCallback() { if (this.map && !this.raf) this.raf = requestAnimationFrame(() => this.tick()); }
-    disconnectedCallback() { cancelAnimationFrame(this.raf); this.raf = null; }
+    connectedCallback() { if (this.map && !this.raf) this.raf = requestAnimationFrame(() => this.tick()); if (this.onCmd) window.addEventListener("igor-gps-cmd", this.onCmd); }
+    disconnectedCallback() {
+      cancelAnimationFrame(this.raf); this.raf = null;
+      if (this.onCmd) window.removeEventListener("igor-gps-cmd", this.onCmd);
+      if (this.geoWatch != null && navigator.geolocation) { navigator.geolocation.clearWatch(this.geoWatch); this.geoWatch = null; }
+    }
+    // local_gps: the head unit's own GPS, straight from the browser. Every
+    // tracker fix (GPSLogger → Home Assistant → this screen) arrives seconds
+    // late; this one is the position now, as a navigation app gets it.
+    startLocalGps() {
+      if (!this.config.local_gps || this.geoWatch != null || this.geoOff) return;
+      if (!navigator.geolocation || window.isSecureContext === false) { this.geoOff = true; return; }
+      this.geoWatch = navigator.geolocation.watchPosition((pos) => {
+        var c = pos.coords, p = [c.longitude, c.latitude];
+        // A screen far from the car (a phone at home showing this dashboard)
+        // is not the car: its position is ignored.
+        var st = this.pickSource && this.pickSource(), a = (st && st.attributes) || {};
+        if (typeof a.latitude === "number" && gpsDist(p, [a.longitude, a.latitude]) > 3000) { this.localAt = 0; return; }
+        this.localAt = performance.now();
+        this.localSpeed = c.speed != null && isFinite(c.speed) ? c.speed : null;
+        this.accuracy = c.accuracy || 0;
+        this.onFix(p, c.heading != null && isFinite(c.heading) ? c.heading : undefined, this.localSpeed != null ? this.localSpeed : NaN, new Date(pos.timestamp || Date.now()).toISOString());
+      }, (err) => {
+        // Refused (no permission, not HTTPS): the tracker again, for good.
+        if (err && err.code === 1) { this.geoOff = true; if (this.geoWatch != null) navigator.geolocation.clearWatch(this.geoWatch); this.geoWatch = null; }
+        this.localAt = 0;
+      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 });
+    }
+    localLive() { return !!this.localAt && performance.now() - this.localAt < 4000; }
     build() {
       this.root = this.attachShadow({ mode: "open" });
       this.root.innerHTML = scaled(
-        '<link rel="stylesheet" href="' + GPS_MAPLIBRE + '.css"><style>' +
+        '<link rel="stylesheet" href="' + GPS_MAPLIBRE + '.css" data-ml-css><style>' +
         ":host { display: block; height: 100%; }" +
         "ha-card { display: block; position: relative; height: 100%; min-height: 240px; overflow: hidden; background: #07080a; border-radius: var(--igor-radius, 3px); }" +
         "#map { position: absolute; inset: 0; touch-action: none; } #map .maplibregl-canvas { touch-action: none; }" +
@@ -6439,6 +6511,8 @@
         '<div class="snap" id="snapEl"></div></ha-card>');
       var $ = (id) => this.root.getElementById(id);
       this.$ = $;
+      var mlCss = this.root.querySelector("link[data-ml-css]");
+      if (mlCss) mlCss.addEventListener("error", function () { if (mlCss.href.indexOf(GPS_MAPLIBRE_CDN) < 0) mlCss.href = GPS_MAPLIBRE_CDN + ".css"; });
       $("card").classList.toggle("noattr", !!this.config.hide_attribution);
       $("card").classList.toggle("withspeed", this.config.show_speed !== false);
       $("card").classList.toggle("withattr", !this.config.hide_attribution);
@@ -6480,6 +6554,24 @@
       document.addEventListener("pointerdown", unlock, true);
       $("overview").addEventListener("click", () => this.overview());
       $("full").addEventListener("click", () => this.setFull(!this.full));
+      // fullscreen_button: false — the car's dashboard is the map already.
+      if (this.config.fullscreen_button === false) $("full").hidden = true;
+      // The guidance column (igor-guide-card) asks: the destination panel,
+      // a favourite, the end of the guidance.
+      this.onCmd = (ev) => {
+        var c = (ev && ev.detail) || {};
+        if (!this.map || !this._hass) return;
+        if (c.cmd === "search") { this.openPanel(); setTimeout(() => { var q = this.$("pq"); if (q) q.focus(); }, 50); }
+        else if (c.cmd === "stop") this.setDestination(null, true);
+        else if (c.cmd === "fav") {
+          var f = (this.config.favorites || [{ name: "Maison", zone: "zone.home" }])[Number(c.index) || 0];
+          var ent = f && (f.zone || f.entity), st = ent && this._hass.states[ent], at = null;
+          if (st && st.attributes.latitude != null) at = { lat: Number(st.attributes.latitude), lon: Number(st.attributes.longitude) };
+          else if (f && Array.isArray(f.location)) at = { lat: Number(f.location[0]), lon: Number(f.location[1]) };
+          if (at) { this.chooseNext = true; this.setDestination({ lat: at.lat, lon: at.lon, name: f.name || ent }, true); }
+        }
+      };
+      window.addEventListener("igor-gps-cmd", this.onCmd);
       $("layers").addEventListener("click", () => this.openLayers());
       $("pclose").addEventListener("click", () => { $("panel").hidden = true; });
       // Closed without choosing: a trip under way stays as it was; only a
@@ -6615,9 +6707,14 @@
         return;
       }
       var p = [lon, lat];
-      // How far the GPS may be off (metres), as the companion app says.
-      this.accuracy = Number(a.gps_accuracy != null ? a.gps_accuracy : a.accuracy) || 0;
-      if (!this.fix || this.fix.updated !== st.last_updated) this.onFix(p, course, speed, st.last_updated);
+      this.startLocalGps();
+      // The screen's own GPS is live: the tracker's late fixes are not taken.
+      if (this.localLive()) { if (this.fix) p = this.fix.point; }
+      else {
+        // How far the GPS may be off (metres), as the companion app says.
+        this.accuracy = Number(a.gps_accuracy != null ? a.gps_accuracy : a.accuracy) || 0;
+        if (!this.fix || this.fix.updated !== st.last_updated) this.onFix(p, course, speed, st.last_updated);
+      }
       this.overlays();
       this.lostCheck();
       // A destination set elsewhere (the phone, Igor): guidance there.
@@ -6717,6 +6814,9 @@
       if (src) src.setData(this.trailData());
     }
     speedMps() {
+      // The screen's own GPS speed is the speed now; the car's (OBD, through
+      // Home Assistant) arrives late.
+      if (this.localLive() && this.localSpeed != null) return this.localSpeed;
       var e = this.config.speed_entity && this._hass.states[this.config.speed_entity];
       var kmh = e ? parseFloat(e.state) : NaN;
       if (!isNaN(kmh)) return kmh / 3.6;
@@ -6827,9 +6927,14 @@
       ["dragstart", "zoomstart", "rotatestart", "pitchstart", "drag", "zoom", "dragend", "zoomend", "rotateend", "pitchend"].forEach((ev) => map.on(ev, (e) => { if (e.originalEvent) this.setFollow(false); }));
       // The screen's moves rebuild the points: what the eye leaves is let
       // go, what it finds is drawn, and the zoom re-sorts the piled ones.
-      map.on("move", () => this.refreshPois());
+      // The map moves at every frame while it follows the car: the places
+      // are weighed again at most once a second then (it used to be every
+      // frame — the whole list re-sent to MapLibre, every icon laid out
+      // again: the head unit's lag), and at once when a move ends.
+      var poiSoon = () => { var t = performance.now(); if (!this.poiMoveAt || t - this.poiMoveAt > 1000) { this.poiMoveAt = t; this.refreshPois(); } };
+      map.on("move", poiSoon);
       map.on("moveend", () => this.refreshPois());
-      map.on("zoom", () => this.refreshPois());
+      map.on("zoom", poiSoon);
       map.on("zoomend", () => this.refreshPois());
       map.on("pitchend", () => this.refreshPois());
       // A tap on the map asks what to do with the place under the finger.
@@ -7062,6 +7167,7 @@
         this.addTrail(on ? s.point : this.pos, on);
       }
       if (this.route && (!this.navAt || now - this.navAt > 1000)) { this.navAt = now; this.navTick(now, moving); }
+      else if (!this.route && this.guideOn) this.publishGuide(null);
       if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > (this.offlineReady ? 3000 : 800))) { this.limitAt = now; this.limitTick(now, moving); }
       if (!this.alertAt || now - this.alertAt > 500) { this.alertAt = now; this.alertTick(now, speed); }
       if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); }
@@ -7078,7 +7184,7 @@
         // The recentered view is the navigator's own: the car back at its
         // place, the road ahead, and the tilt with it — a map the finger
         // laid flat stands up again the moment the card takes the wheel back.
-        var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, pitch: Number(this.config.pitch) || 45, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } };
+        var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, pitch: this.config.pitch != null && !isNaN(Number(this.config.pitch)) ? Number(this.config.pitch) : 45, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } };
         // As a navigator: farther out the faster (more road ahead), closer
         // before a turn, back out after it; eased, never a jump.
         if (this.config.auto_zoom !== false) {
@@ -7797,7 +7903,7 @@
       // A station of the map's own layer: its prices first, then the two ways.
       var fuel = null;
       try {
-        var pf = (map.getLayer("pois") ? map.queryRenderedFeatures(e.point, { layers: ["pois"] }) : []) || [];
+        var pf = (map.getLayer("pois") ? map.queryRenderedFeatures(e.point, { layers: ["pois", "pois-icons"] }) : []) || [];
         for (var i = 0; i < pf.length; i++) if (pf[i].properties && pf[i].properties.kind === "fuel") { fuel = pf[i]; break; }
       } catch (err) { fuel = null; }
       // A station the flux knows but no marker showed (its ask still
@@ -7827,7 +7933,7 @@
       // « Ce point » — the two ways (a new route, a stop) stand under it.
       if (!name) {
         var pq = [];
-        try { pq = (map.getLayer("pois") ? map.queryRenderedFeatures(e.point, { layers: ["pois"] }) : []) || []; } catch (err) { pq = []; }
+        try { pq = (map.getLayer("pois") ? map.queryRenderedFeatures(e.point, { layers: ["pois", "pois-icons"] }) : []) || []; } catch (err) { pq = []; }
         var pr = pq.length && pq[0].properties ? pq[0].properties : null;
         if (pr && pr.label && String(pr.label).trim()) name = String(pr.label).trim().slice(0, 40);
         else if (pr && pr.kind && GPS_POI[pr.kind] && GPS_POI[pr.kind].name) name = GPS_POI[pr.kind].name;
@@ -7864,7 +7970,7 @@
       var offId = (fuel && fuel.properties && fuel.properties.offId) || null;
       if (!offId) {
         try {
-          var pfs = map.queryRenderedFeatures(e.point, { layers: ["pois"] }) || [];
+          var pfs = map.queryRenderedFeatures(e.point, { layers: ["pois", "pois-icons"] }) || [];
           for (var i = 0; i < pfs.length; i++) if (pfs[i].properties && pfs[i].properties.offId) { offId = pfs[i].properties.offId; break; }
         } catch (err) { offId = null; }
       }
@@ -8484,6 +8590,21 @@
       e.appendChild(sp2);
       // The road where the car is, at the end of the line.
       if (this.roadName && this.config.street_names !== false) { var stn = document.createElement("div"); stn.className = "st"; this.fillRoad(stn); e.appendChild(stn); }
+      this.publishGuide({ icon: next ? next.icon : "mdi:flag-checkered", dist: next ? gpsMetres(next.at - along) : gpsMetres(left),
+        text: next ? (next.short || next.text) : (d && d.name) || "destination", then: this.thenText ? this.thenText(R, along, next) : "",
+        eta: hhmm(eta), left: gpsMetres(left), min: Math.max(1, Math.round(secs / 60)), jam: jamMin, dest: d && d.name !== "destination" ? d.name : "" });
+    },
+    // What the guidance column shows: kept on window (a card drawn later
+    // reads it at once) and announced, once a second while guiding.
+    thenText(R, along, next) {
+      if (!next) return "";
+      var i = R.steps.indexOf(next), n2 = i >= 0 ? R.steps[i + 1] : null;
+      return n2 ? "puis " + (n2.short || n2.text) + " · " + gpsMetres(n2.at - next.at) : "";
+    },
+    publishGuide(g) {
+      this.guideOn = !!g;
+      window.__igorGuide = g;
+      window.dispatchEvent(new CustomEvent("igor-gps-guide", { detail: g }));
     }
   });
 
@@ -8495,7 +8616,7 @@
       // it - the usual places of the road wide open, the new drawers shut
       // until the layers' panel opens them.
       var c = this.config, saved = null;
-      try { saved = JSON.parse(window.localStorage.getItem("igor-gps-layers") || "null"); } catch (e) { saved = null; }
+      try { saved = JSON.parse(window.localStorage.getItem("igor-gps-layers-2") || "null"); } catch (e) { saved = null; }
       var pois = Array.isArray(c.pois) ? c.pois : GPS_POI_DEFAULT;
       this.layers = { cameras: saved ? (saved.cameras ? "radar" : false) : "radar" };
       Object.keys(GPS_POI).forEach((k) => {
@@ -8514,8 +8635,8 @@
     saveLayers() {
       var v = {};
       Object.keys(GPS_POI).forEach((k) => { v[k] = k === "camera" ? !!(this.layers.cameras && this.layers.cameras !== "off") : !!this.layers[k]; });
-      try { window.localStorage.setItem("igor-gps-layers", JSON.stringify(v)); } catch (e) { /* no storage */ }
-      if (this._hass && this._hass.callWS) this._hass.callWS({ type: "frontend/set_user_data", key: "igor-gps-layers", value: v }).catch(() => {});
+      try { window.localStorage.setItem("igor-gps-layers-2", JSON.stringify(v)); } catch (e) { /* no storage */ }
+      if (this._hass && this._hass.callWS) this._hass.callWS({ type: "frontend/set_user_data", key: "igor-gps-layers-2", value: v }).catch(() => {});
     },
 
     // The house's word, read once the first time the card sees the house:
@@ -8523,7 +8644,7 @@
     syncLayers() {
       if (this.layersSynced || !this._hass || !this._hass.callWS) return;
       this.layersSynced = true;
-      this._hass.callWS({ type: "frontend/get_user_data", key: "igor-gps-layers" }).then((r) => {
+      this._hass.callWS({ type: "frontend/get_user_data", key: "igor-gps-layers-2" }).then((r) => {
         var v = r && r.value;
         if (!v || typeof v !== "object") return;
         var changed = false;
@@ -8533,7 +8654,7 @@
           if (this.layers[k] !== want) { this.layers[k] = want; changed = true; }
         });
         if (!changed) return;
-        try { window.localStorage.setItem("igor-gps-layers", JSON.stringify(this.layers)); } catch (e) { /* no storage */ }
+        try { window.localStorage.setItem("igor-gps-layers-2", JSON.stringify(this.layers)); } catch (e) { /* no storage */ }
         this.applyLayers();
       }).catch(() => { /* no house word */ });
     },
@@ -8603,7 +8724,8 @@
       map.addLayer({ id: "incidents-pt", type: "circle", source: "incidents", filter: ["==", ["get", "n"], 1],
         paint: { "circle-radius": 7, "circle-color": ["get", "color"], "circle-stroke-color": "#07080a", "circle-stroke-width": 2 } });
       map.addSource("pois", { type: "geojson", data: this.poiData() });
-      this.poiShown = null;
+      map.addSource("pois-icons", { type: "geojson", data: this.poiData() });
+      this.poiShown = null; this.poiIconSig = null;
       // A checked place is drawn wherever the eye rests: no zoom law hides
       // it (a law weighed on the square would keep the zoom of its birth),
       // no row of piled places — every icon owns its place, always.
@@ -8613,7 +8735,11 @@
       // only the cameras keep theirs - the limit under the radar.
       if (font) Object.assign(layout, { "text-field": ["case", ["==", ["get", "kind"], "camera"], ["get", "label"], ""], "text-font": font, "text-size": 16, "text-offset": [0, 1.7], "text-anchor": "top", "text-optional": true });
       var paint = font ? { "text-color": "#e9e4da", "text-halo-color": "#07080a", "text-halo-width": 1.5 } : {};
-      map.addLayer({ id: "pois", type: "symbol", source: "pois", layout: layout, paint: paint });
+      // Every place: a dot of its kind's colour, ringed in the map's black.
+      map.addLayer({ id: "pois", type: "circle", source: "pois", paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 12, 3.5, 16, 7], "circle-color": ["get", "color"],
+        "circle-stroke-color": "#07080a", "circle-stroke-width": 1.5, "circle-pitch-alignment": "viewport" } });
+      map.addLayer({ id: "pois-icons", type: "symbol", source: "pois-icons", layout: layout, paint: paint });
       this.applyLayers();
     },
     poiData() { return { type: "FeatureCollection", features: [] }; },
@@ -8733,11 +8859,15 @@
             service_data: { latitude: c[1], longitude: c[0], radius_km: Math.min(20, rad), kinds: kinds } })
             .then((res) => {
               var r = (res && res.response) || {};
-              if (!r.ok || !Array.isArray(r.pois) || !r.pois.length) throw new Error(r.error || "offline vide");
+              // An empty square (a country road) is an answer, not a failure:
+              // throwing here used to switch offlineReady off for the rest of
+              // the trip — 20 fps, snapping 5× more often, TomTom traffic and
+              // Overpass back on — the head unit's lag.
+              if (!r.ok || !Array.isArray(r.pois)) throw new Error(r.error || "offline");
               return (r.pois).map((q) => ({ id: "off" + q.id, kind: q.kind, p: [q.lon, q.lat], label: (q.name || q.brand || "").slice(0, 18), brand: q.brand || "", offId: q.id }));
             })
             .then((items) => { if (key === this.poiKey) keep(items); })
-            .catch(() => { this.offlineReady = false; return fromOverpass(); });
+            .catch(() => fromOverpass());
         }
         if (this._hass && this.config.tomtom_pois !== false && kinds) {
         var ttFailed = 0;
@@ -8915,12 +9045,7 @@
       }
       (this.pois || []).forEach((q) => {
         if (q.kind === "camera") { if (!this.onMap || !this.onMap[q.id]) return; }
-        else {
-          if (bb && (q.p[0] < w || q.p[0] > e || q.p[1] < s || q.p[1] > n)) return;
-          var px = null;
-          try { px = map.project(q.p); } catch (err) { px = null; }
-          if (!(px && px.x >= -M && px.x <= cw + M && px.y >= -M && px.y <= ch + M)) return;
-        }
+        else if (bb && (q.p[0] < w || q.p[0] > e || q.p[1] < s || q.p[1] > n)) return;
         ids.push(q.id); shown.push(q);
       });
       if (cap !== Infinity && shown.length > cap) {
@@ -8929,12 +9054,28 @@
         shown = shown.slice(0, cap);
         ids = shown.map((q) => q.id);
       }
-      var sig = ids.join(",");
-      this.poiShown = sig;
-      var feats = shown.map((q) => ({ type: "Feature", geometry: { type: "Point", coordinates: q.p }, properties: { kind: q.kind, label: q.label || "", brand: q.brand || "" } }));
-      var src = map && map.getSource("pois");
-      if (src) src.setData({ type: "FeatureCollection", features: feats });
-      this.refreshFuelTags(shown);
+      // The icons: the cameras and the GPS_ICON_MAX places nearest the car
+      // (within GPS_ICON_M). Each icon costs the small machine a lot to lay
+      // out; a dot costs almost nothing — so every place is a dot of its
+      // kind's colour, and the ones close enough to matter get their icon.
+      var car = this.pos || (this.fix && this.fix.point);
+      var near = car ? shown.filter((q) => q.kind !== "camera" && gpsDist(q.p, car) < GPS_ICON_M)
+        .sort((a, b) => gpsDist(a.p, car) - gpsDist(b.p, car)).slice(0, GPS_ICON_MAX) : [];
+      var iconed = shown.filter((q) => q.kind === "camera").concat(near);
+      var sig = ids.join(","), isig = iconed.map((q) => q.id).join(",");
+      if (sig === this.poiShown && isig === this.poiIconSig) return;
+      var asFeat = (q) => ({ type: "Feature", geometry: { type: "Point", coordinates: q.p }, properties: { kind: q.kind, label: q.label || "", brand: q.brand || "", color: (GPS_POI[q.kind] || {}).color || "#8a9099" } });
+      if (sig !== this.poiShown) {
+        this.poiShown = sig;
+        var src = map && map.getSource("pois");
+        if (src) src.setData({ type: "FeatureCollection", features: shown.filter((q) => q.kind !== "camera").map(asFeat) });
+        this.refreshFuelTags(shown);
+      }
+      if (isig !== this.poiIconSig) {
+        this.poiIconSig = isig;
+        var isrc = map && map.getSource("pois-icons");
+        if (isrc) isrc.setData({ type: "FeatureCollection", features: iconed.map(asFeat) });
+      }
     },
 
     // The gazole's price standing over its station: a small tag the eye reads
@@ -9938,11 +10079,646 @@
     }
   }
 
+  // ===== the car's dashboard (Route, Moteur, Diagnostic, Carnet) =====
+  // Light cards for a weak head unit: plain DOM and small SVG strings, drawn
+  // again only when what they show changed, no library.
+  var CAR_OK = "#5cc28f", CAR_WARN = "#e5a04c", CAR_BAD = "#e0675f", CAR_BLUE = "#6cc4f5";
+  var CAR_HEAD = [
+    ":host { display: block; height: 100%; }",
+    "ha-card { padding: 10px 12px; }",
+    ".h { color: var(--dim); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; display: flex; align-items: center; gap: 7px; flex: none; margin-bottom: 6px; }",
+    ".h::before { content: ''; width: 6px; height: 6px; background: var(--igor-signal, #e5323b); flex: none; }",
+    ".ok { color: " + CAR_OK + "; } .warn { color: " + CAR_WARN + "; } .bad { color: " + CAR_BAD + "; }",
+    "button.b { background: var(--card); border: 1px solid var(--line); border-radius: var(--igor-radius, 3px); color: var(--dim); font-family: inherit; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; --mdc-icon-size: 24px; min-height: 44px; padding: 6px; }",
+    "button.b ha-icon { color: var(--fg); } button.b:active { transform: scale(0.98); }",
+    "button.b small { text-transform: none; letter-spacing: 0.04em; color: var(--faint); font-size: 10px; }"
+  ].join("\n");
+  function carEsc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function carArc(cx, cy, r, a0, a1) {
+    var x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0), x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+    return "M" + x0.toFixed(1) + " " + y0.toFixed(1) + "A" + r + " " + r + " 0 " + (a1 - a0 > Math.PI ? 1 : 0) + " 1 " + x1.toFixed(1) + " " + y1.toFixed(1);
+  }
+  // An arc gauge as an SVG string: zones faint, the value bright, an optional needle.
+  // o: { min, max, v, zones: [[from, color]], w, sweep, needle, ticks }
+  function carGauge(o) {
+    var S = 200, c = S / 2, w = o.w || 12, r = c - w, sw = o.sweep || 270;
+    var a0 = (90 + (360 - sw) / 2) * Math.PI / 180, a1 = a0 + sw * Math.PI / 180;
+    var f = function (x) { return a0 + (Math.max(o.min, Math.min(o.max, x)) - o.min) / (o.max - o.min) * (a1 - a0); };
+    var z = o.zones && o.zones.length ? o.zones : [[o.min, CAR_OK]], out = "", col = z[0][1];
+    z.forEach(function (q, i) {
+      var e = i + 1 < z.length ? z[i + 1][0] : o.max;
+      out += '<path d="' + carArc(c, c, r, f(q[0]), f(e)) + '" stroke="' + q[1] + '" stroke-opacity=".22" stroke-width="' + w + '" fill="none"/>';
+      if (o.v != null && o.v >= q[0]) col = q[1];
+    });
+    if (o.v != null) out += '<path d="' + carArc(c, c, r, a0, Math.max(a0 + 0.001, f(o.v))) + '" stroke="' + col + '" stroke-width="' + w + '" fill="none"/>';
+    (o.ticks || []).forEach(function (t) {
+      var a = f(t), r0 = r - w / 2 - 3, r1 = r - w / 2 - 11;
+      out += '<line x1="' + (c + r0 * Math.cos(a)).toFixed(1) + '" y1="' + (c + r0 * Math.sin(a)).toFixed(1) + '" x2="' + (c + r1 * Math.cos(a)).toFixed(1) + '" y2="' + (c + r1 * Math.sin(a)).toFixed(1) + '" stroke="#4b5159" stroke-width="2"/>';
+    });
+    if (o.needle && o.v != null) {
+      var an = f(o.v);
+      out += '<line x1="' + c + '" y1="' + c + '" x2="' + (c + (r - 4) * Math.cos(an)).toFixed(1) + '" y2="' + (c + (r - 4) * Math.sin(an)).toFixed(1) + '" stroke="var(--fg)" stroke-width="3"/><circle cx="' + c + '" cy="' + c + '" r="6" fill="var(--fg)"/>';
+    }
+    return { svg: '<svg viewBox="0 0 ' + S + ' ' + S + '" preserveAspectRatio="xMidYMid meet">' + out + "</svg>", color: col };
+  }
+  function carZones(cfg, min) {
+    if (Array.isArray(cfg.zones)) return cfg.zones.map(function (z) { return [Number(z.from != null ? z.from : z[0]), z.color || z[1]]; });
+    var z = [[min, cfg.color || CAR_OK]];
+    if (cfg.warn != null) z.push([Number(cfg.warn), CAR_WARN]);
+    if (cfg.bad != null) z.push([Number(cfg.bad), CAR_BAD]);
+    return z;
+  }
+
+  // ----- igor-guide-card: the guidance column beside the GPS map -----
+  //   type: custom:igor-guide-card
+  //   favorites: [Maison, Travail]     # the names of the GPS card's favourites, in its order (two shown)
+  // While guided: the next turn, how far, then the arrival (time, km, min).
+  // Without a route: « Où allons-nous ? » — search and the favourites, small.
+  // It talks to the igor-gps-card of the same page (events on window).
+  class IgorGuideCard extends IgorCard {
+    setConfig(config) { this.config = config || {}; }
+    getCardSize() { return 2; }
+    build() {
+      this.style(CAR_HEAD + "\n" + [
+        "ha-card { gap: 6px; }",
+        ".turn { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 10px; align-items: center; --mdc-icon-size: 50px; }",
+        ".turn ha-icon { color: var(--fg); }",
+        ".dist { font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }",
+        ".tx { font-size: 13px; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }",
+        ".then { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".eta { display: flex; align-items: baseline; gap: 10px; border-top: 1px solid var(--line); padding-top: 7px; margin-top: 2px; }",
+        ".eta b { font-weight: 400; font-size: 24px; font-variant-numeric: tabular-nums; } .eta span { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".row { display: flex; gap: 6px; } .row button.b { flex: 1; min-height: 38px; flex-direction: row; gap: 8px; --mdc-icon-size: 18px; }",
+        "button.go { border-color: var(--acc); color: var(--acc); } button.go ha-icon { color: var(--acc); }",
+        "button.stop { flex: none !important; padding: 6px 12px; }",
+        "[hidden] { display: none !important; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      this.idle = el("div", "", card);
+      el("div", "h", this.idle, this.config.title || "où allons-nous ?");
+      var send = (detail) => window.dispatchEvent(new CustomEvent("igor-gps-cmd", { detail: detail }));
+      var go = el("button", "b go", this.idle); go.type = "button"; go.style.width = "100%"; go.style.flexDirection = "row"; go.style.minHeight = "40px";
+      icon(go, "mdi:magnify"); el("span", "", go, "Chercher une adresse");
+      go.addEventListener("click", () => send({ cmd: "search" }));
+      var favs = el("div", "row", this.idle); favs.style.marginTop = "6px";
+      (this.config.favorites || ["Maison"]).slice(0, 2).forEach((name, i) => {
+        var b = el("button", "b", favs); b.type = "button";
+        icon(b, i === 0 ? "mdi:home" : "mdi:star-outline"); el("span", "", b, name);
+        b.addEventListener("click", () => send({ cmd: "fav", index: i }));
+      });
+      this.guide = el("div", "", card);
+      var t = el("div", "turn", this.guide);
+      this.gIcon = icon(t, "mdi:arrow-up");
+      var tt = el("div", "", t);
+      this.gDist = el("div", "dist", tt); this.gText = el("div", "tx", tt); this.gThen = el("div", "then", tt);
+      var e = el("div", "eta", this.guide);
+      this.gEta = el("b", "", e); this.gLeft = el("span", "", e);
+      var st = el("button", "b stop", e); st.type = "button"; st.style.marginLeft = "auto"; icon(st, "mdi:stop"); st.title = "Arrêter le guidage";
+      st.addEventListener("click", () => send({ cmd: "stop" }));
+      this.onGuide = (ev) => this.show(ev.detail);
+      window.addEventListener("igor-gps-guide", this.onGuide);
+      this.show(window.__igorGuide || null);
+    }
+    connectedCallback() { super.connectedCallback(); if (this.onGuide) { window.addEventListener("igor-gps-guide", this.onGuide); this.show(window.__igorGuide || null); } }
+    disconnectedCallback() { if (this.onGuide) window.removeEventListener("igor-gps-guide", this.onGuide); }
+    show(g) {
+      if (!this.guide) return;
+      this.idle.hidden = !!g; this.guide.hidden = !g;
+      if (!g) return;
+      this.gIcon.setAttribute("icon", g.icon || "mdi:arrow-up");
+      this.gDist.textContent = g.dist || "";
+      this.gText.textContent = g.text || "";
+      this.gThen.textContent = g.then || "";
+      this.gEta.textContent = g.eta || "";
+      this.gLeft.textContent = [g.left, g.min ? g.min + " min" : "", g.jam ? "dont " + g.jam + " min de bouchons" : (g.dest || "")].filter(Boolean).join(" · ");
+    }
+  }
+
+  // ----- igor-gear-card: the rev counter, the gear and its advice -----
+  //   type: custom:igor-gear-card
+  //   rpm: sensor.car_rpm
+  //   gear: sensor.car_gear                 # « 1 »…« 6 », « N »
+  //   advice: sensor.car_gear_advice        # « Passez la 5e », « Rétrogradez en 3e », « Aucun »
+  //   gears: 6
+  //   rpm_max: 5000
+  //   rpm_warn: 3500
+  //   rpm_bad: 4300
+  //   stats: [ { entity: sensor.car_speed, unit: km/h }, { entity: sensor.car_l100, unit: L/100, color: ok }, … ]
+  class IgorGearCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !config.rpm) throw new Error("igor-gear-card: rpm est requis");
+      this.config = config;
+    }
+    getCardSize() { return 6; }
+    build() {
+      this.style(CAR_HEAD + "\n" + [
+        "ha-card { align-items: center; }",
+        ".dial { position: relative; width: 100%; flex: 1 1 0; min-height: 120px; display: flex; justify-content: center; }",
+        ".dial svg { height: 100%; max-width: 100%; }",
+        ".mid { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; pointer-events: none; padding-bottom: 2%; }",
+        ".gear { font-size: 56px; line-height: 1; } .rpm { font-size: 15px; color: var(--dim); font-variant-numeric: tabular-nums; margin-top: 4px; }",
+        ".sel { display: flex; gap: 5px; margin-top: 6px; flex: none; } .sel span { width: 34px; height: 34px; border: 1px solid var(--line); display: grid; place-items: center; font-size: 16px; color: var(--faint); border-radius: var(--igor-radius, 3px); }",
+        ".sel .cur { border-color: " + CAR_OK + "; color: " + CAR_OK + "; background: rgba(92,194,143,0.08); } .sel .nx { border-color: " + CAR_WARN + "; color: " + CAR_WARN + "; } .sel .dn { border-color: " + CAR_BAD + "; color: " + CAR_BAD + "; }",
+        ".adv { font-size: 16px; letter-spacing: 0.12em; text-transform: uppercase; margin-top: 8px; min-height: 1.3em; flex: none; text-align: center; }",
+        ".stats { display: flex; gap: 22px; justify-content: center; margin-top: 8px; flex: none; } .stats div { text-align: center; } .stats b { display: block; font-weight: 400; font-size: 24px; font-variant-numeric: tabular-nums; } .stats span { font-size: 11px; color: var(--dim); }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      card.addEventListener("click", () => moreInfo(this, this.config.rpm));
+      el("div", "h", card, this.config.title || "régime · rapport").style.alignSelf = "flex-start";
+      var d = el("div", "dial", card);
+      this.dialSvg = el("div", "", d); this.dialSvg.style.height = "100%"; this.dialSvg.style.display = "flex";
+      var mid = el("div", "mid", d);
+      this.gearEl = el("div", "gear", mid); this.rpmEl = el("div", "rpm", mid);
+      this.sel = el("div", "sel", card);
+      this.boxes = [];
+      for (var g = 1; g <= (Number(this.config.gears) || 6); g++) this.boxes.push(el("span", "", this.sel, String(g)));
+      this.advEl = el("div", "adv", card);
+      this.statsEl = el("div", "stats", card);
+      this.statEls = (this.config.stats || []).map((s) => { var d2 = el("div", "", this.statsEl); var b = el("b", "", d2); el("span", "", d2, s.unit || ""); return { s: s, b: b }; });
+    }
+    update(hass) {
+      var c = this.config, rpm = numOf(hass, c.rpm), max = Number(c.rpm_max) || 5000;
+      var gearSt = c.gear && hass.states[c.gear], gear = gearSt ? gearSt.state : "";
+      var adv = c.advice && hass.states[c.advice] ? hass.states[c.advice].state : "";
+      if (!/Passez|Rétrogradez/.test(adv)) adv = "";
+      var key = [rpm == null ? "" : Math.round(rpm / 25), gear, adv].concat(this.statEls.map((x) => hass.states[x.s.entity] && hass.states[x.s.entity].state)).join("|");
+      if (key === this.key) return;
+      this.key = key;
+      var zones = [[0, CAR_OK], [Number(c.rpm_warn) || 3500, CAR_WARN], [Number(c.rpm_bad) || 4300, CAR_BAD]];
+      var ticks = []; for (var t = 1000; t < max; t += 1000) ticks.push(t);
+      var gg = carGauge({ min: 0, max: max, v: rpm == null ? 0 : rpm, zones: zones, w: 10, sweep: 250, needle: true, ticks: ticks });
+      this.dialSvg.innerHTML = gg.svg;
+      var known = /^[1-9]$/.test(gear);
+      this.gearEl.textContent = known ? gear : gear === "N" ? "N" : "—";
+      this.gearEl.style.color = known ? (adv ? (/Rétro/.test(adv) ? CAR_BAD : CAR_WARN) : CAR_OK) : "var(--dim)";
+      this.rpmEl.textContent = rpm == null ? "— tr/min" : fr(rpm, 0) + " tr/min";
+      var to = adv ? Number((adv.match(/(\d)/) || [])[1]) : 0;
+      this.boxes.forEach((b, i) => { b.className = String(i + 1) === gear ? "cur" : i + 1 === to ? (/Rétro/.test(adv) ? "dn" : "nx") : ""; });
+      this.advEl.textContent = adv ? (/Rétro/.test(adv) ? "▼ " : "▲ ") + adv : "";
+      this.advEl.style.color = /Rétro/.test(adv) ? CAR_BAD : CAR_WARN;
+      this.statEls.forEach((x) => {
+        var v = numOf(hass, x.s.entity);
+        x.b.textContent = v == null ? "—" : fr(v, x.s.digits != null ? Number(x.s.digits) : (Math.abs(v) < 100 ? 1 : 0));
+        x.b.style.color = x.s.color === "ok" ? CAR_OK : x.s.color || "";
+      });
+    }
+  }
+
+  // ----- igor-gauge-card: one value on an arc -----
+  //   type: custom:igor-gauge-card
+  //   entity: sensor.turbo
+  //   name: turbo
+  //   min: -0.2
+  //   max: 1.8
+  //   warn: 1.3                             # or zones: [ { from: -0.2, color: '#6cc4f5' }, { from: 0.2, color: '#5cc28f' }, … ]
+  //   bad: 1.6
+  //   digits: 2
+  class IgorGaugeCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !config.entity) throw new Error("igor-gauge-card: entity est requis");
+      this.config = config;
+    }
+    getCardSize() { return 3; }
+    build() {
+      this.style(CAR_HEAD + "\n" + [
+        "ha-card { align-items: center; cursor: pointer; }",
+        ".g { position: relative; flex: 1 1 0; min-height: 70px; width: 100%; display: flex; justify-content: center; }",
+        ".g > div { height: 100%; display: flex; } .g svg { height: 100%; max-width: 100%; }",
+        ".v { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }",
+        ".v b { font-weight: 400; font-size: 26px; font-variant-numeric: tabular-nums; line-height: 1; } .v span { font-size: 11px; color: var(--dim); margin-top: 3px; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      card.addEventListener("click", () => moreInfo(this, this.config.entity));
+      el("div", "h", card, this.config.name || "");
+      var g = el("div", "g", card);
+      this.svgEl = el("div", "", g);
+      var v = el("div", "v", g);
+      this.vEl = el("b", "", v); this.uEl = el("span", "", v);
+    }
+    update(hass) {
+      var c = this.config, st = hass.states[c.entity], v = numOf(hass, c.entity);
+      var key = st ? st.state : "";
+      if (key === this.key) return;
+      this.key = key;
+      var min = c.min != null ? Number(c.min) : 0, max = c.max != null ? Number(c.max) : 100;
+      var g = carGauge({ min: min, max: max, v: v, zones: carZones(c, min), w: 13 });
+      this.svgEl.innerHTML = g.svg;
+      this.vEl.textContent = v == null ? "—" : fr(v, c.digits != null ? Number(c.digits) : undefined);
+      this.uEl.textContent = c.unit != null ? c.unit : (st && st.attributes.unit_of_measurement) || "";
+    }
+  }
+
+  // ----- igor-live-card: the last seconds of a few sensors, one band each -----
+  //   type: custom:igor-live-card
+  //   seconds: 90
+  //   entities:
+  //     - { entity: sensor.turbo, name: turbo, color: '#e5a04c', digits: 2 }
+  //     - { entity: sensor.load, name: charge, color: '#5cc28f' }
+  // Kept on this screen only (one point a second, nothing asked of Home
+  // Assistant): the band starts empty and fills as the car drives.
+  class IgorLiveCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !Array.isArray(config.entities) || !config.entities.length) throw new Error("igor-live-card: entities est requis");
+      this.config = config;
+    }
+    getCardSize() { return 6; }
+    build() {
+      this.style(CAR_HEAD + "\n" + [
+        "ha-card { padding: 0; background: none; border: 0; gap: 8px; }",
+        ".band { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 10px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: var(--igor-radius, 3px); padding: 6px 12px; cursor: pointer; }",
+        ".n { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); } .n small { display: block; letter-spacing: 0.02em; text-transform: none; color: var(--faint); font-size: 10.5px; margin-top: 3px; }",
+        ".band svg { width: 100%; height: 100%; display: block; }",
+        ".v { text-align: right; font-size: 26px; font-variant-numeric: tabular-nums; white-space: nowrap; } .v span { font-size: 11px; color: var(--dim); margin-left: 4px; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      this.n = Math.max(20, Math.min(600, Number(this.config.seconds) || 90));
+      this.rows = this.config.entities.map((e) => {
+        var b = el("div", "band", card);
+        b.addEventListener("click", () => moreInfo(this, e.entity));
+        var n = el("div", "n", b, e.name || e.entity);
+        var sub = el("small", "", n, "");
+        var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", "0 0 " + this.n + " 100"); svg.setAttribute("preserveAspectRatio", "none");
+        var area = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        area.setAttribute("fill", e.color || CAR_BLUE); area.setAttribute("fill-opacity", "0.13");
+        var line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        line.setAttribute("fill", "none"); line.setAttribute("stroke", e.color || CAR_BLUE); line.setAttribute("stroke-width", "2"); line.setAttribute("vector-effect", "non-scaling-stroke");
+        svg.appendChild(area); svg.appendChild(line); b.appendChild(svg);
+        var v = el("div", "v", b); v.style.color = e.color || CAR_BLUE;
+        var vb = el("span", "", v); vb.style.cssText = "font-size:inherit;color:inherit;margin:0";
+        el("span", "", v, e.unit || "");
+        return { e: e, sub: sub, area: area, line: line, vb: vb, unitDone: !!e.unit, unitEl: v.lastChild, pts: [] };
+      });
+      this.startTimer();
+    }
+    connectedCallback() { super.connectedCallback(); this.startTimer(); }
+    disconnectedCallback() { clearInterval(this.timer); this.timer = null; }
+    startTimer() {
+      if (this.timer || !this.rows) return;
+      // One point a second, whatever the sensors' own pace: the band slides evenly.
+      this.timer = setInterval(() => this.sample(), 1000);
+    }
+    sample() {
+      var hass = this._hass;
+      if (!hass || !this.isConnected) return;
+      this.rows.forEach((r) => {
+        var v = numOf(hass, r.e.entity);
+        r.pts.push(v);
+        if (r.pts.length > this.n) r.pts.shift();
+        if (!r.unitDone) { var st = hass.states[r.e.entity]; if (st && st.attributes.unit_of_measurement) { r.unitEl.textContent = st.attributes.unit_of_measurement; r.unitDone = true; } }
+        var vals = r.pts.filter((x) => x != null);
+        r.vb.textContent = v == null ? "—" : fr(v, r.e.digits != null ? Number(r.e.digits) : undefined);
+        if (!vals.length) { r.line.setAttribute("points", ""); r.area.setAttribute("points", ""); r.sub.textContent = ""; return; }
+        var mn = r.e.min != null ? Number(r.e.min) : Math.min.apply(null, vals), mx = r.e.max != null ? Number(r.e.max) : Math.max.apply(null, vals);
+        if (mx - mn < 1e-6) { mx = mn + 1; }
+        var off = this.n - r.pts.length, out = [];
+        r.pts.forEach((x, i) => { if (x != null) out.push((off + i) + "," + (96 - (x - mn) / (mx - mn) * 92).toFixed(1)); });
+        r.line.setAttribute("points", out.join(" "));
+        r.area.setAttribute("points", out.length ? out[0].split(",")[0] + ",100 " + out.join(" ") + " " + out[out.length - 1].split(",")[0] + ",100" : "");
+        var peak = Math.max.apply(null, vals);
+        r.sub.textContent = "pic " + fr(peak, r.e.digits != null ? Number(r.e.digits) : undefined) + " · " + Math.round(r.pts.length) + " s";
+      });
+    }
+  }
+
+  // ----- igor-diag-card: the engine's health on one page -----
+  //   type: custom:igor-diag-card
+  //   lamp: binary_sensor.car_check_engine
+  //   codes: sensor.car_dtc_count              # attribute codes: [ { code, description } ]
+  //   pending: sensor.car_dtc_pending          # same, the codes not confirmed yet
+  //   distance: sensor.car_distance_mil        # km driven with the lamp on
+  //   monitors: sensor.car_readiness           # attribute tests: [ { name, complete } ]
+  //   battery: sensor.car_battery
+  //   coolant: sensor.car_coolant
+  //   turbo: sensor.car_boost
+  //   online: binary_sensor.car_online
+  //   running: binary_sensor.car_engine_running
+  //   clear: input_button.car_clear_codes      # « Effacer »
+  //   agent: conversation.igor                 # who explains the code (« Demander à Igor », and once by itself per new code)
+  class IgorDiagCard extends IgorCard {
+    setConfig(config) { this.config = config || {}; }
+    getCardSize() { return 8; }
+    build() {
+      this.style(CAR_HEAD + "\n" + [
+        "ha-card { padding: 0; background: none; border: 0; display: grid; gap: 10px; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.25fr) minmax(150px, 0.42fr); grid-template-rows: auto minmax(0, 1fr) auto; }",
+        ".box { background: var(--card); border: 1px solid var(--line); border-radius: var(--igor-radius, 3px); padding: 10px 12px; min-height: 0; overflow: hidden; }",
+        ".hero { grid-column: 1 / 3; display: flex; align-items: center; gap: 16px; }",
+        ".hero .bil { font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums; } .hero b { display: block; font-weight: 400; font-size: 18px; } .hero span { font-size: 12px; color: var(--dim); }",
+        ".sys { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }",
+        ".sys:last-child { border: 0; } .sys i { width: 11px; height: 11px; border-radius: 50%; }",
+        ".sys b { display: block; font-weight: 400; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .sys small { display: block; font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".sys em { font-style: normal; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; }",
+        ".code { overflow: auto; } .k { font-size: 52px; line-height: 1; font-variant-numeric: tabular-nums; } .sev { display: inline-block; border: 1px solid currentColor; padding: 2px 8px; font-size: 10.5px; letter-spacing: 0.16em; margin-left: 10px; vertical-align: middle; text-transform: uppercase; }",
+        ".desc { font-size: 17px; margin-top: 6px; } .when { font-size: 11.5px; color: var(--dim); margin-top: 3px; }",
+        ".igor { border-left: 3px solid var(--igor-signal, #e5323b); padding: 8px 12px; background: rgba(0,0,0,0.18); font-size: 13.5px; line-height: 1.5; margin-top: 10px; white-space: pre-wrap; }",
+        ".igor b { display: block; font-weight: 400; font-size: 10.5px; letter-spacing: 0.2em; color: var(--dim); margin-bottom: 3px; }",
+        ".none { color: " + CAR_OK + "; font-size: 20px; margin-top: 8px; }",
+        ".pills { grid-column: 1 / 3; display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 6px; }",
+        ".pills div { border: 1px solid var(--line); border-radius: var(--igor-radius, 3px); padding: 6px 2px; text-align: center; font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--card); }",
+        ".acts { grid-column: 3; grid-row: 1 / 4; display: flex; flex-direction: column; gap: 8px; } .acts button.b { flex: 1; }",
+        "button.clr { border-color: var(--bad); color: var(--bad); } button.clr ha-icon { color: var(--bad); }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      this.hero = el("div", "box hero", card);
+      this.sysBox = el("div", "box", card);
+      this.codeBox = el("div", "box code", card);
+      this.pills = el("div", "pills", card);
+      var acts = el("div", "acts", card);
+      var mk = (cls, ic, label, sub, fn) => { var b = el("button", "b " + cls, acts); b.type = "button"; icon(b, ic); el("span", "", b, label); if (sub) el("small", "", b, sub); b.addEventListener("click", fn); return b; };
+      if (this.config.clear) mk("clr", "mdi:broom", "Effacer", "contact mis, moteur arrêté", () => {
+        if (!window.confirm("Effacer les codes défaut ? Le voyant se rallumera si le défaut persiste.")) return;
+        this._hass.callService("input_button", "press", {}, { entity_id: this.config.clear });
+      });
+      mk("", "mdi:refresh", "Relire", "", () => {
+        var ids = [this.config.codes, this.config.pending, this.config.monitors, this.config.lamp].filter(Boolean);
+        if (ids.length) this._hass.callService("homeassistant", "update_entity", {}, { entity_id: ids }).catch(() => {});
+      });
+      mk("", "mdi:robot-outline", "Demander à Igor", "", () => this.ask(true));
+    }
+    codeList(hass, id) {
+      var st = id && hass.states[id], l = st && st.attributes && st.attributes.codes;
+      return Array.isArray(l) ? l.filter((c) => c && c.code) : [];
+    }
+    systems(hass) {
+      var c = this.config, out = [];
+      var on = (id) => id && hass.states[id] && hass.states[id].state === "on";
+      var lamp = c.lamp && hass.states[c.lamp];
+      if (lamp) {
+        var km = numOf(hass, c.distance);
+        out.push(on(c.lamp) ? ["bad", "Voyant moteur", "ALLUMÉ" + (km ? " · " + fr(km, 1) + " km" : ""), "allumé"] : ["ok", "Voyant moteur", "éteint" + (km != null ? " · " + fr(km, 1) + " km voyant allumé" : ""), "ok"]);
+      }
+      var conf = this.codeList(hass, c.codes), pend = this.codeList(hass, c.pending);
+      if (c.codes || c.pending) {
+        out.push(conf.length ? ["bad", "Codes défaut", conf.map((x) => x.code).join(", ") + " confirmé" + (conf.length > 1 ? "s" : ""), "défaut"]
+          : pend.length ? ["warn", "Codes défaut", pend.map((x) => x.code).join(", ") + " en attente", "surveiller"] : ["ok", "Codes défaut", "aucun", "ok"]);
+      }
+      var bat = numOf(hass, c.battery);
+      if (bat != null) {
+        var run = c.running ? on(c.running) : bat > 13;
+        var lvl = run ? (bat < 13.2 ? "warn" : bat > 15 ? "bad" : "ok") : (bat < 11.8 ? "bad" : bat < 12.4 ? "warn" : "ok");
+        out.push([lvl, "Batterie / charge", fr(bat, 1) + " V " + (run ? "moteur tournant" : "au repos"), lvl === "ok" ? "ok" : lvl === "bad" ? "faible" : "surveiller"]);
+      }
+      var cool = numOf(hass, c.coolant);
+      if (cool != null) { var cl = cool > 110 ? "bad" : cool > 100 ? "warn" : "ok"; out.push([cl, "Refroidissement", fr(cool, 0) + " °C" + (cool < 60 ? " · moteur froid" : ""), cl === "ok" ? "ok" : "chaud"]); }
+      var mon = c.monitors && hass.states[c.monitors], tests = mon && Array.isArray(mon.attributes.tests) ? mon.attributes.tests : null;
+      if (tests && tests.length) {
+        var done = tests.filter((t) => t.complete).length, left = tests.filter((t) => !t.complete).map((t) => t.name);
+        out.push([done === tests.length ? "ok" : "warn", "Antipollution", done + "/" + tests.length + " prêts" + (left.length ? " · " + left.join(", ") : ""), done === tests.length ? "ok" : "en cours"]);
+      }
+      var tb = numOf(hass, c.turbo);
+      if (tb != null) { var tl = tb > 1.7 ? "bad" : "ok"; out.push([tl, "Turbo / admission", fr(tb, 2) + " bar", tl === "ok" ? "ok" : "élevé"]); }
+      if (c.online) out.push(on(c.online) ? ["ok", "Liaison OBD", "en ligne", "ok"] : ["warn", "Liaison OBD", "hors ligne · dernières valeurs", "hors ligne"]);
+      return out;
+    }
+    update(hass) {
+      var c = this.config;
+      var ids = [c.lamp, c.codes, c.pending, c.distance, c.monitors, c.battery, c.coolant, c.turbo, c.online, c.running];
+      var key = ids.map((id) => id && hass.states[id] ? hass.states[id].state + (hass.states[id].attributes.codes || hass.states[id].attributes.tests ? JSON.stringify(hass.states[id].attributes.codes || hass.states[id].attributes.tests) : "") : "").join("|");
+      if (key === this.key) return;
+      this.key = key;
+      var sys = this.systems(hass), col = { ok: CAR_OK, warn: CAR_WARN, bad: CAR_BAD };
+      var okN = sys.filter((s) => s[0] === "ok").length, worst = sys.some((s) => s[0] === "bad") ? "bad" : sys.some((s) => s[0] === "warn") ? "warn" : "ok";
+      this.hero.innerHTML = "";
+      this.hero.style.borderColor = worst === "ok" ? "" : col[worst];
+      var bil = el("div", "bil", this.hero, sys.length ? okN + "/" + sys.length : "—"); bil.style.color = col[worst];
+      var ht = el("div", "", this.hero);
+      var bad = sys.filter((s) => s[0] !== "ok").length;
+      el("b", "", ht, worst === "bad" ? "Défaut moteur · à faire contrôler" : bad ? "Moteur sain · " + bad + " point" + (bad > 1 ? "s" : "") + " à surveiller" : "Moteur sain");
+      el("span", "", ht, sys.filter((s) => s[0] !== "ok").map((s) => s[1].toLowerCase() + " : " + s[2]).join(" · ") || "tout est au vert");
+      this.sysBox.innerHTML = "";
+      el("div", "h", this.sysBox, "systèmes");
+      sys.forEach((s) => {
+        var r = el("div", "sys", this.sysBox), d = el("i", "", r); d.style.background = col[s[0]]; d.style.boxShadow = "0 0 8px " + col[s[0]];
+        var t = el("div", "", r); el("b", "", t, s[1]); el("small", "", t, s[2]);
+        var em = el("em", "", r, s[3]); em.style.color = col[s[0]];
+      });
+      // The code shown: the first confirmed, else the first pending.
+      var conf = this.codeList(hass, c.codes), pend = this.codeList(hass, c.pending);
+      var all = conf.map((x) => Object.assign({ st: "confirmé" }, x)).concat(pend.filter((p) => !conf.some((x) => x.code === p.code)).map((x) => Object.assign({ st: "en attente" }, x)));
+      this.current = all[0] || null;
+      this.codeBox.innerHTML = "";
+      el("div", "h", this.codeBox, all.length ? "défaut en cours · 1 sur " + all.length : "défauts");
+      if (!all.length) { el("div", "none", this.codeBox, "Aucun défaut ✓"); }
+      else {
+        var cur = all[0], cc = cur.st === "confirmé" ? CAR_BAD : CAR_WARN;
+        var top = el("div", "", this.codeBox);
+        var k = el("span", "k", top, cur.code); k.style.color = cc;
+        var sv = el("span", "sev", top, cur.st); sv.style.color = cc;
+        el("div", "desc", this.codeBox, cur.description || "");
+        var src = hass.states[cur.st === "confirmé" ? c.codes : c.pending];
+        if (src && src.last_changed) { var dt = new Date(src.last_changed); el("div", "when", this.codeBox, "relevé le " + pad(dt.getDate()) + "/" + pad(dt.getMonth() + 1) + " à " + hhmm(dt) + (all.length > 1 ? " · autres : " + all.slice(1).map((x) => x.code).join(", ") : "")); }
+        this.igorBox = el("div", "igor", this.codeBox);
+        el("b", "", this.igorBox, "◉ IGOR");
+        this.igorText = el("span", "", this.igorBox, "");
+        this.ask(false);
+      }
+      this.pills.innerHTML = "";
+      var mon = c.monitors && hass.states[c.monitors], tests = mon && Array.isArray(mon.attributes.tests) ? mon.attributes.tests : [];
+      this.pills.hidden = !tests.length;
+      tests.forEach((t) => { var p = el("div", "", this.pills, (t.complete ? "✓ " : "… ") + t.name); p.style.color = t.complete ? "" : CAR_WARN; });
+    }
+    // Igor's word on the code: kept by this screen per code (asked once, not at every redraw).
+    ask(force) {
+      var cur = this.current;
+      if (!cur || !this.igorText || !this._hass) return;
+      var memKey = "igor-diag:" + cur.code, kept = null;
+      try { kept = window.localStorage.getItem(memKey); } catch (e) { kept = null; }
+      if (kept && !force) { this.igorText.textContent = kept; return; }
+      if (!force && this.config.auto_explain === false) { this.igorText.textContent = "Touchez « Demander à Igor » pour une explication."; return; }
+      if (this.asking === cur.code) return;
+      this.asking = cur.code;
+      this.igorText.textContent = "Igor regarde ce code…";
+      var text = "En trois phrases simples, explique le code défaut " + cur.code + (cur.description ? " (" + cur.description + ")" : "") +
+        " sur ma voiture, dis si c'est urgent et ce que je dois faire. Code " + cur.st + ".";
+      var msg = Object.assign({ type: "conversation/process", text: text, language: "fr" }, this.config.agent ? { agent_id: this.config.agent } : {});
+      this._hass.callWS(msg).then((r) => {
+        var said = r && r.response && r.response.speech && r.response.speech.plain && r.response.speech.plain.speech;
+        if (!said) throw new Error("vide");
+        try { window.localStorage.setItem(memKey, said); } catch (e) { /* no storage */ }
+        if (this.current && this.current.code === cur.code && this.igorText) this.igorText.textContent = said;
+      }).catch(() => { if (this.igorText) this.igorText.textContent = "Igor n'a pas répondu — réessayez avec « Demander à Igor »."; })
+        .then(() => { this.asking = null; });
+    }
+  }
+
+  // ----- igor-schedule-card: the servicing ahead, on the kilometres to come -----
+  //   type: custom:igor-schedule-card
+  //   odometer: sensor.car_odometer
+  //   horizon: 15000                            # km shown ahead
+  //   km_per_day: 40                            # to place the dated ones (else from km_month)
+  //   km_month: sensor.car_km_this_month
+  //   items:
+  //     - { name: Vidange, entity: sensor.car_oil, set: input_number.car_oil_km }    # km left; set at 0 = « à renseigner »
+  //     - { name: CT, entity: sensor.car_inspection, unit: j }                       # days left
+  class IgorScheduleCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !Array.isArray(config.items) || !config.items.length) throw new Error("igor-schedule-card: items est requis");
+      this.config = config;
+    }
+    getCardSize() { return 5; }
+    build() {
+      this.style(CAR_HEAD + "\n" + [
+        ".top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex: none; }",
+        ".odo { font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; } .odo small { font-size: 12px; color: var(--dim); }",
+        ".nx { text-align: right; } .nx span { display: block; font-size: 11px; color: var(--dim); } .nx b { font-weight: 400; font-size: 17px; }",
+        ".ax { position: relative; flex: 1 1 0; min-height: 110px; margin: 6px 44px 0; }",
+        ".ln { position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; background: var(--track); border-radius: 2px; }",
+        ".now { position: absolute; left: 0; top: 18%; bottom: 18%; border-left: 2px solid var(--igor-signal, #e5323b); }",
+        ".ev { position: absolute; top: 50%; width: 0; } .ev i { position: absolute; left: -8px; top: -8px; width: 16px; height: 16px; border-radius: 50%; }",
+        ".ev div { position: absolute; left: -75px; width: 150px; text-align: center; } .ev div b { display: block; font-weight: 400; font-size: 15px; white-space: nowrap; } .ev div span { font-size: 11px; color: var(--dim); white-space: nowrap; }",
+        ".ev.up div { bottom: 14px; } .ev.dn div { top: 14px; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      el("div", "h", card, this.config.title || "échéancier");
+      var top = el("div", "top", card);
+      this.odo = el("div", "odo", top);
+      this.next = el("div", "nx", top);
+      this.ax = el("div", "ax", card);
+    }
+    update(hass) {
+      var c = this.config;
+      var ids = [c.odometer, c.km_month].concat(c.items.map((i) => i.entity), c.items.map((i) => i.set));
+      var key = ids.map((id) => id && hass.states[id] ? hass.states[id].state : "").join("|");
+      if (key === this.key) return;
+      this.key = key;
+      var odo = numOf(hass, c.odometer), H = Number(c.horizon) || 15000;
+      var kpd = Number(c.km_per_day) || 0;
+      if (!kpd) { var m = numOf(hass, c.km_month), day = new Date().getDate(); kpd = m && day ? Math.max(5, m / day) : 40; }
+      this.odo.innerHTML = "";
+      this.odo.appendChild(document.createTextNode(odo == null ? "—" : fr(odo, 0) + " "));
+      el("small", "", this.odo, "km");
+      var evs = c.items.map((it) => {
+        var left = numOf(hass, it.entity), unset = it.set && (numOf(hass, it.set) || 0) <= 0;
+        var days = it.unit === "j", km = left == null || unset ? null : days ? left * kpd : left;
+        var lvl = unset || left == null ? "none" : left < 0 ? "bad" : left < (days ? 30 : (it.warn != null ? Number(it.warn) : 1000)) ? "warn" : "ok";
+        var label = unset || left == null ? "à renseigner" : left < 0 ? "dépassé de " + fr(-left, 0) + (days ? " j" : " km") : days ? "dans " + fr(left, 0) + " j" : (odo != null ? fr(odo + left, 0) + " km" : fr(left, 0) + " km");
+        return { it: it, km: km, lvl: lvl, label: label, left: left, days: days };
+      });
+      var col = { ok: CAR_OK, warn: CAR_WARN, bad: CAR_BAD, none: "#8a9099" };
+      var soon = evs.filter((e) => e.lvl !== "none" && e.km != null).sort((a, b) => a.km - b.km)[0];
+      this.next.innerHTML = "";
+      el("span", "", this.next, "prochaine échéance");
+      var nb = el("b", "", this.next, soon ? soon.it.name + " · " + (soon.days ? fr(soon.left, 0) + " j" : fr(soon.left, 0) + " km") : "—");
+      if (soon) nb.style.color = col[soon.lvl];
+      this.ax.innerHTML = "";
+      el("div", "ln", this.ax); el("div", "now", this.ax);
+      // Placed along the next H km: the overdue at the start, the unknown at the end.
+      evs.slice().sort((a, b) => (a.km == null ? Infinity : a.km) - (b.km == null ? Infinity : b.km)).forEach((e, i) => {
+        var x = e.km == null ? 100 : Math.max(0, Math.min(100, e.km / H * 100));
+        var d = el("div", "ev " + (i % 2 ? "up" : "dn"), this.ax); d.style.left = x + "%";
+        el("i", "", d).style.background = col[e.lvl];
+        var t = el("div", "", d); var b = el("b", "", t, e.it.name); b.style.color = col[e.lvl]; el("span", "", t, e.label + (e.km != null && e.km > H ? " ›" : ""));
+      });
+    }
+  }
+
+  // ----- igor-fuel-card: fuel by month and the last fill-ups -----
+  //   type: custom:igor-fuel-card
+  //   month: sensor.car_fuel_this_month         # litres this month (a monthly utility meter: its statistics give the months)
+  //   price: input_number.fuel_price            # €/L, to turn litres into euros
+  //   cost: sensor.car_cost_this_month          # this month in € (else month × price)
+  //   consumption: input_number.car_real_l100
+  //   fills: sensor.car_fills                   # attribute pleins: [ { date, km, litres, prix, total } ], newest last
+  //   months: 6
+  class IgorFuelCard extends IgorCard {
+    setConfig(config) {
+      if (!config || !config.month) throw new Error("igor-fuel-card: month est requis");
+      this.config = config;
+    }
+    getCardSize() { return 5; }
+    build() {
+      this.style(CAR_HEAD + "\n" + [
+        "ha-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }",
+        ".col { display: flex; flex-direction: column; min-height: 0; }",
+        ".bars { flex: 1 1 0; min-height: 80px; display: flex; align-items: flex-end; gap: 8px; }",
+        ".bars div { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; font-size: 10.5px; color: var(--dim); }",
+        ".bars i { width: 100%; background: " + CAR_BLUE + "; opacity: 0.7; border-radius: 2px 2px 0 0; min-height: 2px; } .bars .cur i { background: " + CAR_OK + "; opacity: 1; }",
+        ".big { font-size: 26px; font-variant-numeric: tabular-nums; } .big small { font-size: 12px; color: var(--dim); margin-left: 6px; }",
+        ".fill { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; font-variant-numeric: tabular-nums; }",
+        ".fill span { color: var(--dim); } .fill em { font-style: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".foot { font-size: 11.5px; color: var(--dim); margin-top: auto; padding-top: 6px; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      var a = el("div", "col", card);
+      el("div", "h", a, "carburant · " + (Number(this.config.months) || 6) + " mois");
+      this.month = el("div", "big", a);
+      this.bars = el("div", "bars", a);
+      var b = el("div", "col", card);
+      el("div", "h", b, "derniers pleins");
+      this.fills = el("div", "", b);
+      this.foot = el("div", "foot", b);
+    }
+    update(hass) {
+      var c = this.config;
+      var key = [c.month, c.price, c.cost, c.consumption, c.fills].map((id) => id && hass.states[id] ? hass.states[id].state + (id === c.fills ? JSON.stringify(hass.states[id].attributes.pleins || []) : "") : "").join("|");
+      if (key === this.key) return;
+      this.key = key;
+      var price = numOf(hass, c.price), litres = numOf(hass, c.month), cost = numOf(hass, c.cost);
+      if (cost == null && litres != null && price != null) cost = litres * price;
+      this.month.innerHTML = "";
+      this.month.appendChild(document.createTextNode(cost != null ? fr(cost, 2) + " €" : litres != null ? fr(litres, 1) + " L" : "—"));
+      el("small", "", this.month, "ce mois" + (litres != null && cost != null ? " · " + fr(litres, 1) + " L" : ""));
+      this.drawBars(price, litres);
+      var fs = c.fills && hass.states[c.fills], list = fs && Array.isArray(fs.attributes.pleins) ? fs.attributes.pleins.slice(-4).reverse() : [];
+      this.fills.innerHTML = "";
+      if (!list.length) el("div", "foot", this.fills, "Aucun plein enregistré — « Plein fait » après chaque passage à la pompe.");
+      list.forEach((f) => {
+        var r = el("div", "fill", this.fills), d = f.date ? new Date(f.date) : null;
+        el("span", "", r, d && !isNaN(d) ? pad(d.getDate()) + "/" + pad(d.getMonth() + 1) : "—");
+        el("em", "", r, fr(Number(f.litres), 1) + " L · " + fr(Number(f.prix), 3) + " €" + (f.km ? " · " + fr(Number(f.km), 0) + " km" : ""));
+        el("b", "", r, fr(Number(f.total != null ? f.total : f.litres * f.prix), 2) + " €").style.fontWeight = "400";
+      });
+      var l100 = numOf(hass, c.consumption);
+      this.foot.textContent = [l100 ? "conso réelle " + fr(l100, 1) + " L/100" : "", l100 && price ? "coût au km " + fr(l100 / 100 * price, 3) + " €" : ""].filter(Boolean).join(" · ");
+    }
+    // The months from the meter's statistics (the recorder keeps them for
+    // good), asked once an hour; the month under way from its state.
+    drawBars(price, litres) {
+      var c = this.config, n = Number(c.months) || 6, now = Date.now();
+      var paint = () => {
+        var months = [], d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0);
+        for (var i = n - 1; i >= 0; i--) { var m = new Date(d.getFullYear(), d.getMonth() - i, 1); months.push(m); }
+        var stat = this.stats || {};
+        var vals = months.map((m, i) => {
+          var v = i === n - 1 ? litres : stat[m.getFullYear() + "-" + m.getMonth()];
+          return v == null ? null : price != null ? v * price : v;
+        });
+        var mx = Math.max.apply(null, vals.map((v) => v || 0).concat([1]));
+        this.bars.innerHTML = "";
+        var names = ["janv", "févr", "mars", "avr", "mai", "juin", "juil", "août", "sept", "oct", "nov", "déc"];
+        months.forEach((m, i) => {
+          var b = el("div", i === n - 1 ? "cur" : "", this.bars), v = vals[i];
+          el("span", "", b, v == null ? "" : fr(v, 0) + (price != null ? " €" : " L"));
+          el("i", "", b).style.height = (v == null ? 0 : Math.max(2, v / mx * 100)) + "%";
+          el("span", "", b, names[m.getMonth()]);
+        });
+      };
+      paint();
+      if (this.statsAt && now - this.statsAt < 3600000) return;
+      this.statsAt = now;
+      var start = new Date(); start.setDate(1); start.setHours(0, 0, 0, 0); start.setMonth(start.getMonth() - n);
+      this._hass.callWS({ type: "recorder/statistics_during_period", start_time: start.toISOString(), statistic_ids: [c.month], period: "month", types: ["max", "state"] })
+        .then((r) => {
+          var rows = (r && r[c.month]) || [], out = {};
+          rows.forEach((x) => { var t = new Date(typeof x.start === "number" ? x.start : Date.parse(x.start)); var v = x.max != null ? x.max : x.state; if (v != null) out[t.getFullYear() + "-" + t.getMonth()] = Number(v); });
+          this.stats = out;
+          paint();
+        }).catch(() => {});
+    }
+  }
+
   function define(name, cls, label, description) {
     if (!customElements.get(name)) customElements.define(name, cls);
     window.customCards = window.customCards || [];
     window.customCards.push({ type: name, name: label, description: description });
   }
+  define("igor-guide-card", IgorGuideCard, "Igor · guidage", "La colonne du GPS : la prochaine manœuvre et l'arrivée, ou « Où allons-nous ? » sans itinéraire.");
+  define("igor-gear-card", IgorGearCard, "Igor · rapport", "Le compte-tours, le rapport engagé et le conseil de rapport.");
+  define("igor-gauge-card", IgorGaugeCard, "Igor · jauge", "Une valeur sur un arc coloré.");
+  define("igor-live-card", IgorLiveCard, "Igor · en direct", "Les dernières secondes de quelques capteurs, une bande chacun.");
+  define("igor-diag-card", IgorDiagCard, "Igor · diagnostic", "La santé du moteur : bilan, systèmes, défaut expliqué par Igor, tests antipollution.");
+  define("igor-schedule-card", IgorScheduleCard, "Igor · échéancier", "Les entretiens à venir sur les kilomètres à parcourir.");
+  define("igor-fuel-card", IgorFuelCard, "Igor · carburant", "Le carburant par mois et les derniers pleins.");
   define("igor-wall", IgorWall, "Igor · mur", "Tout l'écran : barre d'état des machines et colonnes de cartes jusqu'en bas.");
   define("igor-journal-card", IgorJournalCard, "Igor · journal", "Les derniers échanges avec Igor.");
   define("igor-bank-card", IgorBankCard, "Igor · banque", "Les comptes, le mois, les dépenses par catégorie, les budgets et les opérations d'une intégration bancaire.");

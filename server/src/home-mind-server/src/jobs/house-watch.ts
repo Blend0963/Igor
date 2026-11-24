@@ -62,6 +62,11 @@ const WATCHED_DOMAINS = new Set([
   "alarm_control_panel", "water_heater", "fan", "vacuum", "valve",
 ]);
 
+// Entities that are unavailable whenever their screen sleeps: Browser Mod's
+// browsers (a tablet, the car's head unit). « ne répond plus » about them is
+// noise, never news.
+const COMES_AND_GOES = /^[a-z_]+\.browser_?mod/;
+
 const nameOf = (s: EntityState) => (typeof s.attributes.friendly_name === "string" && s.attributes.friendly_name) || s.entity_id;
 const minutesSince = (iso: string, now: Date) => (now.getTime() - new Date(iso).getTime()) / 60_000;
 const domainOf = (id: string) => id.split(".")[0];
@@ -90,7 +95,7 @@ export function findIssues(states: EntityState[], now: Date, seenAvailable: Set<
     const name = nameOf(s);
 
     if (s.state === "unavailable") {
-      if (WATCHED_DOMAINS.has(domain) && seenAvailable.has(s.entity_id) && minutesSince(s.last_changed, now) >= UNAVAILABLE_MINUTES) {
+      if (WATCHED_DOMAINS.has(domain) && !COMES_AND_GOES.test(s.entity_id) && seenAvailable.has(s.entity_id) && minutesSince(s.last_changed, now) >= UNAVAILABLE_MINUTES) {
         out.push({ key: `unavailable:${s.entity_id}`, level: "info", text: `${name} (${s.entity_id}) ne répond plus depuis ${sinceText(s.last_changed, now)}.` });
       }
       continue;
