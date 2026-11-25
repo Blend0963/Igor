@@ -1,3 +1,8 @@
+## 0.52.4 — La carte du téléphone plus légère
+
+- `igor-gps-card` : la carte ne refait plus son travail à chaque changement d'état de la maison (la voiture en envoie plusieurs par seconde) — seulement quand l'une de ses propres entités change. Sur le banc : 20 changements sans rapport, 0 recalcul (20 avant).
+- Réglages → Carte 3D → Performance : **Images par seconde** (30, 45 ou 60 ; 45 dans « Épuré », 30 dans « Économie ») et un **compteur d'images** en coin de carte, pour mesurer sur le téléphone.
+
 ## 0.52.3 — Les commandes vers Tasker passent par la voie directe, sans rien réécrire à la main
 
 - **`nives.tasker_convert`** (administrateurs) : recense dans `automations.yaml` et `scripts.yaml` chaque étape qui envoie une commande à Tasker par `notify.ha_command` (Telegram) — aussi dans les « choisir », « si / alors / sinon », « répéter » — et la remplace par `script.tasker_envoyer` avec **le même message** : la voie directe d'abord (intent Android, accusé de réception), Telegram en secours. Par défaut elle ne fait que lister (`dry_run`). Pour de bon : une copie de chaque fichier d'abord (`….avant-tasker-AAAAMMJJ-HHMMSS`), puis les automatisations et les scripts rechargés. Une étape qui envoie aussi à d'autres entités n'est pas touchée, seulement nommée ; les autres fichiers YAML (paquets) qui citent l'entité sont listés, à changer à la main.
