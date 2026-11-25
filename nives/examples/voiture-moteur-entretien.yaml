@@ -41,7 +41,7 @@
               max: 200
               needle: true
             - type: gauge
-              entity: sensor.voiture_pression_turbo
+              entity: sensor.pression_turbo
               name: Turbo
               min: -1
               max: 2
@@ -70,7 +70,7 @@
               min: 0
               max: 150
             - type: gauge
-              entity: sensor.voiture_conso_instantanee   # À VÉRIFIER (L/100 km)
+              entity: sensor.voiture_consommation_instantanee   # À VÉRIFIER (L/100 km)
               name: L/100
               min: 0
               max: 20
@@ -81,7 +81,7 @@
           entities:
             - { entity: sensor.peugeot_407_regime_moteur, name: régime, color: "#6cc4f5" }
             - { entity: sensor.peugeot_407_vitesse, name: vitesse, color: "#4caf50" }
-            - { entity: sensor.voiture_pression_turbo, name: turbo, color: "#ff9800" }
+            - { entity: sensor.pression_turbo, name: turbo, color: "#ff9800" }
             - { entity: sensor.peugeot_407_charge_moteur, name: charge, color: "#ba68c8" }
 
 - title: Entretien
@@ -96,7 +96,7 @@
           columns: 4
           entities:
             - { entity: sensor.voiture_kilometrage, name: Km }
-            - { entity: sensor.voiture_cout_mois, name: Carburant (mois) }
+            - { entity: sensor.voiture_cout_carburant_ce_mois, name: Carburant (mois) }
             - { entity: sensor.voiture_filtre_a_gasoil, name: Filtre gasoil }
             - { entity: sensor.peugeot_407_tests_antipollution_incomplets, name: Antipollution }
         # « Plein fait » : km / litres / prix au litre → total calculé à l'écran,
