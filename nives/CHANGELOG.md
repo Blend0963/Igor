@@ -1,3 +1,10 @@
+## 0.48.0 — Tout tient sur l'écran de l'autoradio, l'itinéraire se choisit au centre
+
+- **Petit écran** : rendu vérifié page par page à 1024 × 600 et 1280 × 720 avec le vrai tableau de bord. Le bloc vitesse se resserre sous 660 px de haut ; le bloc guidage, sous 300 px, garde la flèche, la distance, l'arrivée et le reste (la ligne « puis… », le trafic et la destination s'effacent) ; le centre, sous 250 px, montre les chiffres sans la courbe ; la frise est plus basse et ses étiquettes ne sont plus coupées.
+- **Le choix de l'itinéraire au centre** (`igor-drive-card` : `routes`, `route_choice`, `destination`) : à la destination choisie, les itinéraires proposés (durée, nom, distance, péage, bouchons) remplissent le grand cadre central, un toucher en prend un ; sans choix, le premier est pris (compte à rebours affiché). Le téléphone ne les montre plus (`display_only` avec `publish_routes`).
+- **`igor-settings-card`** : les réglages en tuiles (favoris, garage, notifications, compteur), chacune ouvrant sa fenêtre par-dessus la page — la page de l'autoradio ne défile pas, les listes empilées poussaient le reste hors d'atteinte.
+- La météo revient dans la barre du haut.
+
 ## 0.47.1 — Le bloc guidage tient dans son cadre, les favoris sont les vôtres
 
 - `igor-guide-card` (grand format) : plus rien ne déborde en bas — consigne sur une ligne, chiffres resserrés, « +2 min » au lieu de « 2 min de bouchons ».
