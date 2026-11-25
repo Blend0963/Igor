@@ -5366,6 +5366,7 @@
   //   sdk_style: streetDarkDriving          # one style for good (streetLight, streetDark, streetLightDriving, streetDarkDriving, monoDark…)
   //   sdk_trees: false                      # no 3D trees in the woods and parks (the SDK's)
   //   buildings_opacity: 0.85               # the SDK's buildings, 0 (invisible) to 1 (solid); the route is drawn over them anyway
+  //   jam_gradient: false                   # the jams as separate strokes over the route (default: the route itself fades to orange/red and back, halo included)
   //   buildings_windows: false              # plain facades, as TomTom's own navigation draws them (true: windows, lit at night)
   //   sdk_buildings: { … }                  # any other knob of TomTom's Buildings3D (preset, shadows, walls.color…)
   //   terrain: false                        # a flat ground (no hills, no valleys)
@@ -7485,7 +7486,7 @@
         // The roads of whatever base map: line layers of OpenMapTiles' « transportation ».
         this.roads = (map.getStyle().layers || []).filter((l) => l.type === "line" && (/transportation|road/i.test(String(l["source-layer"] || "")) || /^roads?(-|$)/i.test(String(l.id || "")))).map((l) => l.id);
         if (!map.getSource("route")) {
-          map.addSource("route", { type: "geojson", data: this.routeData() });
+          map.addSource("route", { type: "geojson", data: this.routeData(), lineMetrics: true });
           map.addLayer({ id: "route-case", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
             paint: { "line-color": "#0b3f86", "line-width": GPS_CASE_W, "line-opacity": 0.95 } });
           map.addLayer({ id: "route-glow", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
@@ -7501,6 +7502,7 @@
           map.addLayer({ id: "routejam", type: "line", source: "routejam", layout: { "line-cap": "round", "line-join": "round" },
             paint: { "line-color": ["match", ["get", "level"], 2, "#e5323b", "#f08c1a"], "line-width": GPS_ROUTE_W } });
         }
+        this.jamGradient();
         if (!map.getSource("trail")) {
           map.addSource("trail", { type: "geojson", data: this.trailData() });
           map.addLayer({ id: "trail", type: "line", source: "trail", layout: { "line-cap": "round", "line-join": "round" },
@@ -7935,6 +7937,55 @@
       });
       return { type: "FeatureCollection", features: feats };
     },
+    // The slow stretches painted into the route itself: the blue turns to
+    // orange (slow) or red (jammed) over ~200 m and back, the halo, the edge
+    // and the bright core with it — no hard joint. Should the engine refuse
+    // it, the separate jam layer stays as before.
+    jamGradient() {
+      var map = this.map;
+      if (!map || !map.getLayer || !map.getLayer("route")) return;
+      var R = this.route, PAL = {
+        "route": ["#46b4ff", "#f08c1a", "#e5323b"], "route-glow": ["#3fa9ff", "#ff9a2e", "#ff3b3b"],
+        "route-case": ["#0b3f86", "#6b3a08", "#6e1016"], "route-core": ["#d4f0ff", "#ffe3c2", "#ffd0d0"] };
+      var stops = null;
+      if (R && R.jams && R.jams.length && R.total > 0 && R.cum && this.config.jam_gradient !== false) {
+        var n = R.cum.length - 1, T = R.total;
+        var js = R.jams.map((j) => ({ a: R.cum[Math.max(0, Math.min(j.start, n))] / T, b: R.cum[Math.max(0, Math.min(j.end, n))] / T, l: j.level === 2 ? 2 : 1 }))
+          .filter((j) => j.b > j.a).sort((x, y) => x.a - y.a);
+        // One colour per point along the way: 0 the route's own, 1 slow, 2 jammed.
+        var pts = [], fade = Math.min(0.05, 200 / T);
+        js.forEach((j, i) => {
+          var f = Math.min(fade, (j.b - j.a) / 3), prev = pts.length ? pts[pts.length - 1] : null, next = js[i + 1];
+          // Two stretches close together: their colours meet without going back to blue.
+          if (!prev || prev[0] < j.a - f) { if (j.a - f > 0) pts.push([j.a - f, 0]); } else if (prev[1] === 0) pts.pop();
+          pts.push([j.a, j.l], [j.b, j.l]);
+          if ((!next || next.a - Math.min(fade, (next.b - next.a) / 3) > j.b + f) && j.b + f < 1) pts.push([j.b + f, 0]);
+        });
+        var clean = [], last = -1;
+        pts.forEach((p) => { if (p[0] > last && p[0] <= 1) { clean.push(p); last = p[0]; } });
+        if (clean.length >= 2) stops = clean;
+      }
+      try {
+        Object.keys(PAL).forEach((id) => {
+          if (!map.getLayer(id)) return;
+          var expr = null;
+          if (stops) {
+            expr = ["interpolate-lab", ["linear"], ["line-progress"]];
+            if (stops[0][0] > 0) expr.push(0, PAL[id][0]);
+            stops.forEach((p) => expr.push(p[0], PAL[id][p[1]]));
+            if (stops[stops.length - 1][0] < 1) expr.push(1, PAL[id][0]);
+          }
+          map.setPaintProperty(id, "line-gradient", expr);
+        });
+        if (map.getLayer("routejam")) map.setLayoutProperty("routejam", "visibility", stops ? "none" : "visible");
+        this.jamGrad = !!stops;
+      } catch (e) {
+        // Refused (an older engine): the jams as before, drawn over the route.
+        this.jamGrad = false;
+        Object.keys(PAL).forEach((id) => { try { if (map.getLayer(id)) map.setPaintProperty(id, "line-gradient", null); } catch (e2) { /* as it was */ } });
+        try { if (map.getLayer("routejam")) map.setLayoutProperty("routejam", "visibility", "visible"); } catch (e3) { /* as it was */ }
+      }
+    },
     routeData() {
       var R = this.route;
       return { type: "Feature", geometry: { type: "LineString", coordinates: R ? (R.smooth || (R.smooth = gpsSmoothed(R.coords))) : [] } };
@@ -8161,6 +8212,7 @@
       }
       var jclr = this.map && this.map.getSource("routejam");
       if (jclr) jclr.setData(this.routeJamData());
+      this.jamGradient();
       if (this.destMarker) { this.destMarker.remove(); this.destMarker = null; }
       (this.viaMarkers || []).forEach((m) => m.remove());
       this.viaMarkers = [];
@@ -9154,6 +9206,7 @@
       if (src) src.setData(this.routeData());
       var jsrc = this.map && this.map.getSource("routejam");
       if (jsrc) jsrc.setData(this.routeJamData());
+      this.jamGradient();
       this.navTick(performance.now(), false);
     },
     banner(icon, dist, text, cls, step) {

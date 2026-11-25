@@ -1,5 +1,6 @@
-## 0.49.4 — La route toujours au-dessus du sol, des bâtiments plus sobres
+## 0.49.4 — La route toujours au-dessus du sol, des bouchons en dégradé, des bâtiments plus sobres
 
+- **Bouchons en dégradé** (`igor-gps-card`) : la route elle-même passe du bleu à l'orange (ralenti) ou au rouge (bouchon) sur environ 200 m, puis revient au bleu — le halo lumineux, le liseré et le filet clair prennent la même couleur. Deux bouchons proches s'enchaînent sans repasser par le bleu. Si le moteur de carte refusait le dégradé, les bouchons reviennent tracés à part comme avant. `jam_gradient: false` : l'ancien tracé.
 - `igor-gps-card` (`basemap: tomtom-3d` avec le SDK) : la route était dessinée sous le sol texturé et les bâtiments du SDK de TomTom, ajoutés après elle — elle disparaissait presque entièrement. Elle passe désormais au-dessus d'eux (et sous les noms de rues), y compris après chaque changement jour/nuit.
 - Bâtiments plus sobres, comme dans la navigation de TomTom : façades lisses, sans fenêtres (`buildings_windows: true` pour les retrouver), et légèrement transparents (`buildings_opacity`, 0.85 par défaut) pour deviner la route derrière eux. `sdk_buildings` règle toujours n'importe quel autre réglage des bâtiments de TomTom.
 
