@@ -1,3 +1,7 @@
+## 0.50.3 — La frise allégée : seulement le prix des stations
+
+- `igor-drive-card`, frise des 30 prochains km : plus de noms ni de distances sous les points (« Total Access », « ralenti », « +4 min », vitesse du radar, arrivée) — illisibles dès que les points se serraient. Seul le prix des stations reste écrit ; deux prix trop proches : le second s'efface, sa pastille reste. L'heure d'arrivée et la distance restent en tête de la frise.
+
 ## 0.50.2 — Le trajet sans conso moyenne en tête, le turbo calculé si besoin
 
 - `igor-drive-card`, vue trajet : la conso moyenne est retirée de l'en-tête (distance, coût, éco) — elle doublait la consommation en direct juste en dessous, et son « L/100 » débordait sur la case voisine.

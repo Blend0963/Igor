@@ -5467,7 +5467,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.50.2";
+  var GPS_CARD_VERSION = "0.50.3";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -12313,11 +12313,13 @@
       // The points: kept from one second to the next (by kind and label), so they glide.
       var LOOK = { c: ["📷", CAR_WARN], f: ["⛽", CAR_OK], j: ["!", "#e5823b"], p: ["€", "#c792ea"] };
       var list = ev.filter((e) => e.d > -150 && e.d <= span && LOOK[e.t]).map((e) => {
-        var lab = e.t === "c" ? ((e.l.match(/\d{2,3}/) || [])[0] || "radar") : e.t === "f" ? ((e.l.match(/\d+,\d+/) || [])[0] ? e.l.match(/\d+,\d+/)[0] + " €" : e.l) : e.l;
-        return { id: e.t + "|" + e.l, t: e.t, d: e.d, lab: lab, sub: e.d > 0 ? gpsMetres(e.d) : "", look: e.t === "j" && e.lvl === 2 ? ["!", "#e5323b"] : LOOK[e.t] };
+        // Under the dots, only the stations' prices: names, distances, « ralenti »
+        // made the frieze unreadable as soon as the points crowded.
+        var pr = e.t === "f" ? (e.l.match(/\d+,\d+/) || [])[0] : null;
+        return { id: e.t + "|" + e.l, t: e.t, d: e.d, lab: pr ? pr + " €" : "", sub: "", look: e.t === "j" && e.lvl === 2 ? ["!", "#e5323b"] : LOOK[e.t] };
       });
-      if (left <= 30000) list.push({ id: "dest", t: "dest", d: left, lab: this.relayed ? "arrivée" : g[4] || "arrivée", sub: !this.relayed && g[4] ? "arrivée" : "", look: ["⚑", "#e8e4dc"] });
-      else list.push({ id: "more", t: "more", d: span, lab: "", sub: "+ " + gpsMetres(left - span), look: ["›", "#8a9099"] });
+      if (left <= 30000) list.push({ id: "dest", t: "dest", d: left, lab: "", sub: "", look: ["⚑", "#e8e4dc"] });
+      else list.push({ id: "more", t: "more", d: span, lab: "", sub: "", look: ["›", "#8a9099"] });
       var seen = {}, lastX = -100;
       list.sort((a, b) => a.d - b.d).forEach((q) => {
         var id = q.id; while (seen[id]) id += "'"; seen[id] = 1;
@@ -12333,8 +12335,10 @@
         e._b.textContent = q.lab; e._b.style.color = q.look[1]; e._s.textContent = q.sub;
         // Close to the next one: its label gives way (the dot stays).
         var near = (q.t === "c" && q.d < 1500) || (q.t !== "dest" && q.t !== "more" && q.d < 400);
-        e.className = "pin" + (near ? " near" : "") + (x > 90 ? " end" : "") + (x - lastX < 11 ? " quiet" : "");
-        if (x - lastX >= 11) lastX = x;
+        // Two prices too close: the farther one gives way (its dot stays).
+        var quiet = !!q.lab && x - lastX < 11;
+        e.className = "pin" + (near ? " near" : "") + (x > 90 ? " end" : "") + (quiet ? " quiet" : "");
+        if (q.lab && !quiet) lastX = x;
       });
       Object.keys(this.pins).forEach((id) => { if (!seen[id]) { this.pins[id].remove(); delete this.pins[id]; } });
     }
