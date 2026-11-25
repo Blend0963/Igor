@@ -1,3 +1,9 @@
+## 0.50.4 — Le panneau de limitation à côté de la vitesse, la rue sous le guidage
+
+- `igor-gps-card` `publish_ahead` : la limitation de la route (celle de son panneau) et le nom de la rue partent aussi vers l'autoradio, après les événements (qui cèdent la place les premiers si c'est trop long).
+- `igor-car-card` : le panneau de limitation revient à côté de la vitesse, même sans `sensor` de limitation — d'abord celui de la carte du téléphone (`ahead:`), sinon le capteur `limit`, sinon demandé à TomTom d'après la position (`limit_from:`, toutes les 20 s ou 200 m). Au-dessus de la limite, son chiffre passe en rouge ; à plus de 5 km/h au-dessus, tout le panneau devient rouge et clignote.
+- `igor-guide-card` (`big`) : sous le guidage, la rue où se trouve la voiture sur une plaque bleue, et la ville à côté — seulement s'il reste de la place, sinon elle n'apparaît pas.
+
 ## 0.50.3 — La frise allégée : seulement le prix des stations
 
 - `igor-drive-card`, frise des 30 prochains km : plus de noms ni de distances sous les points (« Total Access », « ralenti », « +4 min », vitesse du radar, arrivée) — illisibles dès que les points se serraient. Seul le prix des stations reste écrit ; deux prix trop proches : le second s'efface, sa pastille reste. L'heure d'arrivée et la distance restent en tête de la frise.
