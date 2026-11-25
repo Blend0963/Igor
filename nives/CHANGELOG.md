@@ -1,3 +1,8 @@
+## 0.49.4 — La route toujours au-dessus du sol, des bâtiments plus sobres
+
+- `igor-gps-card` (`basemap: tomtom-3d` avec le SDK) : la route était dessinée sous le sol texturé et les bâtiments du SDK de TomTom, ajoutés après elle — elle disparaissait presque entièrement. Elle passe désormais au-dessus d'eux (et sous les noms de rues), y compris après chaque changement jour/nuit.
+- Bâtiments plus sobres, comme dans la navigation de TomTom : façades lisses, sans fenêtres (`buildings_windows: true` pour les retrouver), et légèrement transparents (`buildings_opacity`, 0.85 par défaut) pour deviner la route derrière eux. `sdk_buildings` règle toujours n'importe quel autre réglage des bâtiments de TomTom.
+
 ## 0.49.3 — La réparation des capteurs en double fonctionne
 
 - **`nives.car_fix_duplicates` répondait « Unknown error »** : l'action appelait sa fonction à travers l'objet de guidage au lieu du module. Corrigé, et un test vérifie désormais chaque appel de ce genre.

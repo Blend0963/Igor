@@ -5365,6 +5365,9 @@
   //   night_elevation: 3                    # the sun's height (°) under which the map turns to night
   //   sdk_style: streetDarkDriving          # one style for good (streetLight, streetDark, streetLightDriving, streetDarkDriving, monoDark…)
   //   sdk_trees: false                      # no 3D trees in the woods and parks (the SDK's)
+  //   buildings_opacity: 0.85               # the SDK's buildings, 0 (invisible) to 1 (solid); the route is drawn over them anyway
+  //   buildings_windows: false              # plain facades, as TomTom's own navigation draws them (true: windows, lit at night)
+  //   sdk_buildings: { … }                  # any other knob of TomTom's Buildings3D (preset, shadows, walls.color…)
   //   terrain: false                        # a flat ground (no hills, no valleys)
   //   sdk_surfaces: false                   # no textured surfaces (lighter); or its knobs, e.g. { wind: { speedFactor: 1 } }
   //   trees: false                          # no 3D trees (OpenStreetMap's real trees, natural=tree and tree_row)
@@ -5443,7 +5446,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.49.2";
+  var GPS_CARD_VERSION = "0.49.4";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6930,6 +6933,38 @@
     // The 3D map's finish: TomTom's own points of interest hidden (Igor draws
     // its own — prices, radars — no doubles), and the buildings raised from
     // their footprints with whatever height the tiles carry (else ~3 floors).
+    // The SDK's buildings, clean as in TomTom's own navigation: plain walls
+    // (no windows), a little see-through so the streets behind them show.
+    buildingsLook() {
+      var c = this.config, op = Number(c.buildings_opacity);
+      var look = { opacity: isFinite(op) && op > 0 ? Math.min(1, op) : 0.85 };
+      if (c.buildings_windows !== true) look.facade = { pattern: "plain", intensity: 0 };
+      if (c.buildings_windows !== true) look.litWindows = { fraction: 0 };
+      var own = c.sdk_buildings && typeof c.sdk_buildings === "object" ? c.sdk_buildings : {};
+      Object.keys(own).forEach((k) => { look[k] = own[k] && typeof own[k] === "object" && look[k] && typeof look[k] === "object" ? Object.assign({}, look[k], own[k]) : own[k]; });
+      return look;
+    }
+    // The route's layers above the 3D ones (TomTom's buildings and surfaces
+    // are custom layers added after Igor's), under the labels that follow.
+    routeOnTop(map) {
+      if (this.routeTopBusy) return;
+      this.routeTopBusy = true;
+      try {
+        var ids = ["trail", "route-case", "route-glow", "route", "route-core", "routejam"].filter((id) => map.getLayer(id));
+        // getLayersOrder: the custom layers too (getStyle leaves them out).
+        var order = map.getLayersOrder ? map.getLayersOrder() : ((map.getStyle() && map.getStyle().layers) || []).map((l) => l.id);
+        var layers = order.map((id) => { var l = map.getLayer(id); return { id: id, type: l && l.type }; }), last3d = -1;
+        layers.forEach((l, i) => { if (l.type === "custom" || l.type === "fill-extrusion") last3d = i; });
+        var pos = (id) => layers.findIndex((l) => l.id === id);
+        ids.sort((a, b) => pos(a) - pos(b));  // as they stand: the glow under the case, the jams over the route
+        var at = ids.length ? pos(ids[0]) : -1;
+        if (ids.length && last3d > at) {
+          var before = layers.slice(last3d + 1).find((l) => l.type === "symbol" && ids.indexOf(l.id) < 0);
+          ids.forEach((id) => map.moveLayer(id, before ? before.id : undefined));
+        }
+      } catch (e) { /* a style changing under it: the next styledata */ }
+      this.routeTopBusy = false;
+    }
     tomtom3d(map) {
       var layers = map.getStyle().layers || [];
       var poiLayers = layers.filter((l) => l.type === "symbol" && /poi|point.of.interest/i.test(l.id + " " + (l["source-layer"] || "")));
@@ -6961,7 +6996,7 @@
       // trees, which it would place at random: the real ones are Igor's.
       if (this.tt && this.ttKit) {
         var lm = this.ttKit.lm, why = [];
-        if (!this.tt3d) { try { this.tt3d = new lm.Buildings3D(this.tt, this.config.sdk_buildings || {}); } catch (e) { why.push("bâtiments : " + (e && e.message)); } }
+        if (!this.tt3d) { try { this.tt3d = new lm.Buildings3D(this.tt, this.buildingsLook()); } catch (e) { why.push("bâtiments : " + (e && e.message)); } }
         // The surfaces, and in the woods and parks the SDK's 3D trees:
         // broadleaf, conifers, bushes, as each kind of ground and latitude
         // grows them. The woods are the map's own; where each tree stands
@@ -6976,6 +7011,9 @@
           this.ttKit.sdk.TerrainModule.get(this.tt, { hillshade: { visible: true }, elevation: { visible: true } })
             .then((m) => { this.ttTerrain = m; }).catch((e) => { this.ttTerrain = null; this.terrainWhy = (e && e.message) || "relief refusé"; });
         }
+        // The route over all of it: never hidden behind a building or the textured ground.
+        this.routeOnTop(map);
+        if (!this.routeTopWatch) { this.routeTopWatch = true; map.on("styledata", () => this.routeOnTop(map)); }
         this.diag3d = "SDK TomTom (" + this.ttStyle + ") : " + [this.tt3d ? "bâtiments 3D" : "", this.ttSurf ? "surfaces" + (this.config.sdk_trees !== false ? " et arbres des bois" : "") : "", this.config.terrain !== false ? "relief" : ""].filter(Boolean).join(" + ") + (why.length ? " · " + why.join(" · ") : "");
         if (this.config.debug) this.message("relief : " + this.diag3d);
         return;
