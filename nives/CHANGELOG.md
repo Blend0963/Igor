@@ -1,3 +1,8 @@
+## 0.50.1 — La vue moteur seulement pied au plancher, le rapport à côté de la vitesse
+
+- `igor-drive-card` : la vue moteur ne s'ouvre plus sur un coup de gaz à l'arrêt, un démarrage vif ou une accélération franche. Il faut rouler (plus de 15 km/h), la charge moteur au plancher (85 % ou plus) les trois quarts des 3 dernières secondes — un passage de rapport ne l'interrompt pas — et la voiture qui prend au moins 2 m/s² (deux fois un démarrage ordinaire). Sans capteur de charge, une accélération plus forte encore. Réglable : `tune: { load_on, accel_on, window_s, min_kmh, boost_on }`.
+- `igor-car-card` `gear:` et `advice:` : le rapport engagé dans une case à côté de la vitesse ; quand il faut changer, elle clignote — ▲5 en vert (« passez la 5e »), ▼3 en orange (« rétrogradez »).
+
 ## 0.50.0 — La carte 3D se règle depuis l'autoradio
 
 - **`igor-settings-card` `map3d:`** : une tuile « Carte 3D » ouvre une grande fenêtre — 4 préréglages (Épuré, Réaliste, Lisible, Économie) et six onglets : Bâtiments (affichés, opacité, fenêtres, fenêtres allumées la nuit, couleur des murs, ombres, reflets, zoom d'apparition), Route et noms (place de la route : au sol, sous les noms ou par-dessus tout ; épaisseur, couleur, halo, trajet parcouru, bouchons en dégradé, en traits ou masqués, noms cachés par les bâtiments, taille des noms, lieux TomTom), Sol et nature (sol texturé, arbres des bois, arbres de rue, vent, relief, ombrage), Lumière (jour/nuit, seuil du soleil), Caméra (inclinaison, zoom, zoom selon la vitesse, place de la voiture), Performance (mode fluide, netteté). Chaque changement est enregistré dans un `input_text` (le préréglage, puis seulement ce qui en diffère).

@@ -4931,6 +4931,8 @@
   //   battery: sensor.car_battery        # V: red under 11.8, amber under 12.4, red over 15
   //   limit: sensor.speed_limit          # the limit sign beside the speed, the speed green / amber / red by it
   //   online: binary_sensor.car_online   # off: « hors ligne », the figures greyed
+  //   gear: sensor.car_gear              # the gear engaged (1…6, N), in a box beside the speed
+  //   advice: sensor.car_shift_advice    # « Passez la 5e » / « Rétrogradez en 3e »: the box turns to ▲5 (green) / ▼3 (amber)
   //   trip: { entity: sensor.car_trip, attribute: trajet }   # its distance_km and eco_score
   //   active: binary_sensor.trip_running # the trip line only while driving (else the last trip)
   //   consumption: sensor.car_l_100km
@@ -4976,6 +4978,13 @@
         ".trip span { color: var(--dim); font-size: 10px; }",
         ".trip .t { grid-column: 1 / -1; color: var(--faint); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 4px; }",
         "ha-card.off .sp, ha-card.off .mini b, ha-card.off .row b { color: var(--faint); }",
+        // The gear box beside the speed: the gear engaged; an arrow and the gear to take when it is time.
+        ".gb { margin-left: auto; width: 54px; height: 62px; box-sizing: border-box; border: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; flex: none; letter-spacing: 0; }",
+        ".gb b { font-size: 26px; font-weight: 400; line-height: 1; } .gb span { font-size: 9px; color: var(--dim); letter-spacing: .12em; text-transform: uppercase; margin-top: 4px; }",
+        ".gb.up { border-color: var(--okc); color: var(--okc); animation: gbp 1.2s ease-in-out infinite; } .gb.dn { border-color: var(--wait); color: var(--wait); animation: gbp 1.2s ease-in-out infinite; } .gb.up span, .gb.dn span { color: inherit; }",
+        "@keyframes gbp { 50% { opacity: .55; } }",
+        ".gb + span { margin-left: 8px !important; }",
+        "@media (max-height: 660px) { .gb { height: 50px; width: 46px; } .gb b { font-size: 22px; } }",
         // A small screen (a head unit of 600 px or so): the same, tighter, so the guidance below keeps its room.
         "@media (max-height: 660px) { .sp { font-size: 46px; margin-top: 4px; } .seg { margin: 8px 0 3px; height: 12px; } .mini { margin-top: 6px; gap: 8px; } .mini div { padding-top: 3px; } .mini b { font-size: 18px; } }"
       ].join("\n"));
@@ -5057,7 +5066,7 @@
       var tr0 = c.trip ? (typeof c.trip === "string" ? { entity: c.trip } : c.trip) : null;
       var now = Date.now();
       if (changed(prev, hass, [c.weather, c.outside].filter(Boolean)) || now - (this.wxAt || 0) > 300000) { this.wxAt = now; this.drawWeather(); }
-      var gauges = changed(prev, hass, [c.online, c.speed, c.rpm, c.coolant, c.battery, c.limit].filter(Boolean));
+      var gauges = changed(prev, hass, [c.online, c.speed, c.rpm, c.coolant, c.battery, c.limit, c.gear, c.advice].filter(Boolean));
       var trip = changed(prev, hass, [c.online, tr0 && tr0.entity, c.active, c.consumption].filter(Boolean));
       if (!gauges && !trip) return;
       var on = !c.online || (S(c.online) && S(c.online).state === "on");
@@ -5066,7 +5075,12 @@
       var v = on ? num(S(c.speed)) : null, vt = v == null ? "—" : String(Math.round(v));
       // limit: the road's limit beside the speed, and the speed coloured by it
       // (green at or under, amber up to 5 km/h over, red beyond).
-      var lim = c.limit ? num(S(c.limit)) : null, vt2 = vt + "|" + lim;
+      var lim = c.limit ? num(S(c.limit)) : null;
+      // The gear, and the advice: « Passez la 5e » → ▲5, « Rétrogradez en 3e » → ▼3.
+      var gs = on && c.gear && S(c.gear) ? String(S(c.gear).state) : "", gear = /^[1-6N]$/.test(gs) ? gs : "";
+      var ad = on && c.advice && S(c.advice) ? String(S(c.advice).state) : "", am = /(\d)/.exec(ad);
+      var dir = am && /passez|monte/i.test(ad) ? "up" : am && /r[ée]trograd/i.test(ad) ? "dn" : "";
+      var vt2 = vt + "|" + lim + "|" + gear + "|" + dir + (am ? am[1] : "");
       if (vt2 !== this.spText) {
         this.spText = vt2;
         this.sp.innerHTML = "";
@@ -5074,6 +5088,11 @@
         var spn = el("span", "", this.sp, vt);
         el("small", "", this.sp, "km/h");
         spn.style.color = v == null || lim == null ? "" : v <= lim ? "" : v <= lim + 5 ? CAR_WARN : CAR_BAD;
+        if (gear || dir) {
+          var gb = el("div", "gb" + (dir ? " " + dir : ""), this.sp);
+          el("b", "", gb, dir ? (dir === "up" ? "▲" : "▼") + am[1] : gear === "N" ? "N" : gear);
+          el("span", "", gb, dir === "up" ? "passez" : dir === "dn" ? "rétro" : "rapport");
+        }
         if (lim != null) {
           var sgn = el("span", "", this.sp, String(Math.round(lim)));
           sgn.style.cssText = "margin-left:auto;width:62px;height:62px;border-radius:50%;background:#fff;border:6px solid #e5323b;color:#111;display:grid;place-items:center;font-size:24px;font-weight:700;box-sizing:border-box;letter-spacing:0;flex:none";
@@ -5448,7 +5467,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.50.0";
+  var GPS_CARD_VERSION = "0.50.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -11892,7 +11911,7 @@
   //   routes: input_text.car_routes        # the routes offered by the phone map (publish_routes): chosen here, in the middle
   //   route_choice: input_text.car_choice  # where the choice is written
   //   destination: input_text.car_dest     # its name over the routes
-  //   tune: { load_on: 75, gain_kmh: 15, gain_s: 4, boost_on: 1.2, hold_s: 20, calm_s: 8, min_view_s: 8, cooldown_s: 30, override_s: 60 }
+  //   tune: { load_on: 85, accel_on: 2, window_s: 3, min_kmh: 15, boost_on: 1.3, gain_s: 4, hold_s: 20, calm_s: 8, min_view_s: 8, cooldown_s: 30, override_s: 60 }
   // Which view, by priority: a radar within reach (green, amber, red as the
   // speed goes), a hard acceleration (the engine, held while the effort
   // lasts, gear changes included), the route ahead while guided, else the
@@ -12006,15 +12025,25 @@
       this.effort += (inst - this.effort) * (1 - Math.exp(-dt / 6));
       this.accel = accel;
     }
-    // Is there a hard pull right now? Load held high while gaining speed, a
-    // big gain over a few seconds, or full boost held — never the revs alone.
+    // Is the driver flooring it? Only a real full-throttle pull, as in a
+    // sport mode: rolling (over min_kmh), the load near the floor most of the
+    // last window_s seconds (a gear change may drop it a moment), and the car
+    // gaining speed hard over that window (accel_on m/s², ~2: twice an
+    // ordinary start). Revs at a standstill, a brisk start, a small push on
+    // the pedal: none opens the engine view. Without a load sensor, only a
+    // harder gain does.
     pulling(t) {
-      var c = this.samples, gainS = this.tune("gain_s", 4) * 1000, held = (pred) => { var w = c.filter((x) => t - x.t <= 2000); return w.length >= 3 && w.every(pred); };
-      var now = c[c.length - 1], back = c.find((x) => t - x.t <= gainS && x.v != null);
-      var gain = now && back && now.v != null ? now.v - back.v : 0;
-      var strong = gain >= this.tune("gain_kmh", 15) * 1.6;
-      var hit = gain >= this.tune("gain_kmh", 15) || held((x) => (x.load || 0) >= this.tune("load_on", 75)) && (this.accel || 0) > 0.3 || held((x) => (x.boost || 0) >= this.tune("boost_on", 1.2));
-      return { hit: hit, strong: strong };
+      var c = this.samples, win = this.tune("window_s", 3) * 1000, w = c.filter((x) => t - x.t <= win + 300);
+      var no = { hit: false, strong: false };
+      if (w.length < 4) return no;
+      var first = w.find((x) => x.v != null), last = w[w.length - 1];
+      if (!first || last.v == null || last.v < this.tune("min_kmh", 15) || last.t <= first.t) return no;
+      var acc = ((last.v - first.v) / 3.6) / ((last.t - first.t) / 1000), on = this.tune("accel_on", 2);
+      var loads = w.filter((x) => x.load != null), boosts = w.filter((x) => x.boost != null);
+      var floored = loads.length >= 3 ? loads.filter((x) => x.load >= this.tune("load_on", 85)).length / loads.length >= 0.75 : null;
+      var boosted = boosts.length >= 3 ? boosts.filter((x) => x.boost >= this.tune("boost_on", 1.3)).length / boosts.length >= 0.6 : false;
+      var hit = floored === null ? acc >= on * 1.4 : (floored || boosted) && acc >= on;
+      return { hit: hit, strong: hit && acc >= on * 1.5 };
     }
     // The radar: the phone map's (fresh), else the official list around the
     // head unit (rougher: the head unit's position comes a few seconds late).
