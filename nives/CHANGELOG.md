@@ -1,3 +1,9 @@
+## 0.49.1 — Plus de bandes grises entre les boutons du GPS, le CT à sa date
+
+- `igor-guide-card` (rangée de boutons) : le fond du thème de Home Assistant n'apparaît plus entre les boutons (les bandes grises) ; seuls les boutons sont peints, en noir.
+- `igor-buttons-card`, formulaires : un champ peut être une date (`type: date`, aujourd'hui par défaut, jamais dans le futur). Le carnet s'en sert pour le contrôle technique, saisi au jour où il a été passé (le suivant : deux ans après).
+- `igor-buttons-card` : une option absente de la liste visée par `select` ne bloque plus l'action du bouton (le filtre à gasoil ne s'enregistrait pas avec une ancienne liste d'entretiens).
+
 ## 0.49.0 — L'autoradio verrouillé sans votre téléphone
 
 - **`phone_lock`** (sur un `igor-wall`) : sur l'écran déclaré « autoradio » (ouvert une fois avec `?igor_autoradio`, bouton dans Réglages), Igor démarre **verrouillé** et se déverrouille seul dès que votre téléphone rejoint la voiture (`present` : Bluetooth ou carte sur le socle). Verrouillé : la vitesse, la limite, le moteur, la batterie, la météo, l'heure et les applications (Waze, Deezer, Radio, YouTube…) restent ; messages, appels, trajets, carnet, réglages et la voix d'Igor sont cachés. Pas de code : le téléphone est la clé.

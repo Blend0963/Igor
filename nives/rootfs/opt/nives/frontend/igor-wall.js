@@ -1794,7 +1794,7 @@
           if (b.menu) { this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })); return; }
           if (!this._hass) return;
           var data = Object.keys(sent).length ? Object.assign({}, b.data || {}, sent) : b.data;
-          var pick = b.select && b.select.entity ? this._hass.callService(String(b.select.entity).split(".")[0] === "select" ? "select" : "input_select", "select_option", { entity_id: b.select.entity, option: b.select.option }) : Promise.resolve();
+          var pick = b.select && b.select.entity ? this._hass.callService(String(b.select.entity).split(".")[0] === "select" ? "select" : "input_select", "select_option", { entity_id: b.select.entity, option: b.select.option }).catch(() => null) : Promise.resolve();  // an option missing from the list must not block the action
           pick.then(() => service(this._hass, b.service, data, b.target)).then(() => {
             btn.classList.add("done");
             setTimeout(() => btn.classList.remove("done"), 800);
@@ -1840,8 +1840,15 @@
         el("span", "", lab, fd.name || a.friendly_name || fd.entity || fd.key);
         var wrap = el("div", "fin", lab);
         var inp = el("input", "", wrap);
+        // type: date — a calendar, today by default (a servicing done on a given day).
+        if (fd.type === "date") {
+          inp.type = "date"; var td = new Date();
+          inp.value = td.getFullYear() + "-" + String(td.getMonth() + 1).padStart(2, "0") + "-" + String(td.getDate()).padStart(2, "0");
+          inp.max = inp.value; inp.style.fontSize = "22px"; inp.style.colorScheme = "dark";
+        } else {
         inp.type = "text"; inp.inputMode = "decimal"; inp.autocomplete = "off";
         inp.value = isNaN(start) ? "" : String(start).replace(".", ",");
+        }
         el("u", "", wrap, fd.unit || a.unit_of_measurement || "");
         return { fd: fd, inp: inp, min: a.min != null ? Number(a.min) : null, max: a.max != null ? Number(a.max) : null };
       });
@@ -1865,6 +1872,10 @@
       ok.addEventListener("click", async () => {
         for (var i = 0; i < inputs.length; i++) {
           var x = inputs[i], v = num(x);
+          if (x.fd.type === "date") {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(x.inp.value)) { err.textContent = (x.fd.name || "date") + " : une date."; x.inp.focus(); return; }
+            continue;
+          }
           if (isNaN(v) || v <= 0 || (x.min != null && v < x.min) || (x.max != null && v > x.max)) {
             err.textContent = (x.fd.name || "valeur") + " : un nombre" + (x.max != null ? " entre " + fr(Math.max(x.min || 0, 0), 2) + " et " + fr(x.max, 2) : "") + ".";
             x.inp.focus();
@@ -1875,7 +1886,7 @@
         var sent = {};
         try {
           for (var j = 0; j < inputs.length; j++) {
-            var y = inputs[j], val = num(y);
+            var y = inputs[j], val = y.fd.type === "date" ? y.inp.value : num(y);
             if (y.fd.key) sent[y.fd.key] = val;
             try { window.localStorage.setItem("igor-form:" + (y.fd.entity || "key:" + y.fd.key), String(val)); } catch (e) { /* no storage */ }
             if (!y.fd.entity) continue;
@@ -1888,7 +1899,7 @@
         btn._formData = sent;
         btn.click();
       });
-      setTimeout(() => { if (inputs[0]) { inputs[0].inp.focus(); inputs[0].inp.select(); } }, 50);
+      setTimeout(() => { if (inputs[0]) { inputs[0].inp.focus(); if (inputs[0].fd.type !== "date") inputs[0].inp.select(); } }, 50);
     }
   }
 
@@ -5432,7 +5443,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.49.0";
+  var GPS_CARD_VERSION = "0.49.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -11174,7 +11185,7 @@
         ":host([big]) .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px 10px; border-top: 1px solid var(--line); padding-top: 8px; margin-top: auto; flex: none; }",
         ".grid span { display: block; font-size: 11px; color: var(--dim); } .grid > div { min-width: 0; } .grid b { font-weight: 400; font-size: 24px; font-variant-numeric: tabular-nums; white-space: nowrap; } .grid b.s { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; } .grid .ok { color: " + CAR_OK + "; } .grid .warn { color: " + CAR_WARN + "; }",
         // the buttons row
-        ".bar { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; height: 100%; min-height: 64px; }",
+        ".bar { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; height: 100%; min-height: 64px; background: transparent; }",
         ".bar button.b { flex-direction: column; gap: 4px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; --mdc-icon-size: 24px; min-height: 0; min-width: 0; height: 100%; padding: 4px 2px; overflow: hidden; } .bar button.b span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
         ":host(.narrow) .bar button.b span { display: none; } :host(.narrow) .bar button.b { --mdc-icon-size: 26px; }",
         ".bar button.b, .bar button.b:disabled { background: #111418; } .bar button.b:disabled { opacity: 1; cursor: default; border-color: var(--line); color: var(--faint); } .bar button.b:disabled ha-icon { color: var(--faint); opacity: .55; } .bar button.b:disabled span { opacity: .55; }",
@@ -11195,7 +11206,13 @@
       this.card = card;
       // The row of buttons stands on the page itself, like the dock below it:
       // no card behind it (a grey block around grey buttons).
-      if (this.config.mode === "buttons") { card.style.cssText += ";background:none;border:none;box-shadow:none;padding:0"; this.buildBar(card); this.buildFind(); return; }
+      if (this.config.mode === "buttons") {
+        // No card behind the buttons: the theme's card colour showed grey between them.
+        ["--ha-card-background", "--card-background-color", "--ha-card-box-shadow", "--ha-card-border-width"].forEach((v) => card.style.setProperty(v, v.indexOf("width") > 0 ? "0" : v.indexOf("shadow") > 0 ? "none" : "transparent"));
+        [["background", "transparent"], ["border", "none"], ["box-shadow", "none"], ["padding", "0"]].forEach((p) => card.style.setProperty(p[0], p[1], "important"));
+        this.setAttribute("style", (this.getAttribute("style") || "") + ";background:transparent !important");
+        this.buildBar(card); this.buildFind(); return;
+      }
       this.idle = el("div", "", card);
       el("div", "h", this.idle, this.config.title || "où allons-nous ?");
       var go = el("button", "b go", this.idle); go.type = "button"; go.style.width = "100%"; go.style.flexDirection = "row"; go.style.minHeight = "40px";
