@@ -5443,7 +5443,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.49.1";
+  var GPS_CARD_VERSION = "0.49.2";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -12143,15 +12143,24 @@
   //     - name: Favoris du téléphone
   //       icon: mdi:account-star
   //       entities: [ { entity: input_text.contact_1_nom, name: Favori 1 · nom }, … ]
+  //   screen_lock: true   # a « Cet écran » tile: this device is the car's (locked
+  //                       # without the phone, see phone_lock) or a free screen
   class IgorSettingsCard extends IgorCard {
     setConfig(config) { this.config = config || {}; }
     getCardSize() { return 3; }
     build() {
       this.style(CAR_HEAD + "\n" + [
-        "ha-card { padding: 12px 14px; }",
-        ".tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }",
-        ".tile { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--line); background: var(--card); cursor: pointer; min-height: 64px; box-sizing: border-box; --mdc-icon-size: 28px; }",
-        ".tile b { display: block; font-weight: 400; font-size: 16px; } .tile small { display: block; font-size: 12px; color: var(--dim); margin-top: 3px; }",
+        "ha-card { padding: 0 0 4px; background: transparent; border: none; box-shadow: none; }",
+        // The tiles share the whole width (one row, wrapped by two on a narrow screen).
+        ".tiles { display: grid; grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr)); gap: 10px; }",
+        "@media (max-width: 700px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }",
+        ".tile { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); background: var(--card); cursor: pointer; min-height: 72px; box-sizing: border-box; min-width: 0; --mdc-icon-size: 26px; }",
+        ".tile ha-icon { flex: none; } .tile > div { min-width: 0; max-width: 100%; } .tile b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+        ".tile b { display: block; font-weight: 400; font-size: 15px; line-height: 1.25; } .tile small { display: block; font-size: 12px; color: var(--dim); margin-top: 4px; line-height: 1.3; }",
+        ".tile.car { border-color: #e5a04c; } .tile.car small { color: #e5a04c; }",
+        ".ch { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 16px; } .ch p { margin: 0 0 4px; color: var(--dim); font-size: 14px; line-height: 1.5; }",
+        ".ch button { display: flex; align-items: center; gap: 14px; text-align: left; min-height: 64px; padding: 10px 16px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; font-size: 16px; cursor: pointer; --mdc-icon-size: 26px; }",
+        ".ch button small { display: block; color: var(--dim); font-size: 12px; margin-top: 3px; } .ch button.on { border-color: " + CAR_OK + "; }",
         ".ov { position: fixed; inset: 0; z-index: 2147482000; background: rgba(0,0,0,.65); display: flex; align-items: flex-start; justify-content: center; padding-top: 4vh; }",
         ".dl { width: min(720px, 94vw); max-height: 88vh; display: flex; flex-direction: column; background: #0d0f12; border: 1px solid var(--line); color: var(--fg); }",
         ".dh { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); flex: none; }",
@@ -12172,6 +12181,40 @@
         t.addEventListener("click", () => this.open(g));
         return { g: g, sm: sm };
       });
+      if (this.config.screen_lock) {
+        var t = this.screenTile = el("div", "tile", tiles); icon(t, "mdi:car-key");
+        var tx = el("div", "", t); el("b", "", tx, "Cet écran"); this.screenSm = el("small", "", tx, "");
+        t.addEventListener("click", () => this.openScreen());
+      }
+      tiles.style.setProperty("--n", String(Math.max(1, tiles.children.length)));
+    }
+    isCar() { try { return window.localStorage.getItem("igor-autoradio") === "1"; } catch (e) { return false; } }
+    drawScreen() {
+      if (!this.screenTile) return;
+      var car = this.isCar();
+      this.screenTile.classList.toggle("car", car);
+      this.screenSm.textContent = car ? "autoradio · verrouillé" : "écran libre";
+    }
+    // Only the device it is chosen on: the others (tablet, computer, phone) stay free.
+    openScreen() {
+      this.close();
+      var ov = this.ov = el("div", "ov", this.shadowRoot), dl = el("div", "dl", ov);
+      ov.addEventListener("click", (ev) => { if (ev.target === ov) this.close(); });
+      var dh = el("div", "dh", dl); el("div", "h", dh, "cet écran");
+      var x = el("button", "b close", dh); x.type = "button"; el("span", "", x, "fermer"); x.addEventListener("click", () => this.close());
+      var ch = el("div", "ch", dl);
+      el("p", "", ch, "Ce choix ne vaut que pour l'appareil que vous tenez : les autres écrans gardent le leur.");
+      var car = this.isCar();
+      [[true, "mdi:car-key", "C'est l'autoradio", "verrouillé tant que votre téléphone n'est pas connecté"],
+       [false, "mdi:monitor", "Écran libre", "tablette, ordinateur, téléphone : jamais verrouillé"]].forEach((o) => {
+        var b = el("button", o[0] === car ? "on" : "", ch); b.type = "button"; icon(b, o[1]);
+        var tx = el("div", "", b); el("div", "", tx, o[2]); el("small", "", tx, o[3]);
+        b.addEventListener("click", () => {
+          if (window.__igorScreenIsCar) window.__igorScreenIsCar(o[0]);
+          else try { if (o[0]) window.localStorage.setItem("igor-autoradio", "1"); else window.localStorage.removeItem("igor-autoradio"); } catch (e) { /* no storage */ }
+          this.close(); this.drawScreen();
+        });
+      });
     }
     val(id) { var s = id && this._hass && this._hass.states[id]; return s ? String(s.state) : ""; }
     update() {
@@ -12183,6 +12226,7 @@
         x.sm.textContent = texts.length ? filled + " / " + texts.length + " renseignés" : sw.length ? on + " activé" + (on > 1 ? "s" : "") + " sur " + sw.length : es.length + " réglage" + (es.length > 1 ? "s" : "");
       });
       if (this.ovRows) this.ovRows.forEach((r) => r.refresh());
+      this.drawScreen();
     }
     open(g) {
       this.close();
@@ -13387,6 +13431,7 @@
       if (m[1] === "0") { ls("igor-autoradio", null); hide(); } else ls("igor-autoradio", "1");
     }
     flagFromUrl();
+    window.__igorScreenIsCar = function (on) { ls("igor-autoradio", on ? "1" : null); if (!on) { hide(); open = false; } };
     window.addEventListener("location-changed", flagFromUrl);
     window.addEventListener("popstate", flagFromUrl);
     function conf() { try { return JSON.parse(ls("igor-phone-lock") || "null"); } catch (e) { return null; } }
@@ -13421,6 +13466,21 @@
         "<div class='c ph'><div class=h>téléphone</div><div class=big></div><div class=s>Igor se déverrouille seul dès que <b style='color:#e8e4dc;font-weight:400'>votre</b> téléphone se connecte en Bluetooth.</div></div></div>" +
         "<div class=col><div class='c lk'><div class=ring><ha-icon icon='mdi:lock'></ha-icon></div><div><div class=t>IGOR VERROUILLÉ</div><div class=s>Messages, appels, trajets, carnet, réglages et Igor restent privés.<br>Les applications et la conduite restent accessibles.</div></div></div>" +
         "<div class=apps></div></div></div></div>";
+      // Locked by mistake (not the car's screen): hold the padlock 3 s, then « Écran libre ».
+      var ring = root.querySelector(".ring"), lkS = root.querySelector(".lk .s"), hold = null;
+      var stop = function () { if (hold) { clearTimeout(hold); hold = null; } ring.style.opacity = ""; };
+      ring.addEventListener("pointerdown", function () {
+        ring.style.opacity = ".5";
+        hold = setTimeout(function () {
+          hold = null; ring.style.opacity = "";
+          lkS.innerHTML = "Cet écran n'est pas l'autoradio ?<br>";
+          var y = document.createElement("button"); y.textContent = "Écran libre, ne plus verrouiller";
+          y.style.cssText = "margin-top:10px;min-height:48px;padding:0 18px;background:#111418;border:1px solid #e5a04c;color:#e5a04c;font:inherit;font-size:14px;letter-spacing:.08em;cursor:pointer";
+          y.addEventListener("click", function () { window.__igorScreenIsCar(false); });
+          lkS.appendChild(y);
+        }, 3000);
+      });
+      ["pointerup", "pointerleave", "pointercancel"].forEach(function (e) { ring.addEventListener(e, stop); });
       var apps = root.querySelector(".apps"), na = (c.apps || []).length;
       // Two even rows when there are many (10 → 5 + 5).
       if (na > 5) apps.style.gridTemplateColumns = "repeat(" + Math.ceil(na / 2) + ", minmax(0, 1fr))";
