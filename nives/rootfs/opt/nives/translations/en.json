@@ -459,6 +459,24 @@
           "description": "Only entities whose id contains this (peugeot_407)."
         }
       }
+    },
+    "tasker_convert": {
+      "name": "Tasker: direct way for the commands",
+      "description": "Every automation and script (automations.yaml, scripts.yaml) that sends a command to Tasker through the notify entity (Telegram) calls script.tasker_envoyer instead, with the same message: the direct way first, Telegram as a fallback. With dry_run (default) it only lists them; otherwise each file is copied first, then the automations and scripts are reloaded. Other YAML files that name the entity are listed, to change by hand.",
+      "fields": {
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Only list what would be changed."
+        },
+        "entity": {
+          "name": "Notify entity",
+          "description": "The entity the commands go through today (notify.ha_command)."
+        },
+        "script": {
+          "name": "Script",
+          "description": "The script that sends them now (script.tasker_envoyer)."
+        }
+      }
     }
   }
 }
