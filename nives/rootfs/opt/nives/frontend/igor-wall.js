@@ -5518,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.52.2";
+  var GPS_CARD_VERSION = "0.52.4";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6555,9 +6555,24 @@
         var lst = hass.states[c.settings], lv = lst && !/^(unknown|unavailable)$/.test(lst.state) ? lst.state : lst ? "" : null;
         if (lv !== this.lookStr) { this.lookStr = lv; this.look = lv == null ? null : map3dResolve(lv); if (this.map) this.applyLook(); }
       }
+      // Running: only when one of the card's own entities changed — the house
+      // changes many times a second (the car's readings), and each read() redid
+      // the card's work for nothing.
+      if (prev && !this.loading && this.watched().every(function (id) { return prev.states[id] === hass.states[id]; })) return;
       // Only when what the card shows changed (not at every change in the house).
       if (prev && this.loading && [c.entity, c.fallback_entity, c.speed_entity, c.speed_limit_entity, c.destination, c.announce, c.route_choice, "sun.sun"].every(function (id) { return !id || prev.states[id] === hass.states[id]; })) return;
       this.read();
+    }
+    // Every entity the card's options name (an « x.y » value), and the sun.
+    watched() {
+      if (this.watchList) return this.watchList;
+      var out = ["sun.sun"], walk = (v) => {
+        if (typeof v === "string") { if (/^[a-z_]+\.[a-z0-9_]+$/.test(v) && !/^(https?|app|mdi)/.test(v)) out.push(v); }
+        else if (Array.isArray(v)) v.forEach(walk);
+        else if (v && typeof v === "object") Object.keys(v).forEach((k) => walk(v[k]));
+      };
+      walk(this.config || {});
+      return (this.watchList = out.filter((x, i, a) => a.indexOf(x) === i));
     }
     connectedCallback() { if (this.map && !this.raf) this.raf = requestAnimationFrame(() => this.tick()); if (this.onCmd) window.addEventListener("igor-gps-cmd", this.onCmd); }
     disconnectedCallback() {
@@ -7031,6 +7046,17 @@
     }
     // The route's layers above the 3D ones (TomTom's buildings and surfaces
     // are custom layers added after Igor's), under the labels that follow.
+    // Frames really drawn per second, in a corner (Réglages → Carte 3D → Performance).
+    fpsMeter(on) {
+      var map = this.map;
+      if (!on) { if (this.fpsEl) { this.fpsEl.remove(); this.fpsEl = null; } if (this.fpsOff) { this.fpsOff(); this.fpsOff = null; } return; }
+      if (this.fpsEl || !map) return;
+      var box = this.fpsEl = document.createElement("div");
+      box.style.cssText = "position:absolute;right:8px;bottom:8px;z-index:20;background:rgba(0,0,0,.6);color:#5cc28f;font:12px monospace;padding:3px 7px;border-radius:4px;pointer-events:none";
+      (this.$("map").parentNode || this.$("map")).appendChild(box);
+      var n = 0, t0 = performance.now(), onR = () => { n++; var t = performance.now(); if (t - t0 >= 1000) { var f = Math.round(n * 1000 / (t - t0)); box.textContent = f + " img/s · cible " + (this.fpsNow || "—"); box.style.color = f >= 25 ? "#5cc28f" : f >= 15 ? "#e5a04c" : "#e0675f"; n = 0; t0 = t; } };
+      map.on("render", onR); this.fpsOff = () => map.off("render", onR);
+    }
     // Where the route lies among the 3D layers (TomTom's buildings and
     // surfaces are custom layers added after Igor's): « noms » (default) just
     // above them, under the labels that follow; « top » over everything;
@@ -7120,6 +7146,7 @@
         if (px && map.setPixelRatio && px !== this.pxNow) { this.pxNow = px; map.setPixelRatio(px); }
       });
       if (this.tt) { this.themeAt = 0; this.themeTick(); }
+      this.fpsMeter(!!Number(L.cpt));
       if (this.dest && (L.md + "|" + L.ms + "|" + L.rc2) !== this.markersKey) { this.markersKey = L.md + "|" + L.ms + "|" + L.rc2; this.drawPlaceMarkers(); }
     }
     tomtom3d(map) {
@@ -7768,7 +7795,7 @@
       var gap = this.rafAt ? now - this.rafAt : 16;
       this.rafAt = now;
       this.rafAvg = this.rafAvg == null ? gap : this.rafAvg + (Math.min(gap, 500) - this.rafAvg) * 0.05;
-      var want = Math.max(5, Math.min(60, Number(this.config.fps) || (this.hq() ? 60 : this.offlineReady ? 8 : 20)));
+      var want = Math.max(5, Math.min(60, Number(this.look && this.look.ips) || Number(this.config.fps) || (this.hq() ? 60 : this.offlineReady ? 8 : 20)));
       if (!this.fpsNow || this.fpsNow > want) this.fpsNow = want;
       if (!this.paceAt) this.paceAt = now;
       if (now - this.paceAt > 5000) {
@@ -12804,10 +12831,10 @@
   // then only what differs from it. The phone's map (igor-gps-card
   // `settings:`) applies it live; igor-settings-card `map3d:` edits it.
   var MAP3D_PRESETS = {
-    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 40, rf: 10, bz: 15, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max" } },
-    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "sol", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max" } },
-    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max" } },
-    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco" } }
+    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 40, rf: 10, bz: 15, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
+    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "sol", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max", ips: 60, cpt: 0 } },
+    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
+    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco", ips: 30, cpt: 0 } }
   };
   // Each setting: key, tab, label, hint, kind (seg | sw | sl), choices or range.
   var MAP3D_ROWS = [
@@ -12844,7 +12871,9 @@
     ["az", "Caméra", "Zoom selon la vitesse", "dézoome sur route rapide", "sw"],
     ["cy", "Caméra", "Voiture à l'écran", "plus bas : plus de route devant", "seg", [["haut", "plus haut"], ["milieu", "au milieu"], ["bas", "plus bas"]]],
     ["fl", "Performance", "Mode fluide", "allège tout seul quand ça rame", "sw"],
-    ["px", "Performance", "Netteté", "", "seg", [["eco", "économe"], ["normale", "normale"], ["max", "maximale"]]]
+    ["px", "Performance", "Netteté", "", "seg", [["eco", "économe"], ["normale", "normale"], ["max", "maximale"]]],
+    ["ips", "Performance", "Images par seconde", "30 : fluide et frais ; 60 : le plus doux, chauffe plus", "seg", [[30, "30"], [45, "45"], [60, "60"]]],
+    ["cpt", "Performance", "Compteur d'images", "affiche les images par seconde en coin de carte", "sw"]
   ];
   // Not in the presets (left to the dashboard until changed here).
   var MAP3D_FREE = { dn: "auto", ne: 3, pi: 60, zm: 17, az: 1, cy: "milieu" };
