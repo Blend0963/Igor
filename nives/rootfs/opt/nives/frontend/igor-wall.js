@@ -5518,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.52.8";
+  var GPS_CARD_VERSION = "0.52.9";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7048,6 +7048,35 @@
     }
     // The route's layers above the 3D ones (TomTom's buildings and surfaces
     // are custom layers added after Igor's), under the labels that follow.
+    // The base map's traffic (TomTom's green, orange and red lines on every road):
+    // « aucun » hidden; « chaussee » painted on the road itself — as wide as
+    // the road, soft, with a halo, under the route and the names — from the
+    // same data (Igor's copies of TomTom's layers, theirs hidden); « tout »
+    // TomTom's own lines as they are.
+    trafficLook(map, mode) {
+      var layers = ((map.getStyle() && map.getStyle().layers) || []).filter((l) => l.type === "line" && !/^(route|routejam|incidents|igor|trail|alt)/.test(l.id) &&
+        /traffic|flow/i.test(l.id + " " + (l["source-layer"] || "") + " " + (typeof l.source === "string" ? l.source : "")));
+      var first = ["route-glow", "route-case", "trail"].find((id) => map.getLayer(id));
+      layers.forEach((l) => {
+        var glow = "igor-tf-glow-" + l.id, tint = "igor-tf-" + l.id;
+        map.setLayoutProperty(l.id, "visibility", mode === "tout" ? "visible" : "none");
+        if (mode !== "chaussee") { [glow, tint].forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); }); return; }
+        var color = (l.paint && l.paint["line-color"]) || "#5cc28f", base = { source: l.source, layout: { "line-cap": "round", "line-join": "round" } };
+        if (l.filter) base.filter = l.filter;
+        if (l["source-layer"]) base["source-layer"] = l["source-layer"];
+        if (l.minzoom != null) base.minzoom = l.minzoom; if (l.maxzoom != null) base.maxzoom = l.maxzoom;
+        if (!map.getLayer(glow)) map.addLayer(Object.assign({ id: glow, type: "line", paint: { "line-color": color, "line-width": this.metersWidth(22, 6), "line-blur": this.metersWidth(10, 4), "line-opacity": 0.22 } }, base), first);
+        if (!map.getLayer(tint)) map.addLayer(Object.assign({ id: tint, type: "line", paint: { "line-color": color, "line-width": this.metersWidth(9, 2.5), "line-blur": 1, "line-opacity": 0.6 } }, base), first);
+      });
+    }
+    // A width in metres on the ground, as a zoom curve (each zoom doubles it),
+    // never thinner than `min` pixels (seen from far, a road is still a line).
+    metersWidth(m, min) {
+      var c = this.map && this.map.getCenter ? this.map.getCenter() : null, lat = this.pos ? this.pos[1] : c ? c.lat : 46;
+      var k = 512 / (40075016.686 * Math.cos(lat * Math.PI / 180)), out = ["interpolate", ["linear"], ["zoom"]];
+      [8, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22].forEach((z) => out.push(z, Math.round(Math.max(min || 0, m * k * Math.pow(2, z)) * 10) / 10));
+      return out;
+    }
     // Smoothing the edges (MSAA) costs much on a phone's GPU; on a sharp screen
     // (2 device pixels or more) its pixels already hide the steps: off unless asked.
     // Read when the map is made (a change applies the next time the map opens).
@@ -7130,10 +7159,14 @@
         ["igor-trunks", "igor-crowns"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", Number(L.to) ? "visible" : "none"); });
       });
       tryIt(() => {
-        var pal = this.routePal(), k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1;
+        var pal = this.routePal(), k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1, real = L.rw === "chaussee";
+        // « la chaussée » : the route as wide as the road itself (about 9 m),
+        // growing and shrinking with the zoom as the road does — it covers the
+        // road taken instead of running over it as a line.
+        var RW = { "route-case": [1.0, 2], "route-glow": [2.2, 4], "route": [0.86, 2.5], "route-core": [0.22, 0.8], "routejam": [0.86, 2.5] };
         [["route-case", GPS_CASE_W], ["route-glow", GPS_GLOW_W], ["route", GPS_ROUTE_W], ["route-core", GPS_CORE_W], ["routejam", GPS_ROUTE_W]].forEach((x) => {
           if (!map.getLayer(x[0])) return;
-          map.setPaintProperty(x[0], "line-width", scale(x[1], k));
+          map.setPaintProperty(x[0], "line-width", real ? this.metersWidth(9 * RW[x[0]][0], RW[x[0]][1]) : scale(x[1], k));
           if (pal[x[0]]) map.setPaintProperty(x[0], "line-color", pal[x[0]]);
         });
         if (map.getLayer("route-glow")) map.setPaintProperty("route-glow", "line-opacity", Math.max(0, Math.min(1, (Number(L.gl) || 0) / 100)));
@@ -7143,13 +7176,7 @@
       this.routeOnTop(map);
       // The base map's own traffic (the green, orange and red lines on every
       // road): none by default — the route carries its slow stretches itself.
-      tryIt(() => {
-        var show = L.tf === "tout";
-        ((map.getStyle() && map.getStyle().layers) || []).forEach((l) => {
-          if (/^(route|routejam|incidents|igor|trail|alt)/.test(l.id)) return;
-          if (/traffic|flow/i.test(l.id + " " + (l["source-layer"] || "") + " " + (typeof l.source === "string" ? l.source : ""))) map.setLayoutProperty(l.id, "visibility", show ? "visible" : "none");
-        });
-      });
+      tryIt(() => this.trafficLook(map, L.tf || "aucun"));
       tryIt(() => {
         var ns = { petite: 0.85, normale: 1, grande: 1.25 }[L.ns] || 1, sz = this.labelSize0 = this.labelSize0 || {};
         ((map.getStyle() && map.getStyle().layers) || []).forEach((l) => {
@@ -12873,7 +12900,7 @@
   // `settings:`) applies it live; igor-settings-card `map3d:` edits it.
   var MAP3D_PRESETS = {
     epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, tf: "aucun", aa: "auto", bz: 15, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
-    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { tf: "tout", aa: "auto", b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "sol", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max", ips: 60, cpt: 0 } },
+    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { tf: "chaussee", aa: "auto", b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "sol", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max", ips: 60, cpt: 0 } },
     lisible: { name: "Lisible", sub: "route et noms avant tout", v: { tf: "aucun", aa: "auto", b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
     economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { tf: "aucun", aa: "non", b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco", ips: 30, cpt: 0 } }
   };
@@ -12888,14 +12915,14 @@
     ["rf", "Bâtiments", "Reflets du ciel", "", "sl", 0, 100, 10, "%"],
     ["bz", "Bâtiments", "Bâtiments dès le zoom", "plus haut : moins de calcul", "seg", [[14, "14"], [15, "15"], [16, "16"], [17, "17"]]],
     ["rp", "Route & noms", "Place de la route", "« sous les noms » : le nom de la rue reste lisible", "seg", [["sol", "au sol"], ["noms", "sous les noms"], ["top", "par-dessus tout"]]],
-    ["rw", "Route & noms", "Épaisseur", "", "seg", [["fine", "fine"], ["normale", "normale"], ["large", "large"]]],
+    ["rw", "Route & noms", "Épaisseur", "« la chaussée » : la route prise, de sa vraie largeur", "seg", [["fine", "fine"], ["normale", "normale"], ["large", "large"], ["chaussee", "la chaussée"]]],
     ["rc", "Route & noms", "Couleur", "", "seg", [["bleu", "bleu"], ["cyan", "cyan"], ["violet", "violet"], ["jaune", "jaune"]]],
     ["md", "Route & noms", "Repère d'arrivée", "nom et heure d'arrivée au-dessus", "seg", [["epingle", "épingle"], ["balise", "balise"], ["anneau", "anneau au sol"], ["damier", "damier"], ["drapeau", "drapeau"]]],
     ["ms", "Route & noms", "Repère des étapes", "numérotées, couleur « après l'étape »", "seg", [["epingle", "épingle"], ["balise", "balise"], ["anneau", "anneau au sol"], ["damier", "damier"], ["drapeau", "drapeau"]]],
     ["rc2", "Route & noms", "Couleur après l'étape", "la suite du trajet, comme Waze", "seg", [["cyan", "cyan"], ["bleu", "bleu"], ["violet", "violet"], ["gris", "gris"]]],
     ["gl", "Route & noms", "Halo lumineux", "", "sl", 0, 100, 5, "%"],
     ["tr", "Route & noms", "Trajet déjà parcouru", "", "seg", [["cache", "caché"], ["pale", "pâle"], ["visible", "visible"]]],
-    ["tf", "Route & noms", "Trafic sur toute la carte", "vert, orange, rouge sur chaque route ; « aucun » : seulement sur votre itinéraire", "seg", [["aucun", "aucun"], ["tout", "afficher"]]],
+    ["tf", "Route & noms", "Trafic sur toute la carte", "« sur la chaussée » : chaque route teintée de son trafic, avec un halo ; « aucun » : seulement sur votre itinéraire", "seg", [["aucun", "aucun"], ["chaussee", "sur la chaussée"], ["tout", "traits TomTom"]]],
     ["jm", "Route & noms", "Bouchons", "", "seg", [["degrade", "en dégradé"], ["traits", "en traits"], ["aucun", "aucun"]]],
     ["rl", "Route & noms", "Noms cachés par les bâtiments", "comme dans la réalité", "sw"],
     ["ns", "Route & noms", "Taille des noms de rues", "", "seg", [["petite", "petite"], ["normale", "normale"], ["grande", "grande"]]],

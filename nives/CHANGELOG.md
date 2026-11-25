@@ -1,3 +1,8 @@
+## 0.52.9 — La route et le trafic de la largeur de la chaussée
+
+- Réglages → Carte 3D → Route & noms → Épaisseur : **« la chaussée »** — la route prise, large d'une vraie chaussée (environ 9 m), qui grossit et maigrit avec le zoom comme la route elle-même ; le halo, le liseré et le filet suivent, le dégradé des bouchons aussi.
+- Trafic sur toute la carte : **« sur la chaussée »** — chaque route teintée de son trafic sur toute sa largeur, adoucie, avec un halo, sous l'itinéraire et les noms (les données du trafic de TomTom, redessinées par Igor) ; « traits TomTom » garde les lignes d'origine, « aucun » les masque. « Réaliste » l'active.
+
 ## 0.52.8 — Moins de travail par image, le trafic au choix
 
 - Réglages → Carte 3D → Route & noms : **Trafic sur toute la carte** (aucun / afficher). Les lignes vertes, orange et rouges du style TomTom sur chaque route sont masquées par défaut : l'itinéraire porte déjà ses ralentissements, en dégradé.
