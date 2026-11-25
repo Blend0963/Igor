@@ -1,3 +1,7 @@
+## 0.52.2 — Des repères d'arrivée et d'étape au choix
+
+- `igor-gps-card` : cinq styles pour l'arrivée et pour les étapes, chacun réglable à part (Réglages → Carte 3D → Route & noms, ou `marker_dest` / `marker_stop`) — **épingle** (blanche, fin damier au cœur), **balise** (un faisceau de lumière qui monte, un anneau au sol), **anneau au sol** (couché sur la route), **damier** (carré noir et blanc aux coins arrondis), **drapeau** (l'ancien). L'arrivée porte une étiquette « Tours · 18:42 » tenue à jour ; les étapes sont numérotées, de la couleur « après l'étape ». Les préréglages : balise pour l'arrivée, épingle pour les étapes.
+
 ## 0.52.1 — La route en deux couleurs autour de l'étape
 
 - `igor-gps-card` : avec une étape, la route est bleue jusqu'à elle puis cyan au-delà, comme Waze (`route_color`, `route_color_after` : bleu, cyan, violet, jaune, gris) ; les bouchons gardent leur orange ou leur rouge par-dessus. Réglages → Carte 3D → Route & noms : nouvelle ligne « Couleur après l'étape ».

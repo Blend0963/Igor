@@ -5435,6 +5435,7 @@
   //   sdk_trees: false                      # no 3D trees in the woods and parks (the SDK's)
   //   buildings_opacity: 0.85               # the SDK's buildings, 0 (invisible) to 1 (solid); the route is drawn over them anyway
   //   settings: input_text.igor_carte      # the look set from the head unit (igor-settings-card map3d:), applied live: presets, buildings, route, names, ground, light, camera
+  //   marker_dest: epingle, marker_stop: epingle    # the arrival's and the stops' marks: epingle, balise, anneau, damier, drapeau
   //   route_color: bleu, route_color_after: cyan   # the route, and its colour after the first stop (bleu, cyan, violet, jaune, gris)
   //   jam_gradient: false                   # the jams as separate strokes over the route (default: the route itself fades to orange/red and back, halo included)
   //   buildings_windows: false              # plain facades, as TomTom's own navigation draws them (true: windows, lit at night)
@@ -5517,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.52.1";
+  var GPS_CARD_VERSION = "0.52.2";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7119,6 +7120,7 @@
         if (px && map.setPixelRatio && px !== this.pxNow) { this.pxNow = px; map.setPixelRatio(px); }
       });
       if (this.tt) { this.themeAt = 0; this.themeTick(); }
+      if (this.dest && (L.md + "|" + L.ms + "|" + L.rc2) !== this.markersKey) { this.markersKey = L.md + "|" + L.ms + "|" + L.rc2; this.drawPlaceMarkers(); }
     }
     tomtom3d(map) {
       var layers = map.getStyle().layers || [];
@@ -8404,18 +8406,77 @@
       this.showStreet();
       if (!d) return;
       this.banner("mdi:map-search", "", "Calcul de l'itinéraire vers " + d.name + "…", "wait");
-      if (this.map && window.maplibregl) {
-        var flag = document.createElement("div");
-        flag.innerHTML = '<svg viewBox="0 0 24 24" width="34" height="34"><path d="M5 21V4h11l-1.5 3.5L16 11H7v10z" fill="#e5323b" stroke="#07080a" stroke-width="1.2"/></svg>';
-        this.destMarker = new window.maplibregl.Marker({ element: flag, anchor: "bottom-left" }).setLngLat([d.lon, d.lat]).addTo(this.map);
-        // A stop on the way: an amber flag.
-        (d.via || []).forEach((v) => {
-          var f2 = document.createElement("div");
-          f2.innerHTML = '<svg viewBox="0 0 24 24" width="30" height="30"><path d="M5 21V4h11l-1.5 3.5L16 11H7v10z" fill="#d9a441" stroke="#07080a" stroke-width="1.2"/></svg>';
-          this.viaMarkers.push(new window.maplibregl.Marker({ element: f2, anchor: "bottom-left" }).setLngLat([v.lon, v.lat]).addTo(this.map));
-        });
-      }
+      this.drawPlaceMarkers();
       this.routeTo();
+    },
+    // The arrival and the stops, in the style chosen (Réglages → Carte 3D, or
+    // `marker_dest` / `marker_stop`): épingle, balise, anneau (on the ground),
+    // damier, drapeau. The arrival carries its name and hour; the stops their
+    // number, in the colour of the way after them.
+    drawPlaceMarkers() {
+      var d = this.dest;
+      if (this.destMarker) { this.destMarker.remove(); this.destMarker = null; }
+      (this.viaMarkers || []).forEach((m) => m.remove()); this.viaMarkers = [];
+      if (!d || !this.map || !window.maplibregl) return;
+      var L = this.look || {}, md = L.md || this.config.marker_dest || "epingle", ms = L.ms || this.config.marker_stop || "epingle";
+      var after = this.routePal("after").route;
+      var dm = this.placeMarker(md, "dest", null, "#f2f4f7");
+      this.destLabel = dm.label; this.destName = d.name || "arrivée";
+      this.destMarker = new window.maplibregl.Marker(dm.opts).setLngLat([d.lon, d.lat]).addTo(this.map);
+      if (dm.labelHolder) this.viaMarkers.push(new window.maplibregl.Marker({ element: dm.labelHolder, anchor: "bottom", offset: [0, -24] }).setLngLat([d.lon, d.lat]).addTo(this.map));
+      (d.via || []).forEach((v, i) => {
+        var vm = this.placeMarker(ms, "stop", i + 1, after);
+        this.viaMarkers.push(new window.maplibregl.Marker(vm.opts).setLngLat([v.lon, v.lat]).addTo(this.map));
+      });
+      this.markerLabels(true);
+    },
+    placeMarker(kind, role, n, color) {
+      var big = role === "dest", el = document.createElement("div"), sz = big ? 1 : 0.78, opts = { element: el, anchor: "bottom" };
+      // No `position` here: MapLibre places the marker absolutely (it also holds the label).
+      el.style.pointerEvents = "none"; el.style.filter = "drop-shadow(0 4px 8px rgba(0,0,0,.55))"; el.style.lineHeight = "0";
+      var num = n != null ? '<text x="0" y="5" text-anchor="middle" font-size="13" font-weight="700" fill="#0d1014" font-family="sans-serif">' + n + "</text>" : "";
+      var chk = (c, x, y, k) => '<g transform="translate(' + x + "," + y + ") scale(" + k + ')" fill="' + c + '"><rect width="4" height="4"/><rect x="8" width="4" height="4"/><rect x="4" y="4" width="4" height="4"/><rect y="8" width="4" height="4"/><rect x="8" y="8" width="4" height="4"/></g>';
+      var svg = "";
+      if (kind === "balise") {
+        var h = big ? 90 : 50;
+        svg = '<svg width="60" height="' + (h + 24) + '" viewBox="-30 ' + (-h - 12) + " 60 " + (h + 24) + '"><defs><linearGradient id="bm' + role + '" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="' + color + '" stop-opacity=".9"/><stop offset="1" stop-color="' + color + '" stop-opacity="0"/></linearGradient></defs>' +
+          '<ellipse rx="' + 14 * sz + '" ry="' + 5 * sz + '" fill="none" stroke="' + color + '" stroke-width="2"/><rect x="-1.5" y="' + (-h + 10) + '" width="3" height="' + (h - 10) + '" fill="url(#bm' + role + ')"/>' +
+          '<circle cy="' + (-h) + '" r="10" fill="#0d1014" stroke="' + color + '" stroke-width="2"/>' + (n != null ? '<text y="' + (-h + 4) + '" text-anchor="middle" font-size="11" font-weight="700" fill="' + color + '" font-family="sans-serif">' + n + "</text>" : '<path d="M-3 ' + (-h - 4) + "v8M-3 " + (-h - 4) + "h7l-2 2 2 2h-7" + '" stroke="' + color + '" stroke-width="1.6" fill="none"/>') + "</svg>";
+        opts.anchor = "bottom"; opts.offset = [0, 12];
+      } else if (kind === "anneau") {
+        // Lying on the road: drawn in the map's plane.
+        svg = '<svg width="' + 70 * sz + '" height="' + 70 * sz + '" viewBox="-35 -35 70 70"><circle r="30" fill="' + color + '" fill-opacity=".1" stroke="' + color + '" stroke-width="3"/><circle r="17" fill="none" stroke="' + color + '" stroke-width="2" opacity=".6"/>' + (n != null ? '<text y="5" text-anchor="middle" font-size="15" font-weight="700" fill="' + color + '" font-family="sans-serif">' + n + "</text>" : '<circle r="4" fill="' + color + '"/>') + "</svg>";
+        opts.anchor = "center"; opts.pitchAlignment = "map"; opts.rotationAlignment = "map";
+        el.style.filter = "none";
+      } else if (kind === "damier") {
+        svg = '<svg width="' + 36 * sz + '" height="' + 46 * sz + '" viewBox="-18 -18 36 46">' + (n != null ? '<rect x="-14" y="-14" width="28" height="28" rx="8" fill="' + color + '"/>' + num + '<path d="M-6 14L0 23L6 14Z" fill="' + color + '"/>'
+          : '<rect x="-15" y="-15" width="30" height="30" rx="8" fill="#0d1014" stroke="' + color + '" stroke-width="2"/>' + chk(color, -9, -9, 1.5) + '<path d="M-6 15L0 24L6 15Z" fill="' + color + '"/>') + "</svg>";
+      } else if (kind === "drapeau") {
+        svg = '<svg viewBox="0 0 24 24" width="' + 34 * sz + '" height="' + 34 * sz + '"><path d="M5 21V4h11l-1.5 3.5L16 11H7v10z" fill="' + (n != null ? "#d9a441" : "#e5323b") + '" stroke="#07080a" stroke-width="1.2"/></svg>';
+        opts.anchor = "bottom-left";
+      } else {
+        // épingle: white for the arrival (a fine chequer at its heart), the stops in their colour, numbered.
+        svg = '<svg width="' + 40 * sz + '" height="' + 56 * sz + '" viewBox="-20 -20 40 56"><path d="M0 34C-3 22-18 14-18 0A18 18 0 1 1 18 0C18 14 3 22 0 34Z" fill="' + color + '"/>' +
+          (n != null ? num.replace('y="5"', 'y="5"') : '<circle r="11" fill="#0d1014"/>' + chk(color, -6, -6, 1)) + "</svg>";
+      }
+      el.innerHTML = svg;
+      var label = null;
+      if (role === "dest") {
+        label = document.createElement("div");
+        label.style.cssText = "position:absolute;left:50%;bottom:100%;transform:translate(-50%,-6px);background:rgba(13,16,20,.92);border:1px solid #2c323a;border-radius:6px;padding:3px 8px;font:12px/1.3 sans-serif;color:#e8e4dc;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.5)";
+        // On the ground (anneau) the label stands apart, facing the screen.
+        if (kind === "anneau") { var holder = document.createElement("div"); holder.style.cssText = "position:relative;width:0;height:0;pointer-events:none"; holder.appendChild(label); return { opts: opts, label: label, labelHolder: holder }; }
+        el.appendChild(label);
+      }
+      return { opts: opts, label: label };
+    },
+    // The arrival's label: its name and the hour of arrival (kept up to date).
+    markerLabels(force) {
+      var lb = this.destLabel; if (!lb) return;
+      var vt = this.viaTimes && this.viaTimes(), R = this.route, fin = vt && vt.fin;
+      if (!fin && R && R.duration && R.cum) { var car = R.cum[Math.max(0, Math.min((this.seg || 1) - 1, R.cum.length - 1))] || 0; fin = hhmm(new Date(Date.now() + R.duration * Math.max(0, R.total - car) / R.total * 1000)); }
+      var t = (this.destName || "arrivée").slice(0, 28) + (fin ? " · " + fin : "");
+      if (force || t !== lb.textContent) lb.textContent = t;
     },
     async routeTo() {
       var d = this.dest, from = this.pos || (this.fix && this.fix.point);
@@ -9311,6 +9372,7 @@
       return { type: "FeatureCollection", features: feats };
     },
     publishAhead(now) {
+      if (this.destLabel && (!this.labelAt || Date.now() - this.labelAt > 15000)) { this.labelAt = Date.now(); this.markerLabels(); }
       var e = this.config.publish_ahead;
       if (!e || !this._hass || !this._hass.callService || !this.pos) return;
       var R = this.route, guided = !!(R && this.seg), here = 0, left = 0;
@@ -12742,10 +12804,10 @@
   // then only what differs from it. The phone's map (igor-gps-card
   // `settings:`) applies it live; igor-settings-card `map3d:` edits it.
   var MAP3D_PRESETS = {
-    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 40, rf: 10, bz: 15, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max" } },
-    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "sol", rw: "normale", rc: "bleu", rc2: "cyan", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max" } },
-    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", rw: "large", rc: "bleu", rc2: "cyan", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max" } },
-    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco" } }
+    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 40, rf: 10, bz: 15, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max" } },
+    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "sol", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max" } },
+    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max" } },
+    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco" } }
   };
   // Each setting: key, tab, label, hint, kind (seg | sw | sl), choices or range.
   var MAP3D_ROWS = [
@@ -12760,6 +12822,8 @@
     ["rp", "Route & noms", "Place de la route", "« sous les noms » : le nom de la rue reste lisible", "seg", [["sol", "au sol"], ["noms", "sous les noms"], ["top", "par-dessus tout"]]],
     ["rw", "Route & noms", "Épaisseur", "", "seg", [["fine", "fine"], ["normale", "normale"], ["large", "large"]]],
     ["rc", "Route & noms", "Couleur", "", "seg", [["bleu", "bleu"], ["cyan", "cyan"], ["violet", "violet"], ["jaune", "jaune"]]],
+    ["md", "Route & noms", "Repère d'arrivée", "nom et heure d'arrivée au-dessus", "seg", [["epingle", "épingle"], ["balise", "balise"], ["anneau", "anneau au sol"], ["damier", "damier"], ["drapeau", "drapeau"]]],
+    ["ms", "Route & noms", "Repère des étapes", "numérotées, couleur « après l'étape »", "seg", [["epingle", "épingle"], ["balise", "balise"], ["anneau", "anneau au sol"], ["damier", "damier"], ["drapeau", "drapeau"]]],
     ["rc2", "Route & noms", "Couleur après l'étape", "la suite du trajet, comme Waze", "seg", [["cyan", "cyan"], ["bleu", "bleu"], ["violet", "violet"], ["gris", "gris"]]],
     ["gl", "Route & noms", "Halo lumineux", "", "sl", 0, 100, 5, "%"],
     ["tr", "Route & noms", "Trajet déjà parcouru", "", "seg", [["cache", "caché"], ["pale", "pâle"], ["visible", "visible"]]],
