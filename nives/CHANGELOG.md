@@ -1,3 +1,11 @@
+## 0.50.6 — Panneau plus grand, rapport à sa place, vue moteur rééquilibrée, musique de Deezer, P1351 expliqué
+
+- `igor-car-card` : le panneau de limitation aussi haut que les chiffres de la vitesse et centré sur eux ; au-dessus de la limite son chiffre passe en rouge, à plus de 5 km/h il clignote — plus de panneau rempli de rouge. Le rapport quitte la ligne de la vitesse pour une 3ᵉ case à côté de « moteur » et « batterie » (« passez la ▲ 4 » en vert, « rétrogradez ▼ 2 » en orange).
+- `igor-drive-card` : la vue moteur trouve le juste milieu — accélération d'au moins 1,4 m/s² sur 3 s avec la charge à 75 % ou le turbo à 0,8 bar (60 % du temps), ou 2 m/s² sans ces capteurs. Un démarrage vif ou un coup de gaz bref ne l'ouvrent toujours pas.
+- `igor-carmedia-card` : le titre, l'artiste et l'état lus d'abord dans la session du lecteur (`package`, Deezer) — une autre application gardait un vieux titre qui s'affichait à la place.
+- `igor-messages-card` : liste vide, elle dit pourquoi — rien reçu du téléphone (le relais Tasker), ou la date du dernier message.
+- `igor-diag-card` : P1351 expliqué (préchauffage, code PSA) au lieu de « code constructeur » ; « Demander à Igor » s'adresse à l'agent d'Igor (trouvé seul, ou `agent:`) et non à l'assistant de base qui répondait « Désolé, je n'ai pas compris » — réponse qui n'est plus gardée en mémoire. Les tests antipollution réussis ont leur ✓ en vert.
+
 ## 0.50.5 — « Annonces vocales » coupées : Igor se tait vraiment
 
 - `igor-guide-card` `announcements:` : l'interrupteur des annonces vocales (Réglages → Notifications) coupe aussi ce qu'Igor dit de lui-même sur l'autoradio — « Le téléphone ne guide plus. Je reprends le guidage… » au passage en mode dégradé, et les annonces de la maison. Les indications de guidage (« dans 300 m, tournez à droite ») restent réglées par le bouton Voix.

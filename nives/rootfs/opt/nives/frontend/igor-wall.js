@@ -4980,14 +4980,12 @@
         ".trip span { color: var(--dim); font-size: 10px; }",
         ".trip .t { grid-column: 1 / -1; color: var(--faint); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 4px; }",
         "ha-card.off .sp, ha-card.off .mini b, ha-card.off .row b { color: var(--faint); }",
-        // The gear box beside the speed: the gear engaged; an arrow and the gear to take when it is time.
-        ".gb { margin-left: auto; width: 54px; height: 62px; box-sizing: border-box; border: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; flex: none; letter-spacing: 0; }",
-        ".gb b { font-size: 26px; font-weight: 400; line-height: 1; } .gb span { font-size: 9px; color: var(--dim); letter-spacing: .12em; text-transform: uppercase; margin-top: 4px; }",
-        ".gb.up { border-color: var(--okc); color: var(--okc); animation: gbp 1.2s ease-in-out infinite; } .gb.dn { border-color: var(--wait); color: var(--wait); animation: gbp 1.2s ease-in-out infinite; } .gb.up span, .gb.dn span { color: inherit; }",
-        "@keyframes gbp { 50% { opacity: .55; } }",
-        ".gb + span { margin-left: 8px !important; }",
-        ".lsign { background: #fff; color: #111; } .lsign.over { color: #e5323b; } .lsign.far { background: #e5323b; color: #fff; border-color: #fff !important; animation: gbp 1s ease-in-out infinite; }",
-        "@media (max-height: 660px) { .lsign { width: 50px !important; height: 50px !important; border-width: 5px !important; font-size: 20px !important; } }",
+        // The limit sign: as tall as the speed's figures, centred on them.
+        ".lsign { margin-left: auto; width: clamp(56px, 10vh, 84px); height: clamp(56px, 10vh, 84px); border-radius: 50%; border: clamp(5px, 0.9vh, 8px) solid #e5323b; background: #fff; color: #111; display: grid; place-items: center; font-size: clamp(22px, 4vh, 34px); font-weight: 700; box-sizing: border-box; letter-spacing: 0; flex: none; align-self: center; }",
+        ".lsign.over { color: #e5323b; } .lsign.far { color: #e5323b; animation: gbp 1s ease-in-out infinite; }",
+        "@keyframes gbp { 50% { opacity: .5; } }",
+        // The gear, a third cell beside the engine and the battery.
+        ".mini.g3 { grid-template-columns: 1fr 1fr 1fr; gap: 8px; } .mini.g3 b { font-size: 20px; white-space: nowrap; } .mini.g3 div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .mini b.up { color: var(--okc); animation: gbp 1.2s ease-in-out infinite; } .mini b.dn { color: var(--wait); animation: gbp 1.2s ease-in-out infinite; }",
         "@media (max-height: 660px) { .gb { height: 50px; width: 46px; } .gb b { font-size: 22px; } }",
         // A small screen (a head unit of 600 px or so): the same, tighter, so the guidance below keeps its room.
         "@media (max-height: 660px) { .sp { font-size: 46px; margin-top: 4px; } .seg { margin: 8px 0 3px; height: 12px; } .mini { margin-top: 6px; gap: 8px; } .mini div { padding-top: 3px; } .mini b { font-size: 18px; } }"
@@ -5006,6 +5004,7 @@
       var mini = el("div", "mini", card);
       var m1 = el("div", "", mini, "moteur"); this.coolEl = el("b", "", m1);
       var m2 = el("div", "", mini, "batterie"); this.battEl = el("b", "", m2);
+      if (this.config.gear || this.config.advice) { mini.classList.add("g3"); this.gearLab = el("div", "", mini, "rapport"); this.gearEl = el("b", "", this.gearLab); this.gearLab.firstChild.nodeValue = "rapport"; }
       // Outside: the weather where the car is.
       this.wx = el("div", "wx", card);
       this.wx.hidden = true;
@@ -5103,7 +5102,13 @@
       var gs = on && c.gear && S(c.gear) ? String(S(c.gear).state) : "", gear = /^[1-6N]$/.test(gs) ? gs : "";
       var ad = on && c.advice && S(c.advice) ? String(S(c.advice).state) : "", am = /(\d)/.exec(ad);
       var dir = am && /passez|monte/i.test(ad) ? "up" : am && /r[ée]trograd/i.test(ad) ? "dn" : "";
-      var vt2 = vt + "|" + lim + "|" + gear + "|" + dir + (am ? am[1] : "");
+      var vt2 = vt + "|" + lim;
+      if (this.gearEl) {
+        var gtxt = dir ? (dir === "up" ? "▲ " : "▼ ") + am[1] : gear || "—";
+        if (this.gearEl.textContent !== gtxt) this.gearEl.textContent = gtxt;
+        this.gearEl.className = dir;
+        this.gearLab.firstChild.nodeValue = dir === "up" ? "passez la" : dir === "dn" ? "rétrogradez" : "rapport";
+      }
       if (vt2 !== this.spText) {
         this.spText = vt2;
         this.sp.innerHTML = "";
@@ -5111,17 +5116,11 @@
         var spn = el("span", "", this.sp, vt);
         el("small", "", this.sp, "km/h");
         spn.style.color = v == null || lim == null ? "" : v <= lim ? "" : v <= lim + 5 ? CAR_WARN : CAR_BAD;
-        if (gear || dir) {
-          var gb = el("div", "gb" + (dir ? " " + dir : ""), this.sp);
-          el("b", "", gb, dir ? (dir === "up" ? "▲" : "▼") + am[1] : gear === "N" ? "N" : gear);
-          el("span", "", gb, dir === "up" ? "passez" : dir === "dn" ? "rétro" : "rapport");
-        }
         if (lim != null) {
           // The road sign: white, red ring. Over the limit, its figure turns
-          // red; more than 5 km/h over, the whole sign turns red and pulses.
+          // red; more than 5 km/h over, it also pulses (the speed is red too).
           var over = v != null ? v - lim : -1;
-          var sgn = el("span", "lsign" + (over > 5 ? " far" : over > 0 ? " over" : ""), this.sp, String(Math.round(lim)));
-          sgn.style.cssText = "margin-left:auto;width:62px;height:62px;border-radius:50%;border:6px solid #e5323b;display:grid;place-items:center;font-size:24px;font-weight:700;box-sizing:border-box;letter-spacing:0;flex:none";
+          el("span", "lsign" + (over > 5 ? " far" : over > 0 ? " over" : ""), this.sp, String(Math.round(lim)));
         }
       }
       var rpm = on ? num(S(c.rpm)) : null;
@@ -5313,10 +5312,16 @@
       });
     }
     update(hass) {
-      var s = hass.states[this.config.session], title = "", artist = "";
-      // The session sensor holds media_title and media_artist, suffixed per player.
-      Object.keys((s && s.attributes) || {}).forEach((k) => {
-        var v = s.attributes[k];
+      var s = hass.states[this.config.session], title = "", artist = "", pk = this.config.package || "deezer.android.app", sa = (s && s.attributes) || {};
+      // The session sensor holds media_title_<app>, media_artist_<app>,
+      // playback_state_<app> for each app with a session: the player's own
+      // first (another app's old session — the radio, YouTube — kept a stale
+      // title), any other only when the player has none.
+      var own = (pre) => { var k = Object.keys(sa).find((x) => x.indexOf(pre) === 0 && x.slice(pre.length).replace(/^_/, "") === pk); return k && sa[k] ? String(sa[k]) : ""; };
+      title = own("media_title"); artist = own("media_artist");
+      var ownState = own("playback_state");
+      if (!title) Object.keys(sa).forEach((k) => {
+        var v = sa[k];
         if (!v) return;
         if (!title && k.indexOf("media_title") === 0) title = String(v);
         if (!artist && k.indexOf("media_artist") === 0) artist = String(v);
@@ -5337,7 +5342,7 @@
         this.sessTitle = title;
       }
       if (fOk && (!title || fAt >= (this.sessAt || 0))) { title = f.state; artist = (f.attributes && f.attributes.artiste) || ""; }
-      var playing = s && s.state === "Playing";
+      var playing = ownState ? /^playing$/i.test(ownState) : s && s.state === "Playing";
       // The car on or off (`active`: the OBD link, the head unit; any of them
       // on is on). Off for more than 3 minutes (not a lost Bluetooth link):
       // no music. On: a title is shown unless it is older than the 20 minutes
@@ -5493,7 +5498,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.50.5";
+  var GPS_CARD_VERSION = "0.50.6";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -11976,7 +11981,7 @@
   //   routes: input_text.car_routes        # the routes offered by the phone map (publish_routes): chosen here, in the middle
   //   route_choice: input_text.car_choice  # where the choice is written
   //   destination: input_text.car_dest     # its name over the routes
-  //   tune: { load_on: 85, accel_on: 2, window_s: 3, min_kmh: 15, boost_on: 1.3, gain_s: 4, hold_s: 20, calm_s: 8, min_view_s: 8, cooldown_s: 30, override_s: 60 }
+  //   tune: { load_on: 75, accel_on: 1.4, window_s: 3, min_kmh: 15, boost_on: 0.8, gain_s: 4, hold_s: 20, calm_s: 8, min_view_s: 8, cooldown_s: 30, override_s: 60 }
   // Which view, by priority: a radar within reach (green, amber, red as the
   // speed goes), a hard acceleration (the engine, held while the effort
   // lasts, gear changes included), the route ahead while guided, else the
@@ -12111,11 +12116,12 @@
       if (w.length < 4) return no;
       var first = w.find((x) => x.v != null), last = w[w.length - 1];
       if (!first || last.v == null || last.v < this.tune("min_kmh", 15) || last.t <= first.t) return no;
-      var acc = ((last.v - first.v) / 3.6) / ((last.t - first.t) / 1000), on = this.tune("accel_on", 2);
+      var acc = ((last.v - first.v) / 3.6) / ((last.t - first.t) / 1000), on = this.tune("accel_on", 1.4);
       var loads = w.filter((x) => x.load != null), boosts = w.filter((x) => x.boost != null);
-      var floored = loads.length >= 3 ? loads.filter((x) => x.load >= this.tune("load_on", 85)).length / loads.length >= 0.75 : null;
-      var boosted = boosts.length >= 3 ? boosts.filter((x) => x.boost >= this.tune("boost_on", 1.3)).length / boosts.length >= 0.6 : false;
-      var hit = floored === null ? acc >= on * 1.4 : (floored || boosted) && acc >= on;
+      var floored = loads.length >= 3 ? loads.filter((x) => x.load >= this.tune("load_on", 75)).length / loads.length >= 0.6 : null;
+      var boosted = boosts.length >= 3 ? boosts.filter((x) => x.boost >= this.tune("boost_on", 0.8)).length / boosts.length >= 0.6 : null;
+      // Load or turbo, whichever the car gives; neither: a harder gain alone.
+      var hit = floored === null && boosted === null ? acc >= on * 1.45 : (!!floored || !!boosted) && acc >= on;
       return { hit: hit, strong: hit && acc >= on * 1.5 };
     }
     // The radar: the phone map's (fresh), else the official list around the
@@ -12864,14 +12870,18 @@
       var st = h.states[c.entity], l = (st && st.attributes && st.attributes.liste) || [];
       // Only what is recent (`max_age_h`, 12 h by default): a message of
       // last month is not news on the road. Undated ones are dropped too.
-      var maxAge = (c.max_age_h != null ? Number(c.max_age_h) : 12) * 3600000;
+      var maxAge = (c.max_age_h != null ? Number(c.max_age_h) : 12) * 3600000, all = l;
       if (maxAge > 0) { var nowMs = Date.now(); l = l.filter((n) => { var t = msgWhen(n); return !isNaN(t) && nowMs - t <= maxAge; }); }
+      // Empty: why — nothing ever came (the relay from the phone is not
+      // running), or only old ones (the last one's date).
+      var lastAt = all.length ? msgWhen(all[0]) : NaN;
+      this.emptyWhy = !st ? "l'entité " + c.entity + " n'existe pas" : !all.length ? "rien reçu du téléphone : vérifiez le relais des notifications (Tasker)" : "le dernier date du " + (isNaN(lastAt) ? String(all[0].date || all[0].heure || "?") : new Date(lastAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }));
       var sig = JSON.stringify(l).length + "|" + (l[0] && JSON.stringify(l[0])) + "|" + inCall;
       if (sig === this.sig) return;
       this.sig = sig;
       this.head.textContent = "messages · " + l.length;
       this.list.innerHTML = "";
-      if (!l.length) { el("div", "empty", this.list, "Aucun message"); return; }
+      if (!l.length) { el("div", "empty", this.list, "Aucun message récent"); if (this.emptyWhy) { var ew = el("div", "", this.list, this.emptyWhy); ew.style.cssText = "font-size:12px;color:var(--dim);margin-top:4px;line-height:1.4"; } return; }
       // One row a sender (and app): the newest first, the count of its messages.
       var groups = [], byKey = {};
       l.forEach((raw) => {
@@ -13329,6 +13339,9 @@
       // The code shown: the first confirmed, else the first pending.
       var conf = this.codeList(hass, c.codes), pend = this.codeList(hass, c.pending);
       var all = conf.map((x) => Object.assign({ st: "confirmé" }, x)).concat(pend.filter((p) => !conf.some((x) => x.code === p.code)).map((x) => Object.assign({ st: "en attente" }, x)));
+      // Codes the OBD app only calls « constructeur »: what they usually mean on a PSA diesel (HDi).
+      var PSA = { P1351: "Préchauffage : commande du boîtier de pré-postchauffage (bougies) — code PSA, à confirmer au garage" };
+      all = all.map((x) => PSA[x.code] && (!x.description || /constructeur|inconnu/i.test(x.description)) ? Object.assign({}, x, { description: PSA[x.code] }) : x);
       this.current = all[0] || null;
       this.codeBox.innerHTML = "";
       el("div", "h", this.codeBox, all.length ? "défaut en cours · 1 sur " + all.length : "défauts");
@@ -13349,14 +13362,18 @@
       this.pills.innerHTML = "";
       var mon = c.monitors && hass.states[c.monitors], tests = mon && Array.isArray(mon.attributes.tests) ? mon.attributes.tests : [];
       this.pills.hidden = !tests.length;
-      tests.forEach((t) => { var p = el("div", "", this.pills, (t.complete ? "✓ " : "… ") + t.name); p.style.color = t.complete ? "" : CAR_WARN; });
+      tests.forEach((t) => {
+        var p = el("div", "", this.pills); var mk = el("span", "", p, t.complete ? "✓ " : "… "); mk.style.color = t.complete ? CAR_OK : CAR_WARN;
+        p.appendChild(document.createTextNode(t.name)); if (!t.complete) p.style.color = CAR_WARN;
+      });
     }
     // Igor's word on the code: kept by this screen per code (asked once, not at every redraw).
     ask(force) {
       var cur = this.current;
       if (!cur || !this.igorText || !this._hass) return;
-      var memKey = "igor-diag:" + cur.code, kept = null;
+      var memKey = "igor-diag:" + cur.code, kept = null, NO = /pas compris|didn.t understand|sorry, i|je ne peux pas|n'ai pas trouvé/i;
       try { kept = window.localStorage.getItem(memKey); } catch (e) { kept = null; }
+      if (kept && NO.test(kept)) { try { window.localStorage.removeItem(memKey); } catch (e) { /* no storage */ } kept = null; }
       if (kept && !force) { this.igorText.textContent = kept; return; }
       if (!force && this.config.auto_explain === false) { this.igorText.textContent = "Touchez « Demander à Igor » pour une explication."; return; }
       if (this.asking === cur.code) return;
@@ -13364,10 +13381,14 @@
       this.igorText.textContent = "Igor regarde ce code…";
       var text = "En trois phrases simples, explique le code défaut " + cur.code + (cur.description ? " (" + cur.description + ")" : "") +
         " sur ma voiture, dis si c'est urgent et ce que je dois faire. Code " + cur.st + ".";
-      var msg = Object.assign({ type: "conversation/process", text: text, language: "fr" }, this.config.agent ? { agent_id: this.config.agent } : {});
+      // Igor's own agent (an LLM), not Home Assistant's built-in one, which
+      // only knows commands (« Désolé, je n'ai pas compris »): `agent`, else
+      // the conversation entity named Igor.
+      var hs = this._hass.states, agent = this.config.agent || Object.keys(hs).find((id) => id.indexOf("conversation.") === 0 && /igor|nives/i.test(id + " " + ((hs[id].attributes || {}).friendly_name || "")));
+      var msg = Object.assign({ type: "conversation/process", text: text, language: "fr" }, agent ? { agent_id: agent } : {});
       this._hass.callWS(msg).then((r) => {
         var said = r && r.response && r.response.speech && r.response.speech.plain && r.response.speech.plain.speech;
-        if (!said) throw new Error("vide");
+        if (!said || (r.response.response_type === "error") || NO.test(said)) throw new Error("vide");
         try { window.localStorage.setItem(memKey, said); } catch (e) { /* no storage */ }
         if (this.current && this.current.code === cur.code && this.igorText) this.igorText.textContent = said;
       }).catch(() => { if (this.igorText) this.igorText.textContent = "Igor n'a pas répondu — réessayez avec « Demander à Igor »."; })
