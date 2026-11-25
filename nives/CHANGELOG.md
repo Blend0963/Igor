@@ -1,3 +1,9 @@
+## 0.49.2 — Les réglages sur toute la largeur, le verrouillage choisi écran par écran
+
+- `igor-settings-card` : les tuiles se partagent toute la largeur, alignées sur les boutons du dessous (elles s'entassaient à gauche, titres coupés sur l'autoradio).
+- `igor-settings-card` : `screen_lock: true` ajoute la tuile « Cet écran » — « C'est l'autoradio » (verrouillé sans votre téléphone) ou « Écran libre » ; le choix ne vaut que pour l'appareil où il est fait, la tuile dit l'état de cet appareil. Elle remplace le bouton « Cet écran est l'autoradio ».
+- Écran verrouillé par erreur (une tablette, un ordinateur) : un appui de 3 s sur le cadenas propose « Écran libre, ne plus verrouiller ».
+
 ## 0.49.1 — Plus de bandes grises entre les boutons du GPS, le CT à sa date
 
 - `igor-guide-card` (rangée de boutons) : le fond du thème de Home Assistant n'apparaît plus entre les boutons (les bandes grises) ; seuls les boutons sont peints, en noir.
