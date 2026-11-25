@@ -1,3 +1,7 @@
+## 0.52.6 — La fenêtre Carte 3D en portrait
+
+- Fenêtre Carte 3D sur un téléphone tenu droit (moins de 600 px de large) : plein écran, les préréglages sur deux lignes, chaque réglage sur sa ligne sans déborder sur le suivant. Vérifié à 412 × 915 (Pixel Fold fermé).
+
 ## 0.52.5 — Le téléphone règle sa carte comme l'autoradio
 
 - `igor-gps-card` avec `settings:` : le bouton « Couches » devient « Carte » et ouvre la même fenêtre que Réglages → Carte 3D sur l'autoradio (préréglages, bâtiments, route et noms, repères, sol, lumière, caméra, performance) — un seul réglage pour les deux écrans, appliqué en direct. L'ancienne liste de points d'intérêt, sans effet sur la carte TomTom 3D, n'est plus proposée.

@@ -5518,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.52.5";
+  var GPS_CARD_VERSION = "0.52.6";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -12952,6 +12952,12 @@
         ".m3t { display: flex; gap: 6px; padding: 0 14px; flex: none; border-bottom: 1px solid var(--acc, #59d0e0); overflow-x: auto; } .m3tt { padding: 10px 14px; border: 1px solid var(--line); border-bottom: none; background: none; color: var(--dim); font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; } .m3tt.on { color: var(--acc, #59d0e0); border-color: var(--acc, #59d0e0); background: #111418; }",
         ".m3b { flex: 1; min-height: 0; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; align-content: start; padding: 4px 16px 10px; }",
         "@media (max-width: 900px) { .m3b { grid-template-columns: 1fr; } }",
+        // A phone held upright: the window fills the screen, the presets wrap, each
+        // setting has its choices under its name, across the whole width.
+        "@media (max-width: 600px) { .ov { padding-top: 0; } .dl.m3 { width: 100vw; height: 100vh; max-height: 100vh; border: 0; } .m3s { display: none; }" +
+        " .m3p { flex-wrap: wrap; } .m3pp { flex: 1 1 30%; } .m3pp small { display: none; }" +
+        " .m3r { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; } .m3r .sw { justify-self: start; }" +
+        " .m3g { justify-content: flex-start; } .m3g button { flex: 1 1 auto; } .m3l { width: 100%; grid-template-columns: 48px minmax(0, 1fr) 48px; } }",
         ".m3r { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #1a1e24; font-size: 15px; min-height: 52px; } .m3r small { display: block; color: var(--dim); font-size: 11px; margin-top: 3px; }",
         ".m3g { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; } .m3g button { min-height: 40px; padding: 0 11px; border: 1px solid var(--line); background: none; color: var(--dim); font: inherit; font-size: 13px; cursor: pointer; } .m3g button.on { background: #123c44; color: var(--acc, #59d0e0); border-color: var(--acc, #59d0e0); }",
         ".m3l { display: grid; grid-template-columns: 40px 62px 40px; grid-template-rows: auto 18px; align-items: center; gap: 2px 6px; width: 170px; flex: none; } .m3l button { height: 40px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; font-size: 20px; cursor: pointer; } .m3l span { text-align: center; font-size: 14px; }",
