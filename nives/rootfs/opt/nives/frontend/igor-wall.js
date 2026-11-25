@@ -5518,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.52.2";
+  var GPS_CARD_VERSION = "0.52.6";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6550,14 +6550,30 @@
       var prev = this._hass, c = this.config;
       this._hass = hass;
       if (!this.root) this.build();
+      if (this.m3win && this.m3win.isConnected) this.m3win.hass = hass;
       // The look set from the head unit: applied at once, live.
       if (c.settings) {
         var lst = hass.states[c.settings], lv = lst && !/^(unknown|unavailable)$/.test(lst.state) ? lst.state : lst ? "" : null;
         if (lv !== this.lookStr) { this.lookStr = lv; this.look = lv == null ? null : map3dResolve(lv); if (this.map) this.applyLook(); }
       }
+      // Running: only when one of the card's own entities changed — the house
+      // changes many times a second (the car's readings), and each read() redid
+      // the card's work for nothing.
+      if (prev && !this.loading && this.watched().every(function (id) { return prev.states[id] === hass.states[id]; })) return;
       // Only when what the card shows changed (not at every change in the house).
       if (prev && this.loading && [c.entity, c.fallback_entity, c.speed_entity, c.speed_limit_entity, c.destination, c.announce, c.route_choice, "sun.sun"].every(function (id) { return !id || prev.states[id] === hass.states[id]; })) return;
       this.read();
+    }
+    // Every entity the card's options name (an « x.y » value), and the sun.
+    watched() {
+      if (this.watchList) return this.watchList;
+      var out = ["sun.sun"], walk = (v) => {
+        if (typeof v === "string") { if (/^[a-z_]+\.[a-z0-9_]+$/.test(v) && !/^(https?|app|mdi)/.test(v)) out.push(v); }
+        else if (Array.isArray(v)) v.forEach(walk);
+        else if (v && typeof v === "object") Object.keys(v).forEach((k) => walk(v[k]));
+      };
+      walk(this.config || {});
+      return (this.watchList = out.filter((x, i, a) => a.indexOf(x) === i));
     }
     connectedCallback() { if (this.map && !this.raf) this.raf = requestAnimationFrame(() => this.tick()); if (this.onCmd) window.addEventListener("igor-gps-cmd", this.onCmd); }
     disconnectedCallback() {
@@ -6917,6 +6933,7 @@
       };
       window.addEventListener("igor-gps-cmd", this.onCmd);
       $("layers").addEventListener("click", () => this.openLayers());
+      if (this.config.settings) { var lyb = $("layers"); lyb.dataset.l = "Carte"; lyb.title = "Réglages de la carte"; var lyi = lyb.querySelector("ha-icon"); if (lyi) lyi.setAttribute("icon", "mdi:map-legend"); }
       $("pclose").addEventListener("click", () => { $("panel").hidden = true; });
       // Closed without choosing: a trip under way stays as it was; only a
       // trip asked for and not yet on the road (no route yet) is dropped.
@@ -7031,6 +7048,17 @@
     }
     // The route's layers above the 3D ones (TomTom's buildings and surfaces
     // are custom layers added after Igor's), under the labels that follow.
+    // Frames really drawn per second, in a corner (Réglages → Carte 3D → Performance).
+    fpsMeter(on) {
+      var map = this.map;
+      if (!on) { if (this.fpsEl) { this.fpsEl.remove(); this.fpsEl = null; } if (this.fpsOff) { this.fpsOff(); this.fpsOff = null; } return; }
+      if (this.fpsEl || !map) return;
+      var box = this.fpsEl = document.createElement("div");
+      box.style.cssText = "position:absolute;right:8px;bottom:8px;z-index:20;background:rgba(0,0,0,.6);color:#5cc28f;font:12px monospace;padding:3px 7px;border-radius:4px;pointer-events:none";
+      (this.$("map").parentNode || this.$("map")).appendChild(box);
+      var n = 0, t0 = performance.now(), onR = () => { n++; var t = performance.now(); if (t - t0 >= 1000) { var f = Math.round(n * 1000 / (t - t0)); box.textContent = f + " img/s · cible " + (this.fpsNow || "—"); box.style.color = f >= 25 ? "#5cc28f" : f >= 15 ? "#e5a04c" : "#e0675f"; n = 0; t0 = t; } };
+      map.on("render", onR); this.fpsOff = () => map.off("render", onR);
+    }
     // Where the route lies among the 3D layers (TomTom's buildings and
     // surfaces are custom layers added after Igor's): « noms » (default) just
     // above them, under the labels that follow; « top » over everything;
@@ -7120,6 +7148,7 @@
         if (px && map.setPixelRatio && px !== this.pxNow) { this.pxNow = px; map.setPixelRatio(px); }
       });
       if (this.tt) { this.themeAt = 0; this.themeTick(); }
+      this.fpsMeter(!!Number(L.cpt));
       if (this.dest && (L.md + "|" + L.ms + "|" + L.rc2) !== this.markersKey) { this.markersKey = L.md + "|" + L.ms + "|" + L.rc2; this.drawPlaceMarkers(); }
     }
     tomtom3d(map) {
@@ -7768,7 +7797,7 @@
       var gap = this.rafAt ? now - this.rafAt : 16;
       this.rafAt = now;
       this.rafAvg = this.rafAvg == null ? gap : this.rafAvg + (Math.min(gap, 500) - this.rafAvg) * 0.05;
-      var want = Math.max(5, Math.min(60, Number(this.config.fps) || (this.hq() ? 60 : this.offlineReady ? 8 : 20)));
+      var want = Math.max(5, Math.min(60, Number(this.look && this.look.ips) || Number(this.config.fps) || (this.hq() ? 60 : this.offlineReady ? 8 : 20)));
       if (!this.fpsNow || this.fpsNow > want) this.fpsNow = want;
       if (!this.paceAt) this.paceAt = now;
       if (now - this.paceAt > 5000) {
@@ -9790,6 +9819,12 @@
     // cameras first. A touch on the button opens or closes it; a touch on a
     // line re-draws the map at once and keeps the word.
     openLayers() {
+      // The look shared with the head unit (`settings:`): its window, not the old list of places.
+      if (this.config.settings && this._hass) {
+        if (this.m3win && this.m3win.isConnected) { this.m3win.close(); this.m3win = null; return; }
+        this.m3win = openMap3dWindow(this._hass, this.config.settings);
+        return;
+      }
       var p = this.$("lpanel");
       if (!p) return;
       if (!p.hidden) { p.hidden = true; return; }
@@ -12799,15 +12834,28 @@
   define("igor-telemetry-card", IgorTelemetryCard, "Igor · télémétrie", "Le moteur en courbes : régime, vitesse, charge, turbo, puissance, courbe moteur.");
 
 
+  // The « Carte 3D » window, over the whole screen, from any card (the phone's
+  // map: its « Couches » button): the same window and the same settings as
+  // Réglages → Carte 3D on the head unit — one look for both screens.
+  function openMap3dWindow(hass, id) {
+    var w = document.createElement("igor-settings-card");
+    w.setConfig({ map3d: id, window_only: true });
+    w.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;z-index:2147482000";
+    document.body.appendChild(w);
+    w.hass = hass;
+    w.openMap3d();
+    return w;
+  }
+
   // ----- The 3D map's look, set from the head unit's settings -----
   // One input_text holds it, short: « p=epure;bo=80;fw=none » — the preset,
   // then only what differs from it. The phone's map (igor-gps-card
   // `settings:`) applies it live; igor-settings-card `map3d:` edits it.
   var MAP3D_PRESETS = {
-    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 40, rf: 10, bz: 15, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max" } },
-    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "sol", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max" } },
-    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max" } },
-    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco" } }
+    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 40, rf: 10, bz: 15, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
+    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "sol", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max", ips: 60, cpt: 0 } },
+    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
+    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco", ips: 30, cpt: 0 } }
   };
   // Each setting: key, tab, label, hint, kind (seg | sw | sl), choices or range.
   var MAP3D_ROWS = [
@@ -12844,7 +12892,9 @@
     ["az", "Caméra", "Zoom selon la vitesse", "dézoome sur route rapide", "sw"],
     ["cy", "Caméra", "Voiture à l'écran", "plus bas : plus de route devant", "seg", [["haut", "plus haut"], ["milieu", "au milieu"], ["bas", "plus bas"]]],
     ["fl", "Performance", "Mode fluide", "allège tout seul quand ça rame", "sw"],
-    ["px", "Performance", "Netteté", "", "seg", [["eco", "économe"], ["normale", "normale"], ["max", "maximale"]]]
+    ["px", "Performance", "Netteté", "", "seg", [["eco", "économe"], ["normale", "normale"], ["max", "maximale"]]],
+    ["ips", "Performance", "Images par seconde", "30 : fluide et frais ; 60 : le plus doux, chauffe plus", "seg", [[30, "30"], [45, "45"], [60, "60"]]],
+    ["cpt", "Performance", "Compteur d'images", "affiche les images par seconde en coin de carte", "sw"]
   ];
   // Not in the presets (left to the dashboard until changed here).
   var MAP3D_FREE = { dn: "auto", ne: 3, pi: 60, zm: 17, az: 1, cy: "milieu" };
@@ -12902,6 +12952,12 @@
         ".m3t { display: flex; gap: 6px; padding: 0 14px; flex: none; border-bottom: 1px solid var(--acc, #59d0e0); overflow-x: auto; } .m3tt { padding: 10px 14px; border: 1px solid var(--line); border-bottom: none; background: none; color: var(--dim); font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; } .m3tt.on { color: var(--acc, #59d0e0); border-color: var(--acc, #59d0e0); background: #111418; }",
         ".m3b { flex: 1; min-height: 0; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; align-content: start; padding: 4px 16px 10px; }",
         "@media (max-width: 900px) { .m3b { grid-template-columns: 1fr; } }",
+        // A phone held upright: the window fills the screen, the presets wrap, each
+        // setting has its choices under its name, across the whole width.
+        "@media (max-width: 600px) { .ov { padding-top: 0; } .dl.m3 { width: 100vw; height: 100vh; max-height: 100vh; border: 0; } .m3s { display: none; }" +
+        " .m3p { flex-wrap: wrap; } .m3pp { flex: 1 1 30%; } .m3pp small { display: none; }" +
+        " .m3r { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; } .m3r .sw { justify-self: start; }" +
+        " .m3g { justify-content: flex-start; } .m3g button { flex: 1 1 auto; } .m3l { width: 100%; grid-template-columns: 48px minmax(0, 1fr) 48px; } }",
         ".m3r { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #1a1e24; font-size: 15px; min-height: 52px; } .m3r small { display: block; color: var(--dim); font-size: 11px; margin-top: 3px; }",
         ".m3g { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; } .m3g button { min-height: 40px; padding: 0 11px; border: 1px solid var(--line); background: none; color: var(--dim); font: inherit; font-size: 13px; cursor: pointer; } .m3g button.on { background: #123c44; color: var(--acc, #59d0e0); border-color: var(--acc, #59d0e0); }",
         ".m3l { display: grid; grid-template-columns: 40px 62px 40px; grid-template-rows: auto 18px; align-items: center; gap: 2px 6px; width: 170px; flex: none; } .m3l button { height: 40px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; font-size: 20px; cursor: pointer; } .m3l span { text-align: center; font-size: 14px; }",
@@ -12919,6 +12975,7 @@
         "button.b.close { min-height: 44px; padding: 0 18px; flex-direction: row; }"
       ].join("\n"));
       var card = el("ha-card", "", this.shadowRoot);
+      if (this.config.window_only) { card.style.display = "none"; this.tiles = []; return; }
       if (this.config.title) el("div", "h", card, this.config.title);
       var tiles = el("div", "tiles", card);
       this.tiles = (this.config.groups || []).map((g) => {
@@ -12987,7 +13044,7 @@
     // The 3D map's look: a preset in a touch, then tab by tab. Each change is
     // written at once (the phone follows within a second).
     openMap3d() {
-      this.close();
+      this.close(true);
       var id = this.config.map3d, h = this._hass;
       var ov = this.ov = el("div", "ov", this.shadowRoot), dl = el("div", "dl m3", ov);
       ov.addEventListener("click", (ev) => { if (ev.target === ov) this.close(); });
@@ -13077,7 +13134,10 @@
       });
       this.ovRows.forEach((r) => r.refresh());
     }
-    close() { if (this.ov) { this.ov.remove(); this.ov = null; this.ovRows = null; this.m3 = null; } }
+    close(keep) {
+      if (this.ov) { this.ov.remove(); this.ov = null; this.ovRows = null; this.m3 = null; }
+      if (this.config.window_only && !keep) this.remove();
+    }
   }
 
   // ----- igor-messages-card: the phone's messages (and the call, above them) -----
