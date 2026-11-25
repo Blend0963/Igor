@@ -1,3 +1,16 @@
+## 0.47.1 — Le bloc guidage tient dans son cadre, les favoris sont les vôtres
+
+- `igor-guide-card` (grand format) : plus rien ne déborde en bas — consigne sur une ligne, chiffres resserrés, « +2 min » au lieu de « 2 min de bouchons ».
+- **Plus de vieille flèche** : quand la carte du téléphone tourne sans guider (son signe de vie le dit), l'autoradio n'affiche pas de guidage ; et la carte efface elle-même, au démarrage, une flèche laissée par un trajet précédent.
+- `igor-phone-card` : un favori peut prendre son nom et son numéro dans Home Assistant (`name_entity`, `number`) — réglés sur la page Réglages ; un favori sans numéro n'apparaît pas (fini les exemples).
+- Barre : bandeau « ⚠ hors connexion depuis 10:05 », assez court pour l'écran de l'autoradio.
+
+## 0.47.0 — Corrections après le premier essai en voiture
+
+- `igor-guide-card` : sans destination enregistrée, plus de guidage affiché — une vieille flèche laissée par la carte (« 500 m, tournez à droite », arrivée 00:58) n'apparaît plus ; le bloc propose de chercher une adresse.
+- **La météo dans la barre du haut** (`bar: weather:`), à côté de l'heure, à la place de la ligne défilante : elle ne recouvre plus le pied du bloc guidage.
+- **Carte du téléphone plus fluide** : netteté limitée à 2 pixels par point (le Fold en affiche près de 3), pas de fondu des étiquettes ; et un **mode fluide automatique** — les images par seconde sont comptées, et sous 24 pendant 4 s alors que la carte bouge, la scène s'allège d'un cran (netteté, arbres des bois, relief du sol, arbres de rue, textures) jusqu'à ce que ça redevienne fluide. `fluid: false` pour ne jamais alléger, `pixel_ratio:` pour la netteté.
+
 ## 0.46.0 — Jour et nuit, forêts en relief, relief du terrain
 
 - **Jour et nuit automatiques** (SDK TomTom) : le style clair de conduite le jour, le sombre la nuit (fenêtres éclairées). Comme un GPS de voiture, la nuit commence dès que le soleil est bas : sous 3° au-dessus de l'horizon (`elevation` de `sun.sun`, réglable avec `night_elevation`), le jour revient un degré plus haut pour ne pas basculer sans cesse au seuil. La bascule se fait sans recharger la page ; le tracé, la trace et les arbres reviennent avec le nouveau style. `sdk_theme: day` ou `night` pour en garder un.
