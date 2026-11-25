@@ -5518,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.53.0";
+  var GPS_CARD_VERSION = "0.53.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7662,17 +7662,25 @@
     maneuverData(R, along) {
       var feats = [], heads = [];
       if (R && R.steps && R.cum && along != null) {
+        // Cut from the very line the route is drawn with (its smoothed
+        // bends), so the arrow lies exactly on it and turns as it turns.
+        var sm = R.smooth || (R.smooth = gpsSmoothed(R.coords));
+        if (!R.smCum || R.smCum.length !== sm.length) { R.smCum = [0]; for (var i = 1; i < sm.length; i++) R.smCum.push(R.smCum[i - 1] + gpsDist(sm[i - 1], sm[i])); }
+        var cum = R.smCum, total = cum[cum.length - 1];
         var plain = /navigation-variant|flag|arrow-up$|ferry/;
-        R.steps.filter((s) => s.at > along + 2 && s.at - along < 2000 && !plain.test(s.icon || "")).slice(0, 2).forEach((s) => {
-          var round = /rotate/.test(s.icon || ""), a = Math.max(along + 2, s.at - 32), b = Math.min(R.total, s.at + (round ? 48 : 24));
-          var line = gpsSlice(R.coords, R.cum, a, b);
-          if (line.length < 2 || b - s.at < 6) return;
-          var tip = line[line.length - 1], k = line.length - 2;
-          while (k > 0 && gpsDist(line[k], tip) < 3) k--;
-          // The shaft stops under the head; the head points where the way goes.
-          var brg = gpsBearing(line[k], tip);
-          feats.push({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: gpsSlice(R.coords, R.cum, a, b - 3) } });
-          heads.push({ type: "Feature", properties: { brg: brg }, geometry: { type: "Point", coordinates: tip } });
+        R.steps.filter((x) => x.at > along + 2 && x.at - along < 2000 && !plain.test(x.icon || "")).slice(0, 2).forEach((x, n, list) => {
+          if (x.atS == null) { var o = gpsOnLine(x.loc || R.coords[0], sm); x.atS = o ? cum[o.seg - 1] + gpsDist(sm[o.seg - 1], o.point) : x.at; }
+          var shift = x.atS - x.at, round = /rotate/.test(x.icon || "");
+          var after = round ? 46 : 26, nx = R.steps[R.steps.indexOf(x) + 1];
+          // Never past the next turn: the arrow says this one only.
+          if (nx && nx.at - x.at - 6 < after) after = Math.max(10, nx.at - x.at - 6);
+          var a = Math.max(along + shift + 4, x.atS - 34), b = Math.min(total, x.atS + after);
+          if (b - a < 14) return;
+          var line = gpsSlice(sm, cum, a, b);
+          if (line.length < 2) return;
+          var tip = line[line.length - 1], back = gpsSlice(sm, cum, b - 5, b)[0] || line[line.length - 2];
+          feats.push({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: line } });
+          heads.push({ type: "Feature", properties: { brg: gpsBearing(back, tip) }, geometry: { type: "Point", coordinates: tip } });
         });
       }
       return { type: "FeatureCollection", features: feats.concat(heads) };
@@ -7681,44 +7689,61 @@
       var map = this.map, src = map && map.getSource && map.getSource("maneuvers");
       if (!src) return;
       var key = R && R.steps ? R.steps.filter((s) => s.at > along + 2 && s.at - along < 2000).slice(0, 2).map((s) => s.at).join() + "|" + (R.total || 0) : "";
-      // Drawn again only when the turns shown change (not at every fix).
+      // Drawn again when the turns shown change, and as the car comes onto
+      // the arrow's tail (it shortens with the way left before the turn).
+      var near = R && R.steps ? R.steps.some((s) => s.at > along && s.at - along < 40) : false;
+      if (near) key += "|" + Math.round(along / 4);
       if (key === this.manKey) return;
       this.manKey = key;
       src.setData(this.maneuverData(R, along));
     }
-    // The arrows' widths from the route's: the shaft about two thirds of it.
+    // The arrow's head: white, edged in the route's own edge colour, its
+    // corners rounded as the line's are. Its base sits on the point (anchor
+    // « bottom »); where the shaft enters it, no edge.
+    manHead(edge) {
+      var c = document.createElement("canvas"); c.width = c.height = 128;
+      var g = c.getContext("2d");
+      g.lineJoin = "round"; g.lineCap = "round";
+      var tri = () => { g.beginPath(); g.moveTo(64, 8); g.lineTo(121, 120); g.lineTo(7, 120); g.closePath(); };
+      tri(); g.lineWidth = 10; g.strokeStyle = edge || "#0b3f86"; g.stroke();
+      tri(); g.fillStyle = "#ffffff"; g.fill();
+      // The shaft's mouth: as wide as the white line (0.86 of the edge, the
+      // base being two edges wide).
+      var w = 114 * 0.86 / 2;
+      g.fillRect(64 - w / 2, 108, w, 20);
+      return g.getImageData(0, 0, 128, 128);
+    }
+    // The arrow is the route itself turned white: the same width, the same
+    // edge (route-case's), round ends and bends — only the head is added.
     maneuverLook() {
       var map = this.map;
       if (!map || !map.getLayer || !map.getLayer("man")) return;
-      var L = this.look || {}, k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1;
-      var shaft = L.rw === "chaussee" ? this.metersWidth(5, 3) : GPS_ROUTE_W.map((v, i) => i >= 4 && i % 2 === 0 ? Math.round(v * k * 0.7 * 100) / 100 : v);
+      var L = this.look || {}, k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1, real = L.rw === "chaussee";
       var times = (x, f) => x.map((v, i) => i >= 4 && i % 2 === 0 ? Math.round(v * f * 100) / 100 : v);
+      var line = real ? this.metersWidth(9 * 0.86, 2.5) : times(GPS_ROUTE_W, k), edge = real ? this.metersWidth(9, 2) : times(GPS_CASE_W, k);
+      var pal = this.routePal();
       try {
-        map.setPaintProperty("man", "line-width", shaft);
-        map.setPaintProperty("man-case", "line-width", times(shaft, 1.5));
-        // The head image is 32 px wide at size 1: about three shafts wide.
-        map.setLayoutProperty("man-head", "icon-size", times(shaft, 4.2 / 32));
+        map.setPaintProperty("man", "line-width", line);
+        map.setPaintProperty("man-case", "line-width", edge);
+        map.setPaintProperty("man-case", "line-color", pal["route-case"]);
+        // The head 29 px wide at size 1: a bit more than twice the edge.
+        map.setLayoutProperty("man-head", "icon-size", times(edge, 2.3 / 29));
+        if (this.manEdge !== pal["route-case"]) { this.manEdge = pal["route-case"]; map.updateImage("igor-man-head", this.manHead(this.manEdge)); }
       } catch (e) { /* as it was */ }
     }
     maneuverLayers(map) {
       if (!map || map.getSource("maneuvers")) return;
-      if (!map.hasImage("igor-man-head")) {
-        var c = document.createElement("canvas"); c.width = c.height = 64;
-        var g = c.getContext("2d");
-        g.beginPath(); g.moveTo(32, 3); g.lineTo(61, 52); g.lineTo(32, 42); g.lineTo(3, 52); g.closePath();
-        g.lineJoin = "round"; g.lineWidth = 5; g.strokeStyle = "rgba(10,30,60,0.75)"; g.stroke();
-        g.fillStyle = "#ffffff"; g.fill();
-        map.addImage("igor-man-head", g.getImageData(0, 0, 64, 64), { pixelRatio: 2 });
-      }
+      this.manEdge = this.routePal()["route-case"];
+      if (!map.hasImage("igor-man-head")) map.addImage("igor-man-head", this.manHead(this.manEdge), { pixelRatio: 4 });
       map.addSource("maneuvers", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      var lines = ["==", ["geometry-type"], "LineString"];
-      map.addLayer({ id: "man-case", type: "line", source: "maneuvers", minzoom: 12, filter: lines, layout: { "line-cap": "butt", "line-join": "round" },
-        paint: { "line-color": "#0a1e3c", "line-opacity": 0.45, "line-width": 6 } });
-      map.addLayer({ id: "man", type: "line", source: "maneuvers", minzoom: 12, filter: lines, layout: { "line-cap": "butt", "line-join": "round" },
-        paint: { "line-color": "#ffffff", "line-width": 4 } });
+      var lines = ["==", ["geometry-type"], "LineString"], round = { "line-cap": "round", "line-join": "round" };
+      map.addLayer({ id: "man-case", type: "line", source: "maneuvers", minzoom: 12, filter: lines, layout: round,
+        paint: { "line-color": "#0b3f86", "line-width": GPS_CASE_W } });
+      map.addLayer({ id: "man", type: "line", source: "maneuvers", minzoom: 12, filter: lines, layout: round,
+        paint: { "line-color": "#ffffff", "line-width": GPS_ROUTE_W } });
       map.addLayer({ id: "man-head", type: "symbol", source: "maneuvers", minzoom: 12, filter: ["==", ["geometry-type"], "Point"],
-        layout: { "icon-image": "igor-man-head", "icon-rotate": ["get", "brg"], "icon-rotation-alignment": "map", "icon-pitch-alignment": "map",
-          "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-size": 0.4 } });
+        layout: { "icon-image": "igor-man-head", "icon-anchor": "bottom", "icon-rotate": ["get", "brg"], "icon-rotation-alignment": "map", "icon-pitch-alignment": "map",
+          "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-size": 0.5 } });
       this.manKey = null;
       this.maneuverLook();
     }

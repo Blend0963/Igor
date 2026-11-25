@@ -1,3 +1,7 @@
+## 0.53.1 — Les flèches font partie du tracé
+
+- Flèches de manœuvre : découpées dans la ligne même de la route (ses virages lissés), elles en ont exactement la largeur, le liseré (couleur du bord de la route) et les bouts arrondis — la route qui devient blanche au virage, plus un trait posé dessus. La pointe a le même liseré, coins arrondis, sans trait à la jonction. Une flèche s'arrête avant le virage suivant, et sa queue raccourcit à mesure que la voiture arrive dessus.
+
 ## 0.53.0 — Flèches sur la route, chemin parcouru, route vue à travers les bâtiments
 
 - `igor-gps-card` : **flèches blanches sur le tracé** aux deux prochains virages (moins de 2 km), comme sur TomTom : la route avant le virage, la route après et une pointe dans le sens du départ (plus longue aux ronds-points). Une flèche disparaît dès que la voiture a passé le virage ; les « tout droit », départs et arrivées n'en ont pas. Leur largeur suit l'épaisseur de la route (« la chaussée » comprise).
