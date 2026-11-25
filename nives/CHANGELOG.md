@@ -1,3 +1,7 @@
+## 0.52.3 — Les commandes vers Tasker passent par la voie directe, sans rien réécrire à la main
+
+- **`nives.tasker_convert`** (administrateurs) : recense dans `automations.yaml` et `scripts.yaml` chaque étape qui envoie une commande à Tasker par `notify.ha_command` (Telegram) — aussi dans les « choisir », « si / alors / sinon », « répéter » — et la remplace par `script.tasker_envoyer` avec **le même message** : la voie directe d'abord (intent Android, accusé de réception), Telegram en secours. Par défaut elle ne fait que lister (`dry_run`). Pour de bon : une copie de chaque fichier d'abord (`….avant-tasker-AAAAMMJJ-HHMMSS`), puis les automatisations et les scripts rechargés. Une étape qui envoie aussi à d'autres entités n'est pas touchée, seulement nommée ; les autres fichiers YAML (paquets) qui citent l'entité sont listés, à changer à la main.
+
 ## 0.52.2 — Des repères d'arrivée et d'étape au choix
 
 - `igor-gps-card` : cinq styles pour l'arrivée et pour les étapes, chacun réglable à part (Réglages → Carte 3D → Route & noms, ou `marker_dest` / `marker_stop`) — **épingle** (blanche, fin damier au cœur), **balise** (un faisceau de lumière qui monte, un anneau au sol), **anneau au sol** (couché sur la route), **damier** (carré noir et blanc aux coins arrondis), **drapeau** (l'ancien). L'arrivée porte une étiquette « Tours · 18:42 » tenue à jour ; les étapes sont numérotées, de la couleur « après l'étape ». Les préréglages : balise pour l'arrivée, épingle pour les étapes.
