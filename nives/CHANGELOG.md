@@ -1,3 +1,28 @@
+## 0.50.3 — La frise allégée : seulement le prix des stations
+
+- `igor-drive-card`, frise des 30 prochains km : plus de noms ni de distances sous les points (« Total Access », « ralenti », « +4 min », vitesse du radar, arrivée) — illisibles dès que les points se serraient. Seul le prix des stations reste écrit ; deux prix trop proches : le second s'efface, sa pastille reste. L'heure d'arrivée et la distance restent en tête de la frise.
+
+## 0.50.2 — Le trajet sans conso moyenne en tête, le turbo calculé si besoin
+
+- `igor-drive-card`, vue trajet : la conso moyenne est retirée de l'en-tête (distance, coût, éco) — elle doublait la consommation en direct juste en dessous, et son « L/100 » débordait sur la case voisine.
+- `igor-drive-card` `map:` : sans capteur de turbo (`boost`), la pression du turbo est calculée depuis la pression absolue d'admission (kPa − 101,3) ; jamais affichée sous zéro.
+
+## 0.50.1 — La vue moteur seulement pied au plancher, le rapport à côté de la vitesse
+
+- `igor-drive-card` : la vue moteur ne s'ouvre plus sur un coup de gaz à l'arrêt, un démarrage vif ou une accélération franche. Il faut rouler (plus de 15 km/h), la charge moteur au plancher (85 % ou plus) les trois quarts des 3 dernières secondes — un passage de rapport ne l'interrompt pas — et la voiture qui prend au moins 2 m/s² (deux fois un démarrage ordinaire). Sans capteur de charge, une accélération plus forte encore. Réglable : `tune: { load_on, accel_on, window_s, min_kmh, boost_on }`.
+- `igor-car-card` `gear:` et `advice:` : le rapport engagé dans une case à côté de la vitesse ; quand il faut changer, elle clignote — ▲5 en vert (« passez la 5e »), ▼3 en orange (« rétrogradez »).
+
+## 0.50.0 — La carte 3D se règle depuis l'autoradio
+
+- **`igor-settings-card` `map3d:`** : une tuile « Carte 3D » ouvre une grande fenêtre — 4 préréglages (Épuré, Réaliste, Lisible, Économie) et six onglets : Bâtiments (affichés, opacité, fenêtres, fenêtres allumées la nuit, couleur des murs, ombres, reflets, zoom d'apparition), Route et noms (place de la route : au sol, sous les noms ou par-dessus tout ; épaisseur, couleur, halo, trajet parcouru, bouchons en dégradé, en traits ou masqués, noms cachés par les bâtiments, taille des noms, lieux TomTom), Sol et nature (sol texturé, arbres des bois, arbres de rue, vent, relief, ombrage), Lumière (jour/nuit, seuil du soleil), Caméra (inclinaison, zoom, zoom selon la vitesse, place de la voiture), Performance (mode fluide, netteté). Chaque changement est enregistré dans un `input_text` (le préréglage, puis seulement ce qui en diffère).
+- **`igor-gps-card` `settings:`** : la carte suit cet `input_text` et applique chaque changement en direct, sans recharger. Sans `settings`, rien ne change.
+
+## 0.49.4 — La route toujours au-dessus du sol, des bouchons en dégradé, des bâtiments plus sobres
+
+- **Bouchons en dégradé** (`igor-gps-card`) : la route elle-même passe du bleu à l'orange (ralenti) ou au rouge (bouchon) sur environ 200 m, puis revient au bleu — le halo lumineux, le liseré et le filet clair prennent la même couleur. Deux bouchons proches s'enchaînent sans repasser par le bleu. Si le moteur de carte refusait le dégradé, les bouchons reviennent tracés à part comme avant. `jam_gradient: false` : l'ancien tracé.
+- `igor-gps-card` (`basemap: tomtom-3d` avec le SDK) : la route était dessinée sous le sol texturé et les bâtiments du SDK de TomTom, ajoutés après elle — elle disparaissait presque entièrement. Elle passe désormais au-dessus d'eux (et sous les noms de rues), y compris après chaque changement jour/nuit.
+- Bâtiments plus sobres, comme dans la navigation de TomTom : façades lisses, sans fenêtres (`buildings_windows: true` pour les retrouver), et légèrement transparents (`buildings_opacity`, 0.85 par défaut) pour deviner la route derrière eux. `sdk_buildings` règle toujours n'importe quel autre réglage des bâtiments de TomTom.
+
 ## 0.49.3 — La réparation des capteurs en double fonctionne
 
 - **`nives.car_fix_duplicates` répondait « Unknown error »** : l'action appelait sa fonction à travers l'objet de guidage au lieu du module. Corrigé, et un test vérifie désormais chaque appel de ce genre.
