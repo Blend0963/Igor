@@ -1,3 +1,11 @@
+## 0.52.0 — Télémétrie, maximums, départ lancé, défauts ignorés
+
+- **`igor-telemetry-card`** (nouvelle) : le moteur comme un ingénieur piste. En haut, huit valeurs en direct (régime, vitesse et rapport, charge, turbo, débit d'air, puissance et couple estimés, rampe) ; au centre, toutes les courbes sur la dernière minute, sur le même axe de temps, passages de rapport en pointillés — remplies dès l'ouverture par l'historique de Home Assistant ; à droite, la courbe puissance / couple de votre moteur, construite seule à chaque pied au plancher (débit d'air → carburant → puissance, une estimation), sur la courbe d'usine en pointillés (`power_max`, `power_rpm`, `torque_max`, `torque_rpm`) ; en bas, chronos, températures, turbo, batterie, lambda, rampe. Sur 1024 × 600, la rangée du bas laisse sa place aux courbes.
+- `igor-drive-card`, vue accélération : un **trait rouge au maximum** du compte-tours, du turbo, de la charge et de l'accélération, avec « max … » — il reste 5 s puis redescend doucement (`tune.hold_peak_s`). **Départ lancé** : chrono du point le plus lent avant la reprise (péage, rond-point) jusqu'à 100 km/h, en direct puis gardé ; depuis l'arrêt, c'est le 0 → 100.
+- `igor-car-card`, rapport : le chiffre à droite dans sa propre case, le conseil au-dessus — vert « ▲ passez la 4e », orange « ▼ rétro. en 3e » (« ▲ la 4e » sur une colonne étroite) ; plus rien de coupé à 1024 px.
+- `igor-diag-card` `ignored:` : « Ignorer ce code » range un défaut connu dans « connus · ignorés », en petit, avec sa date ; il ne met plus le moteur en rouge ; un nouveau code s'affiche en grand comme avant. Plusieurs défauts : la liste défile dans son cadre, un toucher en choisit un.
+- `igor-messages-card` : tous les messages, qui défilent dans leur cadre (la page ne bouge pas).
+
 ## 0.51.0 — Plus de boutons radar / moteur / conso
 
 - `igor-drive-card` : les boutons sous la vue du centre sont retirés — la vue change d'elle-même (radar à l'approche, moteur pied au plancher, sinon le trajet). `tabs: true` les remet.
