@@ -1,3 +1,7 @@
+## 0.50.9 — L'échéancier : toutes les pastilles sur la barre
+
+- `igor-schedule-card` : deux échéances proches ne font plus monter une pastille au-dessus de la barre — elles s'écartent un peu, dans l'ordre, sur la barre. Les repères en kilomètres (« +42 400 km ») sont retirés : l'échelle donne plus de place à ce qui vient bientôt, un chiffre au milieu trompait ; les cases donnent les kilomètres exacts.
+
 ## 0.50.8 — Un échéancier plus net
 
 - `igor-schedule-card` : une barre plus épaisse avec des pastilles numérotées dans l'ordre des échéances (deux trop proches : la suivante se dresse sur une petite tige), des repères « aujourd'hui », « +48 400 km », « +193 500 km » ; en dessous, une case par entretien, dans le même ordre, sa couleur d'état en haut — plus aucune étiquette écrite sur une autre.
