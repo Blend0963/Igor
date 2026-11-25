@@ -5429,7 +5429,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.48.1";
+  var GPS_CARD_VERSION = "0.48.2";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -11174,7 +11174,7 @@
         ".bar { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; height: 100%; min-height: 64px; }",
         ".bar button.b { flex-direction: column; gap: 4px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; --mdc-icon-size: 24px; min-height: 0; min-width: 0; height: 100%; padding: 4px 2px; overflow: hidden; } .bar button.b span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
         ":host(.narrow) .bar button.b span { display: none; } :host(.narrow) .bar button.b { --mdc-icon-size: 26px; }",
-        ".bar button.b:disabled { opacity: 1; cursor: default; background: var(--card); border-color: var(--line); color: var(--faint); } .bar button.b:disabled ha-icon { color: var(--faint); opacity: .55; } .bar button.b:disabled span { opacity: .55; }",
+        ".bar button.b, .bar button.b:disabled { background: #111418; } .bar button.b:disabled { opacity: 1; cursor: default; border-color: var(--line); color: var(--faint); } .bar button.b:disabled ha-icon { color: var(--faint); opacity: .55; } .bar button.b:disabled span { opacity: .55; }",
         ".bar button.waze { border-color: #59d0e0; color: #59d0e0; } .bar button.waze ha-icon { color: #59d0e0; }",
         ".bar button.red { border-color: " + CAR_BAD + "; color: " + CAR_BAD + "; } .bar button.red ha-icon { color: " + CAR_BAD + "; }",
         ".bar button.on { border-color: var(--acc); color: var(--acc); }",
