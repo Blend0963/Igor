@@ -4931,6 +4931,8 @@
   //   battery: sensor.car_battery        # V: red under 11.8, amber under 12.4, red over 15
   //   limit: sensor.speed_limit          # the limit sign beside the speed, the speed green / amber / red by it
   //   online: binary_sensor.car_online   # off: « hors ligne », the figures greyed
+  //   ahead: input_text.car_ahead        # the phone map's publish_ahead: the road's limit as its own sign shows it (fresher than `limit`)
+  //   limit_from: device_tracker.car     # neither gives one: asked by position (TomTom, Igor's key), every 20 s or 200 m
   //   gear: sensor.car_gear              # the gear engaged (1…6, N), in a box beside the speed
   //   advice: sensor.car_shift_advice    # « Passez la 5e » / « Rétrogradez en 3e »: the box turns to ▲5 (green) / ▼3 (amber)
   //   trip: { entity: sensor.car_trip, attribute: trajet }   # its distance_km and eco_score
@@ -4984,6 +4986,8 @@
         ".gb.up { border-color: var(--okc); color: var(--okc); animation: gbp 1.2s ease-in-out infinite; } .gb.dn { border-color: var(--wait); color: var(--wait); animation: gbp 1.2s ease-in-out infinite; } .gb.up span, .gb.dn span { color: inherit; }",
         "@keyframes gbp { 50% { opacity: .55; } }",
         ".gb + span { margin-left: 8px !important; }",
+        ".lsign { background: #fff; color: #111; } .lsign.over { color: #e5323b; } .lsign.far { background: #e5323b; color: #fff; border-color: #fff !important; animation: gbp 1s ease-in-out infinite; }",
+        "@media (max-height: 660px) { .lsign { width: 50px !important; height: 50px !important; border-width: 5px !important; font-size: 20px !important; } }",
         "@media (max-height: 660px) { .gb { height: 50px; width: 46px; } .gb b { font-size: 22px; } }",
         // A small screen (a head unit of 600 px or so): the same, tighter, so the guidance below keeps its room.
         "@media (max-height: 660px) { .sp { font-size: 46px; margin-top: 4px; } .seg { margin: 8px 0 3px; height: 12px; } .mini { margin-top: 6px; gap: 8px; } .mini div { padding-top: 3px; } .mini b { font-size: 18px; } }"
@@ -5058,6 +5062,25 @@
         if (isFinite(p) && p >= 30) el("span", "rain", cell, p + " %");
       });
     }
+    // The road's limit: the phone map's sign (fresh), the `limit` sensor, or
+    // asked by position (nives.car_limit, TomTom) — the last answer kept.
+    limitNow(hass) {
+      var c = this.config, a = c.ahead && hass.states[c.ahead], p = a ? String(a.state || "").split("|") : [];
+      if (p.length >= 6 && Date.now() - Number(p[0]) < 20000 && Number(p[5]) > 0) return Number(p[5]);
+      var l = c.limit ? num(hass.states[c.limit]) : null;
+      if (l != null && l > 0) return l;
+      var tr = c.limit_from && hass.states[c.limit_from], at = tr && tr.attributes;
+      if (!at || typeof at.latitude !== "number" || !hass.callWS) return this.askedLimit && Date.now() - this.askedLimit.t < 120000 ? this.askedLimit.v : null;
+      var here = [at.longitude, at.latitude], t = Date.now(), q = this.limitAsk;
+      if (!this.limitBusy && (!q || t - q.t > 20000 || gpsDist(q.p, here) > 200)) {
+        this.limitBusy = true; this.limitAsk = { t: t, p: here };
+        var head = Number(at.course != null ? at.course : at.bearing);
+        hass.callWS({ type: "call_service", domain: "nives", service: "car_limit", return_response: true, service_data: Object.assign({ latitude: at.latitude, longitude: at.longitude }, isFinite(head) ? { heading: Math.round(head) % 360 } : {}) })
+          .then((res) => { var v = Number(res && res.response && res.response.limit) || 0; this.askedLimit = v > 0 ? { v: v, t: Date.now() } : null; this.spText = null; })
+          .catch(() => {}).then(() => { this.limitBusy = false; });
+      }
+      return this.askedLimit && t - this.askedLimit.t < 120000 ? this.askedLimit.v : null;
+    }
     update(hass, prev) {
       var c = this.config, S = (id) => (id ? hass.states[id] : null);
       this.subscribeWeather(hass);
@@ -5066,7 +5089,7 @@
       var tr0 = c.trip ? (typeof c.trip === "string" ? { entity: c.trip } : c.trip) : null;
       var now = Date.now();
       if (changed(prev, hass, [c.weather, c.outside].filter(Boolean)) || now - (this.wxAt || 0) > 300000) { this.wxAt = now; this.drawWeather(); }
-      var gauges = changed(prev, hass, [c.online, c.speed, c.rpm, c.coolant, c.battery, c.limit, c.gear, c.advice].filter(Boolean));
+      var gauges = changed(prev, hass, [c.online, c.speed, c.rpm, c.coolant, c.battery, c.limit, c.gear, c.advice, c.ahead, c.limit_from].filter(Boolean));
       var trip = changed(prev, hass, [c.online, tr0 && tr0.entity, c.active, c.consumption].filter(Boolean));
       if (!gauges && !trip) return;
       var on = !c.online || (S(c.online) && S(c.online).state === "on");
@@ -5075,7 +5098,7 @@
       var v = on ? num(S(c.speed)) : null, vt = v == null ? "—" : String(Math.round(v));
       // limit: the road's limit beside the speed, and the speed coloured by it
       // (green at or under, amber up to 5 km/h over, red beyond).
-      var lim = c.limit ? num(S(c.limit)) : null;
+      var lim = this.limitNow(hass);
       // The gear, and the advice: « Passez la 5e » → ▲5, « Rétrogradez en 3e » → ▼3.
       var gs = on && c.gear && S(c.gear) ? String(S(c.gear).state) : "", gear = /^[1-6N]$/.test(gs) ? gs : "";
       var ad = on && c.advice && S(c.advice) ? String(S(c.advice).state) : "", am = /(\d)/.exec(ad);
@@ -5094,8 +5117,11 @@
           el("span", "", gb, dir === "up" ? "passez" : dir === "dn" ? "rétro" : "rapport");
         }
         if (lim != null) {
-          var sgn = el("span", "", this.sp, String(Math.round(lim)));
-          sgn.style.cssText = "margin-left:auto;width:62px;height:62px;border-radius:50%;background:#fff;border:6px solid #e5323b;color:#111;display:grid;place-items:center;font-size:24px;font-weight:700;box-sizing:border-box;letter-spacing:0;flex:none";
+          // The road sign: white, red ring. Over the limit, its figure turns
+          // red; more than 5 km/h over, the whole sign turns red and pulses.
+          var over = v != null ? v - lim : -1;
+          var sgn = el("span", "lsign" + (over > 5 ? " far" : over > 0 ? " over" : ""), this.sp, String(Math.round(lim)));
+          sgn.style.cssText = "margin-left:auto;width:62px;height:62px;border-radius:50%;border:6px solid #e5323b;display:grid;place-items:center;font-size:24px;font-weight:700;box-sizing:border-box;letter-spacing:0;flex:none";
         }
       }
       var rpm = on ? num(S(c.rpm)) : null;
@@ -5467,7 +5493,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.50.3";
+  var GPS_CARD_VERSION = "0.50.5";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -9275,8 +9301,15 @@
         (R.tolls || []).forEach((sp) => [sp[0], sp[1]].forEach((ix) => { var a = R.cum[Math.min(ix, R.cum.length - 1)]; if (a > here - 1500) ev.push(["p", a - here, "péage"]); }));
       }
       ev.sort((a, b) => a[1] - b[1]);
-      var evs = ev.slice(0, 6).map((x) => [x[0], Math.round(x[1]), String(x[2]).replace(/[~;|]/g, " ").slice(0, 18)].concat(x.length > 3 ? [x[3], x[4]] : []).join("~")).join(";");
-      var body = [guided ? 1 : 0, Math.round(left), cam, evs].join("|");
+      var evl = ev.slice(0, 6).map((x) => [x[0], Math.round(x[1]), String(x[2]).replace(/[~;|]/g, " ").slice(0, 18)].concat(x.length > 3 ? [x[3], x[4]] : []).join("~"));
+      // After the events: the limit of the road the car is on, and its name
+      // (the head unit's speed sign and street plate). Events give way first
+      // when it is all too long for the input_text.
+      var lim = this.lastLimit && isFinite(this.lastLimit.v) && this.lastLimit.v > 0 ? Math.round(this.lastLimit.v) : "";
+      var rn = this.roadName, street = rn ? String(rn.name || rn.refs.join(" ")).replace(/[~;|]/g, " ").slice(0, 40) : "";
+      var tail = "|" + lim + "|" + street, head0 = [guided ? 1 : 0, Math.round(left), cam].join("|") + "|";
+      while (evl.length && (String(Date.now()) + "|" + head0 + evl.join(";") + tail).length > 250) evl.pop();
+      var body = head0 + evl.join(";") + tail;
       // Not guiding: an arrow left by an earlier trip is wiped once, so the head unit shows none.
       if (!guided && !this.turnWiped && this.config.publish_turn) { this.turnWiped = true; this.turnSent = ""; this._hass.callService("input_text", "set_value", { entity_id: this.config.publish_turn, value: "" }).catch(() => { this.turnWiped = false; }); }
       if (guided) this.turnWiped = false;
@@ -11163,6 +11196,7 @@
   //   mute: input_boolean.car_voice_off    # on: nothing said (the Voix button)
   //   phone: binary_sensor.phone_in_car    # absent: no route offered (Chercher, Maison, Stations, Étape greyed); the block shows where the car is:
   //   address: sensor.headunit_geocoded_location   # the street and the town
+  //   announcements: input_boolean.car_announcements # off: Igor says nothing of its own here (« le téléphone ne guide plus… », the house's announcements); the turns still follow `mute`
   //   ahead: input_text.car_ahead          # the map's heartbeat (its publish_ahead): silent 20 s while guided → « guidage interrompu », Waze offered
   //   relay: device_tracker.headunit       # … or the head unit takes the trip over itself (mode dégradé), on its own GPS
   //   relay_speed: sensor.car_speed        # km/h (OBD): the car carried on between two fixes
@@ -11363,6 +11397,24 @@
       this.npTown.textContent = town;
       this.drawWx();
     }
+    // The plate under the guidance: the street from the phone map (fresh),
+    // else from the head unit's geocoded location; the town from the latter.
+    drawPlate() {
+      var pl = this.gPlate, c = this.config, h = this._hass;
+      if (!pl || !h) return;
+      var a = c.ahead && h.states[c.ahead], p = a ? String(a.state || "").split("|") : [];
+      var street = p.length >= 7 && Date.now() - Number(p[0]) < 20000 ? p[6] : "";
+      var ad = c.address && h.states[c.address], at = (ad && ad.attributes) || {}, full = ad && !/^(unknown|unavailable)$/.test(ad.state) ? String(ad.state) : "";
+      if (!street) street = at.thoroughfare || at.Thoroughfare || (full ? full.split(",")[0].trim() : "");
+      var town = at.locality || at.Locality || (full ? (full.split(",")[1] || "").trim().replace(/^\d{5}\s*/, "") : "");
+      var key = street + "|" + town + "|" + (this.guide && this.guide.clientHeight);
+      if (key === this.plateKey) return;
+      this.plateKey = key;
+      this.gPlateN.textContent = street; this.gPlateT.textContent = town;
+      pl.hidden = !street;
+      // No room (the block already full): it goes.
+      if (street) requestAnimationFrame(() => { if (this.guide && this.guide.scrollHeight > this.guide.clientHeight + 1) pl.hidden = true; });
+    }
     guided() { var st = this.config.entity && this._hass && this._hass.states[this.config.entity]; return !!(st && st.state && st.state !== "unknown" && st.state !== "unavailable"); }
     build() {
       this.style(CAR_HEAD + "\n" + [
@@ -11377,6 +11429,10 @@
         ".row { display: flex; gap: 6px; } .row button.b { flex: 1; min-height: 38px; flex-direction: row; gap: 8px; --mdc-icon-size: 18px; }",
         "button.go { border-color: var(--acc); color: var(--acc); } button.go ha-icon { color: var(--acc); }",
         "button.stop { flex: none !important; padding: 6px 12px; }",
+        // The street plate: French blue, a thin white border inside.
+        ".plate { display: flex; align-items: center; gap: 10px; margin-top: 10px; min-width: 0; flex: none; } .plate[hidden] { display: none; }",
+        ".plate .pn { background: #1d4b9b; color: #fff; padding: 5px 12px; border-radius: 4px; box-shadow: inset 0 0 0 2px #1d4b9b, inset 0 0 0 3px #fff; font-size: 16px; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 75%; }",
+        ".plate .pt { font-size: 13px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }",
         // big: the head unit's guidance column (remote), the turn in large
         ":host([big]) ha-card { overflow: hidden; } :host([big]) .turn { grid-template-columns: 70px minmax(0, 1fr); gap: 8px; --mdc-icon-size: 66px; } :host([big]) .dist { font-size: 40px; } :host([big]) .tx { font-size: 17px; } :host([big]) .then { font-size: 12px; margin-top: 3px; }",
         ":host([big].short) .turn { grid-template-columns: 52px minmax(0, 1fr); --mdc-icon-size: 48px; } :host([big].short) .dist { font-size: 32px; } :host([big].short) .then { display: none; } :host([big].short) .grid > div:nth-child(n+3) { display: none; } :host([big].short) .grid b { font-size: 20px; }",
@@ -11480,6 +11536,10 @@
         var gr = el("div", "grid", this.guide);
         var cell = (lab, cls) => { var d = el("div", "", gr); el("span", "", d, lab); return el("b", cls || "", d); };
         this.gEta = cell("arrivée"); this.gLeft = cell("reste", "s"); this.gJam = cell("trafic", "s"); this.gDest = cell("destination", "s");
+        // The street the car is on, as its plate (and the town), when the
+        // block has room for it; none, it simply is not shown.
+        this.gPlate = el("div", "plate", this.guide); this.gPlate.hidden = true;
+        this.gPlateN = el("span", "pn", this.gPlate); this.gPlateT = el("span", "pt", this.gPlate);
       } else {
         var e = el("div", "eta", this.guide);
         this.gEta = el("b", "", e); this.gLeft = el("span", "", e);
@@ -11672,6 +11732,7 @@
       var dKey = away + "|" + (c.destination && h.states[c.destination] ? h.states[c.destination].state : "");
       if (this.remote() && this.noPhone && dKey !== this.wasAway) { this.wasAway = dKey; this.show(this.lastTurn ? this.turnObj : null); }
       if (this.noPhone && !this.noPhone.hidden) this.drawPlace();
+      this.drawPlate();
       // A destination chosen here, and no guidance back: the map that
       // computes the route (the phone's) is not running. Said, not silent.
       if (this.remote() && this.idle && c.destination) {
@@ -11740,9 +11801,12 @@
       if (Date.now() - (Date.parse(st.last_changed) || 0) > 30000) return;
       var parts = String(st.state).split("|"), text = parts.length >= 3 ? parts.slice(2).join("|") : parts.slice(1).join("|") || parts[0];
       var off = this.config.mute && this._hass.states[this.config.mute] && this._hass.states[this.config.mute].state === "on";
+      if (key === "announceSeen" && !this.announcing()) return;
       if (off || !text.trim()) return;
       this.speak(text.trim());
     }
+    // Igor's own announcements allowed (Réglages → Notifications → Annonces vocales).
+    announcing() { var a = this.config.announcements, st = a && this._hass && this._hass.states[a]; return !st || st.state !== "off"; }
     speak(text) {
       var h = this._hass, engine = this.config.tts_entity || Object.keys(h.states).filter((id) => id.indexOf("tts.") === 0).find((id) => /igor|nives/.test(id));
       var browser = () => { try { var u = new SpeechSynthesisUtterance(text); u.lang = "fr-FR"; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch (e) { /* no voice */ } };
@@ -11796,7 +11860,7 @@
       var r = this.relay || (this.relay = new CarRelay(this));
       if (r.destKey !== dv) {
         r.destKey = dv; r.failed = false; r.spoken = {}; r.R = null;
-        r.route(d).then((ok) => { if (r.destKey !== dv) return; r.failed = !ok; if (ok) { r.relayStart = Date.now(); this.speak("Le téléphone ne guide plus. Je reprends le guidage vers " + (d.name !== "destination" ? d.name : "votre destination") + "."); } this.show(this.turnObj || null); });
+        r.route(d).then((ok) => { if (r.destKey !== dv) return; r.failed = !ok; if (ok) { r.relayStart = Date.now(); if (this.announcing()) this.speak("Le téléphone ne guide plus. Je reprends le guidage vers " + (d.name !== "destination" ? d.name : "votre destination") + "."); } this.show(this.turnObj || null); });
         this.startRelayTick();
         return null;
       }
