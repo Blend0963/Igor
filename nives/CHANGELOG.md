@@ -1,3 +1,7 @@
+## 0.52.5 — Le téléphone règle sa carte comme l'autoradio
+
+- `igor-gps-card` avec `settings:` : le bouton « Couches » devient « Carte » et ouvre la même fenêtre que Réglages → Carte 3D sur l'autoradio (préréglages, bâtiments, route et noms, repères, sol, lumière, caméra, performance) — un seul réglage pour les deux écrans, appliqué en direct. L'ancienne liste de points d'intérêt, sans effet sur la carte TomTom 3D, n'est plus proposée.
+
 ## 0.52.4 — La carte du téléphone plus légère
 
 - `igor-gps-card` : la carte ne refait plus son travail à chaque changement d'état de la maison (la voiture en envoie plusieurs par seconde) — seulement quand l'une de ses propres entités change. Sur le banc : 20 changements sans rapport, 0 recalcul (20 avant).

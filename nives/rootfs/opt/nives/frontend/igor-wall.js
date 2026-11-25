@@ -5518,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.52.4";
+  var GPS_CARD_VERSION = "0.52.5";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6550,6 +6550,7 @@
       var prev = this._hass, c = this.config;
       this._hass = hass;
       if (!this.root) this.build();
+      if (this.m3win && this.m3win.isConnected) this.m3win.hass = hass;
       // The look set from the head unit: applied at once, live.
       if (c.settings) {
         var lst = hass.states[c.settings], lv = lst && !/^(unknown|unavailable)$/.test(lst.state) ? lst.state : lst ? "" : null;
@@ -6932,6 +6933,7 @@
       };
       window.addEventListener("igor-gps-cmd", this.onCmd);
       $("layers").addEventListener("click", () => this.openLayers());
+      if (this.config.settings) { var lyb = $("layers"); lyb.dataset.l = "Carte"; lyb.title = "Réglages de la carte"; var lyi = lyb.querySelector("ha-icon"); if (lyi) lyi.setAttribute("icon", "mdi:map-legend"); }
       $("pclose").addEventListener("click", () => { $("panel").hidden = true; });
       // Closed without choosing: a trip under way stays as it was; only a
       // trip asked for and not yet on the road (no route yet) is dropped.
@@ -9817,6 +9819,12 @@
     // cameras first. A touch on the button opens or closes it; a touch on a
     // line re-draws the map at once and keeps the word.
     openLayers() {
+      // The look shared with the head unit (`settings:`): its window, not the old list of places.
+      if (this.config.settings && this._hass) {
+        if (this.m3win && this.m3win.isConnected) { this.m3win.close(); this.m3win = null; return; }
+        this.m3win = openMap3dWindow(this._hass, this.config.settings);
+        return;
+      }
       var p = this.$("lpanel");
       if (!p) return;
       if (!p.hidden) { p.hidden = true; return; }
@@ -12826,6 +12834,19 @@
   define("igor-telemetry-card", IgorTelemetryCard, "Igor · télémétrie", "Le moteur en courbes : régime, vitesse, charge, turbo, puissance, courbe moteur.");
 
 
+  // The « Carte 3D » window, over the whole screen, from any card (the phone's
+  // map: its « Couches » button): the same window and the same settings as
+  // Réglages → Carte 3D on the head unit — one look for both screens.
+  function openMap3dWindow(hass, id) {
+    var w = document.createElement("igor-settings-card");
+    w.setConfig({ map3d: id, window_only: true });
+    w.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;z-index:2147482000";
+    document.body.appendChild(w);
+    w.hass = hass;
+    w.openMap3d();
+    return w;
+  }
+
   // ----- The 3D map's look, set from the head unit's settings -----
   // One input_text holds it, short: « p=epure;bo=80;fw=none » — the preset,
   // then only what differs from it. The phone's map (igor-gps-card
@@ -12948,6 +12969,7 @@
         "button.b.close { min-height: 44px; padding: 0 18px; flex-direction: row; }"
       ].join("\n"));
       var card = el("ha-card", "", this.shadowRoot);
+      if (this.config.window_only) { card.style.display = "none"; this.tiles = []; return; }
       if (this.config.title) el("div", "h", card, this.config.title);
       var tiles = el("div", "tiles", card);
       this.tiles = (this.config.groups || []).map((g) => {
@@ -13016,7 +13038,7 @@
     // The 3D map's look: a preset in a touch, then tab by tab. Each change is
     // written at once (the phone follows within a second).
     openMap3d() {
-      this.close();
+      this.close(true);
       var id = this.config.map3d, h = this._hass;
       var ov = this.ov = el("div", "ov", this.shadowRoot), dl = el("div", "dl m3", ov);
       ov.addEventListener("click", (ev) => { if (ev.target === ov) this.close(); });
@@ -13106,7 +13128,10 @@
       });
       this.ovRows.forEach((r) => r.refresh());
     }
-    close() { if (this.ov) { this.ov.remove(); this.ov = null; this.ovRows = null; this.m3 = null; } }
+    close(keep) {
+      if (this.ov) { this.ov.remove(); this.ov = null; this.ovRows = null; this.m3 = null; }
+      if (this.config.window_only && !keep) this.remove();
+    }
   }
 
   // ----- igor-messages-card: the phone's messages (and the call, above them) -----
