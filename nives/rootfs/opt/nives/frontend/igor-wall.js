@@ -313,6 +313,12 @@
       this.lane = lane;
       // ticker: false — no scrolling line (the tabs and the clock keep the room).
       if (this.config.ticker === false) { lane.style.cssText = "flex: 1 1 0; min-width: 0; visibility: hidden"; }
+      // weather: weather.x — the weather where you are, in the bar, beside the clock.
+      if (this.config.weather) {
+        this.wxBar = document.createElement("span");
+        this.wxBar.style.cssText = "flex: none; display: flex; align-items: center; gap: 8px; padding: 0 14px; white-space: nowrap; color: var(--fg); font-size: 15px; --mdc-icon-size: 22px";
+        lane.parentNode.insertBefore(this.wxBar, lane.nextSibling);
+      }
       this.run = el("div", "run", lane);
       var speed = this.config.speed == null ? 60 : Number(this.config.speed);
       // speed: auto: the line stays still while it fits; longer, it goes round
@@ -436,8 +442,25 @@
       var narrow = window.innerWidth < (this.config.tabs === true ? 1100 : 760);
       this.clockEl.textContent = narrow ? hhmm(d) : d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }) + " · " + hhmm(d);
     }
+    drawWeather() {
+      var b = this.wxBar, w = b && this._hass && this._hass.states[this.config.weather];
+      if (!b) return;
+      if (!w) { b.textContent = ""; return; }
+      var a = w.attributes || {}, key = w.state + "|" + a.temperature + "|" + a.wind_speed;
+      if (key === this.wxKey) return;
+      this.wxKey = key;
+      var FR = { "clear-night": ["mdi:weather-night", "nuit claire"], cloudy: ["mdi:weather-cloudy", "couvert"], fog: ["mdi:weather-fog", "brouillard"], hail: ["mdi:weather-hail", "grêle"],
+        lightning: ["mdi:weather-lightning", "orage"], "lightning-rainy": ["mdi:weather-lightning-rainy", "orage"], partlycloudy: ["mdi:weather-partly-cloudy", "éclaircies"],
+        pouring: ["mdi:weather-pouring", "forte pluie"], rainy: ["mdi:weather-rainy", "pluie"], snowy: ["mdi:weather-snowy", "neige"], "snowy-rainy": ["mdi:weather-snowy-rainy", "neige et pluie"],
+        sunny: ["mdi:weather-sunny", "soleil"], windy: ["mdi:weather-windy", "vent"], "windy-variant": ["mdi:weather-windy-variant", "vent"], exceptional: ["mdi:alert", "exceptionnel"] };
+      var k = FR[w.state] || ["mdi:weather-partly-cloudy", w.state];
+      b.innerHTML = "";
+      var ic = document.createElement("ha-icon"); ic.setAttribute("icon", k[0]); b.appendChild(ic);
+      b.appendChild(document.createTextNode((a.temperature != null ? Math.round(a.temperature) + " °C · " : "") + k[1] + (a.wind_speed != null ? " · vent " + Math.round(a.wind_speed) + " km/h" : "")));
+    }
     set hass(hass) {
       this._hass = hass;
+      this.drawWeather();
       if (hass && hass.connected === false) this.setLost(true); else if (hass && hass.connected && this.lostAt && Date.now() - this.lostAt.getTime() > 2000) this.pingHa();
       if (this.editEl) this.editEl.hidden = !isAdmin(hass);
       if (this.bellEl && !this.unbell && hass.connection) {
@@ -5404,7 +5427,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.46.0";
+  var GPS_CARD_VERSION = "0.47.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7338,7 +7361,7 @@
             transformRequest: (req) => { var t = this.mapRequest(req && req.url); return t ? Object.assign({}, req, t, { headers: Object.assign({}, req.headers || {}, t.headers || {}) }) : req; },
             mapLibre: {
               container: this.$("map"), center: p, zoom: this.config.zoom, pitch: this.config.pitch, bearing: this.headingUp ? this.heading : 0,
-              fadeDuration: 250, pixelRatio: window.devicePixelRatio || 1, antialias: true, maxPitch: 75, maxTileCacheSize: 600
+              fadeDuration: 0, pixelRatio: Math.min(window.devicePixelRatio || 1, Number(this.config.pixel_ratio) || 2), antialias: true, maxPitch: 75, maxTileCacheSize: 600
             }
           });
           map = tt.mapLibreMap; this.tt = tt; this.ttKit = kit; this.sdkWhy = "";
@@ -7350,7 +7373,7 @@
             try { if (this.marker) this.marker.remove(); map.remove(); } catch (e) { /* gone */ }
             this.map = null; this.tt = null; this.ttKit = null; this.init(p);
           }, 25000);
-          map.once("load", () => clearTimeout(this.sdkWatch));
+          map.once("load", () => { clearTimeout(this.sdkWatch); this.fluidWatch(map); });
         } catch (e) { map = null; this.tt = null; this.ttKit = null; this.sdkWhy = (e && e.message) || "SDK refusé"; }
       }
       if (!map) try { map = new ml.Map({
@@ -8863,6 +8886,41 @@
     // Day or night: the SDK's light driving style by day, the dark one by
     // night (its windows lit), after Home Assistant's sun (sun.sun), else
     // the clock. `sdk_theme: day | night` holds one; `sdk_style:` sets it.
+    // Smooth before beautiful: the frames are counted; under 24 a second for
+    // 4 s while the map moves, the scene is lightened a step — the screen's
+    // sharpness, then the woods' 3D trees, the ground's relief, Igor's
+    // trees, the textures — until it flows again. `fluid: false`: never.
+    fluidWatch(map) {
+      if (this.config.fluid === false || this.fluidOn) return;
+      this.fluidOn = true;
+      var frames = 0, slow = 0, last = performance.now(), step = 0;
+      var steps = [
+        ["netteté réduite", () => { if (map.setPixelRatio) map.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5)); }],
+        ["arbres des bois retirés", () => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ trees: { visible: false } }); }],
+        ["relief du sol retiré", () => { if (this.ttTerrain && this.ttTerrain.setElevationVisible) this.ttTerrain.setElevationVisible(false); }],
+        ["arbres de rue retirés", () => { ["igor-trunks", "igor-crowns"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none"); }); }],
+        ["textures retirées", () => { if (this.ttSurf && this.ttSurf.remove) { try { this.ttSurf.remove(); } catch (e) { /* kept */ } this.ttSurf = null; } }],
+        ["netteté minimale", () => { if (map.setPixelRatio) map.setPixelRatio(1); }]
+      ];
+      var loop = (now) => {
+        if (this.map !== map) return;
+        frames++;
+        if (now - last >= 1000) {
+          var fps = frames * 1000 / (now - last), moving = map.isMoving && map.isMoving() || this.follow && this.speedMps && this.speedMps() > 1;
+          frames = 0; last = now;
+          if (moving && !document.hidden && fps < 24) slow++; else slow = Math.max(0, slow - 1);
+          if (slow >= 4 && step < steps.length) {
+            slow = -4;
+            try { steps[step][1](); } catch (e) { /* next step */ }
+            this.fluidSteps = steps.slice(0, step + 1).map((x) => x[0]);
+            if (this.config.debug) this.message("fluidité : " + this.fluidSteps.join(", ") + " (" + Math.round(fps) + " images/s)");
+            step++;
+          }
+        }
+        requestAnimationFrame(loop);
+      };
+      requestAnimationFrame(loop);
+    },
     sdkStyleNow() {
       var c = this.config;
       if (c.sdk_style) return c.sdk_style;
@@ -11547,6 +11605,11 @@
     }
     show(g) {
       if (!this.guide) return;
+      // No destination set: no guidance, whatever arrow the map left behind.
+      if (this.remote() && g && this.config.destination) {
+        var dsx = this._hass && this._hass.states[this.config.destination];
+        if (!dsx || !/^-?\d/.test(String(dsx.state || ""))) g = null;
+      }
       // The map gone quiet while guiding (phone off its dock, app closed,
       // battery out): its last arrow would lie — the trip is cut.
       // Home Assistant out of reach while the head unit guides: it goes on
