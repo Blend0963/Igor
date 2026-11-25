@@ -5366,6 +5366,7 @@
   //   sdk_style: streetDarkDriving          # one style for good (streetLight, streetDark, streetLightDriving, streetDarkDriving, monoDark…)
   //   sdk_trees: false                      # no 3D trees in the woods and parks (the SDK's)
   //   buildings_opacity: 0.85               # the SDK's buildings, 0 (invisible) to 1 (solid); the route is drawn over them anyway
+  //   settings: input_text.igor_carte      # the look set from the head unit (igor-settings-card map3d:), applied live: presets, buildings, route, names, ground, light, camera
   //   jam_gradient: false                   # the jams as separate strokes over the route (default: the route itself fades to orange/red and back, halo included)
   //   buildings_windows: false              # plain facades, as TomTom's own navigation draws them (true: windows, lit at night)
   //   sdk_buildings: { … }                  # any other knob of TomTom's Buildings3D (preset, shadows, walls.color…)
@@ -5447,7 +5448,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.49.4";
+  var GPS_CARD_VERSION = "0.50.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6479,6 +6480,11 @@
       var prev = this._hass, c = this.config;
       this._hass = hass;
       if (!this.root) this.build();
+      // The look set from the head unit: applied at once, live.
+      if (c.settings) {
+        var lst = hass.states[c.settings], lv = lst && !/^(unknown|unavailable)$/.test(lst.state) ? lst.state : lst ? "" : null;
+        if (lv !== this.lookStr) { this.lookStr = lv; this.look = lv == null ? null : map3dResolve(lv); if (this.map) this.applyLook(); }
+      }
       // Only when what the card shows changed (not at every change in the house).
       if (prev && this.loading && [c.entity, c.fallback_entity, c.speed_entity, c.speed_limit_entity, c.destination, c.announce, c.route_choice, "sun.sun"].every(function (id) { return !id || prev.states[id] === hass.states[id]; })) return;
       this.read();
@@ -6937,34 +6943,112 @@
     // The SDK's buildings, clean as in TomTom's own navigation: plain walls
     // (no windows), a little see-through so the streets behind them show.
     buildingsLook() {
-      var c = this.config, op = Number(c.buildings_opacity);
-      var look = { opacity: isFinite(op) && op > 0 ? Math.min(1, op) : 0.85 };
-      if (c.buildings_windows !== true) look.facade = { pattern: "plain", intensity: 0 };
-      if (c.buildings_windows !== true) look.litWindows = { fraction: 0 };
+      var c = this.config, op = Number(c.buildings_opacity), L = this.look, look;
+      if (L) {
+        look = { visible: !!Number(L.b3), opacity: Math.max(0.05, Math.min(1, Number(L.bo) / 100 || 1)), minZoom: Number(L.bz) || 15,
+          facade: L.fw === "none" ? { pattern: "plain", intensity: 0 } : { pattern: L.fw }, litWindows: { fraction: (Number(L.lw) || 0) / 100 },
+          shadows: { visible: Number(L.sh) > 0, intensity: (Number(L.sh) || 0) / 100 }, reflections: { intensity: (Number(L.rf) || 0) / 100 },
+          roadLabels: { occluded: !!Number(L.rl) } };
+        if (L.wc === "unie") look.walls = { variation: 0 }; else if (L.wc === "variee") look.walls = { variation: 0.6 };
+      } else {
+        look = { opacity: isFinite(op) && op > 0 ? Math.min(1, op) : 0.85 };
+        if (c.buildings_windows !== true) look.facade = { pattern: "plain", intensity: 0 };
+        if (c.buildings_windows !== true) look.litWindows = { fraction: 0 };
+      }
       var own = c.sdk_buildings && typeof c.sdk_buildings === "object" ? c.sdk_buildings : {};
       Object.keys(own).forEach((k) => { look[k] = own[k] && typeof own[k] === "object" && look[k] && typeof look[k] === "object" ? Object.assign({}, look[k], own[k]) : own[k]; });
       return look;
     }
     // The route's layers above the 3D ones (TomTom's buildings and surfaces
     // are custom layers added after Igor's), under the labels that follow.
+    // Where the route lies among the 3D layers (TomTom's buildings and
+    // surfaces are custom layers added after Igor's): « noms » (default) just
+    // above them, under the labels that follow; « top » over everything;
+    // « sol » under them, on the ground as in reality. Moved only when it is
+    // not already there (moving fires styledata, which calls this again).
     routeOnTop(map) {
-      if (this.routeTopBusy) return;
+      if (this.routeTopBusy || !map || !map.getLayer) return;
       this.routeTopBusy = true;
       try {
+        var mode = (this.look && this.look.rp) || "noms";
         var ids = ["trail", "route-case", "route-glow", "route", "route-core", "routejam"].filter((id) => map.getLayer(id));
         // getLayersOrder: the custom layers too (getStyle leaves them out).
         var order = map.getLayersOrder ? map.getLayersOrder() : ((map.getStyle() && map.getStyle().layers) || []).map((l) => l.id);
-        var layers = order.map((id) => { var l = map.getLayer(id); return { id: id, type: l && l.type }; }), last3d = -1;
-        layers.forEach((l, i) => { if (l.type === "custom" || l.type === "fill-extrusion") last3d = i; });
-        var pos = (id) => layers.findIndex((l) => l.id === id);
+        var layers = order.map((id) => { var l = map.getLayer(id); return { id: id, type: l && l.type }; });
+        var pos = (id) => order.indexOf(id);
         ids.sort((a, b) => pos(a) - pos(b));  // as they stand: the glow under the case, the jams over the route
-        var at = ids.length ? pos(ids[0]) : -1;
-        if (ids.length && last3d > at) {
-          var before = layers.slice(last3d + 1).find((l) => l.type === "symbol" && ids.indexOf(l.id) < 0);
-          ids.forEach((id) => map.moveLayer(id, before ? before.id : undefined));
+        var mine = (l) => ids.indexOf(l.id) >= 0, is3d = (l) => !mine(l) && (l.type === "custom" || l.type === "fill-extrusion");
+        var first3d = layers.findIndex(is3d), last3d = -1;
+        layers.forEach((l, i) => { if (is3d(l)) last3d = i; });
+        if (ids.length) {
+          if (mode === "top") {
+            if (order.slice(order.length - ids.length).join() !== ids.join()) ids.forEach((id) => map.moveLayer(id));
+          } else if (first3d >= 0 && mode === "sol") {
+            if (pos(ids[0]) > first3d) ids.forEach((id) => map.moveLayer(id, layers[first3d].id));
+          } else if (first3d >= 0) {
+            if (order.slice(last3d + 1, last3d + 1 + ids.length).join() !== ids.join()) {
+              var nxt = layers.slice(last3d + 1).find((l) => !mine(l));
+              ids.forEach((id) => map.moveLayer(id, nxt ? nxt.id : undefined));
+            }
+          }
         }
       } catch (e) { /* a style changing under it: the next styledata */ }
       this.routeTopBusy = false;
+    }
+    // The route's colours: [line, halo, edge, core] of the colour chosen.
+    routePal() {
+      var P = { bleu: ["#46b4ff", "#3fa9ff", "#0b3f86", "#d4f0ff"], cyan: ["#59d0e0", "#4fd6e8", "#0b4a55", "#dcfbff"],
+        violet: ["#b48cff", "#a97bff", "#3d1f78", "#efe3ff"], jaune: ["#f4d35e", "#f4c542", "#5e4a0a", "#fff6d0"] };
+      var p = P[(this.look && this.look.rc) || "bleu"] || P.bleu;
+      return { "route": p[0], "route-glow": p[1], "route-case": p[2], "route-core": p[3] };
+    }
+    // The look set from the head unit, put into effect — each part on its own,
+    // so one refused leaves the others done.
+    applyLook() {
+      var L = this.look, map = this.map;
+      if (!L || !map || !map.getLayer) return;
+      var tryIt = (fn) => { try { fn(); } catch (e) { /* that part as it was */ } };
+      var scale = (x, k) => {
+        if (typeof x === "number") return Math.round(x * k * 100) / 100;
+        if (Array.isArray(x) && /^interpolate/.test(x[0])) return x.map((v, i) => i >= 4 && i % 2 === 0 ? scale(v, k) : v);
+        if (Array.isArray(x) && x[0] === "step") return x.map((v, i) => i >= 2 && i % 2 === 0 ? scale(v, k) : v);
+        return x == null ? x : ["*", x, k];
+      };
+      tryIt(() => { if (this.tt3d && this.tt3d.applyConfig) this.tt3d.applyConfig(this.buildingsLook()); });
+      tryIt(() => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ visible: !!Number(L.sf), trees: { visible: !!Number(L.ts) && this.config.sdk_trees !== false }, wind: { speedFactor: Number(L.wd) || 0 } }); });
+      tryIt(() => { var T = this.ttTerrain; if (T && T.setElevationVisible) { T.setElevationVisible(!!Number(L.te)); T.setHillshadeVisible(!!Number(L.hs)); } });
+      tryIt(() => {
+        if (Number(L.to) && !map.getSource("igor-trees")) this.treesSetup(map);
+        ["igor-trunks", "igor-crowns"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", Number(L.to) ? "visible" : "none"); });
+      });
+      tryIt(() => {
+        var pal = this.routePal(), k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1;
+        [["route-case", GPS_CASE_W], ["route-glow", GPS_GLOW_W], ["route", GPS_ROUTE_W], ["route-core", GPS_CORE_W], ["routejam", GPS_ROUTE_W]].forEach((x) => {
+          if (!map.getLayer(x[0])) return;
+          map.setPaintProperty(x[0], "line-width", scale(x[1], k));
+          if (pal[x[0]]) map.setPaintProperty(x[0], "line-color", pal[x[0]]);
+        });
+        if (map.getLayer("route-glow")) map.setPaintProperty("route-glow", "line-opacity", Math.max(0, Math.min(1, (Number(L.gl) || 0) / 100)));
+        if (map.getLayer("trail")) map.setPaintProperty("trail", "line-opacity", { cache: 0, pale: 0.55, visible: 0.85 }[L.tr] != null ? { cache: 0, pale: 0.55, visible: 0.85 }[L.tr] : 0.55);
+      });
+      this.jamGradient();
+      this.routeOnTop(map);
+      tryIt(() => {
+        var ns = { petite: 0.85, normale: 1, grande: 1.25 }[L.ns] || 1, sz = this.labelSize0 = this.labelSize0 || {};
+        ((map.getStyle() && map.getStyle().layers) || []).forEach((l) => {
+          if (l.type !== "symbol" || /^igor|^route|^gps/.test(l.id)) return;
+          var name = l.id + " " + (l["source-layer"] || "");
+          if (/poi|point.of.interest/i.test(name)) { map.setLayoutProperty(l.id, "visibility", L.poi === "tous" ? "visible" : "none"); return; }
+          if (!/road|street|transport/i.test(name) || !l.layout || l.layout["text-field"] == null) return;
+          if (!(l.id in sz)) sz[l.id] = l.layout["text-size"] != null ? l.layout["text-size"] : 16;
+          map.setLayoutProperty(l.id, "text-size", ns === 1 ? sz[l.id] : scale(sz[l.id], ns));
+        });
+      });
+      tryIt(() => {
+        var px = { eco: 1, normale: 1.5, max: Math.min(window.devicePixelRatio || 1, 2) }[L.px];
+        if (px && map.setPixelRatio && px !== this.pxNow) { this.pxNow = px; map.setPixelRatio(px); }
+      });
+      if (this.tt) { this.themeAt = 0; this.themeTick(); }
     }
     tomtom3d(map) {
       var layers = map.getStyle().layers || [];
@@ -7014,6 +7098,7 @@
         }
         // The route over all of it: never hidden behind a building or the textured ground.
         this.routeOnTop(map);
+        this.applyLook();
         if (!this.routeTopWatch) { this.routeTopWatch = true; map.on("styledata", () => this.routeOnTop(map)); }
         this.diag3d = "SDK TomTom (" + this.ttStyle + ") : " + [this.tt3d ? "bâtiments 3D" : "", this.ttSurf ? "surfaces" + (this.config.sdk_trees !== false ? " et arbres des bois" : "") : "", this.config.terrain !== false ? "relief" : ""].filter(Boolean).join(" + ") + (why.length ? " · " + why.join(" · ") : "");
         if (this.config.debug) this.message("relief : " + this.diag3d);
@@ -7503,6 +7588,7 @@
             paint: { "line-color": ["match", ["get", "level"], 2, "#e5323b", "#f08c1a"], "line-width": GPS_ROUTE_W } });
         }
         this.jamGradient();
+        if (this.look) setTimeout(() => this.applyLook(), 0);  // after the trail and the rest of style.load
         if (!map.getSource("trail")) {
           map.addSource("trail", { type: "geojson", data: this.trailData() });
           map.addLayer({ id: "trail", type: "line", source: "trail", layout: { "line-cap": "round", "line-join": "round" },
@@ -7721,11 +7807,12 @@
         // The recentered view is the navigator's own: the car back at its
         // place, the road ahead, and the tilt with it — a map the finger
         // laid flat stands up again the moment the card takes the wheel back.
-        var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, pitch: this.config.pitch != null && !isNaN(Number(this.config.pitch)) ? Number(this.config.pitch) : 45, padding: { top: this.headingUp ? h * 0.35 : 0, bottom: 0, left: 0, right: 0 } };
+        var LK = this.look || {}, pitch0 = LK.pi != null ? LK.pi : this.config.pitch, lift = { haut: 0.2, milieu: 0.35, bas: 0.5 }[LK.cy] || 0.35;
+        var view = { center: this.pos, bearing: this.headingUp ? this.shown : 0, pitch: pitch0 != null && !isNaN(Number(pitch0)) ? Number(pitch0) : 45, padding: { top: this.headingUp ? h * lift : 0, bottom: 0, left: 0, right: 0 } };
         // As a navigator: farther out the faster (more road ahead), closer
         // before a turn, back out after it; eased, never a jump.
-        if (this.config.auto_zoom !== false) {
-          var base = Number(this.config.zoom) || 16, kmh = speed * 3.6;
+        if (LK.az != null ? !!Number(LK.az) : this.config.auto_zoom !== false) {
+          var base = Number(LK.zm != null ? LK.zm : this.config.zoom) || 16, kmh = speed * 3.6;
           // By stages, as a navigator: town, roads, fast roads, motorway
           // (4 km/h either side of each step, so it does not hesitate).
           var edges = [30, 55, 85, 115], zst = this.zStage || 0;
@@ -7944,11 +8031,12 @@
     jamGradient() {
       var map = this.map;
       if (!map || !map.getLayer || !map.getLayer("route")) return;
-      var R = this.route, PAL = {
-        "route": ["#46b4ff", "#f08c1a", "#e5323b"], "route-glow": ["#3fa9ff", "#ff9a2e", "#ff3b3b"],
-        "route-case": ["#0b3f86", "#6b3a08", "#6e1016"], "route-core": ["#d4f0ff", "#ffe3c2", "#ffd0d0"] };
+      var base = this.routePal(), R = this.route, PAL = {
+        "route": [base.route, "#f08c1a", "#e5323b"], "route-glow": [base["route-glow"], "#ff9a2e", "#ff3b3b"],
+        "route-case": [base["route-case"], "#6b3a08", "#6e1016"], "route-core": [base["route-core"], "#ffe3c2", "#ffd0d0"] };
+      var mode = this.look && this.look.jm ? this.look.jm : this.config.jam_gradient === false ? "traits" : "degrade";
       var stops = null;
-      if (R && R.jams && R.jams.length && R.total > 0 && R.cum && this.config.jam_gradient !== false) {
+      if (R && R.jams && R.jams.length && R.total > 0 && R.cum && mode === "degrade") {
         var n = R.cum.length - 1, T = R.total;
         var js = R.jams.map((j) => ({ a: R.cum[Math.max(0, Math.min(j.start, n))] / T, b: R.cum[Math.max(0, Math.min(j.end, n))] / T, l: j.level === 2 ? 2 : 1 }))
           .filter((j) => j.b > j.a).sort((x, y) => x.a - y.a);
@@ -7977,7 +8065,7 @@
           }
           map.setPaintProperty(id, "line-gradient", expr);
         });
-        if (map.getLayer("routejam")) map.setLayoutProperty("routejam", "visibility", stops ? "none" : "visible");
+        if (map.getLayer("routejam")) map.setLayoutProperty("routejam", "visibility", stops || mode === "aucun" ? "none" : "visible");
         this.jamGrad = !!stops;
       } catch (e) {
         // Refused (an older engine): the jams as before, drawn over the route.
@@ -9017,7 +9105,7 @@
           var fps = frames * 1000 / (now - last), moving = map.isMoving && map.isMoving() || this.follow && this.speedMps && this.speedMps() > 1;
           frames = 0; last = now;
           if (moving && !document.hidden && fps < 24) slow++; else slow = Math.max(0, slow - 1);
-          if (slow >= 4 && step < steps.length) {
+          if (slow >= 4 && step < steps.length && !(this.look && !Number(this.look.fl))) {
             slow = -4;
             try { steps[step][1](); } catch (e) { /* next step */ }
             this.fluidSteps = steps.slice(0, step + 1).map((x) => x[0]);
@@ -9032,12 +9120,12 @@
     sdkStyleNow() {
       var c = this.config;
       if (c.sdk_style) return c.sdk_style;
-      var th = c.sdk_theme || "auto", sun = this._hass && this._hass.states["sun.sun"], h = new Date().getHours();
+      var L = this.look || {}, th = L.dn || c.sdk_theme || "auto", sun = this._hass && this._hass.states["sun.sun"], h = new Date().getHours();
       // As a car's GPS: night as soon as the sun gets low, before it sets —
       // its height over the horizon (sun.sun's `elevation`) under
       // `night_elevation` (3° by default), day again a degree above it (no
       // back and forth right at the threshold).
-      var el = sun ? Number(sun.attributes && sun.attributes.elevation) : NaN, lim = c.night_elevation != null ? Number(c.night_elevation) : 3;
+      var el = sun ? Number(sun.attributes && sun.attributes.elevation) : NaN, lim = L.ne != null ? Number(L.ne) : c.night_elevation != null ? Number(c.night_elevation) : 3;
       var wasNight = this.ttStyle === "streetDarkDriving";
       var auto = isFinite(el) ? (wasNight ? el < lim + 1 : el < lim) : sun ? sun.state === "below_horizon" : h < 7 || h >= 20;
       var night = th === "night" || (th !== "day" && auto);
@@ -9055,7 +9143,7 @@
       this.ttStyle = want; this.themeBusy = true;
       Promise.resolve().then(() => this.tt.setStyle(want)).catch(() => {}).then(() => { this.themeBusy = false; });
     },
-    treesOn() { return this.config.trees !== false && this.config.basemap === "tomtom-3d" && !this.offlineReady; },
+    treesOn() { return this.config.trees !== false && !(this.look && !Number(this.look.to)) && this.config.basemap === "tomtom-3d" && !this.offlineReady; },
     treesSetup(map) {
       if (!this.treesOn() || !map || map.getSource("igor-trees")) return;
       var layers = map.getStyle().layers || [], first = layers.find((l) => l.type === "symbol");
@@ -12225,6 +12313,71 @@
     }
   }
 
+
+  // ----- The 3D map's look, set from the head unit's settings -----
+  // One input_text holds it, short: « p=epure;bo=80;fw=none » — the preset,
+  // then only what differs from it. The phone's map (igor-gps-card
+  // `settings:`) applies it live; igor-settings-card `map3d:` edits it.
+  var MAP3D_PRESETS = {
+    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 40, rf: 10, bz: 15, rp: "noms", rw: "normale", rc: "bleu", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max" } },
+    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "sol", rw: "normale", rc: "bleu", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max" } },
+    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", rw: "large", rc: "bleu", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max" } },
+    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", rw: "normale", rc: "bleu", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco" } }
+  };
+  // Each setting: key, tab, label, hint, kind (seg | sw | sl), choices or range.
+  var MAP3D_ROWS = [
+    ["b3", "Bâtiments", "Bâtiments en 3D", "", "sw"],
+    ["bo", "Bâtiments", "Opacité", "plus bas : la route se voit au travers", "sl", 30, 100, 5, "%"],
+    ["fw", "Bâtiments", "Fenêtres", "", "seg", [["none", "aucune"], ["mixed", "mixtes"], ["residential", "logements"], ["office", "bureaux"], ["glass", "verre"]]],
+    ["lw", "Bâtiments", "Fenêtres allumées la nuit", "", "sl", 0, 100, 10, "%"],
+    ["wc", "Bâtiments", "Couleur des murs", "", "seg", [["style", "du style"], ["unie", "unie"], ["variee", "variée"]]],
+    ["sh", "Bâtiments", "Ombres portées", "0 : aucune", "sl", 0, 100, 10, "%"],
+    ["rf", "Bâtiments", "Reflets du ciel", "", "sl", 0, 100, 10, "%"],
+    ["bz", "Bâtiments", "Bâtiments dès le zoom", "plus haut : moins de calcul", "seg", [[14, "14"], [15, "15"], [16, "16"], [17, "17"]]],
+    ["rp", "Route & noms", "Place de la route", "« sous les noms » : le nom de la rue reste lisible", "seg", [["sol", "au sol"], ["noms", "sous les noms"], ["top", "par-dessus tout"]]],
+    ["rw", "Route & noms", "Épaisseur", "", "seg", [["fine", "fine"], ["normale", "normale"], ["large", "large"]]],
+    ["rc", "Route & noms", "Couleur", "", "seg", [["bleu", "bleu"], ["cyan", "cyan"], ["violet", "violet"], ["jaune", "jaune"]]],
+    ["gl", "Route & noms", "Halo lumineux", "", "sl", 0, 100, 5, "%"],
+    ["tr", "Route & noms", "Trajet déjà parcouru", "", "seg", [["cache", "caché"], ["pale", "pâle"], ["visible", "visible"]]],
+    ["jm", "Route & noms", "Bouchons", "", "seg", [["degrade", "en dégradé"], ["traits", "en traits"], ["aucun", "aucun"]]],
+    ["rl", "Route & noms", "Noms cachés par les bâtiments", "comme dans la réalité", "sw"],
+    ["ns", "Route & noms", "Taille des noms de rues", "", "seg", [["petite", "petite"], ["normale", "normale"], ["grande", "grande"]]],
+    ["poi", "Route & noms", "Lieux TomTom", "commerces, parkings, gares", "seg", [["aucun", "aucun"], ["tous", "tous"]]],
+    ["sf", "Sol & nature", "Sol texturé", "eau, herbe, champs", "sw"],
+    ["ts", "Sol & nature", "Arbres des bois", "ceux du SDK de TomTom", "sw"],
+    ["to", "Sol & nature", "Arbres de rue", "les vrais, d'OpenStreetMap", "sw"],
+    ["wd", "Sol & nature", "Vent", "feuilles et eau", "seg", [[0, "calme"], [0.5, "léger"], [1, "fort"]]],
+    ["te", "Sol & nature", "Relief", "collines et vallées", "sw"],
+    ["hs", "Sol & nature", "Ombrage des collines", "", "sw"],
+    ["dn", "Lumière", "Jour et nuit", "", "seg", [["auto", "selon le soleil"], ["day", "toujours jour"], ["night", "toujours nuit"]]],
+    ["ne", "Lumière", "Nuit quand le soleil passe sous", "en degrés au-dessus de l'horizon", "seg", [[0, "0°"], [3, "3°"], [6, "6°"], [10, "10°"]]],
+    ["pi", "Caméra", "Inclinaison", "", "sl", 0, 75, 5, "°"],
+    ["zm", "Caméra", "Zoom", "", "sl", 15, 18.5, 0.5, ""],
+    ["az", "Caméra", "Zoom selon la vitesse", "dézoome sur route rapide", "sw"],
+    ["cy", "Caméra", "Voiture à l'écran", "plus bas : plus de route devant", "seg", [["haut", "plus haut"], ["milieu", "au milieu"], ["bas", "plus bas"]]],
+    ["fl", "Performance", "Mode fluide", "allège tout seul quand ça rame", "sw"],
+    ["px", "Performance", "Netteté", "", "seg", [["eco", "économe"], ["normale", "normale"], ["max", "maximale"]]]
+  ];
+  // Not in the presets (left to the dashboard until changed here).
+  var MAP3D_FREE = { dn: "auto", ne: 3, pi: 60, zm: 17, az: 1, cy: "milieu" };
+  function map3dParse(str) {
+    var out = { p: "epure", o: {} };
+    String(str || "").split(";").forEach((kv) => {
+      var i = kv.indexOf("="); if (i < 1) return;
+      var k = kv.slice(0, i).trim(), v = kv.slice(i + 1).trim();
+      if (k === "p") { if (MAP3D_PRESETS[v]) out.p = v; return; }
+      out.o[k] = v !== "" && isFinite(Number(v)) ? Number(v) : v;
+    });
+    return out;
+  }
+  function map3dResolve(str) { var x = map3dParse(str); return Object.assign({ p: x.p }, MAP3D_PRESETS[x.p].v, x.o); }
+  function map3dEncode(p, o) {
+    var base = MAP3D_PRESETS[p] ? MAP3D_PRESETS[p].v : {};
+    var parts = ["p=" + p];
+    Object.keys(o).forEach((k) => { if (o[k] !== undefined && o[k] !== base[k]) parts.push(k + "=" + o[k]); });
+    return parts.join(";").slice(0, 255);
+  }
+
   // ----- igor-settings-card: settings as tiles, each opening its window -----
   // A head unit's page does not scroll: lists piled one under the other push
   // the rest out of reach. Here, one tile per subject; a touch opens its
@@ -12234,6 +12387,7 @@
   //     - name: Favoris du téléphone
   //       icon: mdi:account-star
   //       entities: [ { entity: input_text.contact_1_nom, name: Favori 1 · nom }, … ]
+  //   map3d: input_text.igor_carte   # a « Carte 3D » tile: the phone's map, its look (presets, buildings, route, names, ground, light, camera)
   //   screen_lock: true   # a « Cet écran » tile: this device is the car's (locked
   //                       # without the phone, see phone_lock) or a free screen
   class IgorSettingsCard extends IgorCard {
@@ -12252,6 +12406,19 @@
         ".ch { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 16px; } .ch p { margin: 0 0 4px; color: var(--dim); font-size: 14px; line-height: 1.5; }",
         ".ch button { display: flex; align-items: center; gap: 14px; text-align: left; min-height: 64px; padding: 10px 16px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; font-size: 16px; cursor: pointer; --mdc-icon-size: 26px; }",
         ".ch button small { display: block; color: var(--dim); font-size: 12px; margin-top: 3px; } .ch button.on { border-color: " + CAR_OK + "; }",
+        // The 3D map's window: wide, the presets, the tabs, two columns of settings.
+        ".dl.m3 { width: min(1200px, 97vw); height: 90vh; max-height: 90vh; } .m3s { font-size: 12px; color: var(--dim); margin-right: auto; margin-left: 14px; }",
+        ".m3w { padding: 16px; color: " + CAR_WARN + "; font-size: 15px; line-height: 1.5; }",
+        ".m3p { display: flex; gap: 8px; padding: 10px 14px; flex: none; } .m3pp { flex: 1; min-width: 0; text-align: left; padding: 8px 12px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; cursor: pointer; }",
+        ".m3pp b { display: block; font-weight: 400; font-size: 15px; } .m3pp small { display: block; font-size: 11px; color: var(--dim); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .m3pp.on { border-color: var(--acc, #59d0e0); } .m3pp.on b { color: var(--acc, #59d0e0); }",
+        ".m3t { display: flex; gap: 6px; padding: 0 14px; flex: none; border-bottom: 1px solid var(--acc, #59d0e0); overflow-x: auto; } .m3tt { padding: 10px 14px; border: 1px solid var(--line); border-bottom: none; background: none; color: var(--dim); font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; } .m3tt.on { color: var(--acc, #59d0e0); border-color: var(--acc, #59d0e0); background: #111418; }",
+        ".m3b { flex: 1; min-height: 0; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; align-content: start; padding: 4px 16px 10px; }",
+        "@media (max-width: 900px) { .m3b { grid-template-columns: 1fr; } }",
+        ".m3r { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #1a1e24; font-size: 15px; min-height: 52px; } .m3r small { display: block; color: var(--dim); font-size: 11px; margin-top: 3px; }",
+        ".m3g { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; } .m3g button { min-height: 40px; padding: 0 11px; border: 1px solid var(--line); background: none; color: var(--dim); font: inherit; font-size: 13px; cursor: pointer; } .m3g button.on { background: #123c44; color: var(--acc, #59d0e0); border-color: var(--acc, #59d0e0); }",
+        ".m3l { display: grid; grid-template-columns: 40px 62px 40px; grid-template-rows: auto 18px; align-items: center; gap: 2px 6px; width: 170px; flex: none; } .m3l button { height: 40px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; font-size: 20px; cursor: pointer; } .m3l span { text-align: center; font-size: 14px; }",
+        ".m3l i { grid-column: 1 / 4; height: 18px; position: relative; cursor: pointer; } .m3l i::before { content: ''; position: absolute; left: 0; right: 0; top: 7px; height: 4px; background: #22272e; } .m3l i b { position: absolute; left: 0; top: 7px; height: 4px; background: var(--acc, #59d0e0); }",
+        ".m3f { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-top: 1px solid var(--line); flex: none; font-size: 13px; } .m3f .ok { color: " + CAR_OK + "; } .m3f .ko { color: " + CAR_BAD + "; } .m3f button { margin-left: auto; min-height: 42px; padding: 0 14px; flex-direction: row; }",
         ".ov { position: fixed; inset: 0; z-index: 2147482000; background: rgba(0,0,0,.65); display: flex; align-items: flex-start; justify-content: center; padding-top: 4vh; }",
         ".dl { width: min(720px, 94vw); max-height: 88vh; display: flex; flex-direction: column; background: #0d0f12; border: 1px solid var(--line); color: var(--fg); }",
         ".dh { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); flex: none; }",
@@ -12272,6 +12439,11 @@
         t.addEventListener("click", () => this.open(g));
         return { g: g, sm: sm };
       });
+      if (this.config.map3d) {
+        var tm = el("div", "tile", tiles); icon(tm, "mdi:map-legend");
+        var tmx = el("div", "", tm); el("b", "", tmx, "Carte 3D"); this.mapSm = el("small", "", tmx, "");
+        tm.addEventListener("click", () => this.openMap3d());
+      }
       if (this.config.screen_lock) {
         var t = this.screenTile = el("div", "tile", tiles); icon(t, "mdi:car-key");
         var tx = el("div", "", t); el("b", "", tx, "Cet écran"); this.screenSm = el("small", "", tx, "");
@@ -12318,6 +12490,72 @@
       });
       if (this.ovRows) this.ovRows.forEach((r) => r.refresh());
       this.drawScreen();
+      if (this.mapSm) {
+        var mp = map3dParse(this.val(this.config.map3d));
+        this.mapSm.textContent = (MAP3D_PRESETS[mp.p].name) + (Object.keys(mp.o).length ? " · personnalisé" : "");
+      }
+      if (this.m3 && !this.m3.dirty) this.m3.load();
+    }
+    // The 3D map's look: a preset in a touch, then tab by tab. Each change is
+    // written at once (the phone follows within a second).
+    openMap3d() {
+      this.close();
+      var id = this.config.map3d, h = this._hass;
+      var ov = this.ov = el("div", "ov", this.shadowRoot), dl = el("div", "dl m3", ov);
+      ov.addEventListener("click", (ev) => { if (ev.target === ov) this.close(); });
+      var dh = el("div", "dh", dl); el("div", "h", dh, "carte 3D · réglages");
+      el("span", "m3s", dh, "appliqués en direct sur le téléphone");
+      var x = el("button", "b close", dh); x.type = "button"; el("span", "", x, "fermer"); x.addEventListener("click", () => this.close());
+      if (!h.states[id]) { el("p", "m3w", dl, "L'entité " + id + " n'existe pas : recollez le paquet du carnet (voiture_carnet.yaml), puis rechargez les entrées."); return; }
+      var pre = el("div", "m3p", dl), tabs = el("div", "m3t", dl), body = el("div", "m3b", dl), ft = el("div", "m3f", dl);
+      var okT = el("span", "", ft, ""), reset = el("button", "b", ft); reset.type = "button"; el("span", "", reset, "rétablir le préréglage");
+      var st = { p: "epure", o: {} }, tab = "Bâtiments", timer = null;
+      var m3 = this.m3 = { dirty: false };
+      var val = (k) => k in st.o ? st.o[k] : k in MAP3D_PRESETS[st.p].v ? MAP3D_PRESETS[st.p].v[k] : MAP3D_FREE[k];
+      var save = () => {
+        m3.dirty = true; clearTimeout(timer);
+        timer = setTimeout(() => {
+          var v = map3dEncode(st.p, st.o);
+          h.callService("input_text", "set_value", { entity_id: id, value: v })
+            .then(() => { okT.textContent = "✓ appliqué"; okT.className = "ok"; m3.dirty = false; }, () => { okT.textContent = "refusé par Home Assistant"; okT.className = "ko"; m3.dirty = false; });
+        }, 350);
+        draw();
+      };
+      var draw = () => {
+        pre.innerHTML = ""; tabs.innerHTML = ""; body.innerHTML = "";
+        Object.keys(MAP3D_PRESETS).forEach((k) => {
+          var P = MAP3D_PRESETS[k], b = el("button", "m3pp" + (st.p === k && !Object.keys(st.o).some((q) => q in P.v) ? " on" : ""), pre); b.type = "button";
+          el("b", "", b, P.name); el("small", "", b, P.sub);
+          b.addEventListener("click", () => { st.p = k; Object.keys(st.o).forEach((q) => { if (q in P.v) delete st.o[q]; }); save(); });
+        });
+        var mine = Object.keys(st.o).some((q) => q in MAP3D_PRESETS[st.p].v);
+        var pb = el("div", "m3pp" + (mine ? " on" : ""), pre); el("b", "", pb, "Personnalisé"); el("small", "", pb, mine ? "d'après « " + MAP3D_PRESETS[st.p].name + " »" : "vos réglages");
+        var names = []; MAP3D_ROWS.forEach((r) => { if (names.indexOf(r[1]) < 0) names.push(r[1]); });
+        names.forEach((n) => { var t = el("button", "m3tt" + (n === tab ? " on" : ""), tabs, n); t.type = "button"; t.addEventListener("click", () => { tab = n; draw(); }); });
+        MAP3D_ROWS.filter((r) => r[1] === tab).forEach((r) => {
+          var k = r[0], v = val(k), row = el("div", "m3r", body), lab = el("div", "", row);
+          el("div", "", lab, r[2]); if (r[3]) el("small", "", lab, r[3]);
+          if (r[4] === "sw") {
+            var b = el("button", "sw" + (Number(v) ? " on" : ""), row, Number(v) ? "oui" : "non"); b.type = "button";
+            b.addEventListener("click", () => { st.o[k] = Number(v) ? 0 : 1; save(); });
+          } else if (r[4] === "seg") {
+            var sg = el("div", "m3g", row);
+            r[5].forEach((o) => { var b2 = el("button", String(o[0]) === String(v) ? "on" : "", sg, o[1]); b2.type = "button"; b2.addEventListener("click", () => { st.o[k] = o[0]; save(); }); });
+          } else {
+            var wrap = el("div", "m3l", row), minus = el("button", "", wrap, "−"), out = el("span", "", wrap, ""), plus = el("button", "", wrap, "+");
+            var bar = el("i", "", wrap), fill = el("b", "", bar);
+            var show = (n) => { out.textContent = String(n).replace(".", ",") + (r[8] ? " " + r[8] : ""); fill.style.width = Math.round((n - r[5]) / (r[6] - r[5]) * 100) + "%"; };
+            show(Number(v));
+            var step = (d) => { var n = Math.round((Number(val(k)) + d * r[7]) / r[7]) * r[7]; n = Math.max(r[5], Math.min(r[6], Math.round(n * 100) / 100)); st.o[k] = n; save(); };
+            minus.type = plus.type = "button";
+            minus.addEventListener("click", () => step(-1)); plus.addEventListener("click", () => step(1));
+            bar.addEventListener("click", (ev) => { var rc = bar.getBoundingClientRect(), f = Math.max(0, Math.min(1, (ev.clientX - rc.left) / rc.width)); var n = Math.round((r[5] + f * (r[6] - r[5])) / r[7]) * r[7]; st.o[k] = Math.round(n * 100) / 100; save(); });
+          }
+        });
+      };
+      reset.addEventListener("click", () => { st.o = {}; save(); });
+      m3.load = () => { var x = map3dParse(this.val(id)); st.p = x.p; st.o = x.o; draw(); };
+      m3.load();
     }
     open(g) {
       this.close();
@@ -12351,7 +12589,7 @@
       });
       this.ovRows.forEach((r) => r.refresh());
     }
-    close() { if (this.ov) { this.ov.remove(); this.ov = null; this.ovRows = null; } }
+    close() { if (this.ov) { this.ov.remove(); this.ov = null; this.ovRows = null; this.m3 = null; } }
   }
 
   // ----- igor-messages-card: the phone's messages (and the call, above them) -----

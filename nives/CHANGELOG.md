@@ -1,3 +1,8 @@
+## 0.50.0 — La carte 3D se règle depuis l'autoradio
+
+- **`igor-settings-card` `map3d:`** : une tuile « Carte 3D » ouvre une grande fenêtre — 4 préréglages (Épuré, Réaliste, Lisible, Économie) et six onglets : Bâtiments (affichés, opacité, fenêtres, fenêtres allumées la nuit, couleur des murs, ombres, reflets, zoom d'apparition), Route et noms (place de la route : au sol, sous les noms ou par-dessus tout ; épaisseur, couleur, halo, trajet parcouru, bouchons en dégradé, en traits ou masqués, noms cachés par les bâtiments, taille des noms, lieux TomTom), Sol et nature (sol texturé, arbres des bois, arbres de rue, vent, relief, ombrage), Lumière (jour/nuit, seuil du soleil), Caméra (inclinaison, zoom, zoom selon la vitesse, place de la voiture), Performance (mode fluide, netteté). Chaque changement est enregistré dans un `input_text` (le préréglage, puis seulement ce qui en diffère).
+- **`igor-gps-card` `settings:`** : la carte suit cet `input_text` et applique chaque changement en direct, sans recharger. Sans `settings`, rien ne change.
+
 ## 0.49.4 — La route toujours au-dessus du sol, des bouchons en dégradé, des bâtiments plus sobres
 
 - **Bouchons en dégradé** (`igor-gps-card`) : la route elle-même passe du bleu à l'orange (ralenti) ou au rouge (bouchon) sur environ 200 m, puis revient au bleu — le halo lumineux, le liseré et le filet clair prennent la même couleur. Deux bouchons proches s'enchaînent sans repasser par le bleu. Si le moteur de carte refusait le dégradé, les bouchons reviennent tracés à part comme avant. `jam_gradient: false` : l'ancien tracé.
