@@ -1,3 +1,8 @@
+## 0.50.8 — Un échéancier plus net
+
+- `igor-schedule-card` : une barre plus épaisse avec des pastilles numérotées dans l'ordre des échéances (deux trop proches : la suivante se dresse sur une petite tige), des repères « aujourd'hui », « +48 400 km », « +193 500 km » ; en dessous, une case par entretien, dans le même ordre, sa couleur d'état en haut — plus aucune étiquette écrite sur une autre.
+- Carnet : le compteur se recalibre en tapant le kilométrage lu au compteur (Réglages → Compteur) ; la base est recalculée seule. Avant, la valeur tapée était la base, à laquelle s'ajoutait la distance déjà mesurée.
+
 ## 0.50.7 — « Reprendre le trajet » revient sur l'autoradio
 
 - `igor-drive-card` `resume:` : quand la voiture repart moins de 8 h après un arrêt (`binary_sensor.voiture_reprise_proposee`, une minute), un grand bandeau vert « Reprendre le trajet » s'affiche au centre — l'heure de départ et les kilomètres du trajet précédent, une barre qui décompte la minute. Un toucher appuie sur `input_button.voiture_reprendre_le_trajet` : les deux trajets seront regroupés.

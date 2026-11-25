@@ -5498,7 +5498,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.50.7";
+  var GPS_CARD_VERSION = "0.50.8";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -13441,15 +13441,19 @@
         ".top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex: none; }",
         ".odo { font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; } .odo small { font-size: 12px; color: var(--dim); }",
         ".nx { text-align: right; } .nx span { display: block; font-size: 11px; color: var(--dim); } .nx b { font-weight: 400; font-size: 17px; }",
-        ".ax { position: relative; flex: 1 1 0; min-height: 190px; margin: 6px 70px 0; }",
-        ".ln { position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; background: var(--track); border-radius: 2px; }",
-        ".now { position: absolute; left: 0; top: 18%; bottom: 18%; border-left: 2px solid var(--igor-signal, #e5323b); }",
-        ".ev { position: absolute; top: 50%; width: 0; } .ev i { position: absolute; left: -8px; top: -8px; width: 16px; height: 16px; border-radius: 50%; }",
-        ".ev div { position: absolute; left: -75px; width: 150px; text-align: center; } .ev div b { display: block; font-weight: 400; font-size: 15px; white-space: nowrap; } .ev div span { font-size: 11px; color: var(--dim); white-space: nowrap; }",
-        ".ev.up div { bottom: 14px; } .ev.dn div { top: 14px; } .ev.up2 div { bottom: 58px; } .ev.dn2 div { top: 58px; }",
-        ".ev.up2 i, .ev.dn2 i { box-shadow: 0 0 0 3px var(--card); }",
-        ".ev.up2 div::after, .ev.dn2 div::after { content: ''; position: absolute; left: 50%; width: 1px; background: var(--line); }",
-        ".ev.up2 div::after { top: 100%; height: 44px; } .ev.dn2 div::after { bottom: 100%; height: 44px; }"
+        // The road ahead as one thick bar (numbered pins on it), and under it
+        // one tidy cell per item, by due date: no label written over another.
+        "ha-card { display: flex; flex-direction: column; }",
+        ".ax { flex: 1 1 0; min-height: 140px; display: flex; flex-direction: column; justify-content: center; gap: 10px; margin-top: 6px; }",
+        ".trk { position: relative; height: 54px; margin: 0 18px; flex: none; }",
+        ".ln { position: absolute; left: 0; right: 0; top: 22px; height: 10px; border-radius: 5px; background: linear-gradient(90deg, rgba(92,194,143,.35), var(--track) 35%); }",
+        ".tk { position: absolute; top: 38px; font-size: 11px; color: var(--dim); transform: translateX(-50%); white-space: nowrap; } .tk.l { transform: none; } .tk.r { transform: translateX(-100%); }",
+        ".pin { position: absolute; top: 27px; width: 0; } .pin i { position: absolute; left: -13px; top: -13px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 13px; font-weight: 700; color: #0b0d10; box-shadow: 0 0 0 3px var(--card, #121418); }",
+        ".pin.lift i { top: -33px; } .pin.lift::after { content: ''; position: absolute; left: -1px; top: -8px; height: 8px; border-left: 2px solid var(--line); }",
+        ".its { display: grid; grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); gap: 8px; flex: none; }",
+        ".it { border: 1px solid var(--line); border-top-width: 3px; padding: 7px 9px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }",
+        ".it i { font-style: normal; font-size: 11px; font-weight: 700; letter-spacing: .08em; }",
+        ".it b { font-weight: 400; font-size: 13px; line-height: 1.2; overflow-wrap: normal; word-break: normal; hyphens: none; } .it span { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }"
       ].join("\n"));
       var card = el("ha-card", "", this.shadowRoot);
       el("div", "h", card, this.config.title || "échéancier");
@@ -13484,23 +13488,30 @@
       var nb = el("b", "", this.next, soon ? soon.it.name + " · " + (soon.days ? fr(soon.left, 0) + " j" : fr(soon.left, 0) + " km") : "—");
       if (soon) nb.style.color = col[soon.lvl];
       this.ax.innerHTML = "";
-      el("div", "ln", this.ax); el("div", "now", this.ax);
+      var trk = el("div", "trk", this.ax); el("div", "ln", trk);
       // The scale follows what is ahead: the farthest known item (with room),
       // never less than `horizon` — nothing piled up at the right edge.
       var far = evs.reduce((m, e) => e.km != null && e.km > m ? e.km : m, 0);
       H = Math.max(H, far * 1.08);
-      // Placed along the next H km: the overdue at the start, the unknown at
-      // the end. Labels too close to each other take another row (below,
-      // above, then farther below / above), so none is written over another.
-      var rows = { dn: -1e9, up: -1e9, dn2: -1e9, up2: -1e9 }, GAP = 17;
-      evs.slice().sort((a, b) => (a.km == null ? Infinity : a.km) - (b.km == null ? Infinity : b.km)).forEach((e) => {
-        // A square-root scale: what comes soon gets more room than what is far.
-        var x = e.km == null ? 100 : Math.max(0, Math.min(100, Math.sqrt(Math.max(0, e.km) / H) * 100));
-        var row = ["dn", "up", "dn2", "up2"].find((r) => x - rows[r] >= GAP) || ["dn", "up", "dn2", "up2"].sort((p, q) => rows[p] - rows[q])[0];
-        rows[row] = x;
-        var d = el("div", "ev " + row, this.ax); d.style.left = x + "%";
-        el("i", "", d).style.background = col[e.lvl];
-        var t = el("div", "", d); var b = el("b", "", t, e.it.name); b.style.color = col[e.lvl]; el("span", "", t, e.label + (e.km != null && e.km > H ? " ›" : ""));
+      // Placed along the next H km (a square-root scale: what comes soon gets
+      // more room); numbered by due order; two pins too close: the later one
+      // stands up on a stalk. Below, the same order, one cell each.
+      var order = evs.slice().sort((a, b) => (a.km == null ? Infinity : a.km) - (b.km == null ? Infinity : b.km));
+      var X = (km) => km == null ? 100 : Math.max(0, Math.min(100, Math.sqrt(Math.max(0, km) / H) * 100));
+      [[0, "aujourd'hui", "l"], [50, "+" + fr(Math.round(H / 4 / 100) * 100, 0) + " km", ""], [100, "+" + fr(Math.round(H / 100) * 100, 0) + " km", "r"]].forEach((t) => {
+        var tk = el("div", "tk " + t[2], trk, t[1]); tk.style.left = t[0] + "%";
+      });
+      var lastX = -100, lifted = false, its = el("div", "its", this.ax);
+      its.style.setProperty("--n", String(Math.max(1, order.length)));
+      order.forEach((e, n) => {
+        var x = X(e.km), close = x - lastX < 4.5;
+        lifted = close && !lifted; lastX = x;
+        var p = el("div", "pin" + (lifted ? " lift" : ""), trk); p.style.left = x + "%";
+        var pi = el("i", "", p, String(n + 1)); pi.style.background = col[e.lvl];
+        var it = el("div", "it", its); it.style.borderTopColor = col[e.lvl];
+        var ii = el("i", "", it, String(n + 1)); ii.style.color = col[e.lvl];
+        var b = el("b", "", it, e.it.name); if (e.lvl !== "ok") b.style.color = col[e.lvl];
+        el("span", "", it, e.label + (e.km != null && e.km > H ? " ›" : ""));
       });
     }
   }
