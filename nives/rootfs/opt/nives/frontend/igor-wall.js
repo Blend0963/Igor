@@ -5322,7 +5322,11 @@
   //   base_pois: true                       # with basemap: tomtom-3d, TomTom's own places (Igor adds only cameras and stations with prices)
   //   debug: true                           # says in the message band how the relief was made (TomTom's 3D layers, or Igor's)
   //   sdk: true                             # with basemap: tomtom-3d, TomTom's Maps SDK (buildings with facades and lit windows, textured water and woods), fetched from a CDN; false: MapLibre alone
-  //   sdk_style: streetDarkDriving          # the SDK's style (streetLight, streetDark, streetLightDriving, streetDarkDriving, monoDark…)
+  //   sdk_theme: auto                       # auto: light driving style by day, dark as soon as the sun is low (sun.sun); day | night: held
+  //   night_elevation: 3                    # the sun's height (°) under which the map turns to night
+  //   sdk_style: streetDarkDriving          # one style for good (streetLight, streetDark, streetLightDriving, streetDarkDriving, monoDark…)
+  //   sdk_trees: false                      # no 3D trees in the woods and parks (the SDK's)
+  //   terrain: false                        # a flat ground (no hills, no valleys)
   //   sdk_surfaces: false                   # no textured surfaces (lighter); or its knobs, e.g. { wind: { speedFactor: 1 } }
   //   trees: false                          # no 3D trees (OpenStreetMap's real trees, natural=tree and tree_row)
   //   voice_to: input_text.car_voice        # what the guidance says goes there (« ms|kind|text »), said by the head unit's igor-guide-card
@@ -5400,7 +5404,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.45.0";
+  var GPS_CARD_VERSION = "0.46.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6917,11 +6921,21 @@
       if (this.tt && this.ttKit) {
         var lm = this.ttKit.lm, why = [];
         if (!this.tt3d) { try { this.tt3d = new lm.Buildings3D(this.tt, this.config.sdk_buildings || {}); } catch (e) { why.push("bâtiments : " + (e && e.message)); } }
+        // The surfaces, and in the woods and parks the SDK's 3D trees:
+        // broadleaf, conifers, bushes, as each kind of ground and latitude
+        // grows them. The woods are the map's own; where each tree stands
+        // in them is the SDK's (nobody maps a wood tree by tree).
         if (!this.ttSurf && this.config.sdk_surfaces !== false) {
-          try { this.ttSurf = new lm.GLSurfaces(this.tt, Object.assign({ trees: { visible: false }, wind: { speedFactor: 0 } }, typeof this.config.sdk_surfaces === "object" ? this.config.sdk_surfaces : {})); } catch (e) { why.push("surfaces : " + (e && e.message)); }
+          try { this.ttSurf = new lm.GLSurfaces(this.tt, Object.assign({ trees: { visible: this.config.sdk_trees !== false }, wind: { speedFactor: 0 } }, typeof this.config.sdk_surfaces === "object" ? this.config.sdk_surfaces : {})); } catch (e) { why.push("surfaces : " + (e && e.message)); }
         }
-        try { if (map.setSky) map.setSky({ "sky-color": "#0b0e14", "horizon-color": "#1b2433", "fog-color": "#08090b", "sky-horizon-blend": 0.6, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.4 }); } catch (e) { /* older engine */ }
-        this.diag3d = "SDK TomTom : " + [this.tt3d ? "bâtiments 3D" : "", this.ttSurf ? "surfaces" : ""].filter(Boolean).join(" + ") + (why.length ? " · " + why.join(" · ") : "");
+        // The ground in relief (hills, valleys) with its shading; the
+        // buildings, the trees and the route stand on it. `terrain: false`: flat.
+        if (this.config.terrain !== false && !this.ttTerrain && this.ttKit.sdk.TerrainModule) {
+          this.ttTerrain = "…";
+          this.ttKit.sdk.TerrainModule.get(this.tt, { hillshade: { visible: true }, elevation: { visible: true } })
+            .then((m) => { this.ttTerrain = m; }).catch((e) => { this.ttTerrain = null; this.terrainWhy = (e && e.message) || "relief refusé"; });
+        }
+        this.diag3d = "SDK TomTom (" + this.ttStyle + ") : " + [this.tt3d ? "bâtiments 3D" : "", this.ttSurf ? "surfaces" + (this.config.sdk_trees !== false ? " et arbres des bois" : "") : "", this.config.terrain !== false ? "relief" : ""].filter(Boolean).join(" + ") + (why.length ? " · " + why.join(" · ") : "");
         if (this.config.debug) this.message("relief : " + this.diag3d);
         return;
       }
@@ -7320,7 +7334,7 @@
       if (kit) {
         try {
           var tt = new kit.sdk.TomTomMap({
-            commonBaseURL: window.location.origin + "/api/nives/tomtom", style: this.config.sdk_style || "streetDarkDriving",
+            commonBaseURL: window.location.origin + "/api/nives/tomtom", style: (this.ttStyle = this.sdkStyleNow()),
             transformRequest: (req) => { var t = this.mapRequest(req && req.url); return t ? Object.assign({}, req, t, { headers: Object.assign({}, req.headers || {}, t.headers || {}) }) : req; },
             mapLibre: {
               container: this.$("map"), center: p, zoom: this.config.zoom, pitch: this.config.pitch, bearing: this.headingUp ? this.heading : 0,
@@ -7612,7 +7626,7 @@
       else if (!this.route && this.guideOn) this.publishGuide(null);
       if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > (this.offlineReady ? 3000 : 800))) { this.limitAt = now; this.limitTick(now, moving); }
       if (!this.alertAt || now - this.alertAt > 500) { this.alertAt = now; this.alertTick(now, speed); }
-      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); this.publishAhead(now); this.treesTick(); }
+      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); this.publishAhead(now); this.treesTick(); this.themeTick(); }
       // The stations' panel, left open, follows the car: gone far enough from
       // where it last asked (400 m, and never twice within ten seconds), it
       // asks again — the list is the stations around the car, not the ones
@@ -8846,6 +8860,35 @@
     // street tree otherwise. A row of trees (tree_row) is planted every 9 m
     // along its line — the row is real, the spacing is the usual one. Read by
     // squares of about 1.2 km (zoom 15) around the car, kept for the session.
+    // Day or night: the SDK's light driving style by day, the dark one by
+    // night (its windows lit), after Home Assistant's sun (sun.sun), else
+    // the clock. `sdk_theme: day | night` holds one; `sdk_style:` sets it.
+    sdkStyleNow() {
+      var c = this.config;
+      if (c.sdk_style) return c.sdk_style;
+      var th = c.sdk_theme || "auto", sun = this._hass && this._hass.states["sun.sun"], h = new Date().getHours();
+      // As a car's GPS: night as soon as the sun gets low, before it sets —
+      // its height over the horizon (sun.sun's `elevation`) under
+      // `night_elevation` (3° by default), day again a degree above it (no
+      // back and forth right at the threshold).
+      var el = sun ? Number(sun.attributes && sun.attributes.elevation) : NaN, lim = c.night_elevation != null ? Number(c.night_elevation) : 3;
+      var wasNight = this.ttStyle === "streetDarkDriving";
+      var auto = isFinite(el) ? (wasNight ? el < lim + 1 : el < lim) : sun ? sun.state === "below_horizon" : h < 7 || h >= 20;
+      var night = th === "night" || (th !== "day" && auto);
+      return night ? "streetDarkDriving" : "streetLightDriving";
+    },
+    themeTick() {
+      if (!this.tt || !this.map || this.themeBusy) return;
+      var t = Date.now();
+      if (this.themeAt && t - this.themeAt < 30000) return;
+      this.themeAt = t;
+      var want = this.sdkStyleNow();
+      if (want === this.ttStyle) return;
+      // The other style: the SDK carries its modules over; the route, the
+      // trail and the trees come back with Igor's own style.load.
+      this.ttStyle = want; this.themeBusy = true;
+      Promise.resolve().then(() => this.tt.setStyle(want)).catch(() => {}).then(() => { this.themeBusy = false; });
+    },
     treesOn() { return this.config.trees !== false && this.config.basemap === "tomtom-3d" && !this.offlineReady; },
     treesSetup(map) {
       if (!this.treesOn() || !map || map.getSource("igor-trees")) return;
@@ -8872,7 +8915,7 @@
       this.treesBusy = true;
       gpsOverpass(this.config, "[out:json][timeout:25];(node[natural=tree](" + bb + ");way[natural=tree_row](" + bb + "););out geom;")
         .then((res) => { T[key] = { at: Date.now(), els: (res && res.elements) || [] }; this.treesDraw(); })
-        .catch(() => { T[key] = { at: Date.now(), fail: true, els: [] }; })
+        .catch(() => { T[key] = { at: Date.now(), fail: true, els: [] }; this.treesDraw(); })
         .then(() => { this.treesBusy = false; });
     },
     treesDraw() {
@@ -8881,7 +8924,12 @@
       // Only the squares near the car stay drawn (2 squares around it).
       var T = this.treeTiles || {}, c = this.pos ? gpsTileOf(this.pos, 15) : null;
       Object.keys(T).forEach((k) => { var xy = k.split("/").map(Number); if (c && (Math.abs(xy[0] - c[0]) > 2 || Math.abs(xy[1] - c[1]) > 2)) delete T[k]; });
-      src.setData(this.treesData());
+      var d = this.treesData();
+      src.setData(d);
+      if (this.config.debug) {
+        var n = d.features.filter((f) => f.properties.k === "t").length, tiles = Object.keys(T), fails = tiles.filter((k) => T[k].fail).length;
+        this.message((this.diag3d ? "relief : " + this.diag3d + " · " : "") + "arbres OpenStreetMap : " + n + " (" + tiles.length + " carrés" + (fails ? ", " + fails + " sans réponse" : "") + ")");
+      }
     },
     treesData() {
       var feats = [], T = this.treeTiles || {}, seen = {};
