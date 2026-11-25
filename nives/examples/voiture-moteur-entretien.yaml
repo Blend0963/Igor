@@ -97,7 +97,7 @@
           entities:
             - { entity: sensor.voiture_kilometrage, name: Km }
             - { entity: sensor.voiture_cout_mois, name: Carburant (mois) }
-            - { entity: sensor.voiture_filtre_gasoil, name: Filtre gasoil }
+            - { entity: sensor.voiture_filtre_a_gasoil, name: Filtre gasoil }
             - { entity: sensor.peugeot_407_tests_antipollution_incomplets, name: Antipollution }
         # « Plein fait » : km / litres / prix au litre → total calculé à l'écran,
         # les trois valeurs passées telles quelles à script.voiture_plein_fait.
