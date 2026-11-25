@@ -33,3 +33,18 @@ def test_other_entities_and_platforms_are_not_matched():
     entries = [("sensor.salon_temp", "template"), ("sensor.salon_temp_2", "template"),
                ("sensor.peugeot_407_vitesse", "mqtt"), ("sensor.peugeot_407_vitesse_2", "template")]
     assert car.duplicate_pairs(entries, {"sensor.salon_temp", "sensor.peugeot_407_vitesse"}) == {"fix": [], "keep": []}
+
+
+def test_services_only_call_what_the_car_object_has():
+    """In _async_register_car, `car` is the Car object, not the module: a
+    module function called through it (car.duplicate_pairs) broke the action."""
+    import ast
+
+    root = pathlib.Path(__file__).resolve().parents[1] / "rootfs/opt/nives"
+    cls = next(n for n in ast.parse((root / "car.py").read_text()).body if isinstance(n, ast.ClassDef) and n.name == "Car")
+    has = {n.name for n in cls.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    has |= {n.attr for n in ast.walk(cls) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "self"}
+    init = ast.parse((root / "__init__.py").read_text())
+    fn = next(n for n in init.body if isinstance(n, ast.FunctionDef) and n.name == "_async_register_car")
+    used = {n.attr for n in ast.walk(fn) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "car"}
+    assert used and used <= has, sorted(used - has)

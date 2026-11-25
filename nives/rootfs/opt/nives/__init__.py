@@ -1234,6 +1234,7 @@ def _async_register_car(hass: HomeAssistant) -> None:
         HOME_WORDS, KINDS, RADARS_URL, SMALL_WORDS, TOMTOM_KINDS, Car, fold, format_destination, kind_of, parse_destination, parse_radars, pick_place, radars_near,
     )
     from .car import haversine_m as car_haversine
+    from .car import duplicate_pairs
 
     async def _fetch(method: str, url: str, params: dict | None, data, json_body=None):
         session = async_get_clientsession(hass)
@@ -1639,7 +1640,7 @@ def _async_register_car(hass: HomeAssistant) -> None:
             st = hass.states.get(eid)
             if st is None or st.attributes.get("restored"):
                 orphans.add(eid)
-        pairs = car.duplicate_pairs(entries, orphans, call.data["match"])
+        pairs = duplicate_pairs(entries, orphans, call.data["match"])  # the module's, not the Car (car)
         done = []
         if not call.data["dry_run"]:
             for old, new in pairs["fix"]:

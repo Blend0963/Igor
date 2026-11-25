@@ -3,6 +3,7 @@
 - `igor-settings-card` : les tuiles se partagent toute la largeur, alignées sur les boutons du dessous (elles s'entassaient à gauche, titres coupés sur l'autoradio).
 - `igor-settings-card` : `screen_lock: true` ajoute la tuile « Cet écran » — « C'est l'autoradio » (verrouillé sans votre téléphone) ou « Écran libre » ; le choix ne vaut que pour l'appareil où il est fait, la tuile dit l'état de cet appareil. Elle remplace le bouton « Cet écran est l'autoradio ».
 - Écran verrouillé par erreur (une tablette, un ordinateur) : un appui de 3 s sur le cadenas propose « Écran libre, ne plus verrouiller ».
+- **`nives.car_fix_duplicates` répondait « Unknown error »** : l'action appelait sa fonction à travers l'objet de guidage au lieu du module. Corrigé, et un test vérifie désormais chaque appel de ce genre.
 
 ## 0.49.1 — Plus de bandes grises entre les boutons du GPS, le CT à sa date
 
