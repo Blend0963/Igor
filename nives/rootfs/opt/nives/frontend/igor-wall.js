@@ -5498,7 +5498,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.50.9";
+  var GPS_CARD_VERSION = "0.51.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -11981,6 +11981,7 @@
   //   routes: input_text.car_routes        # the routes offered by the phone map (publish_routes): chosen here, in the middle
   //   route_choice: input_text.car_choice  # where the choice is written
   //   destination: input_text.car_dest     # its name over the routes
+  //   tabs: true                           # the radar / moteur / conso buttons under the view (default: none, the views change by themselves)
   //   resume: { entity: binary_sensor.car_resume_offered, button: input_button.car_resume }   # a big green « Reprendre le trajet » over the view while offered (attributes precedent_debut, precedent_km)
   //   tune: { load_on: 75, accel_on: 1.4, window_s: 3, min_kmh: 15, boost_on: 0.8, gain_s: 4, hold_s: 20, calm_s: 8, min_view_s: 8, cooldown_s: 30, override_s: 60 }
   // Which view, by priority: a radar within reach (green, amber, red as the
@@ -12197,7 +12198,8 @@
       if (want !== this.view && this.view && want !== "radar" && want !== "moteur" && want !== "routes" && this.view !== "radar" && this.view !== "routes" && !force && t - this.viewAt < this.tune("min_view_s", 8) * 1000) want = this.view;
       if (want !== this.view) { this.view = want; this.viewAt = t; this.fadeTo(); }
       Object.keys(this.tabBtns).forEach((k) => { this.tabBtns[k].className = k === this.view ? (this.manual ? "lock" : "on") : ""; });
-      this.tabsEl.hidden = this.view === "arret" || this.view === "routes";
+      // The views change by themselves (radar, a pull, the trip): no buttons unless `tabs: true`.
+      this.tabsEl.hidden = this.config.tabs !== true || this.view === "arret" || this.view === "routes";
       this.lastRad = rad; this.lastV = v;
       // While the old view fades out, it is left as it is.
       if (!this.swapping) this.draw(rad, v);

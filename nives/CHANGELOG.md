@@ -1,3 +1,7 @@
+## 0.51.0 — Plus de boutons radar / moteur / conso
+
+- `igor-drive-card` : les boutons sous la vue du centre sont retirés — la vue change d'elle-même (radar à l'approche, moteur pied au plancher, sinon le trajet). `tabs: true` les remet.
+
 ## 0.50.9 — L'échéancier : toutes les pastilles sur la barre
 
 - `igor-schedule-card` : deux échéances proches ne font plus monter une pastille au-dessus de la barre — elles s'écartent un peu, dans l'ordre, sur la barre. Les repères en kilomètres (« +42 400 km ») sont retirés : l'échelle donne plus de place à ce qui vient bientôt, un chiffre au milieu trompait ; les cases donnent les kilomètres exacts.
