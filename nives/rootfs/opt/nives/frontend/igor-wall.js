@@ -4961,7 +4961,9 @@
         ".trip b { display: block; font-size: 18px; font-weight: 400; font-variant-numeric: tabular-nums; }",
         ".trip span { color: var(--dim); font-size: 10px; }",
         ".trip .t { grid-column: 1 / -1; color: var(--faint); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 4px; }",
-        "ha-card.off .sp, ha-card.off .mini b, ha-card.off .row b { color: var(--faint); }"
+        "ha-card.off .sp, ha-card.off .mini b, ha-card.off .row b { color: var(--faint); }",
+        // A small screen (a head unit of 600 px or so): the same, tighter, so the guidance below keeps its room.
+        "@media (max-height: 660px) { .sp { font-size: 46px; margin-top: 4px; } .seg { margin: 8px 0 3px; height: 12px; } .mini { margin-top: 6px; gap: 8px; } .mini div { padding-top: 3px; } .mini b { font-size: 18px; } }"
       ].join("\n"));
       var card = el("ha-card", "", this.shadowRoot);
       this.card = card;
@@ -5427,7 +5429,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.47.1";
+  var GPS_CARD_VERSION = "0.48.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6754,6 +6756,8 @@
           // Home Assistant keeps that strip empty (its safe area), the map
           // is laid over the page instead, from corner to corner.
           " #card { position: fixed !important; inset: 0 !important; width: auto !important; height: auto !important; z-index: 40 !important; border-radius: 0 !important; margin: 0 !important; }";
+        // The routes chosen on the head unit (publish_routes): their panel is not shown on the phone.
+        if (this.config.publish_routes) dsp.textContent += " .rpanel { display: none !important; }";
         this.root.appendChild(dsp);
       }
       var mlCss = this.root.querySelector("link[data-ml-css]");
@@ -11163,6 +11167,7 @@
         "button.stop { flex: none !important; padding: 6px 12px; }",
         // big: the head unit's guidance column (remote), the turn in large
         ":host([big]) ha-card { overflow: hidden; } :host([big]) .turn { grid-template-columns: 70px minmax(0, 1fr); gap: 8px; --mdc-icon-size: 66px; } :host([big]) .dist { font-size: 40px; } :host([big]) .tx { font-size: 17px; } :host([big]) .then { font-size: 12px; margin-top: 3px; }",
+        ":host([big].short) .turn { grid-template-columns: 52px minmax(0, 1fr); --mdc-icon-size: 48px; } :host([big].short) .dist { font-size: 32px; } :host([big].short) .then { display: none; } :host([big].short) .grid > div:nth-child(n+3) { display: none; } :host([big].short) .grid b { font-size: 20px; }",
         ":host([big]) .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px 10px; border-top: 1px solid var(--line); padding-top: 8px; margin-top: auto; flex: none; }",
         ".grid span { display: block; font-size: 11px; color: var(--dim); } .grid > div { min-width: 0; } .grid b { font-weight: 400; font-size: 24px; font-variant-numeric: tabular-nums; white-space: nowrap; } .grid b.s { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; } .grid .ok { color: " + CAR_OK + "; } .grid .warn { color: " + CAR_WARN + "; }",
         // the buttons row
@@ -11229,6 +11234,8 @@
       this.npStreet = el("div", "", this.noPhone); this.npStreet.style.cssText = "font-size:26px;line-height:1.15;margin-top:4px";
       this.npTown = el("div", "", this.noPhone); this.npTown.style.cssText = "font-size:16px;color:var(--dim);margin-top:6px";
       this.guide = el("div", "", card);
+      // Short of room (under 300 px): the guidance block a step smaller.
+      if (this.config.big && window.ResizeObserver && !this.roBig) { this.roBig = new ResizeObserver((en) => { var r = en[0] && en[0].contentRect; if (r && r.height) this.classList.toggle("short", r.height < 300); }); this.roBig.observe(this); }
       if (this.remote()) {
         this.guide.style.display = "flex"; this.guide.style.flexDirection = "column"; this.guide.style.flex = "1"; this.guide.style.minHeight = "0";
         var gh = el("div", "", this.guide); gh.style.cssText = "display:flex;justify-content:space-between;align-items:baseline";
@@ -11275,7 +11282,7 @@
       }
     }
     buildBar(card) {
-      if (window.ResizeObserver) { this.ro = new ResizeObserver((en) => { var w = en[0] && en[0].contentRect.width; if (w) this.classList.toggle("narrow", w < 600); }); this.ro.observe(this); }
+      if (window.ResizeObserver) { this.ro = new ResizeObserver((en) => { var r = en[0] && en[0].contentRect; if (r && r.width) this.classList.toggle("narrow", r.width < 600); if (r && r.height) this.classList.toggle("short", r.height < 300); }); this.ro.observe(this); }
       var bar = el("div", "bar", card);
       var list = this.config.buttons || ["search", "home", "fuel", "stopover", "voice", "stop"];
       var defs = { search: ["mdi:magnify", "chercher"], home: ["mdi:home", "maison"], work: ["mdi:briefcase", "travail"], fuel: ["mdi:gas-station", "stations"], stopover: ["mdi:flag-checkered", "étape"], voice: ["mdi:volume-high", "voix"], stop: ["mdi:stop", "stop"], waze: ["mdi:waze", "waze"] };
@@ -11683,6 +11690,9 @@
   //   online: binary_sensor.car_online     # off and still: « voiture arrêtée »
   //   position: device_tracker.car         # no phone: the cameras from the official list, around the head unit
   //   next_service: sensor.car_oil_km      # shown when the car is stopped
+  //   routes: input_text.car_routes        # the routes offered by the phone map (publish_routes): chosen here, in the middle
+  //   route_choice: input_text.car_choice  # where the choice is written
+  //   destination: input_text.car_dest     # its name over the routes
   //   tune: { load_on: 75, gain_kmh: 15, gain_s: 4, boost_on: 1.2, hold_s: 20, calm_s: 8, min_view_s: 8, cooldown_s: 30, override_s: 60 }
   // Which view, by priority: a radar within reach (green, amber, red as the
   // speed goes), a hard acceleration (the engine, held while the effort
@@ -11718,17 +11728,27 @@
         ".gh { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; flex: none; } .gh .h { margin: 0; } .gh .aside b { font-weight: 400; color: " + CAR_OK + "; }",
         ".spark { flex: 1; min-height: 50px; margin-top: 6px; } .spark svg { width: 100%; height: 100%; display: block; } .foot { display: flex; gap: 16px; font-size: 13px; color: var(--dim); flex-wrap: wrap; flex: none; margin-top: 4px; }",
         // The frieze: « vous » fixed on the left, the road coming towards it.
-        "ha-card.frz { flex: none; height: 118px; box-sizing: border-box; padding: 8px 14px 6px; display: flex; flex-direction: column; overflow: hidden; }",
+        "ha-card.frz { flex: none; height: 104px; box-sizing: border-box; padding: 6px 14px 4px; display: flex; flex-direction: column; overflow: hidden; }",
+        // Short of room (a small head unit): everything a step smaller, the curve and its foot left out.
+        ":host(.short) ha-card.view { padding: 8px 12px; } :host(.short) .kpi b { font-size: 24px; } :host(.short) .spark, :host(.short) .foot, :host(.short) .gh { display: none; }",
+        ":host(.short) .sign { width: 84px; height: 84px; border-width: 8px; font-size: 36px; } :host(.short) .rd { font-size: 40px; } :host(.short) .rs { font-size: 16px; } :host(.short) .rad { gap: 4px; }",
+        ":host(.short) .dial svg { max-height: 150px; } :host(.short) .bars b { font-size: 18px; } :host(.short) .ef b { font-size: 16px; } :host(.short) .tabs { display: none; }",
+        ":host(.tight) ha-card.frz { height: 84px; } :host(.tight) .pin div { font-size: 13px; } :host(.tight) .pin div small { display: none; }",
+        // The routes offered for the destination just chosen: chosen here.
+        ".rts { height: 100%; display: flex; flex-direction: column; gap: 6px; min-height: 0; } .rts .opts { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; overflow: hidden; }",
+        ".rt { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 12px; border: 1px solid var(--line); cursor: pointer; flex: 1 1 0; min-height: 0; max-height: 72px; }",
+        ".rt.first { border-color: #59d0e0; box-shadow: inset 3px 0 #59d0e0; } .rt b { font-weight: 400; font-size: 26px; font-variant-numeric: tabular-nums; white-space: nowrap; } .rt .l { min-width: 0; } .rt .l div { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .rt .l small { display: block; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .rt .j { font-size: 14px; white-space: nowrap; }",
+        ".rts .note { font-size: 12px; color: var(--dim); flex: none; } :host(.short) .rt b { font-size: 20px; } :host(.short) .rt { padding: 4px 10px; }",
         ".trk { position: relative; flex: 1; }",
-        ".road { position: absolute; left: 6%; right: 3%; top: 34%; height: 10px; margin-top: -5px; border-radius: 5px; overflow: hidden; background: #3b8cff; }",
+        ".road { position: absolute; left: 6%; right: 3%; top: 28%; height: 10px; margin-top: -5px; border-radius: 5px; overflow: hidden; background: #3b8cff; }",
         ".flow { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, rgba(255,255,255,0) 0 18px, rgba(255,255,255,.35) 18px 26px, rgba(255,255,255,0) 26px 44px); animation: igfl 1s linear infinite; }",
         "@keyframes igfl { from { background-position: 0 0; } to { background-position: -44px 0; } }",
-        ".done { position: absolute; left: 0; width: 6%; top: 34%; height: 4px; margin-top: -2px; background: #2a2f36; border-radius: 2px; }",
-        ".you { position: absolute; left: 6%; top: 34%; transform: translate(-50%, -50%) rotate(90deg); color: #59d0e0; font-size: 24px; text-shadow: 0 0 12px #59d0e0; line-height: 1; }",
+        ".done { position: absolute; left: 0; width: 6%; top: 28%; height: 4px; margin-top: -2px; background: #2a2f36; border-radius: 2px; }",
+        ".you { position: absolute; left: 6%; top: 28%; transform: translate(-50%, -50%) rotate(90deg); color: #59d0e0; font-size: 24px; text-shadow: 0 0 12px #59d0e0; line-height: 1; }",
         ".pin { position: absolute; top: 0; bottom: 0; width: 0; transition: left 1s linear, opacity .4s; }",
-        ".pin i { position: absolute; left: -14px; top: 34%; margin-top: -14px; width: 28px; height: 28px; border-radius: 50%; color: #08090b; display: grid; place-items: center; font-size: 13px; font-weight: 700; font-style: normal; box-shadow: 0 0 0 3px var(--card, #121418); }",
+        ".pin i { position: absolute; left: -14px; top: 28%; margin-top: -14px; width: 28px; height: 28px; border-radius: 50%; color: #08090b; display: grid; place-items: center; font-size: 13px; font-weight: 700; font-style: normal; box-shadow: 0 0 0 3px var(--card, #121418); }",
         ".pin.near i { animation: igpu 1s ease-in-out infinite; } @keyframes igpu { 50% { box-shadow: 0 0 0 3px var(--card, #121418), 0 0 0 9px rgba(229,160,76,.4); } }",
-        ".pin div { position: absolute; left: -70px; width: 140px; top: calc(34% + 18px); text-align: center; font-size: 15px; line-height: 1.15; white-space: nowrap; }",
+        ".pin div { position: absolute; left: -70px; width: 140px; top: calc(28% + 17px); text-align: center; font-size: 14px; line-height: 1.1; white-space: nowrap; }",
         ".pin div small { display: block; font-size: 12px; color: var(--faint, #6b717a); } .pin.end div { left: auto; right: -14px; text-align: right; } .pin.quiet div { visibility: hidden; }",
         "[hidden] { display: none !important; }"
       ].join("\n"));
@@ -11748,6 +11768,16 @@
       this.road = el("div", "road", trk); this.flow = el("div", "flow", this.road);
       el("div", "done", trk); el("div", "you", trk, "▲");
       this.pins = {};
+      // Room: under 250 px for the view above (a small head unit, the frieze
+      // shown), everything a step smaller; a short card, the frieze too.
+      if (window.ResizeObserver) {
+        this.ro = new ResizeObserver(() => {
+          var vh = this.cardEl.getBoundingClientRect().height, all = this.getBoundingClientRect().height;
+          this.classList.toggle("short", vh > 0 && vh < 250);
+          this.classList.toggle("tight", all > 0 && all < 420);
+        });
+        this.ro.observe(this.cardEl); this.ro.observe(this);
+      }
       this.samples = []; this.cons = []; this.consN = 0; this.effort = 0; this.calmSince = 0;
       this.timer = setInterval(() => this.tick(), 1000);
     }
@@ -11840,13 +11870,14 @@
       }
       // Above, what the moment asks (radar > engine > the trip and its
       // consumption, or the parked car); below, the route, whenever guided.
-      var want = rad && rad.d != null ? "radar" : this.sport ? "moteur" : !on && (v == null || v < 1) ? "arret" : "conso";
+      var offer = this.routesOffer(t);
+      var want = offer ? "routes" : rad && rad.d != null ? "radar" : this.sport ? "moteur" : !on && (v == null || v < 1) ? "arret" : "conso";
       if (this.manual && t < this.manual.until && want !== "radar") want = this.manual.view; else if (this.manual && t >= this.manual.until) this.manual = null;
       // A calm view stays at least min_view_s; the radar and the engine come at once.
-      if (want !== this.view && this.view && want !== "radar" && want !== "moteur" && this.view !== "radar" && !force && t - this.viewAt < this.tune("min_view_s", 8) * 1000) want = this.view;
+      if (want !== this.view && this.view && want !== "radar" && want !== "moteur" && want !== "routes" && this.view !== "radar" && this.view !== "routes" && !force && t - this.viewAt < this.tune("min_view_s", 8) * 1000) want = this.view;
       if (want !== this.view) { this.view = want; this.viewAt = t; this.fadeTo(); }
       Object.keys(this.tabBtns).forEach((k) => { this.tabBtns[k].className = k === this.view ? (this.manual ? "lock" : "on") : ""; });
-      this.tabsEl.hidden = this.view === "arret";
+      this.tabsEl.hidden = this.view === "arret" || this.view === "routes";
       this.lastRad = rad; this.lastV = v;
       // While the old view fades out, it is left as it is.
       if (!this.swapping) this.draw(rad, v);
@@ -11866,6 +11897,46 @@
     }
     // A view changing: the old one fades out (0.2 s; the radar, urgent:
     // 0.12 s), then the new one is drawn and fades in (0.25 s).
+    // routes: input_text (the phone map's publish_routes, « ms|min~dist~jam~label~toll~zfe;… »),
+    // route_choice: input_text — the destination just chosen: its routes shown
+    // here, in the middle, one touch to take one (the map takes the first by itself after 25 s).
+    routesOffer(t) {
+      var c = this.config, st = c.routes && this.st(c.routes), m = st && /^(\d+)\|(.+)$/.exec(String(st.state || ""));
+      if (!m || t - Number(m[1]) > 40000) return null;
+      var ch = c.route_choice && this.st(c.route_choice), at = ch ? Number(String(ch.state || "").split("|")[0]) : 0;
+      if (at > Number(m[1])) return null;
+      if (this.routesPicked === m[1]) return null;
+      return { at: Number(m[1]), opts: m[2].split(";").filter(Boolean) };
+    }
+    drawRoutes() {
+      var o = this.routesOffer(Date.now()), c = this.config;
+      if (!o) return;
+      var left = Math.max(0, 25 - Math.round((Date.now() - o.at) / 1000));
+      var d = c.destination && this.st(c.destination), nm = d ? (String(d.state || "").split(";")[1] || "").split("|")[0] : "";
+      this.head.textContent = "itinéraires" + (nm ? " vers " + nm : "");
+      this.aside.textContent = "";
+      this.cardEl.style.borderLeft = "3px solid #59d0e0";
+      var key = "R" + o.at + "|" + left;
+      if (key === this.drawn) return;
+      var same = this.drawn && this.drawn.indexOf("R" + o.at + "|") === 0;
+      this.drawn = key;
+      if (same && this.rtNote) { this.rtNote.textContent = "sans choix, le premier est pris dans " + left + " s"; return; }
+      var b = this.body; b.innerHTML = "";
+      var w = el("div", "rts", b), list = el("div", "opts", w);
+      o.opts.slice(0, 4).forEach((x, i) => {
+        var p = x.split("~"), mins = Number(p[0]) || 0, jam = Number(p[2]) || 0;
+        var it = el("div", "rt" + (i ? "" : " first"), list);
+        el("b", "", it, mins >= 60 ? Math.floor(mins / 60) + " h " + String(mins % 60).padStart(2, "0") : mins + " min");
+        var l = el("div", "l", it); el("div", "", l, p[3] || "itinéraire " + (i + 1)); el("small", "", l, [p[1], p[4] === "1" ? "péage" : "", p[5] === "1" ? "ZFE" : ""].filter(Boolean).join(" · "));
+        var j = el("span", "j", it, jam ? "+" + jam + " min" : "fluide"); j.style.color = jam ? CAR_WARN : CAR_OK;
+        it.addEventListener("click", () => {
+          this.routesPicked = String(o.at);
+          if (c.route_choice && this._hass) this._hass.callService("input_text", "set_value", { entity_id: c.route_choice, value: Date.now() + "|" + i });
+          this.tick(true);
+        });
+      });
+      this.rtNote = el("div", "note", w, "sans choix, le premier est pris dans " + left + " s");
+    }
     fadeTo() {
       this.drawn = null;
       if (this.config.motion === false || !this.view) return;
@@ -11882,6 +11953,7 @@
       var k = this.view, card = this.cardEl;
       card.style.background = ""; card.style.borderColor = "transparent"; card.style.borderLeft = "";
       this.aside.textContent = "";
+      if (k === "routes") return this.drawRoutes();
       if (k === "radar") return this.drawRadar(rad, v);
       if (k === "moteur") return this.drawEngine();
       if (k === "arret") return this.drawStopped();
@@ -12040,6 +12112,91 @@
       var ns = this.st(c.next_service);
       if (ns) { var box = el("div", "", w); box.style.cssText = "margin-top:auto;border:1px solid var(--line);padding:12px"; el("div", "", box, "prochaine échéance").style.cssText = "font-size:12px;color:var(--dim)"; var nn = el("div", "", box, (c.next_service_name || "Vidange") + " · " + (isFinite(parseFloat(ns.state)) ? fr(parseFloat(ns.state), 0) + " km" : ns.state)); nn.style.cssText = "font-size:20px;color:" + CAR_OK; }
     }
+  }
+
+  // ----- igor-settings-card: settings as tiles, each opening its window -----
+  // A head unit's page does not scroll: lists piled one under the other push
+  // the rest out of reach. Here, one tile per subject; a touch opens its
+  // window over the page, its fields (texts, numbers, switches), « Fermer ».
+  //   type: custom:igor-settings-card
+  //   groups:
+  //     - name: Favoris du téléphone
+  //       icon: mdi:account-star
+  //       entities: [ { entity: input_text.contact_1_nom, name: Favori 1 · nom }, … ]
+  class IgorSettingsCard extends IgorCard {
+    setConfig(config) { this.config = config || {}; }
+    getCardSize() { return 3; }
+    build() {
+      this.style(CAR_HEAD + "\n" + [
+        "ha-card { padding: 12px 14px; }",
+        ".tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }",
+        ".tile { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--line); background: var(--card); cursor: pointer; min-height: 64px; box-sizing: border-box; --mdc-icon-size: 28px; }",
+        ".tile b { display: block; font-weight: 400; font-size: 16px; } .tile small { display: block; font-size: 12px; color: var(--dim); margin-top: 3px; }",
+        ".ov { position: fixed; inset: 0; z-index: 2147482000; background: rgba(0,0,0,.65); display: flex; align-items: flex-start; justify-content: center; padding-top: 4vh; }",
+        ".dl { width: min(720px, 94vw); max-height: 88vh; display: flex; flex-direction: column; background: #0d0f12; border: 1px solid var(--line); color: var(--fg); }",
+        ".dh { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); flex: none; }",
+        ".rows { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y; padding: 4px 16px 12px; }",
+        ".r { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }",
+        ".r label { font-size: 15px; } .r input { font: inherit; font-size: 17px; background: #15181c; color: var(--fg); border: 1px solid var(--line); padding: 10px; width: 100%; box-sizing: border-box; }",
+        ".r input:focus { outline: none; border-color: var(--acc, #59d0e0); } .r .ok { font-size: 12px; color: " + CAR_OK + "; }",
+        ".sw { justify-self: start; min-width: 92px; min-height: 44px; border: 1px solid var(--line); background: var(--card); color: var(--dim); font: inherit; font-size: 14px; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }",
+        ".sw.on { border-color: " + CAR_OK + "; color: " + CAR_OK + "; }",
+        "button.b.close { min-height: 44px; padding: 0 18px; flex-direction: row; }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      if (this.config.title) el("div", "h", card, this.config.title);
+      var tiles = el("div", "tiles", card);
+      this.tiles = (this.config.groups || []).map((g) => {
+        var t = el("div", "tile", tiles); icon(t, g.icon || "mdi:cog");
+        var tx = el("div", "", t); el("b", "", tx, g.name || "réglages"); var sm = el("small", "", tx, "");
+        t.addEventListener("click", () => this.open(g));
+        return { g: g, sm: sm };
+      });
+    }
+    val(id) { var s = id && this._hass && this._hass.states[id]; return s ? String(s.state) : ""; }
+    update() {
+      // Each tile says how much of it is filled (or what its switches say).
+      (this.tiles || []).forEach((x) => {
+        var es = (x.g.entities || []).map((e) => typeof e === "string" ? { entity: e } : e);
+        var texts = es.filter((e) => /^input_text\./.test(e.entity)), filled = texts.filter((e) => this.val(e.entity) && !/^(unknown|unavailable)$/.test(this.val(e.entity))).length;
+        var sw = es.filter((e) => /^input_boolean\./.test(e.entity)), on = sw.filter((e) => this.val(e.entity) === "on").length;
+        x.sm.textContent = texts.length ? filled + " / " + texts.length + " renseignés" : sw.length ? on + " activé" + (on > 1 ? "s" : "") + " sur " + sw.length : es.length + " réglage" + (es.length > 1 ? "s" : "");
+      });
+      if (this.ovRows) this.ovRows.forEach((r) => r.refresh());
+    }
+    open(g) {
+      this.close();
+      var h = this._hass, ov = this.ov = el("div", "ov", this.shadowRoot), dl = el("div", "dl", ov);
+      ov.addEventListener("click", (ev) => { if (ev.target === ov) this.close(); });
+      var dh = el("div", "dh", dl); el("div", "h", dh, g.name || "réglages");
+      var x = el("button", "b close", dh); x.type = "button"; el("span", "", x, "fermer"); x.addEventListener("click", () => this.close());
+      var rows = el("div", "rows", dl);
+      this.ovRows = (g.entities || []).map((e) => {
+        e = typeof e === "string" ? { entity: e } : e;
+        var id = e.entity, dom = id.split(".")[0], st = h.states[id];
+        var r = el("div", "r", rows); el("label", "", r, e.name || (st && st.attributes.friendly_name) || id);
+        if (dom === "input_boolean") {
+          var b = el("button", "sw", r); b.type = "button";
+          b.addEventListener("click", () => h.callService("input_boolean", "toggle", { entity_id: id }));
+          return { refresh: () => { var on = this.val(id) === "on"; b.className = "sw" + (on ? " on" : ""); b.textContent = on ? "oui" : "non"; } };
+        }
+        var wrap = el("div", "", r), inp = el("input", "", wrap), ok = el("div", "ok", wrap, "");
+        inp.type = dom === "input_number" ? "number" : /_tel$|telephone|numero/.test(id) ? "tel" : "text";
+        if (dom === "input_number" && st) { if (st.attributes.step != null) inp.step = st.attributes.step; }
+        var save = () => {
+          var v = inp.value.trim();
+          if (v === this.val(id)) return;
+          h.callService(dom, "set_value", { entity_id: id, value: dom === "input_number" ? Number(v.replace(",", ".")) : v })
+            .then(() => { ok.textContent = "✓ enregistré"; setTimeout(() => { ok.textContent = ""; }, 2000); }, () => { ok.textContent = "refusé"; });
+        };
+        inp.addEventListener("change", save);
+        inp.addEventListener("keydown", (ev) => { if (ev.key === "Enter") inp.blur(); });
+        var refresh = () => { if (this.shadowRoot.activeElement !== inp) { var v = this.val(id); inp.value = /^(unknown|unavailable)$/.test(v) ? "" : v; } };
+        return { refresh: refresh };
+      });
+      this.ovRows.forEach((r) => r.refresh());
+    }
+    close() { if (this.ov) { this.ov.remove(); this.ov = null; this.ovRows = null; } }
   }
 
   // ----- igor-messages-card: the phone's messages (and the call, above them) -----
@@ -12901,6 +13058,7 @@
     window.customCards = window.customCards || [];
     window.customCards.push({ type: name, name: label, description: description });
   }
+  define("igor-settings-card", IgorSettingsCard, "Igor · réglages", "Des tuiles de réglages, chacune ouvrant sa fenêtre (textes, nombres, interrupteurs).");
   define("igor-drive-card", IgorDriveCard, "Igor · conduite", "Le centre de l'autoradio : trajet, radar, moteur ou consommation, selon la route.");
   define("igor-messages-card", IgorMessagesCard, "Igor · messages", "Les derniers messages du téléphone, et l'appel en cours au-dessus.");
   define("igor-phone-card", IgorPhoneCard, "Igor · téléphone", "Le téléphone sur le socle (favoris), ou absent (Waze).");
