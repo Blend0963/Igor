@@ -4985,7 +4985,17 @@
         ".lsign.over { color: #e5323b; } .lsign.far { color: #e5323b; animation: gbp 1s ease-in-out infinite; }",
         "@keyframes gbp { 50% { opacity: .5; } }",
         // The gear, a third cell beside the engine and the battery.
-        ".mini.g3 { grid-template-columns: 1fr 1fr 1fr; gap: 8px; } .mini.g3 b { font-size: 20px; white-space: nowrap; } .mini.g3 div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .mini b.up { color: var(--okc); animation: gbp 1.2s ease-in-out infinite; } .mini b.dn { color: var(--wait); animation: gbp 1.2s ease-in-out infinite; }",
+        ".mini.g3 { grid-template-columns: 1fr 1fr 1.15fr; gap: 8px; } .mini.g3 b { font-size: 20px; white-space: nowrap; } .mini.g3 > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        // The gear: its figure on the right in its own box (never read as part of « 14,2 V »),
+        // the advice on the left: green ▲ « passez la 4e », amber ▼ « rétrogradez en 3e ».
+        // Two lines, as the cells beside it: the advice (or « rapport ») above, the figure below on the right.
+        ".mini .gear { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: end; column-gap: 4px; } .gear .gm { grid-column: 1 / 3; font-size: 11px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .gear .gm em { font-style: normal; }",
+        ".gear .gn { grid-column: 2; flex: none; width: 30px; height: 28px; display: grid; place-items: center; border: 1px solid var(--line); font-size: 20px; color: var(--fg); margin: 2px 0 0; }",
+        // A narrow column (the head unit's 1024 px): shorter words, smaller figures, nothing cut.
+        "ha-card.narrow .mini.g3 { gap: 6px; grid-template-columns: auto auto minmax(0, 1fr); } ha-card.narrow .mini.g3 b { font-size: 15px; } ha-card.narrow .gear .gn { width: 24px; height: 22px; font-size: 15px; }",
+        ".gear.up { background: linear-gradient(90deg, transparent, rgba(92,194,143,.16)); border-top-color: var(--okc); color: var(--okc); animation: gbp 1.4s ease-in-out infinite; } .gear.up .gn { border-color: var(--okc); color: var(--okc); }",
+        ".gear.dn { background: linear-gradient(90deg, transparent, rgba(229,160,76,.16)); border-top-color: var(--wait); color: var(--wait); animation: gbp 1.4s ease-in-out infinite; } .gear.dn .gn { border-color: var(--wait); color: var(--wait); }",
+        "@media (max-height: 660px) { .gear .gn { width: 28px; height: 28px; font-size: 18px; } }",
         "@media (max-height: 660px) { .gb { height: 50px; width: 46px; } .gb b { font-size: 22px; } }",
         // A small screen (a head unit of 600 px or so): the same, tighter, so the guidance below keeps its room.
         "@media (max-height: 660px) { .sp { font-size: 46px; margin-top: 4px; } .seg { margin: 8px 0 3px; height: 12px; } .mini { margin-top: 6px; gap: 8px; } .mini div { padding-top: 3px; } .mini b { font-size: 18px; } }"
@@ -5004,7 +5014,10 @@
       var mini = el("div", "mini", card);
       var m1 = el("div", "", mini, "moteur"); this.coolEl = el("b", "", m1);
       var m2 = el("div", "", mini, "batterie"); this.battEl = el("b", "", m2);
-      if (this.config.gear || this.config.advice) { mini.classList.add("g3"); this.gearLab = el("div", "", mini, "rapport"); this.gearEl = el("b", "", this.gearLab); this.gearLab.firstChild.nodeValue = "rapport"; }
+      if (this.config.gear || this.config.advice) {
+        mini.classList.add("g3"); this.gearLab = el("div", "gear", mini); this.gearMsg = el("span", "gm", this.gearLab, "rapport"); this.gearEl = el("b", "gn", this.gearLab, "—");
+        if (window.ResizeObserver) { this.roW = new ResizeObserver((en) => { var r = en[0] && en[0].contentRect; if (r && r.width) { var nw = r.width < 300; if (nw !== this.narrow) { this.narrow = nw; card.classList.toggle("narrow", nw); this.gearKey = null; this.spText = null; if (this._hass) this.update(this._hass, null); } } }); this.roW.observe(card); }
+      }
       // Outside: the weather where the car is.
       this.wx = el("div", "wx", card);
       this.wx.hidden = true;
@@ -5104,10 +5117,15 @@
       var dir = am && /passez|monte/i.test(ad) ? "up" : am && /r[ée]trograd/i.test(ad) ? "dn" : "";
       var vt2 = vt + "|" + lim;
       if (this.gearEl) {
-        var gtxt = dir ? (dir === "up" ? "▲ " : "▼ ") + am[1] : gear || "—";
+        var gtxt = gear || "—";
         if (this.gearEl.textContent !== gtxt) this.gearEl.textContent = gtxt;
-        this.gearEl.className = dir;
-        this.gearLab.firstChild.nodeValue = dir === "up" ? "passez la" : dir === "dn" ? "rétrogradez" : "rapport";
+        this.gearLab.className = "gear" + (dir ? " " + dir : "");
+        var gk = dir + (am ? am[1] : "");
+        if (gk !== this.gearKey) {
+          this.gearKey = gk; this.gearMsg.innerHTML = "";
+          if (!dir) this.gearMsg.textContent = "rapport";
+          else { el("em", "", this.gearMsg, dir === "up" ? "▲ " : "▼ "); this.gearMsg.appendChild(document.createTextNode(this.narrow ? (dir === "up" ? "la " : "en ") + am[1] + "e" : (dir === "up" ? "passez la " : "rétro. en ") + am[1] + "e")); }
+        }
       }
       if (vt2 !== this.spText) {
         this.spText = vt2;
@@ -5417,6 +5435,8 @@
   //   sdk_trees: false                      # no 3D trees in the woods and parks (the SDK's)
   //   buildings_opacity: 0.85               # the SDK's buildings, 0 (invisible) to 1 (solid); the route is drawn over them anyway
   //   settings: input_text.igor_carte      # the look set from the head unit (igor-settings-card map3d:), applied live: presets, buildings, route, names, ground, light, camera
+  //   marker_dest: epingle, marker_stop: epingle    # the arrival's and the stops' marks: epingle, balise, anneau, damier, drapeau
+  //   route_color: bleu, route_color_after: cyan   # the route, and its colour after the first stop (bleu, cyan, violet, jaune, gris)
   //   jam_gradient: false                   # the jams as separate strokes over the route (default: the route itself fades to orange/red and back, halo included)
   //   buildings_windows: false              # plain facades, as TomTom's own navigation draws them (true: windows, lit at night)
   //   sdk_buildings: { … }                  # any other knob of TomTom's Buildings3D (preset, shadows, walls.color…)
@@ -5498,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.50.9";
+  var GPS_CARD_VERSION = "0.52.2";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7046,10 +7066,11 @@
       this.routeTopBusy = false;
     }
     // The route's colours: [line, halo, edge, core] of the colour chosen.
-    routePal() {
+    routePal(which) {
       var P = { bleu: ["#46b4ff", "#3fa9ff", "#0b3f86", "#d4f0ff"], cyan: ["#59d0e0", "#4fd6e8", "#0b4a55", "#dcfbff"],
-        violet: ["#b48cff", "#a97bff", "#3d1f78", "#efe3ff"], jaune: ["#f4d35e", "#f4c542", "#5e4a0a", "#fff6d0"] };
-      var p = P[(this.look && this.look.rc) || "bleu"] || P.bleu;
+        violet: ["#b48cff", "#a97bff", "#3d1f78", "#efe3ff"], jaune: ["#f4d35e", "#f4c542", "#5e4a0a", "#fff6d0"], gris: ["#aeb6c2", "#c9d1dc", "#2e343c", "#f2f5f8"] };
+      var L = this.look || {}, name = which === "after" ? (L.rc2 || this.config.route_color_after || "cyan") : (L.rc || this.config.route_color || "bleu");
+      var p = P[name] || (which === "after" ? P.cyan : P.bleu);
       return { "route": p[0], "route-glow": p[1], "route-case": p[2], "route-core": p[3] };
     }
     // The look set from the head unit, put into effect — each part on its own,
@@ -7099,6 +7120,7 @@
         if (px && map.setPixelRatio && px !== this.pxNow) { this.pxNow = px; map.setPixelRatio(px); }
       });
       if (this.tt) { this.themeAt = 0; this.themeTick(); }
+      if (this.dest && (L.md + "|" + L.ms + "|" + L.rc2) !== this.markersKey) { this.markersKey = L.md + "|" + L.ms + "|" + L.rc2; this.drawPlaceMarkers(); }
     }
     tomtom3d(map) {
       var layers = map.getStyle().layers || [];
@@ -8085,6 +8107,9 @@
         "route": [base.route, "#f08c1a", "#e5323b"], "route-glow": [base["route-glow"], "#ff9a2e", "#ff3b3b"],
         "route-case": [base["route-case"], "#6b3a08", "#6e1016"], "route-core": [base["route-core"], "#ffe3c2", "#ffd0d0"] };
       var mode = this.look && this.look.jm ? this.look.jm : this.config.jam_gradient === false ? "traits" : "degrade";
+      // After the first stop, the way goes on in another colour (as Waze: blue to the stop, cyan after).
+      var after = this.routePal("after"), viaP = this.viaProgress();
+      var AFT = { "route": after.route, "route-glow": after["route-glow"], "route-case": after["route-case"], "route-core": after["route-core"] };
       var stops = null;
       if (R && R.jams && R.jams.length && R.total > 0 && R.cum && mode === "degrade") {
         var n = R.cum.length - 1, T = R.total;
@@ -8103,15 +8128,25 @@
         pts.forEach((p) => { if (p[0] > last && p[0] <= 1) { clean.push(p); last = p[0]; } });
         if (clean.length >= 2) stops = clean;
       }
+      // The stop's break: the route's own colour (level 0) turns to the « after » colour there.
+      if (viaP != null && viaP > 0.002 && viaP < 0.998) {
+        var withVia = (stops || [[0, 0], [1, 0]]).slice();
+        var lvlAt = (p) => { var a = null, b = null; withVia.forEach((q) => { if (q[0] <= p) a = q; if (q[0] >= p && !b) b = q; }); return a && a[1] && b && b[1] ? Math.max(a[1], b[1]) : 0; };
+        if (!lvlAt(viaP)) withVia.push([viaP - 0.0015, 0], [viaP, 0]);
+        withVia.sort((x, y) => x[0] - y[0]);
+        var cl2 = [], l2 = -1; withVia.forEach((q) => { if (q[0] > l2 && q[0] >= 0 && q[0] <= 1) { cl2.push(q); l2 = q[0]; } });
+        stops = cl2; stops.viaP = viaP;
+      }
       try {
         Object.keys(PAL).forEach((id) => {
           if (!map.getLayer(id)) return;
           var expr = null;
           if (stops) {
             expr = ["interpolate-lab", ["linear"], ["line-progress"]];
-            if (stops[0][0] > 0) expr.push(0, PAL[id][0]);
-            stops.forEach((p) => expr.push(p[0], PAL[id][p[1]]));
-            if (stops[stops.length - 1][0] < 1) expr.push(1, PAL[id][0]);
+            var vp = stops.viaP, col0 = (p) => vp != null && p >= vp ? AFT[id] : PAL[id][0];
+            if (stops[0][0] > 0) expr.push(0, col0(0));
+            stops.forEach((p) => expr.push(p[0], p[1] ? PAL[id][p[1]] : col0(p[0])));
+            if (stops[stops.length - 1][0] < 1) expr.push(1, col0(1));
           }
           map.setPaintProperty(id, "line-gradient", expr);
         });
@@ -8123,6 +8158,13 @@
         Object.keys(PAL).forEach((id) => { try { if (map.getLayer(id)) map.setPaintProperty(id, "line-gradient", null); } catch (e2) { /* as it was */ } });
         try { if (map.getLayer("routejam")) map.setLayoutProperty("routejam", "visibility", "visible"); } catch (e3) { /* as it was */ }
       }
+    },
+    // Where the first stop lies along the route (0 … 1), or null.
+    viaProgress() {
+      var R = this.route, d = this.dest, v = d && d.via && d.via[0];
+      if (!R || !R.coords || !R.cum || !R.total || !v) return null;
+      var o = gpsOnLine([v.lon, v.lat], R.coords);
+      return o ? (R.cum[o.seg - 1] + gpsDist(R.coords[o.seg - 1], o.point)) / R.total : null;
     },
     routeData() {
       var R = this.route;
@@ -8364,18 +8406,77 @@
       this.showStreet();
       if (!d) return;
       this.banner("mdi:map-search", "", "Calcul de l'itinéraire vers " + d.name + "…", "wait");
-      if (this.map && window.maplibregl) {
-        var flag = document.createElement("div");
-        flag.innerHTML = '<svg viewBox="0 0 24 24" width="34" height="34"><path d="M5 21V4h11l-1.5 3.5L16 11H7v10z" fill="#e5323b" stroke="#07080a" stroke-width="1.2"/></svg>';
-        this.destMarker = new window.maplibregl.Marker({ element: flag, anchor: "bottom-left" }).setLngLat([d.lon, d.lat]).addTo(this.map);
-        // A stop on the way: an amber flag.
-        (d.via || []).forEach((v) => {
-          var f2 = document.createElement("div");
-          f2.innerHTML = '<svg viewBox="0 0 24 24" width="30" height="30"><path d="M5 21V4h11l-1.5 3.5L16 11H7v10z" fill="#d9a441" stroke="#07080a" stroke-width="1.2"/></svg>';
-          this.viaMarkers.push(new window.maplibregl.Marker({ element: f2, anchor: "bottom-left" }).setLngLat([v.lon, v.lat]).addTo(this.map));
-        });
-      }
+      this.drawPlaceMarkers();
       this.routeTo();
+    },
+    // The arrival and the stops, in the style chosen (Réglages → Carte 3D, or
+    // `marker_dest` / `marker_stop`): épingle, balise, anneau (on the ground),
+    // damier, drapeau. The arrival carries its name and hour; the stops their
+    // number, in the colour of the way after them.
+    drawPlaceMarkers() {
+      var d = this.dest;
+      if (this.destMarker) { this.destMarker.remove(); this.destMarker = null; }
+      (this.viaMarkers || []).forEach((m) => m.remove()); this.viaMarkers = [];
+      if (!d || !this.map || !window.maplibregl) return;
+      var L = this.look || {}, md = L.md || this.config.marker_dest || "epingle", ms = L.ms || this.config.marker_stop || "epingle";
+      var after = this.routePal("after").route;
+      var dm = this.placeMarker(md, "dest", null, "#f2f4f7");
+      this.destLabel = dm.label; this.destName = d.name || "arrivée";
+      this.destMarker = new window.maplibregl.Marker(dm.opts).setLngLat([d.lon, d.lat]).addTo(this.map);
+      if (dm.labelHolder) this.viaMarkers.push(new window.maplibregl.Marker({ element: dm.labelHolder, anchor: "bottom", offset: [0, -24] }).setLngLat([d.lon, d.lat]).addTo(this.map));
+      (d.via || []).forEach((v, i) => {
+        var vm = this.placeMarker(ms, "stop", i + 1, after);
+        this.viaMarkers.push(new window.maplibregl.Marker(vm.opts).setLngLat([v.lon, v.lat]).addTo(this.map));
+      });
+      this.markerLabels(true);
+    },
+    placeMarker(kind, role, n, color) {
+      var big = role === "dest", el = document.createElement("div"), sz = big ? 1 : 0.78, opts = { element: el, anchor: "bottom" };
+      // No `position` here: MapLibre places the marker absolutely (it also holds the label).
+      el.style.pointerEvents = "none"; el.style.filter = "drop-shadow(0 4px 8px rgba(0,0,0,.55))"; el.style.lineHeight = "0";
+      var num = n != null ? '<text x="0" y="5" text-anchor="middle" font-size="13" font-weight="700" fill="#0d1014" font-family="sans-serif">' + n + "</text>" : "";
+      var chk = (c, x, y, k) => '<g transform="translate(' + x + "," + y + ") scale(" + k + ')" fill="' + c + '"><rect width="4" height="4"/><rect x="8" width="4" height="4"/><rect x="4" y="4" width="4" height="4"/><rect y="8" width="4" height="4"/><rect x="8" y="8" width="4" height="4"/></g>';
+      var svg = "";
+      if (kind === "balise") {
+        var h = big ? 90 : 50;
+        svg = '<svg width="60" height="' + (h + 24) + '" viewBox="-30 ' + (-h - 12) + " 60 " + (h + 24) + '"><defs><linearGradient id="bm' + role + '" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="' + color + '" stop-opacity=".9"/><stop offset="1" stop-color="' + color + '" stop-opacity="0"/></linearGradient></defs>' +
+          '<ellipse rx="' + 14 * sz + '" ry="' + 5 * sz + '" fill="none" stroke="' + color + '" stroke-width="2"/><rect x="-1.5" y="' + (-h + 10) + '" width="3" height="' + (h - 10) + '" fill="url(#bm' + role + ')"/>' +
+          '<circle cy="' + (-h) + '" r="10" fill="#0d1014" stroke="' + color + '" stroke-width="2"/>' + (n != null ? '<text y="' + (-h + 4) + '" text-anchor="middle" font-size="11" font-weight="700" fill="' + color + '" font-family="sans-serif">' + n + "</text>" : '<path d="M-3 ' + (-h - 4) + "v8M-3 " + (-h - 4) + "h7l-2 2 2 2h-7" + '" stroke="' + color + '" stroke-width="1.6" fill="none"/>') + "</svg>";
+        opts.anchor = "bottom"; opts.offset = [0, 12];
+      } else if (kind === "anneau") {
+        // Lying on the road: drawn in the map's plane.
+        svg = '<svg width="' + 70 * sz + '" height="' + 70 * sz + '" viewBox="-35 -35 70 70"><circle r="30" fill="' + color + '" fill-opacity=".1" stroke="' + color + '" stroke-width="3"/><circle r="17" fill="none" stroke="' + color + '" stroke-width="2" opacity=".6"/>' + (n != null ? '<text y="5" text-anchor="middle" font-size="15" font-weight="700" fill="' + color + '" font-family="sans-serif">' + n + "</text>" : '<circle r="4" fill="' + color + '"/>') + "</svg>";
+        opts.anchor = "center"; opts.pitchAlignment = "map"; opts.rotationAlignment = "map";
+        el.style.filter = "none";
+      } else if (kind === "damier") {
+        svg = '<svg width="' + 36 * sz + '" height="' + 46 * sz + '" viewBox="-18 -18 36 46">' + (n != null ? '<rect x="-14" y="-14" width="28" height="28" rx="8" fill="' + color + '"/>' + num + '<path d="M-6 14L0 23L6 14Z" fill="' + color + '"/>'
+          : '<rect x="-15" y="-15" width="30" height="30" rx="8" fill="#0d1014" stroke="' + color + '" stroke-width="2"/>' + chk(color, -9, -9, 1.5) + '<path d="M-6 15L0 24L6 15Z" fill="' + color + '"/>') + "</svg>";
+      } else if (kind === "drapeau") {
+        svg = '<svg viewBox="0 0 24 24" width="' + 34 * sz + '" height="' + 34 * sz + '"><path d="M5 21V4h11l-1.5 3.5L16 11H7v10z" fill="' + (n != null ? "#d9a441" : "#e5323b") + '" stroke="#07080a" stroke-width="1.2"/></svg>';
+        opts.anchor = "bottom-left";
+      } else {
+        // épingle: white for the arrival (a fine chequer at its heart), the stops in their colour, numbered.
+        svg = '<svg width="' + 40 * sz + '" height="' + 56 * sz + '" viewBox="-20 -20 40 56"><path d="M0 34C-3 22-18 14-18 0A18 18 0 1 1 18 0C18 14 3 22 0 34Z" fill="' + color + '"/>' +
+          (n != null ? num.replace('y="5"', 'y="5"') : '<circle r="11" fill="#0d1014"/>' + chk(color, -6, -6, 1)) + "</svg>";
+      }
+      el.innerHTML = svg;
+      var label = null;
+      if (role === "dest") {
+        label = document.createElement("div");
+        label.style.cssText = "position:absolute;left:50%;bottom:100%;transform:translate(-50%,-6px);background:rgba(13,16,20,.92);border:1px solid #2c323a;border-radius:6px;padding:3px 8px;font:12px/1.3 sans-serif;color:#e8e4dc;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.5)";
+        // On the ground (anneau) the label stands apart, facing the screen.
+        if (kind === "anneau") { var holder = document.createElement("div"); holder.style.cssText = "position:relative;width:0;height:0;pointer-events:none"; holder.appendChild(label); return { opts: opts, label: label, labelHolder: holder }; }
+        el.appendChild(label);
+      }
+      return { opts: opts, label: label };
+    },
+    // The arrival's label: its name and the hour of arrival (kept up to date).
+    markerLabels(force) {
+      var lb = this.destLabel; if (!lb) return;
+      var vt = this.viaTimes && this.viaTimes(), R = this.route, fin = vt && vt.fin;
+      if (!fin && R && R.duration && R.cum) { var car = R.cum[Math.max(0, Math.min((this.seg || 1) - 1, R.cum.length - 1))] || 0; fin = hhmm(new Date(Date.now() + R.duration * Math.max(0, R.total - car) / R.total * 1000)); }
+      var t = (this.destName || "arrivée").slice(0, 28) + (fin ? " · " + fin : "");
+      if (force || t !== lb.textContent) lb.textContent = t;
     },
     async routeTo() {
       var d = this.dest, from = this.pos || (this.fix && this.fix.point);
@@ -9271,6 +9372,7 @@
       return { type: "FeatureCollection", features: feats };
     },
     publishAhead(now) {
+      if (this.destLabel && (!this.labelAt || Date.now() - this.labelAt > 15000)) { this.labelAt = Date.now(); this.markerLabels(); }
       var e = this.config.publish_ahead;
       if (!e || !this._hass || !this._hass.callService || !this.pos) return;
       var R = this.route, guided = !!(R && this.seg), here = 0, left = 0;
@@ -11981,6 +12083,8 @@
   //   routes: input_text.car_routes        # the routes offered by the phone map (publish_routes): chosen here, in the middle
   //   route_choice: input_text.car_choice  # where the choice is written
   //   destination: input_text.car_dest     # its name over the routes
+  //   tune.hold_peak_s: 5                  # how long a peak (red line) stays before sinking
+  //   tabs: true                           # the radar / moteur / conso buttons under the view (default: none, the views change by themselves)
   //   resume: { entity: binary_sensor.car_resume_offered, button: input_button.car_resume }   # a big green « Reprendre le trajet » over the view while offered (attributes precedent_debut, precedent_km)
   //   tune: { load_on: 75, accel_on: 1.4, window_s: 3, min_kmh: 15, boost_on: 0.8, gain_s: 4, hold_s: 20, calm_s: 8, min_view_s: 8, cooldown_s: 30, override_s: 60 }
   // Which view, by priority: a radar within reach (green, amber, red as the
@@ -12009,8 +12113,10 @@
         // Engine
         ".eng { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 16px; align-items: center; }",
         ".dial { display: flex; flex-direction: column; align-items: center; min-height: 0; height: 100%; justify-content: center; } .dial svg { width: 100%; max-height: 230px; flex: 1; min-height: 0; } .adv { font-size: 19px; letter-spacing: .14em; text-transform: uppercase; color: " + CAR_WARN + "; margin-top: -4px; min-height: 1.2em; text-align: center; }",
-        ".bars > div { padding: 5px 0; } .bars .l { display: flex; justify-content: space-between; align-items: baseline; } .bars span { font-size: 13px; color: var(--dim); } .bars b { font-weight: 400; font-size: 24px; font-variant-numeric: tabular-nums; }",
-        ".bars .g { height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); margin-top: 4px; overflow: hidden; } .bars .g i { display: block; height: 100%; border-radius: 3px; transition: width .4s; }",
+        ".bars > div { padding: 5px 0; } .bars .l { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; } .bars .l span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .bars .l b { white-space: nowrap; } .bars span { font-size: 13px; color: var(--dim); } .bars b { font-weight: 400; font-size: 24px; font-variant-numeric: tabular-nums; }",
+        ".bars .g { position: relative; height: 8px; border-radius: 3px; background: rgba(255,255,255,.08); margin-top: 5px; } .bars .g i { display: block; height: 100%; border-radius: 3px; transition: width .4s; }",
+        // The peak: a red line that stays a few seconds, then sinks (a VU meter).
+        ".bars .g u { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1px; background: #e5323b; box-shadow: 0 0 6px #e5323b; transition: left .4s; } .bars b small.pkt { font-size: 11px; color: var(--dim); margin-left: 6px; }",
         ".ef { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; } .ef span { display: block; font-size: 12px; color: var(--dim); } .ef b { font-weight: 400; font-size: 20px; white-space: nowrap; }",
         // Trip and consumption
         ".trip { height: 100%; display: flex; flex-direction: column; } .kpi { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; flex: none; } .kpi > div { min-width: 0; overflow: hidden; } .kpi span { display: block; font-size: 12px; color: var(--dim); } .kpi b { font-weight: 400; font-size: 32px; font-variant-numeric: tabular-nums; white-space: nowrap; } .kpi small { font-size: 12px; color: var(--dim); }",
@@ -12021,7 +12127,8 @@
         // Short of room (a small head unit): everything a step smaller, the curve and its foot left out.
         ":host(.short) ha-card.view { padding: 8px 12px; } :host(.short) .kpi b { font-size: 24px; } :host(.short) .spark, :host(.short) .foot, :host(.short) .gh { display: none; }",
         ":host(.short) .sign { width: 84px; height: 84px; border-width: 8px; font-size: 36px; } :host(.short) .rd { font-size: 40px; } :host(.short) .rs { font-size: 16px; } :host(.short) .rad { gap: 4px; }",
-        ":host(.short) .dial svg { max-height: 150px; } :host(.short) .bars b { font-size: 18px; } :host(.short) .ef b { font-size: 16px; } :host(.short) .tabs { display: none; }",
+        ":host(.short) .ef { grid-template-columns: 1fr; padding-top: 4px; margin-top: 0; } :host(.short) .ef > div:not(:last-child) { display: none; } :host(.short) .ef > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; } :host(.short) .ef span { display: inline; } " +
+        ":host(.short) .adv { display: none; } :host(.short) .dial svg { max-height: 150px; } :host(.short) .bars b { font-size: 18px; } :host(.short) .ef b { font-size: 16px; } :host(.short) .tabs { display: none; }",
         ":host(.tight) ha-card.frz { height: 84px; } :host(.tight) .pin div { font-size: 13px; } :host(.tight) .pin div small { display: none; }",
         // The routes offered for the destination just chosen: chosen here.
         ".rts { height: 100%; display: flex; flex-direction: column; gap: 6px; min-height: 0; } .rts .opts { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; overflow: hidden; }",
@@ -12107,6 +12214,45 @@
       this.effortAt = t;
       this.effort += (inst - this.effort) * (1 - Math.exp(-dt / 6));
       this.accel = accel;
+      // The highest values, held as on a VU meter: a peak stays hold_peak_s
+      // (5 s), then sinks slowly to the value of the moment.
+      var rmax = Number(c.rpm_max) || 5000, bmax = Number(c.boost_max) || 2, bnow = this.boostNow();
+      this.peakStep("rpm", sp.rpm, rmax, t); this.peakStep("boost", bnow != null ? Math.max(0, bnow) : null, bmax, t);
+      this.peakStep("load", sp.load, 100, t); this.peakStep("g", Math.max(0, accel / 9.81), 0.6, t);
+      this.lanceStep(v, t);
+    }
+    peakStep(k, v, scale, t) {
+      var P = this.peaks || (this.peaks = {}), p = P[k], hold = this.tune("hold_peak_s", 5) * 1000;
+      if (v == null) return;
+      if (!p || v >= p.v) { P[k] = { v: v, at: t, last: t }; return; }
+      if (t - p.at > hold) p.v = Math.max(v, p.v - scale * 0.25 * (t - p.last) / 1000);
+      p.last = t;
+    }
+    // The rolling start (« départ lancé »): timed from the slowest point before
+    // the pull (a toll, a roundabout, a slip road) up to 100 km/h. Lifting off
+    // (5 km/h lost) starts it again from there. From a standstill: the 0 → 100.
+    lanceStep(v, t) {
+      if (v == null) return;
+      var L = this.lance || (this.lance = { low: null, top: 0, prev: null });
+      if (!L.low || v < L.low.v) { L.low = { v: v, t: t }; L.top = v; }
+      else { L.top = Math.max(L.top, v); if (v < L.top - 5) { L.low = { v: v, t: t }; L.top = v; } }
+      if (L.low && L.low.v < 90 && L.prev && L.prev.v < 100 && v >= 100) {
+        var tc = L.prev.t + (t - L.prev.t) * ((100 - L.prev.v) / Math.max(0.1, v - L.prev.v)), sec = (tc - L.low.t) / 1000;
+        if (sec > 2 && sec < 60) {
+          this.lanceLast = { from: L.low.v < 3 ? 0 : Math.round(L.low.v), s: sec, at: t };
+          try { window.localStorage.setItem("igor-lance", JSON.stringify(this.lanceLast)); } catch (e) { /* no storage */ }
+        }
+        L.low = { v: v, t: t }; L.top = v;
+      }
+      L.prev = { v: v, t: t };
+    }
+    lanceNow(v) {
+      var L = this.lance, run = L && L.low && L.low.v <= 85 && v != null && v > L.low.v + 3 && v < 100 && this.sport;
+      if (run) return { label: "lancé " + Math.round(L.low.v) + " → " + Math.round(v), val: fr((Date.now() - L.low.t) / 1000, 1) + " s", live: true };
+      var last = this.lanceLast;
+      if (!last) { try { last = this.lanceLast = JSON.parse(window.localStorage.getItem("igor-lance") || "null"); } catch (e) { last = null; } }
+      if (last) return { label: last.from === 0 ? "0 → 100 · dernier" : "lancé " + last.from + " → 100", val: fr(last.s, 1) + " s", live: false };
+      return null;
     }
     // The turbo's pressure (bar over the air outside): the `boost` sensor, else
     // worked out here from the manifold's absolute pressure (`map:`, kPa).
@@ -12197,7 +12343,8 @@
       if (want !== this.view && this.view && want !== "radar" && want !== "moteur" && want !== "routes" && this.view !== "radar" && this.view !== "routes" && !force && t - this.viewAt < this.tune("min_view_s", 8) * 1000) want = this.view;
       if (want !== this.view) { this.view = want; this.viewAt = t; this.fadeTo(); }
       Object.keys(this.tabBtns).forEach((k) => { this.tabBtns[k].className = k === this.view ? (this.manual ? "lock" : "on") : ""; });
-      this.tabsEl.hidden = this.view === "arret" || this.view === "routes";
+      // The views change by themselves (radar, a pull, the trip): no buttons unless `tabs: true`.
+      this.tabsEl.hidden = this.config.tabs !== true || this.view === "arret" || this.view === "routes";
       this.lastRad = rad; this.lastV = v;
       // While the old view fades out, it is left as it is.
       if (!this.swapping) this.draw(rad, v);
@@ -12317,26 +12464,34 @@
       this.head.textContent = "accélération" + (this.why ? " · " + this.why : "");
       var secs = this.sport ? Math.round((Date.now() - this.sport) / 1000) : 0;
       this.aside.textContent = secs ? "depuis " + secs + " s" : "";
-      var a0 = Math.PI * 0.75, a1 = Math.PI * 2.25, f = (x) => a0 + Math.max(0, Math.min(1, x / max)) * (a1 - a0);
+      var a0 = Math.PI * 0.75, a1 = Math.PI * 2.25, f = (x) => a0 + Math.max(0, Math.min(1, x / max)) * (a1 - a0), pk = this.peaks || {};
       var col = rpm == null ? "#4b5159" : rpm >= bad ? "#e5323b" : rpm >= warn ? CAR_WARN : CAR_OK;
       var svg = '<svg viewBox="0 0 200 170"><path d="' + carArc(100, 100, 80, a0, a1) + '" stroke="rgba(255,255,255,.08)" stroke-width="16" fill="none"/>' +
         '<path d="' + carArc(100, 100, 80, f(warn), f(bad)) + '" stroke="' + CAR_WARN + '" stroke-opacity=".25" stroke-width="16" fill="none"/><path d="' + carArc(100, 100, 80, f(bad), a1) + '" stroke="#e5323b" stroke-opacity=".25" stroke-width="16" fill="none"/>' +
         (rpm ? '<path d="' + carArc(100, 100, 80, a0, f(rpm)) + '" stroke="' + col + '" stroke-width="16" fill="none"/>' : "") +
-        '<text x="100" y="104" text-anchor="middle" fill="#e8e4dc" font-size="40" font-family="inherit">' + (rpm == null ? "—" : Math.round(rpm)) + '</text><text x="100" y="128" text-anchor="middle" fill="#8a9099" font-size="13">tr/min</text></svg>';
+        (pk.rpm ? '<line x1="' + (100 + 68 * Math.cos(f(pk.rpm.v))).toFixed(1) + '" y1="' + (100 + 68 * Math.sin(f(pk.rpm.v))).toFixed(1) + '" x2="' + (100 + 93 * Math.cos(f(pk.rpm.v))).toFixed(1) + '" y2="' + (100 + 93 * Math.sin(f(pk.rpm.v))).toFixed(1) + '" stroke="#e5323b" stroke-width="4"/>' : "") +
+        '<text x="100" y="104" text-anchor="middle" fill="#e8e4dc" font-size="40" font-family="inherit">' + (rpm == null ? "—" : Math.round(rpm)) + '</text><text x="100" y="128" text-anchor="middle" fill="#8a9099" font-size="13">tr/min' + (pk.rpm ? " · max " + Math.round(pk.rpm.v) : "") + '</text></svg>';
       var adv = this.st(c.advice), advTxt = adv && !/^(aucun|unknown|unavailable)$/i.test(adv.state) ? "▲ " + adv.state : "";
       var g = Math.max(0, (this.accel || 0) / 9.81), boost = this.boostNow(), load = this.n(c.load), d = this.tripData() || {};
       if (boost != null) boost = Math.max(0, boost);
-      var bars = [["turbo", boost != null ? fr(boost, 1) + " bar" : "—", boost != null ? boost / (Number(c.boost_max) || 2) : 0],
-        ["charge", load != null ? Math.round(load) + " %" : "—", load != null ? load / 100 : 0],
-        ["accélération", g > 0.02 ? fr(g, 2) + " g" : "—", g / 0.6]];
+      var bm = Number(c.boost_max) || 2;
+      var bars = [["turbo", boost != null ? fr(boost, 1) + " bar" : "—", boost != null ? boost / bm : 0, pk.boost ? pk.boost.v / bm : null, pk.boost ? "max " + fr(pk.boost.v, 2) : ""],
+        ["charge", load != null ? Math.round(load) + " %" : "—", load != null ? load / 100 : 0, pk.load ? pk.load.v / 100 : null, pk.load ? "max " + Math.round(pk.load.v) : ""],
+        ["accélération", g > 0.02 ? fr(g, 2) + " g" : "—", g / 0.6, pk.g ? pk.g.v / 0.6 : null, pk.g && pk.g.v > 0.02 ? "max " + fr(pk.g.v, 2) : ""]];
+      var ln = this.lanceNow(this.n(c.speed));
       var foot = [["moteur", this.n(c.coolant) != null ? Math.round(this.n(c.coolant)) + " °C" : "—", CAR_OK], ["admission", this.n(c.intake) != null ? Math.round(this.n(c.intake)) + " °C" : "—", CAR_BLUE],
-        ["0 → 100", d.t0_100 ? fr(Number(d.t0_100), 1) + " s" : "—", "var(--fg)"]];
-      var key = "e" + Math.round((rpm || 0) / 25) + advTxt + bars.map((r) => r[1]).join() + foot.map((r) => r[1]).join();
+        ln ? [ln.label, ln.val, ln.live ? CAR_OK : "var(--fg)"] : ["0 → 100", d.t0_100 ? fr(Number(d.t0_100), 1) + " s" : "—", "var(--fg)"]];
+      var key = "e" + Math.round((rpm || 0) / 25) + advTxt + bars.map((r) => r[1] + r[4]).join() + foot.map((r) => r[0] + r[1]).join() + (pk.rpm ? Math.round(pk.rpm.v / 25) : "");
       if (key === this.drawn) return; this.drawn = key;
       var b = this.body; b.innerHTML = "";
       var w = el("div", "eng", b), dl = el("div", "dial", w); dl.innerHTML = svg; el("div", "adv", dl, advTxt);
       var right = el("div", "", w), bs = el("div", "bars", right);
-      bars.forEach((r) => { var x = el("div", "", bs), l = el("div", "l", x); el("span", "", l, r[0]); var bb = el("b", "", l, r[1]); bb.style.color = CAR_WARN; var gg = el("div", "g", x), i = el("i", "", gg); i.style.width = Math.round(Math.max(0, Math.min(1, r[2])) * 100) + "%"; i.style.background = CAR_WARN; });
+      bars.forEach((r) => {
+        var x = el("div", "", bs), l = el("div", "l", x); el("span", "", l, r[0]); var bb = el("b", "", l, r[1]); bb.style.color = CAR_WARN;
+        if (r[4]) el("small", "pkt", bb, r[4]);
+        var gg = el("div", "g", x), i = el("i", "", gg); i.style.width = Math.round(Math.max(0, Math.min(1, r[2])) * 100) + "%"; i.style.background = CAR_WARN;
+        if (r[3] != null) { var pm = el("u", "", gg); pm.style.left = (Math.max(0, Math.min(1, r[3])) * 100).toFixed(1) + "%"; }
+      });
       var ef = el("div", "ef", right);
       foot.forEach((r) => { var x = el("div", "", ef); el("span", "", x, r[0]); el("b", "", x, r[1]).style.color = r[2]; });
     }
@@ -12452,16 +12607,207 @@
     }
   }
 
+  // ----- igor-telemetry-card: the engine as a race engineer reads it -----
+  //   type: custom:igor-telemetry-card
+  //   rpm, speed, gear, load, boost, map, maf, rail, coolant, intake, battery, lambda: sensor.…
+  //   trip: { entity: sensor.car_trip, attribute: trajet }   # its t0_100, t80_120
+  //   power_max: 170, power_rpm: 4000, torque_max: 370, torque_rpm: 1500   # the maker's figures (2.2 HDi 170)
+  //   torque_flat_to: 2750, rpm_max: 5000, boost_max: 2, window_s: 60
+  // Above, eight figures live; in the middle every curve over the last minute
+  // on one time axis (gear changes dashed); on the right the engine's own
+  // power and torque curve, built from each full-throttle pull (air flow →
+  // fuel → power, an estimate) over the maker's (dashed); below, the timers,
+  // the temperatures, the turbo, the battery and the mixture. Filled from
+  // Home Assistant's history when it opens, then live.
+  class IgorTelemetryCard extends IgorCard {
+    setConfig(config) { this.config = config || {}; this.series = {}; this.gears = []; }
+    getCardSize() { return 10; }
+    keys() { return ["rpm", "speed", "load", "boost", "map", "maf", "lambda"]; }
+    build() {
+      this.style(CAR_HEAD + "\n" + [
+        "ha-card { padding: 0; background: none; border: 0; height: 100%; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) minmax(0, 0.42fr); grid-template-rows: auto minmax(0, 1fr) auto; }",
+        ".box { background: var(--card); border: 1px solid var(--line); border-radius: var(--igor-radius, 3px); padding: 8px 12px; min-height: 0; min-width: 0; overflow: hidden; position: relative; }",
+        ".live { grid-column: 1 / 3; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }",
+        ".live .box { padding: 6px 9px; } .live span { display: block; font-size: 10px; color: var(--dim); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".live b { font-weight: 400; font-size: clamp(16px, 3.2vh, 26px); white-space: nowrap; font-variant-numeric: tabular-nums; } .live small { font-size: 10px; color: var(--dim); margin-left: 3px; }",
+        ".chart, .dyno { display: flex; flex-direction: column; } .chart svg, .dyno svg { flex: 1; min-height: 0; width: 100%; display: block; }",
+        ".leg { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; margin: 4px 0; color: var(--dim); } .leg i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 4px; }",
+        ".dsub { font-size: 11px; color: var(--dim); line-height: 1.4; }",
+        ".bot { grid-column: 1 / 3; display: grid; grid-template-columns: 1.25fr 1fr 1fr 1fr; gap: 8px; }",
+        ".kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; font-size: 12px; margin-top: 4px; } .kv span { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .kv b { font-weight: 400; text-align: right; font-variant-numeric: tabular-nums; }",
+        ".tb { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 5px 8px; align-items: center; font-size: 11px; margin-top: 5px; } .tb span { color: var(--dim); } .tb i { height: 6px; background: var(--track); position: relative; border-radius: 3px; } .tb i b { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; } .tb em { font-style: normal; font-variant-numeric: tabular-nums; }",
+        // A short screen (1024 × 600): the curves take the room of the bottom row.
+        ":host(.short) .bot { display: none; } :host(.short) ha-card { grid-template-rows: auto minmax(0, 1fr); }"
+      ].join("\n"));
+      var card = el("ha-card", "", this.shadowRoot);
+      this.liveEl = el("div", "live", card);
+      var ch = el("div", "box chart", card); el("div", "h", ch, "télémétrie · " + (this.cfg("window_s", 60)) + " dernières secondes");
+      var lg = el("div", "leg", ch);
+      this.LINES().forEach((L) => { var s = el("span", "", lg); el("i", "", s).style.background = L.c; s.appendChild(document.createTextNode(L.n)); });
+      el("span", "", lg, "┊ rapport");
+      this.svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); this.svg.setAttribute("viewBox", "0 0 900 300"); this.svg.setAttribute("preserveAspectRatio", "none"); ch.appendChild(this.svg);
+      var dy = el("div", "box dyno", card); el("div", "h", dy, "courbe moteur");
+      var lg2 = el("div", "leg", dy);
+      [["#5cc28f", "ch"], ["#c792ea", "N·m"], ["#8a9099", "usine ┄"]].forEach((x) => { var s = el("span", "", lg2); el("i", "", s).style.background = x[0]; s.appendChild(document.createTextNode(x[1])); });
+      this.dsvg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); this.dsvg.setAttribute("viewBox", "0 0 400 300"); this.dsvg.setAttribute("preserveAspectRatio", "none"); dy.appendChild(this.dsvg);
+      this.dsub = el("div", "dsub", dy, "");
+      var bot = el("div", "bot", card);
+      this.chrEl = el("div", "box", bot); this.tmpEl = el("div", "box", bot); this.turEl = el("div", "box", bot); this.eleEl = el("div", "box", bot);
+      if (window.ResizeObserver && !this.ro) { this.ro = new ResizeObserver((en) => { var r = en[0] && en[0].contentRect; if (r && r.height) this.classList.toggle("short", r.height < 600); }); this.ro.observe(this); }
+      try { this.dyno = JSON.parse(window.localStorage.getItem("igor-dyno") || "null") || {}; } catch (e) { this.dyno = {}; }
+      this.timer = setInterval(() => this.tick(), 500);
+      this.backfill();
+    }
+    cfg(k, d) { var v = this.config[k]; return v != null && isFinite(Number(v)) ? Number(v) : d; }
+    LINES() {
+      return [{ k: "rpm", n: "régime", c: "#e5323b", max: this.cfg("rpm_max", 5000), w: 3 }, { k: "speed", n: "vitesse", c: "#e8e4dc", max: 200, w: 2 },
+        { k: "load", n: "charge", c: "#e5a04c", max: 100, w: 2, o: 0.85 }, { k: "boost", n: "turbo", c: "#59d0e0", max: this.cfg("boost_max", 2), w: 2.5 },
+        { k: "power", n: "puissance", c: "#5cc28f", max: this.cfg("power_max", 170) * 1.15, w: 2.5 }];
+    }
+    disconnectedCallback() { clearInterval(this.timer); this.timer = null; }
+    connectedCallback() { super.connectedCallback(); if (this._built && !this.timer) { this.timer = setInterval(() => this.tick(), 500); } }
+    num(id) { var s = id && this._hass && this._hass.states[id]; var v = s ? parseFloat(s.state) : NaN; return isFinite(v) ? v : null; }
+    // Turbo: the boost sensor, else the manifold's absolute pressure (kPa) less the air outside.
+    boostOf(b, m) { return b != null ? b : m != null && m > 20 ? (m - 101.3) / 100 : null; }
+    // Power from the air flow: fuel = air / ratio (lambda, else a diesel's
+    // ~17.5 at full load, leaner below), ~17 kW per g/s of diesel (bsfc ≈ 210 g/kWh).
+    powerOf(maf, lambda, load) {
+      if (maf == null) return null;
+      var afr = lambda != null && lambda > 0.7 && lambda < 1.95 ? 14.5 * lambda : load != null && load >= 70 ? 17.5 : 30;
+      return Math.max(0, maf / afr * 17.1 * 1.36);
+    }
+    // The last minute from Home Assistant's history, so the curves are there at once.
+    backfill() {
+      var h = this._hass, c = this.config;
+      if (!h || !h.callWS || this.filled) return;
+      this.filled = true;
+      var ids = this.keys().map((k) => c[k]).filter(Boolean), W = this.cfg("window_s", 60) * 1000;
+      if (c.gear) ids.push(c.gear);
+      h.callWS({ type: "history/history_during_period", start_time: new Date(Date.now() - W).toISOString(), entity_ids: ids, minimal_response: true, no_attributes: true, significant_changes_only: false })
+        .then((res) => {
+          this.keys().forEach((k) => {
+            var rows = res && c[k] && res[c[k]]; if (!rows) return;
+            var pts = rows.map((r) => ({ t: (r.lu || r.lc || 0) * 1000, v: parseFloat(r.s) })).filter((p) => isFinite(p.v));
+            this.series[k] = pts.concat(this.series[k] || []).sort((a, b) => a.t - b.t);
+          });
+          var gr = res && c.gear && res[c.gear];
+          if (gr) { var last = null; gr.forEach((r) => { if (r.s !== last && /^[1-6]$/.test(r.s)) this.gears.push({ t: (r.lu || r.lc || 0) * 1000, g: r.s }); last = r.s; }); }
+          this.draw();
+        }).catch(() => {});
+    }
+    update(hass) { if (!this.filled) this.backfill(); }
+    tick() {
+      if (!this._hass) return;
+      var c = this.config, t = Date.now(), W = this.cfg("window_s", 60) * 1000;
+      var v = {}; this.keys().forEach((k) => { v[k] = this.num(c[k]); });
+      v.boost = this.boostOf(v.boost, v.map);
+      v.power = this.powerOf(v.maf, v.lambda, v.load);
+      ["rpm", "speed", "load", "boost", "power"].forEach((k) => {
+        if (v[k] == null) return;
+        var s = this.series[k] || (this.series[k] = []); s.push({ t: t, v: v[k] });
+        while (s.length && t - s[0].t > W + 2000) s.shift();
+      });
+      var gs = c.gear && this._hass.states[c.gear], g = gs ? String(gs.state) : "";
+      if (/^[1-6]$/.test(g) && g !== this.lastGear) { if (this.lastGear) this.gears.push({ t: t, g: g }); this.lastGear = g; }
+      this.gears = this.gears.filter((x) => t - x.t <= W);
+      // The engine's curve: full load (≥ 85 %), steady revs, fresh air flow — best power per 100 tr/min.
+      if (v.rpm != null && v.rpm > 1100 && v.load != null && v.load >= 85 && v.power != null) {
+        var bin = Math.round(v.rpm / 100) * 100;
+        if (!this.dyno[bin] || v.power > this.dyno[bin]) { this.dyno[bin] = Math.round(v.power * 10) / 10; this.dynoDirty = true; }
+      }
+      if (this.dynoDirty && (!this.dynoSaved || t - this.dynoSaved > 10000)) { this.dynoSaved = t; this.dynoDirty = false; try { window.localStorage.setItem("igor-dyno", JSON.stringify(this.dyno)); } catch (e) { /* no storage */ } }
+      this.now = v;
+      this.draw();
+    }
+    // The maker's curve: torque rising to its plateau, flat, then falling to
+    // the power peak (170 ch at 4 000 tr/min, 370 N·m from 1 500).
+    factory(rpm) {
+      var Tm = this.cfg("torque_max", 370), Tr = this.cfg("torque_rpm", 1500), Tf = this.cfg("torque_flat_to", 2750), Pm = this.cfg("power_max", 170), Pr = this.cfg("power_rpm", 4000);
+      var Tp = Pm / 1.36 * 1000 * 60 / (2 * Math.PI * Pr);
+      var T = rpm <= Tr ? Tm * (0.62 + 0.38 * Math.max(0, (rpm - 1000) / (Tr - 1000))) : rpm <= Tf ? Tm : rpm <= Pr ? Tm + (Tp - Tm) * (rpm - Tf) / (Pr - Tf) : Tp * (1 - (rpm - Pr) / 2500);
+      return { T: Math.max(0, T), P: Math.max(0, T * 2 * Math.PI * rpm / 60 / 1000 * 1.36) };
+    }
+    draw() {
+      var c = this.config, v = this.now || {}, t = Date.now(), W = this.cfg("window_s", 60) * 1000;
+      var N = (x, d) => x == null ? "—" : fr(x, d || 0);
+      var torque = v.power != null && v.rpm > 600 ? v.power / 1.36 * 1000 * 60 / (2 * Math.PI * v.rpm) : null;
+      var gs = c.gear && this._hass.states[c.gear];
+      var cells = [["régime", N(v.rpm), "tr/min", v.rpm >= this.cfg("rpm_bad", 4300) ? CAR_BAD : v.rpm >= this.cfg("rpm_warn", 3500) ? CAR_WARN : ""],
+        ["vitesse", N(v.speed), "km/h" + (gs && /^[1-6]$/.test(gs.state) ? " · " + gs.state + "e" : ""), ""], ["charge", N(v.load), "%", v.load >= 85 ? CAR_WARN : ""],
+        ["turbo", v.boost == null ? "—" : fr(Math.max(0, v.boost), 2), "bar", CAR_BLUE], ["débit d'air", N(v.maf), "g/s", ""],
+        ["puissance ≈", N(v.power), "ch", CAR_OK], ["couple ≈", N(torque), "N·m", CAR_OK], ["rampe", N(this.num(c.rail)), "bar", ""]];
+      var lk = cells.map((x) => x[1]).join("|");
+      if (lk !== this.liveKey) {
+        this.liveKey = lk; this.liveEl.innerHTML = "";
+        cells.forEach((x) => { var b = el("div", "box", this.liveEl); el("span", "", b, x[0]); var bb = el("b", "", b, x[1]); if (x[3]) bb.style.color = x[3]; el("small", "", b, x[2]); });
+      }
+      // The curves, the newest on the right.
+      var X = (tt) => ((tt - (t - W)) / W * 900).toFixed(1), Y = (val, max) => (296 - Math.max(0, Math.min(1, val / max)) * 284).toFixed(1);
+      var h = "";
+      for (var k = 1; k < 4; k++) h += '<line x1="0" x2="900" y1="' + k * 75 + '" y2="' + k * 75 + '" stroke="#1d2127"/>';
+      this.gears.forEach((x) => { var xx = X(x.t); h += '<line x1="' + xx + '" x2="' + xx + '" y1="0" y2="300" stroke="#4b5159" stroke-dasharray="4,4"/><text x="' + (Number(xx) + 4) + '" y="14" fill="#8a9099" font-size="12">' + x.g + 'e</text>'; });
+      this.LINES().slice().reverse().forEach((L) => {
+        var pts = (this.series[L.k] || []).filter((p) => p.t >= t - W - 1000);
+        if (pts.length < 2) return;
+        h += '<path d="' + pts.map((p, i) => (i ? "L" : "M") + X(Math.max(p.t, t - W)) + "," + Y(L.k === "boost" ? Math.max(0, p.v) : p.v, L.max)).join("") + '" stroke="' + L.c + '" stroke-width="' + L.w + '" fill="none" stroke-linejoin="round"' + (L.o ? ' opacity="' + L.o + '"' : "") + '/>';
+      });
+      h += '<text x="4" y="294" fill="#8a9099" font-size="12">−' + Math.round(W / 1000) + ' s</text><text x="896" y="294" fill="#8a9099" font-size="12" text-anchor="end">maintenant</text>';
+      this.svg.innerHTML = h;
+      // The engine's curve over the maker's.
+      var R0 = 1000, R1 = this.cfg("rpm_max", 5000) - 200, PX = (r) => ((r - R0) / (R1 - R0) * 400).toFixed(1), Pmax = this.cfg("power_max", 170) * 1.15, Tmax = this.cfg("torque_max", 370) * 1.15;
+      var PY = (p) => (296 - p / Pmax * 280).toFixed(1), TY = (q) => (296 - q / Tmax * 280).toFixed(1), d = "";
+      for (var k2 = 1; k2 < 4; k2++) d += '<line x1="0" x2="400" y1="' + k2 * 75 + '" y2="' + k2 * 75 + '" stroke="#1d2127"/>';
+      var fp = [], ft = [];
+      for (var r = R0; r <= R1; r += 100) { var F = this.factory(r); fp.push(PX(r) + "," + PY(F.P)); ft.push(PX(r) + "," + TY(F.T)); }
+      d += '<polyline points="' + fp.join(" ") + '" stroke="#5cc28f" stroke-width="1.5" stroke-dasharray="5,5" fill="none" opacity=".55"/><polyline points="' + ft.join(" ") + '" stroke="#c792ea" stroke-width="1.5" stroke-dasharray="5,5" fill="none" opacity=".55"/>';
+      var bins = Object.keys(this.dyno).map(Number).filter((b) => b >= R0 && b <= R1).sort((a, b) => a - b);
+      if (bins.length >= 2) {
+        d += '<polyline points="' + bins.map((b) => PX(b) + "," + PY(this.dyno[b])).join(" ") + '" stroke="#5cc28f" stroke-width="3" fill="none"/>';
+        d += '<polyline points="' + bins.map((b) => PX(b) + "," + TY(this.dyno[b] / 1.36 * 1000 * 60 / (2 * Math.PI * b))).join(" ") + '" stroke="#c792ea" stroke-width="3" fill="none"/>';
+      }
+      if (v.rpm != null && v.rpm >= R0) d += '<line x1="' + PX(Math.min(R1, v.rpm)) + '" x2="' + PX(Math.min(R1, v.rpm)) + '" y1="0" y2="300" stroke="#e5323b" stroke-width="2"/>';
+      [1000, 2000, 3000, 4000].forEach((x) => { if (x <= R1) d += '<text x="' + (Number(PX(x)) + 3) + '" y="294" fill="#8a9099" font-size="12">' + x / 1000 + 'k</text>'; });
+      this.dsvg.innerHTML = d;
+      var best = bins.reduce((m, b) => !m || this.dyno[b] > this.dyno[m] ? b : m, null);
+      var dk = bins.length + "|" + best;
+      if (dk !== this.dKey) {
+        this.dKey = dk; this.dsub.innerHTML = "";
+        this.dsub.appendChild(document.createTextNode(best ? "vous " : "pied au plancher : elle se construit · "));
+        if (best) { var bb2 = el("b", "", this.dsub, fr(this.dyno[best], 0) + " ch"); bb2.style.cssText = "font-weight:400;color:" + CAR_OK; this.dsub.appendChild(document.createTextNode(" à " + fr(best, 0) + " · ")); }
+        this.dsub.appendChild(document.createTextNode("usine " + this.cfg("power_max", 170) + " ch à " + fr(this.cfg("power_rpm", 4000), 0) + ", " + this.cfg("torque_max", 370) + " N·m dès " + fr(this.cfg("torque_rpm", 1500), 0)));
+        this.dsub.title = "Estimation d'après le débit d'air (carburant brûlé), pas une mesure au banc.";
+      }
+      this.drawBottom(v);
+    }
+    drawBottom(v) {
+      var c = this.config, tr = c.trip, s = tr && this._hass.states[tr.entity || tr], d = s ? (tr.attribute ? s.attributes[tr.attribute] : s.attributes) || {} : {};
+      var lance = null; try { lance = JSON.parse(window.localStorage.getItem("igor-lance") || "null"); } catch (e) { lance = null; }
+      var cool = this.num(c.coolant), inta = this.num(c.intake), bat = this.num(c.battery), lam = this.num(c.lambda), rail = this.num(c.rail);
+      var key = [d.t0_100, d.t80_120, lance && lance.s, cool, inta, bat, lam, v.boost != null ? Math.round(v.boost * 20) : "", this.boostPeak].join("|");
+      if (key === this.bKey) return; this.bKey = key;
+      var kv = (box, title, rows) => { box.innerHTML = ""; el("div", "h", box, title); var g = el("div", "kv", box); rows.forEach((r) => { el("span", "", g, r[0]); var b = el("b", "", g, r[1]); if (r[2]) b.style.color = r[2]; }); };
+      kv(this.chrEl, "chronos", [["0 → 100 (arrêt)", d.t0_100 ? fr(Number(d.t0_100), 1) + " s" : "—"],
+        [lance ? (lance.from === 0 ? "dernier 0 → 100" : "départ lancé " + lance.from + " → 100") : "départ lancé", lance ? fr(lance.s, 1) + " s" : "—", lance ? CAR_OK : ""],
+        ["80 → 120", d.t80_120 ? fr(Number(d.t80_120), 1) + " s" : "—"]]);
+      var bar = (box, title, rows) => { box.innerHTML = ""; el("div", "h", box, title); var g = el("div", "tb", box); rows.forEach((r) => { el("span", "", g, r[0]); var i = el("i", "", g), b = el("b", "", i); b.style.width = Math.round(Math.max(0, Math.min(1, r[2])) * 100) + "%"; b.style.background = r[3]; el("em", "", g, r[1]); }); };
+      bar(this.tmpEl, "températures", [["eau", cool != null ? fr(cool, 0) + " °C" : "—", (cool || 0) / 120, cool > 105 ? CAR_BAD : cool < 60 ? CAR_BLUE : CAR_OK], ["admission", inta != null ? fr(inta, 0) + " °C" : "—", (inta || 0) / 80, CAR_BLUE]]);
+      var bnow = v.boost != null ? Math.max(0, v.boost) : null; if (bnow != null) this.boostPeak = Math.max(this.boostPeak || 0, bnow);
+      bar(this.turEl, "turbo · deux étages", [["maintenant", bnow != null ? fr(bnow, 2) + " bar" : "—", (bnow || 0) / this.cfg("boost_max", 2), "#59d0e0"], ["max vu", this.boostPeak ? fr(this.boostPeak, 2) + " bar" : "—", (this.boostPeak || 0) / this.cfg("boost_max", 2), "#2f7f8a"]]);
+      bar(this.eleEl, "électricité · mélange", [["batterie", bat != null ? fr(bat, 1) + " V" : "—", ((bat || 11) - 11) / 4, bat != null && (bat < 12.2 || bat > 15) ? CAR_WARN : CAR_OK], ["lambda", lam != null ? fr(lam, 2) : "—", (lam || 0) / 2, CAR_WARN], ["rampe", rail != null ? fr(rail, 0) + " bar" : "—", (rail || 0) / 1800, "#8a9099"]]);
+    }
+  }
+  define("igor-telemetry-card", IgorTelemetryCard, "Igor · télémétrie", "Le moteur en courbes : régime, vitesse, charge, turbo, puissance, courbe moteur.");
+
 
   // ----- The 3D map's look, set from the head unit's settings -----
   // One input_text holds it, short: « p=epure;bo=80;fw=none » — the preset,
   // then only what differs from it. The phone's map (igor-gps-card
   // `settings:`) applies it live; igor-settings-card `map3d:` edits it.
   var MAP3D_PRESETS = {
-    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 40, rf: 10, bz: 15, rp: "noms", rw: "normale", rc: "bleu", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max" } },
-    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "sol", rw: "normale", rc: "bleu", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max" } },
-    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", rw: "large", rc: "bleu", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max" } },
-    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", rw: "normale", rc: "bleu", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco" } }
+    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 40, rf: 10, bz: 15, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max" } },
+    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "sol", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max" } },
+    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max" } },
+    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco" } }
   };
   // Each setting: key, tab, label, hint, kind (seg | sw | sl), choices or range.
   var MAP3D_ROWS = [
@@ -12476,6 +12822,9 @@
     ["rp", "Route & noms", "Place de la route", "« sous les noms » : le nom de la rue reste lisible", "seg", [["sol", "au sol"], ["noms", "sous les noms"], ["top", "par-dessus tout"]]],
     ["rw", "Route & noms", "Épaisseur", "", "seg", [["fine", "fine"], ["normale", "normale"], ["large", "large"]]],
     ["rc", "Route & noms", "Couleur", "", "seg", [["bleu", "bleu"], ["cyan", "cyan"], ["violet", "violet"], ["jaune", "jaune"]]],
+    ["md", "Route & noms", "Repère d'arrivée", "nom et heure d'arrivée au-dessus", "seg", [["epingle", "épingle"], ["balise", "balise"], ["anneau", "anneau au sol"], ["damier", "damier"], ["drapeau", "drapeau"]]],
+    ["ms", "Route & noms", "Repère des étapes", "numérotées, couleur « après l'étape »", "seg", [["epingle", "épingle"], ["balise", "balise"], ["anneau", "anneau au sol"], ["damier", "damier"], ["drapeau", "drapeau"]]],
+    ["rc2", "Route & noms", "Couleur après l'étape", "la suite du trajet, comme Waze", "seg", [["cyan", "cyan"], ["bleu", "bleu"], ["violet", "violet"], ["gris", "gris"]]],
     ["gl", "Route & noms", "Halo lumineux", "", "sl", 0, 100, 5, "%"],
     ["tr", "Route & noms", "Trajet déjà parcouru", "", "seg", [["cache", "caché"], ["pale", "pâle"], ["visible", "visible"]]],
     ["jm", "Route & noms", "Bouchons", "", "seg", [["degrade", "en dégradé"], ["traits", "en traits"], ["aucun", "aucun"]]],
@@ -12787,7 +13136,8 @@
       this.style(CAR_HEAD + "\n" + [
         "ha-card { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 12px 16px; overflow: hidden; }",
         ".top { display: flex; align-items: center; justify-content: space-between; } .rd { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); cursor: pointer; } .rd.on { color: " + CAR_BLUE + "; }",
-        ".list { flex: 1; min-height: 0; overflow: hidden; }",
+        // All the messages, scrolled inside the box only (the page does not move).
+        ".list { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y; }",
         ".m { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; padding: 10px 6px; border-bottom: 1px solid var(--line); align-items: start; }",
         ".m.new { background: rgba(108,196,245,.07); box-shadow: inset 3px 0 " + CAR_BLUE + "; }",
         ".a { width: 32px; height: 32px; border-radius: 7px; display: grid; place-items: center; color: #08090b; font-weight: 700; font-size: 15px; }",
@@ -12919,7 +13269,7 @@
       this.head.textContent = "messages · " + groups.reduce((t, m) => t + m.n, 0);
       var max = (inCall ? Math.min(3, c.count || 5) : (c.count || 5)) - (others.length ? 1 : 0);
       if (!groups.length) el("div", "empty", this.list, "Aucun message");
-      groups.slice(0, Math.max(1, max)).forEach((m, i) => {
+      groups.slice(0, c.scroll === false ? Math.max(1, max) : 20).forEach((m, i) => {
         var row = el("div", "cp" + (i ? "" : " new"), this.list);
         var a = el("div", "a", row, m.letter); a.style.background = m.color;
         var w = el("div", "w", row); w.appendChild(document.createTextNode(m.titre || m.app));
@@ -13264,6 +13614,7 @@
   //   running: binary_sensor.car_engine_running
   //   clear: input_button.car_clear_codes      # « Effacer »
   //   agent: conversation.igor                 # who explains the code (« Demander à Igor », and once by itself per new code)
+  //   ignored: input_text.car_dtc_ignored      # codes known and ignored (« P1351;P0123 »): small, apart, never the engine in red
   class IgorDiagCard extends IgorCard {
     setConfig(config) { this.config = config || {}; }
     getCardSize() { return 8; }
@@ -13277,7 +13628,8 @@
         ".sys:last-child { border: 0; } .sys i { width: 11px; height: 11px; border-radius: 50%; }",
         ".sys b { display: block; font-weight: 400; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .sys small { display: block; font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
         ".sys em { font-style: normal; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; }",
-        ".code { overflow: auto; } .k { font-size: 52px; line-height: 1; font-variant-numeric: tabular-nums; } .sev { display: inline-block; border: 1px solid currentColor; padding: 2px 8px; font-size: 10.5px; letter-spacing: 0.16em; margin-left: 10px; vertical-align: middle; text-transform: uppercase; }",
+        // The codes scroll inside their own box (the page does not move).
+        ".code { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y; } .k { font-size: 52px; line-height: 1; font-variant-numeric: tabular-nums; } .sev { display: inline-block; border: 1px solid currentColor; padding: 2px 8px; font-size: 10.5px; letter-spacing: 0.16em; margin-left: 10px; vertical-align: middle; text-transform: uppercase; }",
         ".desc { font-size: 17px; margin-top: 6px; } .when { font-size: 11.5px; color: var(--dim); margin-top: 3px; }",
         ".igor { border-left: 3px solid var(--igor-signal, #e5323b); padding: 8px 12px; background: rgba(0,0,0,0.18); font-size: 13.5px; line-height: 1.5; margin-top: 10px; white-space: pre-wrap; }",
         ".igor b { display: block; font-weight: 400; font-size: 10.5px; letter-spacing: 0.2em; color: var(--dim); margin-bottom: 3px; }",
@@ -13285,7 +13637,11 @@
         ".pills { grid-column: 1 / 3; display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 6px; }",
         ".pills div { border: 1px solid var(--line); border-radius: var(--igor-radius, 3px); padding: 6px 2px; text-align: center; font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--card); }",
         ".acts { grid-column: 3; grid-row: 1 / 4; display: flex; flex-direction: column; gap: 8px; } .acts button.b { flex: 1; }",
-        "button.clr { border-color: var(--bad); color: var(--bad); } button.clr ha-icon { color: var(--bad); }"
+        "button.clr { border-color: var(--bad); color: var(--bad); } button.clr ha-icon { color: var(--bad); }",
+        ".cbtn { min-height: 38px; padding: 0 12px; border: 1px solid var(--line); background: none; color: var(--dim); font: inherit; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }",
+        ".other { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); cursor: pointer; } .other b { font-weight: 400; font-size: 20px; } .other span { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".arch { margin-top: 12px; border: 1px dashed var(--line); padding: 8px 10px; } .arch .h::before { background: var(--dim); }",
+        ".arch .r { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); } .arch .r b { font-weight: 400; font-size: 15px; color: var(--dim); } .arch .r span { font-size: 11.5px; color: var(--dim); line-height: 1.35; }"
       ].join("\n"));
       var card = el("ha-card", "", this.shadowRoot);
       this.hero = el("div", "box hero", card);
@@ -13316,10 +13672,13 @@
         var km = numOf(hass, c.distance);
         out.push(on(c.lamp) ? ["bad", "Voyant moteur", "ALLUMÉ" + (km ? " · " + fr(km, 1) + " km" : ""), "allumé"] : ["ok", "Voyant moteur", "éteint" + (km != null ? " · " + fr(km, 1) + " km voyant allumé" : ""), "ok"]);
       }
-      var conf = this.codeList(hass, c.codes), pend = this.codeList(hass, c.pending);
+      var ign = this.ignoredSet(hass), conf0 = this.codeList(hass, c.codes), pend0 = this.codeList(hass, c.pending);
+      var conf = conf0.filter((x) => !ign[x.code]), pend = pend0.filter((x) => !ign[x.code]);
+      var nIgn = conf0.concat(pend0).filter((x) => ign[x.code]).map((x) => x.code).filter((v, i, a) => a.indexOf(v) === i).length;
+      var igTxt = nIgn ? " · " + nIgn + " ignoré" + (nIgn > 1 ? "s" : "") : "";
       if (c.codes || c.pending) {
-        out.push(conf.length ? ["bad", "Codes défaut", conf.map((x) => x.code).join(", ") + " confirmé" + (conf.length > 1 ? "s" : ""), "défaut"]
-          : pend.length ? ["warn", "Codes défaut", pend.map((x) => x.code).join(", ") + " en attente", "surveiller"] : ["ok", "Codes défaut", "aucun", "ok"]);
+        out.push(conf.length ? ["bad", "Codes défaut", conf.map((x) => x.code).join(", ") + " confirmé" + (conf.length > 1 ? "s" : "") + igTxt, "défaut"]
+          : pend.length ? ["warn", "Codes défaut", pend.map((x) => x.code).join(", ") + " en attente" + igTxt, "surveiller"] : ["ok", "Codes défaut", (nIgn ? "aucun nouveau" : "aucun") + igTxt, "ok"]);
       }
       var bat = numOf(hass, c.battery);
       if (bat != null) {
@@ -13339,10 +13698,25 @@
       if (c.online) out.push(on(c.online) ? ["ok", "Liaison OBD", "en ligne", "ok"] : ["warn", "Liaison OBD", "hors ligne · dernières valeurs", "hors ligne"]);
       return out;
     }
+    // The codes known and ignored: « P1351;P0123 » (each with the day, « P1351@25/11 »).
+    ignoredSet(hass) {
+      var st = this.config.ignored && hass.states[this.config.ignored], out = {};
+      String(st && !/^(unknown|unavailable)$/.test(st.state) ? st.state : "").split(/[;,\s]+/).filter(Boolean).forEach((x) => { var p = x.split("@"); out[p[0].toUpperCase()] = p[1] || ""; });
+      return out;
+    }
+    setIgnored(code, on) {
+      var h = this._hass, id = this.config.ignored;
+      if (!h || !id) return;
+      var cur = this.ignoredSet(h), d = new Date();
+      if (on) cur[code] = pad(d.getDate()) + "/" + pad(d.getMonth() + 1); else delete cur[code];
+      var v = Object.keys(cur).map((k) => k + (cur[k] ? "@" + cur[k] : "")).join(";").slice(0, 250);
+      h.callService("input_text", "set_value", { entity_id: id, value: v }).catch(() => {});
+    }
     update(hass) {
       var c = this.config;
-      var ids = [c.lamp, c.codes, c.pending, c.distance, c.monitors, c.battery, c.coolant, c.turbo, c.online, c.running];
+      var ids = [c.lamp, c.codes, c.pending, c.distance, c.monitors, c.battery, c.coolant, c.turbo, c.online, c.running, c.ignored];
       var key = ids.map((id) => id && hass.states[id] ? hass.states[id].state + (hass.states[id].attributes.codes || hass.states[id].attributes.tests ? JSON.stringify(hass.states[id].attributes.codes || hass.states[id].attributes.tests) : "") : "").join("|");
+      key += "|" + (this.pick || "");
       if (key === this.key) return;
       this.key = key;
       var sys = this.systems(hass), col = { ok: CAR_OK, warn: CAR_WARN, bad: CAR_BAD };
@@ -13353,7 +13727,9 @@
       var ht = el("div", "", this.hero);
       var bad = sys.filter((s) => s[0] !== "ok").length;
       el("b", "", ht, worst === "bad" ? "Défaut moteur · à faire contrôler" : bad ? "Moteur sain · " + bad + " point" + (bad > 1 ? "s" : "") + " à surveiller" : "Moteur sain");
-      el("span", "", ht, sys.filter((s) => s[0] !== "ok").map((s) => s[1].toLowerCase() + " : " + s[2]).join(" · ") || "tout est au vert");
+      var ign = this.ignoredSet(hass);
+      var ignNames = Object.keys(ign).filter((k) => this.codeList(hass, c.codes).concat(this.codeList(hass, c.pending)).some((x) => x.code === k));
+      el("span", "", ht, sys.filter((s) => s[0] !== "ok").map((s) => s[1].toLowerCase() + " : " + s[2]).join(" · ") || (ignNames.length ? ignNames.length + " défaut" + (ignNames.length > 1 ? "s" : "") + " connu" + (ignNames.length > 1 ? "s" : "") + " ignoré" + (ignNames.length > 1 ? "s" : "") + " (" + ignNames.join(", ") + ") · rien de nouveau" : "tout est au vert"));
       this.sysBox.innerHTML = "";
       el("div", "h", this.sysBox, "systèmes");
       sys.forEach((s) => {
@@ -13361,28 +13737,49 @@
         var t = el("div", "", r); el("b", "", t, s[1]); el("small", "", t, s[2]);
         var em = el("em", "", r, s[3]); em.style.color = col[s[0]];
       });
-      // The code shown: the first confirmed, else the first pending.
+      // The codes: the ones not ignored, in large — the one chosen (else the
+      // first confirmed) with Igor's word, the others below, a touch to choose
+      // one; each can be ignored. Then, small, the ones known and ignored.
       var conf = this.codeList(hass, c.codes), pend = this.codeList(hass, c.pending);
-      var all = conf.map((x) => Object.assign({ st: "confirmé" }, x)).concat(pend.filter((p) => !conf.some((x) => x.code === p.code)).map((x) => Object.assign({ st: "en attente" }, x)));
+      var every = conf.map((x) => Object.assign({ st: "confirmé" }, x)).concat(pend.filter((p) => !conf.some((x) => x.code === p.code)).map((x) => Object.assign({ st: "en attente" }, x)));
       // Codes the OBD app only calls « constructeur »: what they usually mean on a PSA diesel (HDi).
       var PSA = { P1351: "Préchauffage : commande du boîtier de pré-postchauffage (bougies) — code PSA, à confirmer au garage" };
-      all = all.map((x) => PSA[x.code] && (!x.description || /constructeur|inconnu/i.test(x.description)) ? Object.assign({}, x, { description: PSA[x.code] }) : x);
-      this.current = all[0] || null;
+      every = every.map((x) => PSA[x.code] && (!x.description || /constructeur|inconnu/i.test(x.description)) ? Object.assign({}, x, { description: PSA[x.code] }) : x);
+      var all = every.filter((x) => !(x.code in ign)), known = every.filter((x) => x.code in ign);
+      var cur = all.find((x) => x.code === this.pick) || all[0] || null;
+      this.current = cur;
       this.codeBox.innerHTML = "";
-      el("div", "h", this.codeBox, all.length ? "défaut en cours · 1 sur " + all.length : "défauts");
-      if (!all.length) { el("div", "none", this.codeBox, "Aucun défaut ✓"); }
+      el("div", "h", this.codeBox, all.length ? "défaut" + (all.length > 1 ? "s" : "") + " en cours · " + all.length : "défauts");
+      if (!cur) { el("div", "none", this.codeBox, known.length ? "Aucun nouveau défaut ✓" : "Aucun défaut ✓"); this.igorText = null; }
       else {
-        var cur = all[0], cc = cur.st === "confirmé" ? CAR_BAD : CAR_WARN;
+        var cc = cur.st === "confirmé" ? CAR_BAD : CAR_WARN;
         var top = el("div", "", this.codeBox);
         var k = el("span", "k", top, cur.code); k.style.color = cc;
         var sv = el("span", "sev", top, cur.st); sv.style.color = cc;
         el("div", "desc", this.codeBox, cur.description || "");
         var src = hass.states[cur.st === "confirmé" ? c.codes : c.pending];
-        if (src && src.last_changed) { var dt = new Date(src.last_changed); el("div", "when", this.codeBox, "relevé le " + pad(dt.getDate()) + "/" + pad(dt.getMonth() + 1) + " à " + hhmm(dt) + (all.length > 1 ? " · autres : " + all.slice(1).map((x) => x.code).join(", ") : "")); }
+        if (src && src.last_changed) { var dt = new Date(src.last_changed); el("div", "when", this.codeBox, "relevé le " + pad(dt.getDate()) + "/" + pad(dt.getMonth() + 1) + " à " + hhmm(dt)); }
+        if (c.ignored) {
+          var ib = el("button", "cbtn", this.codeBox, "ignorer ce code"); ib.type = "button"; ib.style.marginTop = "8px";
+          ib.addEventListener("click", () => { if (window.confirm(cur.code + " : l'ignorer ? Il restera visible en petit, dans « connus · ignorés », et ne mettra plus le moteur en rouge.")) this.setIgnored(cur.code, true); });
+        }
         this.igorBox = el("div", "igor", this.codeBox);
         el("b", "", this.igorBox, "◉ IGOR");
         this.igorText = el("span", "", this.igorBox, "");
         this.ask(false);
+        all.filter((x) => x !== cur).forEach((x) => {
+          var r = el("div", "other", this.codeBox); var b = el("b", "", r, x.code); b.style.color = x.st === "confirmé" ? CAR_BAD : CAR_WARN;
+          el("span", "", r, (x.description || "") + " · " + x.st); el("span", "", r, "voir ›");
+          r.addEventListener("click", () => { this.pick = x.code; this.key = null; this.update(this._hass); });
+        });
+      }
+      if (known.length) {
+        var ar = el("div", "arch", this.codeBox); el("div", "h", ar, "connus · ignorés");
+        known.forEach((x) => {
+          var r = el("div", "r", ar); el("b", "", r, x.code);
+          el("span", "", r, (x.description || "") + (ign[x.code] ? " · ignoré depuis le " + ign[x.code] : "") + " · toujours présent");
+          var nb = el("button", "cbtn", r, "ne plus ignorer"); nb.type = "button"; nb.addEventListener("click", () => this.setIgnored(x.code, false));
+        });
       }
       this.pills.innerHTML = "";
       var mon = c.monitors && hass.states[c.monitors], tests = mon && Array.isArray(mon.attributes.tests) ? mon.attributes.tests : [];
