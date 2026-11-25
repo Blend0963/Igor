@@ -5498,7 +5498,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.50.6";
+  var GPS_CARD_VERSION = "0.50.7";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -11981,6 +11981,7 @@
   //   routes: input_text.car_routes        # the routes offered by the phone map (publish_routes): chosen here, in the middle
   //   route_choice: input_text.car_choice  # where the choice is written
   //   destination: input_text.car_dest     # its name over the routes
+  //   resume: { entity: binary_sensor.car_resume_offered, button: input_button.car_resume }   # a big green « Reprendre le trajet » over the view while offered (attributes precedent_debut, precedent_km)
   //   tune: { load_on: 75, accel_on: 1.4, window_s: 3, min_kmh: 15, boost_on: 0.8, gain_s: 4, hold_s: 20, calm_s: 8, min_view_s: 8, cooldown_s: 30, override_s: 60 }
   // Which view, by priority: a radar within reach (green, amber, red as the
   // speed goes), a hard acceleration (the engine, held while the effort
@@ -12038,10 +12039,22 @@
         ".pin.near i { animation: igpu 1s ease-in-out infinite; } @keyframes igpu { 50% { box-shadow: 0 0 0 3px var(--card, #121418), 0 0 0 9px rgba(229,160,76,.4); } }",
         ".pin div { position: absolute; left: -70px; width: 140px; top: calc(28% + 17px); text-align: center; font-size: 14px; line-height: 1.1; white-space: nowrap; }",
         ".pin div small { display: block; font-size: 12px; color: var(--faint, #6b717a); } .pin.end div { left: auto; right: -14px; text-align: right; } .pin.quiet div { visibility: hidden; }",
+        ".resume { position: absolute; left: 12px; right: 12px; top: 12px; z-index: 6; display: flex; align-items: center; gap: 14px; padding: 14px 18px; background: #1f6b3a; border: 1px solid #5cc28f; color: #fff; font: inherit; cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,.5); --mdc-icon-size: 34px; text-align: left; }",
+        ".resume b { display: block; font-size: 20px; font-weight: 500; } .resume small { display: block; font-size: 13px; opacity: .85; margin-top: 3px; } .resume .rbar { position: absolute; left: 0; bottom: 0; height: 3px; background: #5cc28f; }",
         "[hidden] { display: none !important; }"
       ].join("\n"));
       var wrap = el("div", "wrap", this.shadowRoot);
       var card = this.cardEl = el("ha-card", "view", wrap);
+      card.style.position = "relative";
+      // « Reprendre le trajet »: offered a minute when the car leaves again soon after a stop.
+      this.resumeEl = el("button", "resume", card); this.resumeEl.type = "button"; this.resumeEl.hidden = true;
+      icon(this.resumeEl, "mdi:play-circle"); var rt = el("div", "", this.resumeEl); this.resumeB = el("b", "", rt, "Reprendre le trajet"); this.resumeS = el("small", "", rt, "");
+      this.resumeBar = el("i", "rbar", this.resumeEl);
+      this.resumeEl.addEventListener("click", () => {
+        var r = this.config.resume || {};
+        if (this._hass && r.button) this._hass.callService("input_button", "press", { entity_id: r.button }).catch(() => {});
+        this.resumeEl.hidden = true; this.resumeDone = (this.st(r.entity) || {}).last_changed;
+      });
       var hr = el("div", "hr2", card); this.head = el("div", "h", hr); this.aside = el("div", "aside", hr);
       this.body = el("div", "body", card);
       this.tabsEl = el("div", "tabs", card);
@@ -12189,6 +12202,18 @@
       // While the old view fades out, it is left as it is.
       if (!this.swapping) this.draw(rad, v);
       this.drawFrieze(t, v);
+      this.drawResume(t);
+    }
+    drawResume(t) {
+      var r = this.config.resume, e = this.resumeEl;
+      if (!r || !e) return;
+      var st = this.st(r.entity), on = !!(st && st.state === "on" && st.last_changed !== this.resumeDone);
+      e.hidden = !on;
+      if (!on) return;
+      var a = st.attributes || {};
+      this.resumeS.textContent = [a.precedent_debut ? "parti à " + a.precedent_debut : "", a.precedent_km != null ? a.precedent_km + " km" : "", "les deux trajets seront regroupés"].filter(Boolean).join(" · ");
+      var left = Math.max(0, 1 - (t - (Date.parse(st.last_changed) || t)) / 60000);
+      this.resumeBar.style.width = Math.round(left * 100) + "%";
     }
     // Why the car pulls, told once at the start: a toll booth just passed
     // (the phone map knows it), a start, an overtaking, a relaunch.
