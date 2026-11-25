@@ -5518,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.52.7";
+  var GPS_CARD_VERSION = "0.52.8";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7048,6 +7048,15 @@
     }
     // The route's layers above the 3D ones (TomTom's buildings and surfaces
     // are custom layers added after Igor's), under the labels that follow.
+    // Smoothing the edges (MSAA) costs much on a phone's GPU; on a sharp screen
+    // (2 device pixels or more) its pixels already hide the steps: off unless asked.
+    // Read when the map is made (a change applies the next time the map opens).
+    antialiasOn() {
+      var a = this.look && this.look.aa;
+      if (a === "oui" || a === 1) return true;
+      if (a === "non" || a === 0) return false;
+      return this.hq() && (window.devicePixelRatio || 1) < 2;
+    }
     // Frames really drawn per second, in a corner (Réglages → Carte 3D → Performance).
     fpsMeter(on) {
       var map = this.map;
@@ -7132,6 +7141,15 @@
       });
       this.jamGradient();
       this.routeOnTop(map);
+      // The base map's own traffic (the green, orange and red lines on every
+      // road): none by default — the route carries its slow stretches itself.
+      tryIt(() => {
+        var show = L.tf === "tout";
+        ((map.getStyle() && map.getStyle().layers) || []).forEach((l) => {
+          if (/^(route|routejam|incidents|igor|trail|alt)/.test(l.id)) return;
+          if (/traffic|flow/i.test(l.id + " " + (l["source-layer"] || "") + " " + (typeof l.source === "string" ? l.source : ""))) map.setLayoutProperty(l.id, "visibility", show ? "visible" : "none");
+        });
+      });
       tryIt(() => {
         var ns = { petite: 0.85, normale: 1, grande: 1.25 }[L.ns] || 1, sz = this.labelSize0 = this.labelSize0 || {};
         ((map.getStyle() && map.getStyle().layers) || []).forEach((l) => {
@@ -7605,7 +7623,7 @@
             transformRequest: (req) => { var t = this.mapRequest(req && req.url); return t ? Object.assign({}, req, t, { headers: Object.assign({}, req.headers || {}, t.headers || {}) }) : req; },
             mapLibre: {
               container: this.$("map"), center: p, zoom: this.config.zoom, pitch: this.config.pitch, bearing: this.headingUp ? this.heading : 0,
-              fadeDuration: 0, pixelRatio: Math.min(window.devicePixelRatio || 1, Number(this.config.pixel_ratio) || 2), antialias: true, maxPitch: 75, maxTileCacheSize: 600
+              fadeDuration: 0, pixelRatio: Math.min(window.devicePixelRatio || 1, Number(this.config.pixel_ratio) || 2), antialias: this.antialiasOn(), maxPitch: 75, maxTileCacheSize: 600
             }
           });
           map = tt.mapLibreMap; this.tt = tt; this.ttKit = kit; this.sdkWhy = "";
@@ -7629,7 +7647,7 @@
         pixelRatio: this.hq() ? (window.devicePixelRatio || 1) : Math.min(window.devicePixelRatio || 1, Number(this.config.pixel_ratio) || (this.offlineReady ? 1 : 2)),
         // quality: max (a phone): every device pixel, smoothed edges, the
         // view tipped further, more tiles kept — the best the screen can show.
-        antialias: this.hq(), maxPitch: this.hq() ? 75 : 60, maxTileCacheSize: this.hq() ? 600 : null,
+        antialias: this.antialiasOn(), maxPitch: this.hq() ? 75 : 60, maxTileCacheSize: this.hq() ? 600 : null,
         // Igor's own tiles (traffic) need the Home Assistant login, as every API call.
         transformRequest: (url) => this.mapRequest(url)
       }); } catch (e) { this.message("carte : " + (e && e.message || "WebGL indisponible sur cet appareil")); this.loading = false; return; }
@@ -12854,10 +12872,10 @@
   // then only what differs from it. The phone's map (igor-gps-card
   // `settings:`) applies it live; igor-settings-card `map3d:` edits it.
   var MAP3D_PRESETS = {
-    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 40, rf: 10, bz: 15, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
-    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "sol", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max", ips: 60, cpt: 0 } },
-    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
-    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco", ips: 30, cpt: 0 } }
+    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, tf: "aucun", aa: "auto", bz: 15, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
+    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { tf: "tout", aa: "auto", b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "sol", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max", ips: 60, cpt: 0 } },
+    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { tf: "aucun", aa: "auto", b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
+    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { tf: "aucun", aa: "non", b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco", ips: 30, cpt: 0 } }
   };
   // Each setting: key, tab, label, hint, kind (seg | sw | sl), choices or range.
   var MAP3D_ROWS = [
@@ -12877,6 +12895,7 @@
     ["rc2", "Route & noms", "Couleur après l'étape", "la suite du trajet, comme Waze", "seg", [["cyan", "cyan"], ["bleu", "bleu"], ["violet", "violet"], ["gris", "gris"]]],
     ["gl", "Route & noms", "Halo lumineux", "", "sl", 0, 100, 5, "%"],
     ["tr", "Route & noms", "Trajet déjà parcouru", "", "seg", [["cache", "caché"], ["pale", "pâle"], ["visible", "visible"]]],
+    ["tf", "Route & noms", "Trafic sur toute la carte", "vert, orange, rouge sur chaque route ; « aucun » : seulement sur votre itinéraire", "seg", [["aucun", "aucun"], ["tout", "afficher"]]],
     ["jm", "Route & noms", "Bouchons", "", "seg", [["degrade", "en dégradé"], ["traits", "en traits"], ["aucun", "aucun"]]],
     ["rl", "Route & noms", "Noms cachés par les bâtiments", "comme dans la réalité", "sw"],
     ["ns", "Route & noms", "Taille des noms de rues", "", "seg", [["petite", "petite"], ["normale", "normale"], ["grande", "grande"]]],
@@ -12895,6 +12914,7 @@
     ["cy", "Caméra", "Voiture à l'écran", "plus bas : plus de route devant", "seg", [["haut", "plus haut"], ["milieu", "au milieu"], ["bas", "plus bas"]]],
     ["fl", "Performance", "Mode fluide", "allège tout seul quand ça rame", "sw"],
     ["px", "Performance", "Netteté", "", "seg", [["eco", "économe"], ["normale", "normale"], ["max", "maximale"]]],
+    ["aa", "Performance", "Lissage des bords", "coûteux sur téléphone ; inutile sur un écran très fin · au prochain affichage de la carte", "seg", [["auto", "auto"], ["oui", "oui"], ["non", "non"]]],
     ["ips", "Performance", "Images par seconde", "30 : fluide et frais ; 60 : le plus doux, chauffe plus", "seg", [[30, "30"], [45, "45"], [60, "60"]]],
     ["cpt", "Performance", "Compteur d'images", "affiche les images par seconde en coin de carte", "sw"]
   ];

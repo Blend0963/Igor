@@ -1,3 +1,9 @@
+## 0.52.8 — Moins de travail par image, le trafic au choix
+
+- Réglages → Carte 3D → Route & noms : **Trafic sur toute la carte** (aucun / afficher). Les lignes vertes, orange et rouges du style TomTom sur chaque route sont masquées par défaut : l'itinéraire porte déjà ses ralentissements, en dégradé.
+- Performance : **Lissage des bords** (auto / oui / non). Le lissage (MSAA) coûte cher sur un téléphone ; en « auto » il est coupé sur un écran très fin (2 pixels d'écran ou plus par pixel), dont la finesse suffit. Appliqué à la prochaine ouverture de la carte.
+- Préréglage « Épuré » plus léger : sans ombres ni reflets (les ombres font dessiner chaque bâtiment deux fois), sans trafic sur toute la carte.
+
 ## 0.52.7 — La carte du téléphone reste nette
 
 - `igor-gps-card`, mode fluide : quand la carte peine, il retire d'abord ce qui coûte cher et se voit peu — ombres et reflets des bâtiments, arbres, relief, textures — et ne touche à la netteté qu'en tout dernier, sans jamais descendre sous 1,5 pixel d'écran par pixel de carte. Avant, son premier geste était de baisser la netteté, jusqu'à 1 : la carte devenait floue. Le compteur d'images dit ce qui a été allégé.
