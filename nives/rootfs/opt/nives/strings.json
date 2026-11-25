@@ -431,6 +431,20 @@
     "car_status": {
       "name": "Car: trip status",
       "description": "The trip under way on the car's GPS: destination, time and distance left, arrival, jams and the next toll, tunnel or ferry (TomTom with a key, else OpenStreetMap's time and distance). Administrators and the car's users."
+    },
+    "car_fix_duplicates": {
+      "name": "Car: mend doubled entities",
+      "description": "The car's sensors doubled by a changed unique_id (« x » orphaned, « x_2 » receiving the data): the orphan is removed and « x_2 » renamed « x », so the dashboards find their data again. With dry_run (default) it only says what it would do.",
+      "fields": {
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Only say what would be done."
+        },
+        "match": {
+          "name": "Match",
+          "description": "Only entities whose id contains this (peugeot_407)."
+        }
+      }
     }
   }
 }

@@ -427,3 +427,13 @@ car_map_info:
         number:
           min: 1
           step: 1
+car_fix_duplicates:
+  fields:
+    dry_run:
+      default: true
+      selector:
+        boolean:
+    match:
+      default: peugeot_407
+      selector:
+        text:
