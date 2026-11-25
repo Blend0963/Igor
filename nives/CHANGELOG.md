@@ -1,3 +1,8 @@
+## 0.50.2 — Le trajet sans conso moyenne en tête, le turbo calculé si besoin
+
+- `igor-drive-card`, vue trajet : la conso moyenne est retirée de l'en-tête (distance, coût, éco) — elle doublait la consommation en direct juste en dessous, et son « L/100 » débordait sur la case voisine.
+- `igor-drive-card` `map:` : sans capteur de turbo (`boost`), la pression du turbo est calculée depuis la pression absolue d'admission (kPa − 101,3) ; jamais affichée sous zéro.
+
 ## 0.50.1 — La vue moteur seulement pied au plancher, le rapport à côté de la vitesse
 
 - `igor-drive-card` : la vue moteur ne s'ouvre plus sur un coup de gaz à l'arrêt, un démarrage vif ou une accélération franche. Il faut rouler (plus de 15 km/h), la charge moteur au plancher (85 % ou plus) les trois quarts des 3 dernières secondes — un passage de rapport ne l'interrompt pas — et la voiture qui prend au moins 2 m/s² (deux fois un démarrage ordinaire). Sans capteur de charge, une accélération plus forte encore. Réglable : `tune: { load_on, accel_on, window_s, min_kmh, boost_on }`.

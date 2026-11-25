@@ -5467,7 +5467,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.50.1";
+  var GPS_CARD_VERSION = "0.50.2";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -11901,6 +11901,7 @@
   //   speed: sensor.car_speed              # km/h
   //   limit: sensor.speed_limit            # the road's limit, when the radar does not say it
   //   rpm, load, boost, coolant, intake, advice: sensor.…   # the engine (OBD)
+  //   map: sensor.car_manifold_pressure    # kPa absolute: the turbo worked out from it when `boost` gives nothing
   //   rpm_max: 5000, rpm_warn: 3500, rpm_bad: 4300, boost_max: 2   # the dial and the turbo bar
   //   consumption: sensor.car_l100_now     # instant L/100
   //   trip: { entity: sensor.car_trip, attribute: trajet }   # distance_km, duration_min, fuel_l, l100, eco_score, harsh_accel, t0_100…
@@ -11942,7 +11943,7 @@
         ".bars .g { height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); margin-top: 4px; overflow: hidden; } .bars .g i { display: block; height: 100%; border-radius: 3px; transition: width .4s; }",
         ".ef { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; } .ef span { display: block; font-size: 12px; color: var(--dim); } .ef b { font-weight: 400; font-size: 20px; white-space: nowrap; }",
         // Trip and consumption
-        ".trip { height: 100%; display: flex; flex-direction: column; } .kpi { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; flex: none; } .kpi span { display: block; font-size: 12px; color: var(--dim); } .kpi b { font-weight: 400; font-size: 32px; font-variant-numeric: tabular-nums; white-space: nowrap; } .kpi small { font-size: 12px; color: var(--dim); }",
+        ".trip { height: 100%; display: flex; flex-direction: column; } .kpi { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; flex: none; } .kpi > div { min-width: 0; overflow: hidden; } .kpi span { display: block; font-size: 12px; color: var(--dim); } .kpi b { font-weight: 400; font-size: 32px; font-variant-numeric: tabular-nums; white-space: nowrap; } .kpi small { font-size: 12px; color: var(--dim); }",
         ".gh { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; flex: none; } .gh .h { margin: 0; } .gh .aside b { font-weight: 400; color: " + CAR_OK + "; }",
         ".spark { flex: 1; min-height: 50px; margin-top: 6px; } .spark svg { width: 100%; height: 100%; display: block; } .foot { display: flex; gap: 16px; font-size: 13px; color: var(--dim); flex-wrap: wrap; flex: none; margin-top: 4px; }",
         // The frieze: « vous » fixed on the left, the road coming towards it.
@@ -12009,7 +12010,7 @@
       var t = Date.now(), c = this.config, v = this.n(c.speed);
       if (this.lastSample && t - this.lastSample < 450) return;
       this.lastSample = t;
-      var sp = { t: t, v: v, load: this.n(c.load), boost: this.n(c.boost), rpm: this.n(c.rpm) };
+      var sp = { t: t, v: v, load: this.n(c.load), boost: this.boostNow(), rpm: this.n(c.rpm) };
       this.samples.push(sp);
       while (this.samples.length && t - this.samples[0].t > 20000) this.samples.shift();
       // The consumption curve: a point every 10 s, the last 15 minutes.
@@ -12024,6 +12025,14 @@
       this.effortAt = t;
       this.effort += (inst - this.effort) * (1 - Math.exp(-dt / 6));
       this.accel = accel;
+    }
+    // The turbo's pressure (bar over the air outside): the `boost` sensor, else
+    // worked out here from the manifold's absolute pressure (`map:`, kPa).
+    boostNow() {
+      var c = this.config, b = this.n(c.boost);
+      if (b != null) return b;
+      var m = this.n(c.map);
+      return m != null && m > 20 ? Math.round((m - 101.3) / 100 * 100) / 100 : null;
     }
     // Is the driver flooring it? Only a real full-throttle pull, as in a
     // sport mode: rolling (over min_kmh), the load near the floor most of the
@@ -12220,7 +12229,8 @@
         (rpm ? '<path d="' + carArc(100, 100, 80, a0, f(rpm)) + '" stroke="' + col + '" stroke-width="16" fill="none"/>' : "") +
         '<text x="100" y="104" text-anchor="middle" fill="#e8e4dc" font-size="40" font-family="inherit">' + (rpm == null ? "—" : Math.round(rpm)) + '</text><text x="100" y="128" text-anchor="middle" fill="#8a9099" font-size="13">tr/min</text></svg>';
       var adv = this.st(c.advice), advTxt = adv && !/^(aucun|unknown|unavailable)$/i.test(adv.state) ? "▲ " + adv.state : "";
-      var g = Math.max(0, (this.accel || 0) / 9.81), boost = this.n(c.boost), load = this.n(c.load), d = this.tripData() || {};
+      var g = Math.max(0, (this.accel || 0) / 9.81), boost = this.boostNow(), load = this.n(c.load), d = this.tripData() || {};
+      if (boost != null) boost = Math.max(0, boost);
       var bars = [["turbo", boost != null ? fr(boost, 1) + " bar" : "—", boost != null ? boost / (Number(c.boost_max) || 2) : 0],
         ["charge", load != null ? Math.round(load) + " %" : "—", load != null ? load / 100 : 0],
         ["accélération", g > 0.02 ? fr(g, 2) + " g" : "—", g / 0.6]];
@@ -12247,7 +12257,8 @@
       if (key === this.drawn) return; this.drawn = key;
       var b = this.body; b.innerHTML = "";
       var w = el("div", "trip", b), k = el("div", "kpi", w);
-      [["distance", d.distance_km != null ? fr(Number(d.distance_km), 1) : "—", "km", ""], ["conso", d.l100 != null ? fr(Number(d.l100), 1) : "—", "L/100", Number(d.l100) < 6.5 ? "ok" : Number(d.l100) < 9 ? "warn" : "bad"],
+      // No average L/100 up there: the live consumption is right below, with its curve.
+      [["distance", d.distance_km != null ? fr(Number(d.distance_km), 1) : "—", "km", ""],
        ["coût", cost != null ? fr(cost, 2) : "—", "€", ""], ["éco", isFinite(eco) ? String(Math.round(eco)) : "—", "/100", eco >= 80 ? "ok" : eco >= 60 ? "warn" : "bad"]].forEach((x) => {
         var cell = el("div", "", k); el("span", "", cell, x[0]); var bb = el("b", x[3], cell, x[1] + " "); el("small", "", bb, x[2]);
       });
