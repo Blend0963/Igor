@@ -5498,7 +5498,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.50.8";
+  var GPS_CARD_VERSION = "0.50.9";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -13498,15 +13498,19 @@
       // stands up on a stalk. Below, the same order, one cell each.
       var order = evs.slice().sort((a, b) => (a.km == null ? Infinity : a.km) - (b.km == null ? Infinity : b.km));
       var X = (km) => km == null ? 100 : Math.max(0, Math.min(100, Math.sqrt(Math.max(0, km) / H) * 100));
-      [[0, "aujourd'hui", "l"], [50, "+" + fr(Math.round(H / 4 / 100) * 100, 0) + " km", ""], [100, "+" + fr(Math.round(H / 100) * 100, 0) + " km", "r"]].forEach((t) => {
-        var tk = el("div", "tk " + t[2], trk, t[1]); tk.style.left = t[0] + "%";
-      });
-      var lastX = -100, lifted = false, its = el("div", "its", this.ax);
+      // Only « aujourd'hui »: the scale is not even (what comes soon gets more
+      // room), so a figure in the middle would mislead; the cells give the km.
+      el("div", "tk l", trk, "aujourd'hui").style.left = "0%";
+      // All the pins on the bar: two too close are spread apart a little
+      // (never on top of each other), kept in order and inside the bar.
+      var xs = order.map((e) => X(e.km)), gap = Math.min(6, 100 / Math.max(1, order.length));
+      for (var k = 1; k < xs.length; k++) if (xs[k] - xs[k - 1] < gap) xs[k] = xs[k - 1] + gap;
+      for (var k2 = xs.length - 1; k2 >= 0; k2--) { var cap = k2 === xs.length - 1 ? 100 : xs[k2 + 1] - gap; if (xs[k2] > cap) xs[k2] = cap; }
+      var its = el("div", "its", this.ax);
       its.style.setProperty("--n", String(Math.max(1, order.length)));
       order.forEach((e, n) => {
-        var x = X(e.km), close = x - lastX < 4.5;
-        lifted = close && !lifted; lastX = x;
-        var p = el("div", "pin" + (lifted ? " lift" : ""), trk); p.style.left = x + "%";
+        var x = Math.max(0, xs[n]);
+        var p = el("div", "pin", trk); p.style.left = x + "%";
         var pi = el("i", "", p, String(n + 1)); pi.style.background = col[e.lvl];
         var it = el("div", "it", its); it.style.borderTopColor = col[e.lvl];
         var ii = el("i", "", it, String(n + 1)); ii.style.color = col[e.lvl];
