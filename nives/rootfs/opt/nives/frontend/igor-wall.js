@@ -5493,7 +5493,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.50.4";
+  var GPS_CARD_VERSION = "0.50.5";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -11196,6 +11196,7 @@
   //   mute: input_boolean.car_voice_off    # on: nothing said (the Voix button)
   //   phone: binary_sensor.phone_in_car    # absent: no route offered (Chercher, Maison, Stations, Étape greyed); the block shows where the car is:
   //   address: sensor.headunit_geocoded_location   # the street and the town
+  //   announcements: input_boolean.car_announcements # off: Igor says nothing of its own here (« le téléphone ne guide plus… », the house's announcements); the turns still follow `mute`
   //   ahead: input_text.car_ahead          # the map's heartbeat (its publish_ahead): silent 20 s while guided → « guidage interrompu », Waze offered
   //   relay: device_tracker.headunit       # … or the head unit takes the trip over itself (mode dégradé), on its own GPS
   //   relay_speed: sensor.car_speed        # km/h (OBD): the car carried on between two fixes
@@ -11800,9 +11801,12 @@
       if (Date.now() - (Date.parse(st.last_changed) || 0) > 30000) return;
       var parts = String(st.state).split("|"), text = parts.length >= 3 ? parts.slice(2).join("|") : parts.slice(1).join("|") || parts[0];
       var off = this.config.mute && this._hass.states[this.config.mute] && this._hass.states[this.config.mute].state === "on";
+      if (key === "announceSeen" && !this.announcing()) return;
       if (off || !text.trim()) return;
       this.speak(text.trim());
     }
+    // Igor's own announcements allowed (Réglages → Notifications → Annonces vocales).
+    announcing() { var a = this.config.announcements, st = a && this._hass && this._hass.states[a]; return !st || st.state !== "off"; }
     speak(text) {
       var h = this._hass, engine = this.config.tts_entity || Object.keys(h.states).filter((id) => id.indexOf("tts.") === 0).find((id) => /igor|nives/.test(id));
       var browser = () => { try { var u = new SpeechSynthesisUtterance(text); u.lang = "fr-FR"; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch (e) { /* no voice */ } };
@@ -11856,7 +11860,7 @@
       var r = this.relay || (this.relay = new CarRelay(this));
       if (r.destKey !== dv) {
         r.destKey = dv; r.failed = false; r.spoken = {}; r.R = null;
-        r.route(d).then((ok) => { if (r.destKey !== dv) return; r.failed = !ok; if (ok) { r.relayStart = Date.now(); this.speak("Le téléphone ne guide plus. Je reprends le guidage vers " + (d.name !== "destination" ? d.name : "votre destination") + "."); } this.show(this.turnObj || null); });
+        r.route(d).then((ok) => { if (r.destKey !== dv) return; r.failed = !ok; if (ok) { r.relayStart = Date.now(); if (this.announcing()) this.speak("Le téléphone ne guide plus. Je reprends le guidage vers " + (d.name !== "destination" ? d.name : "votre destination") + "."); } this.show(this.turnObj || null); });
         this.startRelayTick();
         return null;
       }

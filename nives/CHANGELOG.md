@@ -1,3 +1,7 @@
+## 0.50.5 — « Annonces vocales » coupées : Igor se tait vraiment
+
+- `igor-guide-card` `announcements:` : l'interrupteur des annonces vocales (Réglages → Notifications) coupe aussi ce qu'Igor dit de lui-même sur l'autoradio — « Le téléphone ne guide plus. Je reprends le guidage… » au passage en mode dégradé, et les annonces de la maison. Les indications de guidage (« dans 300 m, tournez à droite ») restent réglées par le bouton Voix.
+
 ## 0.50.4 — Le panneau de limitation à côté de la vitesse, la rue sous le guidage
 
 - `igor-gps-card` `publish_ahead` : la limitation de la route (celle de son panneau) et le nom de la rue partent aussi vers l'autoradio, après les événements (qui cèdent la place les premiers si c'est trop long).
