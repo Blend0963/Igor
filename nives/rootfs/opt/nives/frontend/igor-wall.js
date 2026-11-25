@@ -736,7 +736,7 @@
       if (window.__igorLost !== lost) { window.__igorLost = lost; window.dispatchEvent(new CustomEvent("igor-connection", { detail: { lost: lost } })); }
       this.lostEl.hidden = !lost;
       this.lane.style.display = lost ? "none" : "";
-      if (lost) this.lostEl.textContent = "⚠ connexion perdue · valeurs figées depuis " + hhmm(this.lostAt) + " · reconnexion…";
+      if (lost) this.lostEl.textContent = "⚠ hors connexion depuis " + hhmm(this.lostAt);
     }
     destroy() { this.dead = true; clearInterval(this.pingTimer); if (this.unbell) { this.unbell(); this.unbell = null; } clearInterval(this.pager); clearInterval(this.tick); clearTimeout(this.autoClose); clearTimeout(this.autoTimer); }
   }
@@ -5427,7 +5427,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.47.0";
+  var GPS_CARD_VERSION = "0.47.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -9062,6 +9062,9 @@
       ev.sort((a, b) => a[1] - b[1]);
       var evs = ev.slice(0, 6).map((x) => [x[0], Math.round(x[1]), String(x[2]).replace(/[~;|]/g, " ").slice(0, 18)].concat(x.length > 3 ? [x[3], x[4]] : []).join("~")).join(";");
       var body = [guided ? 1 : 0, Math.round(left), cam, evs].join("|");
+      // Not guiding: an arrow left by an earlier trip is wiped once, so the head unit shows none.
+      if (!guided && !this.turnWiped && this.config.publish_turn) { this.turnWiped = true; this.turnSent = ""; this._hass.callService("input_text", "set_value", { entity_id: this.config.publish_turn, value: "" }).catch(() => { this.turnWiped = false; }); }
+      if (guided) this.turnWiped = false;
       var key = body.replace(/\d+(?=~)/g, (m) => String(Math.round(Number(m) / 100)));
       var camKey = cam ? 1 : 0, t = Date.now();
       var due = !this.aheadAt || t - this.aheadAt > 8000 || camKey !== this.aheadCam || (key !== this.aheadKey && t - this.aheadAt > 2000);
@@ -11159,9 +11162,9 @@
         "button.go { border-color: var(--acc); color: var(--acc); } button.go ha-icon { color: var(--acc); }",
         "button.stop { flex: none !important; padding: 6px 12px; }",
         // big: the head unit's guidance column (remote), the turn in large
-        ":host([big]) .turn { grid-template-columns: 86px minmax(0, 1fr); --mdc-icon-size: 82px; } :host([big]) .dist { font-size: 46px; } :host([big]) .tx { font-size: 18px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; } :host([big]) .then { font-size: 13px; margin-top: 4px; }",
-        ":host([big]) .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; border-top: 1px solid var(--line); padding-top: 10px; margin-top: auto; }",
-        ".grid span { display: block; font-size: 11px; color: var(--dim); } .grid b { font-weight: 400; font-size: 28px; font-variant-numeric: tabular-nums; } .grid b.s { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; } .grid .ok { color: " + CAR_OK + "; } .grid .warn { color: " + CAR_WARN + "; }",
+        ":host([big]) ha-card { overflow: hidden; } :host([big]) .turn { grid-template-columns: 70px minmax(0, 1fr); gap: 8px; --mdc-icon-size: 66px; } :host([big]) .dist { font-size: 40px; } :host([big]) .tx { font-size: 17px; } :host([big]) .then { font-size: 12px; margin-top: 3px; }",
+        ":host([big]) .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px 10px; border-top: 1px solid var(--line); padding-top: 8px; margin-top: auto; flex: none; }",
+        ".grid span { display: block; font-size: 11px; color: var(--dim); } .grid > div { min-width: 0; } .grid b { font-weight: 400; font-size: 24px; font-variant-numeric: tabular-nums; white-space: nowrap; } .grid b.s { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; } .grid .ok { color: " + CAR_OK + "; } .grid .warn { color: " + CAR_WARN + "; }",
         // the buttons row
         ".bar { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; height: 100%; min-height: 64px; }",
         ".bar button.b { flex-direction: column; gap: 4px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; --mdc-icon-size: 24px; min-height: 0; min-width: 0; height: 100%; padding: 4px 2px; overflow: hidden; } .bar button.b span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
@@ -11610,6 +11613,11 @@
         var dsx = this._hass && this._hass.states[this.config.destination];
         if (!dsx || !/^-?\d/.test(String(dsx.state || ""))) g = null;
       }
+      // The map alive and saying it does not guide (its heartbeat): an old arrow, not a guidance.
+      if (this.remote() && g && this.config.ahead && this._hass) {
+        var ah = this._hass.states[this.config.ahead], pp = ah ? String(ah.state || "").split("|") : [];
+        if (pp.length >= 2 && Date.now() - Number(pp[0]) < 20000 && pp[1] === "0") g = null;
+      }
       // The map gone quiet while guiding (phone off its dock, app closed,
       // battery out): its last arrow would lie — the trip is cut.
       // Home Assistant out of reach while the head unit guides: it goes on
@@ -11649,7 +11657,7 @@
       this.gEta.textContent = g.eta || "";
       if (this.config.big) {
         this.gLeft.textContent = [g.left, g.min ? g.min + " min" : ""].filter(Boolean).join(" · ");
-        this.gJam.textContent = g.jam ? g.jam + " min de bouchons" : "fluide";
+        this.gJam.textContent = g.jam ? "+" + g.jam + " min" : "fluide";
         this.gJam.className = "s " + (g.jam ? "warn" : "ok");
         this.gDest.textContent = g.dest || "—";
       } else this.gLeft.textContent = [g.left, g.min ? g.min + " min" : "", g.jam ? "dont " + g.jam + " min de bouchons" : (g.dest || "")].filter(Boolean).join(" · ");
@@ -12253,6 +12261,7 @@
   //   present: binary_sensor.phone_in_car
   //   battery: sensor.phone_battery_level
   //   favorites: [ { name: Maman, color: "#5cc28f", service: script.x, data: {…} }, … ]
+  //     name_entity: input_text.x        # its name from Home Assistant (Réglages); number: input_text.y — not shown while empty
   //   keypad: app://com.autochips.bluetooth      # the head unit's phone app
   //   destination: input_text.car_dest            # « Vers Waze » takes the trip under way there
   //   waze_notify: notify.mobile_app_headunit
@@ -12280,12 +12289,18 @@
       this.on = el("div", "", card);
       var t = el("div", "top", this.on); el("div", "h", t, "téléphone"); this.bat = el("div", "tel", t, "sur le socle");
       var fav = el("div", "fav", this.on);
+      // A favourite's name and number may live in Home Assistant (`name_entity`,
+      // `number`: input_text), set from the Réglages page; one without a number is not shown.
+      this.favBtns = [];
       (c.favorites || []).slice(0, 4).forEach((f) => {
         var b = el("button", "b", fav); b.type = "button";
         var av = el("span", "av", b, f.letter || String(f.name || "?")[0].toUpperCase()); av.style.color = f.color || CAR_BLUE;
-        el("span", "", b, f.name || "");
+        var nm = el("span", "", b, f.name || "");
+        this.favBtns.push({ f: f, b: b, av: av, nm: nm });
         b.addEventListener("click", () => { if (f.service && this._hass) { var p = String(f.service).split("."); this._hass.callService(p[0], p[1], f.data || {}); } });
       });
+      this.favHint = el("div", "", this.on, "Ajoutez vos favoris dans Réglages (nom et numéro)"); this.favHint.hidden = true;
+      this.favHint.style.cssText = "font-size:12px;color:var(--dim);padding:8px 2px";
       var r2 = el("div", "row2", this.on);
       var kb = el("button", "b", r2); kb.type = "button"; icon(kb, "mdi:dialpad"); el("span", "", kb, "clavier");
       kb.addEventListener("click", () => haAction(this, { action: "url", url_path: c.keypad || "app://com.autochips.bluetooth" }));
@@ -12304,6 +12319,13 @@
     update() {
       var h = this._hass, c = this.config;
       if (!h || !this.on) return;
+      (this.favBtns || []).forEach((x) => {
+        var val = (id) => { var e = id && h.states[id], v = e ? String(e.state || "").trim() : ""; return /^(unknown|unavailable)$/.test(v) ? "" : v; };
+        var name = x.f.name_entity ? val(x.f.name_entity) || x.f.name || "" : x.f.name || "";
+        x.b.hidden = !!x.f.number && !val(x.f.number);
+        if (x.nm.textContent !== name) { x.nm.textContent = name; x.av.textContent = x.f.letter || (name[0] || "?").toUpperCase(); }
+      });
+      if (this.favHint) this.favHint.hidden = (this.favBtns || []).some((x) => !x.b.hidden);
       // Three states: on the dock (map and guidance), in the car (Bluetooth,
       // `nearby`: calls and messages, no map), away.
       var p = c.present && h.states[c.present], here = !p || p.state === "on";

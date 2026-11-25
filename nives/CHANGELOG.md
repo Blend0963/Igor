@@ -1,3 +1,10 @@
+## 0.47.1 — Le bloc guidage tient dans son cadre, les favoris sont les vôtres
+
+- `igor-guide-card` (grand format) : plus rien ne déborde en bas — consigne sur une ligne, chiffres resserrés, « +2 min » au lieu de « 2 min de bouchons ».
+- **Plus de vieille flèche** : quand la carte du téléphone tourne sans guider (son signe de vie le dit), l'autoradio n'affiche pas de guidage ; et la carte efface elle-même, au démarrage, une flèche laissée par un trajet précédent.
+- `igor-phone-card` : un favori peut prendre son nom et son numéro dans Home Assistant (`name_entity`, `number`) — réglés sur la page Réglages ; un favori sans numéro n'apparaît pas (fini les exemples).
+- Barre : bandeau « ⚠ hors connexion depuis 10:05 », assez court pour l'écran de l'autoradio.
+
 ## 0.47.0 — Corrections après le premier essai en voiture
 
 - `igor-guide-card` : sans destination enregistrée, plus de guidage affiché — une vieille flèche laissée par la carte (« 500 m, tournez à droite », arrivée 00:58) n'apparaît plus ; le bloc propose de chercher une adresse.
