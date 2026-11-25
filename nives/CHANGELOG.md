@@ -1,3 +1,8 @@
+## 0.52.7 — La carte du téléphone reste nette
+
+- `igor-gps-card`, mode fluide : quand la carte peine, il retire d'abord ce qui coûte cher et se voit peu — ombres et reflets des bâtiments, arbres, relief, textures — et ne touche à la netteté qu'en tout dernier, sans jamais descendre sous 1,5 pixel d'écran par pixel de carte. Avant, son premier geste était de baisser la netteté, jusqu'à 1 : la carte devenait floue. Le compteur d'images dit ce qui a été allégé.
+- Netteté (Réglages → Carte 3D → Performance) : « maximale » prend toute la finesse de l'écran (jusqu'à 3, au lieu de 2), « normale » 2, « économe » 1,5 (au lieu de 1).
+
 ## 0.52.6 — La fenêtre Carte 3D en portrait
 
 - Fenêtre Carte 3D sur un téléphone tenu droit (moins de 600 px de large) : plein écran, les préréglages sur deux lignes, chaque réglage sur sa ligne sans déborder sur le suivant. Vérifié à 412 × 915 (Pixel Fold fermé).

@@ -5518,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.52.6";
+  var GPS_CARD_VERSION = "0.52.7";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7056,7 +7056,7 @@
       var box = this.fpsEl = document.createElement("div");
       box.style.cssText = "position:absolute;right:8px;bottom:8px;z-index:20;background:rgba(0,0,0,.6);color:#5cc28f;font:12px monospace;padding:3px 7px;border-radius:4px;pointer-events:none";
       (this.$("map").parentNode || this.$("map")).appendChild(box);
-      var n = 0, t0 = performance.now(), onR = () => { n++; var t = performance.now(); if (t - t0 >= 1000) { var f = Math.round(n * 1000 / (t - t0)); box.textContent = f + " img/s · cible " + (this.fpsNow || "—"); box.style.color = f >= 25 ? "#5cc28f" : f >= 15 ? "#e5a04c" : "#e0675f"; n = 0; t0 = t; } };
+      var n = 0, t0 = performance.now(), onR = () => { n++; var t = performance.now(); if (t - t0 >= 1000) { var f = Math.round(n * 1000 / (t - t0)); box.textContent = f + " img/s · cible " + (this.fpsNow || "—") + (this.fluidSteps && this.fluidSteps.length ? " · allégé : " + this.fluidSteps.join(", ") : ""); box.style.color = f >= 25 ? "#5cc28f" : f >= 15 ? "#e5a04c" : "#e0675f"; n = 0; t0 = t; } };
       map.on("render", onR); this.fpsOff = () => map.off("render", onR);
     }
     // Where the route lies among the 3D layers (TomTom's buildings and
@@ -7144,7 +7144,8 @@
         });
       });
       tryIt(() => {
-        var px = { eco: 1, normale: 1.5, max: Math.min(window.devicePixelRatio || 1, 2) }[L.px];
+        // économe 1.5, normale 2, maximale: the screen's own (up to 3) — never 1, which blurred the map.
+        var dpr = window.devicePixelRatio || 1, px = { eco: Math.min(dpr, 1.5), normale: Math.min(dpr, 2), max: Math.min(dpr, 3) }[L.px];
         if (px && map.setPixelRatio && px !== this.pxNow) { this.pxNow = px; map.setPixelRatio(px); }
       });
       if (this.tt) { this.themeAt = 0; this.themeTick(); }
@@ -9263,20 +9264,21 @@
     // night (its windows lit), after Home Assistant's sun (sun.sun), else
     // the clock. `sdk_theme: day | night` holds one; `sdk_style:` sets it.
     // Smooth before beautiful: the frames are counted; under 24 a second for
-    // 4 s while the map moves, the scene is lightened a step — the screen's
-    // sharpness, then the woods' 3D trees, the ground's relief, Igor's
-    // trees, the textures — until it flows again. `fluid: false`: never.
+    // 4 s while the map moves, the scene is lightened a step — first what costs
+    // much and shows little (the buildings' shadows and reflections, the trees,
+    // the relief, the textures), the sharpness last of all and never below 1.5
+    // device pixels: a blurred map was worse than a plainer one. `fluid: false`: never.
     fluidWatch(map) {
       if (this.config.fluid === false || this.fluidOn) return;
       this.fluidOn = true;
       var frames = 0, slow = 0, last = performance.now(), step = 0;
       var steps = [
-        ["netteté réduite", () => { if (map.setPixelRatio) map.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5)); }],
+        ["ombres et reflets retirés", () => { if (this.tt3d && this.tt3d.updateConfig) this.tt3d.updateConfig({ shadows: { visible: false }, reflections: { intensity: 0 } }); }],
+        ["arbres de rue retirés", () => { ["igor-trunks", "igor-crowns"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none"); }); }],
         ["arbres des bois retirés", () => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ trees: { visible: false } }); }],
         ["relief du sol retiré", () => { if (this.ttTerrain && this.ttTerrain.setElevationVisible) this.ttTerrain.setElevationVisible(false); }],
-        ["arbres de rue retirés", () => { ["igor-trunks", "igor-crowns"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none"); }); }],
         ["textures retirées", () => { if (this.ttSurf && this.ttSurf.remove) { try { this.ttSurf.remove(); } catch (e) { /* kept */ } this.ttSurf = null; } }],
-        ["netteté minimale", () => { if (map.setPixelRatio) map.setPixelRatio(1); }]
+        ["netteté un peu réduite", () => { var d = window.devicePixelRatio || 1; if (map.setPixelRatio && d > 1.5) { map.setPixelRatio(Math.max(1.5, Math.min(d, 2) * 0.8)); this.pxNow = null; } }]
       ];
       var loop = (now) => {
         if (this.map !== map) return;
