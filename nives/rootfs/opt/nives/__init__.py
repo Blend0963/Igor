@@ -81,6 +81,7 @@ from .const import (
     SERVICE_CAR_SEARCH,
     SERVICE_CAR_CAMERAS,
     SERVICE_CAR_FIX_DUPLICATES,
+    SERVICE_TASKER_CONVERT,
     SERVICE_CAR_LIMIT,
     SERVICE_CAR_STATUS,
     SERVICE_CAR_POIS,
@@ -517,6 +518,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     _async_register_basemap(hass)
     _async_register_route(hass)
     _async_register_car(hass)
+    _async_register_tasker(hass)
     _async_register_offline_maps(hass)
     # No automatic offline-map download any more (0.39.10): France is a 4.5 GB
     # extract, the image lacks osmium, and the online maps cover the car. The
@@ -827,6 +829,102 @@ def _async_register_trip_map(hass: HomeAssistant) -> None:
 
     async_register_admin_service(
         hass, DOMAIN, SERVICE_TRIP_MAP, _trip_map, schema=TRIP_MAP_SCHEMA, supports_response=SupportsResponse.ONLY
+    )
+
+
+TASKER_CONVERT_SCHEMA = vol.Schema(
+    {
+        vol.Optional("dry_run", default=True): cv.boolean,
+        vol.Optional("entity", default="notify.ha_command"): cv.string,
+        vol.Optional("script", default="script.tasker_envoyer"): cv.string,
+    }
+)
+
+
+@callback
+def _async_register_tasker(hass: HomeAssistant) -> None:
+    """`nives.tasker_convert`: every automation and script that sends a command to
+    Tasker through Telegram (notify.ha_command) calls script.tasker_envoyer instead,
+    with the same message — the direct way first, Telegram as a fallback. With
+    dry_run (default) it only lists them. Otherwise each file changed is copied
+    first (« automations.yaml.avant-tasker-AAAAMMJJ-HHMMSS »), then reloaded.
+    automations.yaml and scripts.yaml only (the ones the UI keeps); the other YAML
+    files that name the entity are listed, to be changed by hand."""
+    if hass.services.has_service(DOMAIN, SERVICE_TASKER_CONVERT):
+        return
+    from homeassistant.helpers.service import async_register_admin_service
+
+    from .tasker import convert
+
+    async def _convert(call: ServiceCall) -> ServiceResponse:
+        import yaml as pyyaml
+
+        from homeassistant.util import dt as dt_util
+
+        entity, script, dry = call.data["entity"], call.data["script"], call.data["dry_run"]
+        if not dry and not hass.services.has_service("script", script.split(".", 1)[1]):
+            return {"ok": False, "error": f"{script} n'existe pas encore : recollez voiture_telephone.yaml et rechargez les scripts d'abord"}
+        stamp = dt_util.now().strftime("%Y%m%d-%H%M%S")
+        cfg = hass.config.path
+
+        def _work() -> dict:
+            out: dict = {"fichiers": {}, "a_la_main": []}
+            for name in ("automations.yaml", "scripts.yaml"):
+                path = cfg(name)
+                try:
+                    with open(path, encoding="utf-8") as fh:
+                        text = fh.read()
+                except FileNotFoundError:
+                    continue
+                if entity not in text and entity.split(".", 1)[1] not in text:
+                    out["fichiers"][name] = {"changements": []}
+                    continue
+                try:
+                    data = pyyaml.safe_load(text)
+                except pyyaml.YAMLError as err:  # a tag (!secret, !include): left alone
+                    out["fichiers"][name] = {"changements": [], "laisse": f"non lu ({str(err).splitlines()[0]}) : à convertir à la main"}
+                    continue
+                skipped: list = []
+                new, places = convert(data, entity, script, name.split(".")[0], skipped)
+                out["fichiers"][name] = {"changements": places}
+                if skipped:
+                    out["a_la_main"].extend(name + " · " + p + " (envoie aussi à d'autres entités)" for p in skipped)
+                if places and not dry:
+                    with open(path + ".avant-tasker-" + stamp, "w", encoding="utf-8") as fh:
+                        fh.write(text)
+                    with open(path, "w", encoding="utf-8") as fh:
+                        pyyaml.safe_dump(new, fh, allow_unicode=True, sort_keys=False, default_flow_style=False, width=4096)
+                    out["fichiers"][name]["sauvegarde"] = name + ".avant-tasker-" + stamp
+            # Elsewhere (packages, included files): said, not touched.
+            import os
+            root = cfg("")
+            for base, dirs, files in os.walk(root):
+                dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ("custom_components", "deps", "tts", "www", "backups", "node_modules")]
+                for fn in files:
+                    if not fn.endswith((".yaml", ".yml")) or base == root.rstrip("/") and fn in ("automations.yaml", "scripts.yaml"):
+                        continue
+                    p = os.path.join(base, fn)
+                    try:
+                        with open(p, encoding="utf-8") as fh:
+                            for i, line in enumerate(fh, 1):
+                                if entity in line and "script.tasker_envoyer" not in line:
+                                    out["a_la_main"].append(f"{os.path.relpath(p, root)}:{i}")
+                    except (OSError, UnicodeDecodeError):
+                        continue
+            return out
+
+        res = await hass.async_add_executor_job(_work)
+        n = sum(len(v["changements"]) for v in res["fichiers"].values())
+        if not dry and n:
+            for dom in ("automation", "script"):
+                try:
+                    await hass.services.async_call(dom, "reload", blocking=True)
+                except Exception as err:  # noqa: BLE001 - reported, the files are written
+                    res.setdefault("erreurs", []).append(f"{dom}.reload : {err}")
+        return {"ok": True, "dry_run": dry, "a_convertir" if dry else "converti": n, **res}
+
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_TASKER_CONVERT, _convert, schema=TASKER_CONVERT_SCHEMA, supports_response=SupportsResponse.ONLY
     )
 
 

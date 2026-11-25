@@ -437,3 +437,18 @@ car_fix_duplicates:
       default: peugeot_407
       selector:
         text:
+
+tasker_convert:
+  fields:
+    dry_run:
+      default: true
+      selector:
+        boolean:
+    entity:
+      default: notify.ha_command
+      selector:
+        text:
+    script:
+      default: script.tasker_envoyer
+      selector:
+        text:
