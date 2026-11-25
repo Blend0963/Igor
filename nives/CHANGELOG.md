@@ -1,3 +1,9 @@
+## 0.53.0 — Flèches sur la route, chemin parcouru, route vue à travers les bâtiments
+
+- `igor-gps-card` : **flèches blanches sur le tracé** aux deux prochains virages (moins de 2 km), comme sur TomTom : la route avant le virage, la route après et une pointe dans le sens du départ (plus longue aux ronds-points). Une flèche disparaît dès que la voiture a passé le virage ; les « tout droit », départs et arrivées n'en ont pas. Leur largeur suit l'épaisseur de la route (« la chaussée » comprise).
+- **Chemin parcouru** en guidage : c'est maintenant le dessin de l'itinéraire lui-même, de la largeur de la route et posé dessus (le bleu disparaît derrière la voiture), et plus la trace du GPS, qui zigzaguait quand la position sautait. Un recalcul repart du même trait. Réglages → Carte 3D → « Trajet déjà parcouru » : caché, pâle (gris) ou visible (couleur « après l'étape »). Hors guidage, la trace calée sur les routes reste comme avant.
+- Place de la route : **« en transparence »**, nouveau choix et réglage de « Épuré » et « Réaliste » : la route est au sol, cachée par les bâtiments comme en vrai, mais on la devine à travers eux (copie pâle par-dessus) : la suite du chemin se voit toujours. Nouveau curseur « Route vue à travers les bâtiments » (15–80 %, 45 % par défaut).
+
 ## 0.52.9 — La route et le trafic de la largeur de la chaussée
 
 - Réglages → Carte 3D → Route & noms → Épaisseur : **« la chaussée »** — la route prise, large d'une vraie chaussée (environ 9 m), qui grossit et maigrit avec le zoom comme la route elle-même ; le halo, le liseré et le filet suivent, le dégradé des bouchons aussi.
