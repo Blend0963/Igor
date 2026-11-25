@@ -1,3 +1,10 @@
+## 0.49.0 — L'autoradio verrouillé sans votre téléphone
+
+- **`phone_lock`** (sur un `igor-wall`) : sur l'écran déclaré « autoradio » (ouvert une fois avec `?igor_autoradio`, bouton dans Réglages), Igor démarre **verrouillé** et se déverrouille seul dès que votre téléphone rejoint la voiture (`present` : Bluetooth ou carte sur le socle). Verrouillé : la vitesse, la limite, le moteur, la batterie, la météo, l'heure et les applications (Waze, Deezer, Radio, YouTube…) restent ; messages, appels, trajets, carnet, réglages et la voix d'Igor sont cachés. Pas de code : le téléphone est la clé.
+- Une fois ouvert, un téléphone perdu ne referme pas l'écran avant 20 s (un raté du Bluetooth), ni tant que la voiture roule (5 min au plus). Les 45 premières secondes, « Connexion du téléphone… ».
+- Sécurité : si l'entité `present` n'existe pas dans Home Assistant, rien n'est verrouillé (plutôt qu'un écran bloqué pour de bon). Le verrouillage ne s'active jamais sur un autre appareil que l'autoradio (le téléphone qui ouvre le même tableau de bord n'est pas concerné).
+- Le mode maintenance n'est plus utilisé par la voiture (`maintenance: false` : l'écran l'oublie).
+
 ## 0.48.2 — Les boutons du GPS sur fond noir
 
 - `igor-guide-card` (rangée de boutons) : fond sombre fixe, le même que la rangée d'applications en bas de l'écran — le thème de Home Assistant les peignait en gris.

@@ -851,6 +851,9 @@
         // `maintenance: input_boolean.x`: this screen locks while it is on.
         if (this.config && typeof this.config.maintenance === "string") window.localStorage.setItem("igor-maintenance", this.config.maintenance);
         else if (this.config && this.config.maintenance === false) window.localStorage.removeItem("igor-maintenance");
+        // `phone_lock:` the car's screen locked without its owner's phone (see below).
+        if (this.config && this.config.phone_lock && window.__igorPhoneLockConf) window.__igorPhoneLockConf(this.config.phone_lock);
+        else if (this.config && this.config.phone_lock === false && window.__igorPhoneLockConf) window.__igorPhoneLockConf(null);
         if (!this.config || this.config.home !== false) window.localStorage.setItem("igor-wall-home", window.location.pathname);
         if (this.config && this.config.return_after != null) window.localStorage.setItem("igor-wall-return", String(this.config.return_after));
       } catch (e) { /* no storage: no way back by itself */ }
@@ -5429,7 +5432,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.48.2";
+  var GPS_CARD_VERSION = "0.49.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -13332,6 +13335,128 @@
       ls("igor-maintenance-on", on ? "1" : "0");
       if (on) show(); else hide();
     }, 700);
+  })();
+
+
+  // ===== the car's screen locked without its owner's phone =====
+  // A wall with `phone_lock:` on a screen declared the car's own (opened once
+  // with ?igor_autoradio, ?igor_autoradio=0 to undo) keeps Igor locked until
+  // the owner's phone joins the car (`present`: Bluetooth, or its map on the
+  // dock). Messages, calls, trips, the log, the settings and Igor's voice stay
+  // hidden; the speed, the engine and the apps stay at hand. No code: the
+  // phone is the key. Locked from the start; once open, a phone lost while
+  // driving does not lock the screen before the car stops (or 5 minutes), a
+  // Bluetooth hiccup of a few seconds neither.
+  //   phone_lock:
+  //     present: binary_sensor.phone_in_car
+  //     speed: sensor.car_speed
+  //     limit: sensor.speed_limit
+  //     coolant: sensor.car_coolant
+  //     battery: sensor.car_battery
+  //     weather: weather.home
+  //     apps: [ { name: Waze, icon: mdi:waze, url: app://com.waze }, … ]
+  (function () {
+    var el = null, root = null, open = false, absentSince = null, startedAt = Date.now(), drawn = "";
+    function ls(k, v) {
+      try {
+        if (v === undefined) return window.localStorage.getItem(k);
+        if (v === null) window.localStorage.removeItem(k); else window.localStorage.setItem(k, v);
+      } catch (e) { /* no storage: no lock */ }
+      return null;
+    }
+    function flagFromUrl() {
+      var m = /[?&]igor_autoradio(?:=([^&]*))?/.exec(window.location.search);
+      if (!m) return;
+      if (m[1] === "0") { ls("igor-autoradio", null); hide(); } else ls("igor-autoradio", "1");
+    }
+    flagFromUrl();
+    window.addEventListener("location-changed", flagFromUrl);
+    window.addEventListener("popstate", flagFromUrl);
+    function conf() { try { return JSON.parse(ls("igor-phone-lock") || "null"); } catch (e) { return null; } }
+    function hassNow() { var ha = document.querySelector("home-assistant"); return ha && ha.hass; }
+    function num(h, id) { var s = id && h && h.states[id]; var v = s ? parseFloat(s.state) : NaN; return isFinite(v) ? v : null; }
+    var FR = { "clear-night": "nuit claire", cloudy: "couvert", fog: "brouillard", hail: "grêle", lightning: "orage", "lightning-rainy": "orage", partlycloudy: "éclaircies", pouring: "forte pluie", rainy: "pluie", snowy: "neige", "snowy-rainy": "neige et pluie", sunny: "soleil", windy: "vent", "windy-variant": "vent", exceptional: "exceptionnel" };
+    function show(c) {
+      if (el) return;
+      el = document.createElement("div");
+      el.style.cssText = "position:fixed;inset:0;z-index:2147483646;";
+      root = el.attachShadow({ mode: "open" });
+      root.innerHTML = "<style>" +
+        ".w{position:absolute;inset:0;background:#08090b;color:#e8e4dc;font-family:" + MONO + ";display:flex;flex-direction:column;--line:#22272e;--dim:#8a9099}" +
+        ".bar{height:56px;flex:none;display:flex;align-items:center;gap:18px;padding:0 16px 0 18px;border-bottom:1px solid var(--line);letter-spacing:.16em;text-transform:uppercase;color:var(--dim);font-size:15px}" +
+        ".bar .eye{width:22px;height:22px}.bar .brand{color:#e8e4dc;letter-spacing:.3em;font-size:20px}.bar .wx{margin-left:auto;color:#e8e4dc;letter-spacing:.06em;font-size:14px;text-transform:none}.bar .clk{color:#e8e4dc;font-size:24px;letter-spacing:.08em;border-left:1px solid var(--line);padding-left:16px}" +
+        ".g{flex:1;min-height:0;display:grid;grid-template-columns:minmax(240px,30%) minmax(0,1fr);gap:10px;padding:10px}" +
+        ".col{display:flex;flex-direction:column;gap:10px;min-height:0}" +
+        ".c{background:#14171b;border:1px solid var(--line);padding:12px 16px;box-sizing:border-box;min-height:0;overflow:hidden}" +
+        ".h{color:var(--dim);font-size:11px;letter-spacing:.18em;text-transform:uppercase;display:flex;align-items:center;gap:7px}.h::before{content:'';width:6px;height:6px;background:#e5323b}" +
+        ".sp{display:flex;align-items:center;justify-content:space-between;margin-top:6px}.sp b{font-weight:300;font-size:clamp(46px,11vh,84px);line-height:.9}.sp small{font-size:15px;color:var(--dim);margin-left:6px}" +
+        ".lim{width:64px;height:64px;border-radius:50%;border:7px solid #e5323b;background:#fff;color:#111;display:grid;place-items:center;font-size:24px;font-weight:700;flex:none}" +
+        ".sub{color:var(--dim);font-size:13px;margin-top:8px}" +
+        ".ph{flex:1;display:flex;flex-direction:column;justify-content:center;gap:10px;border:1px dashed #e5a04c}.ph .h{color:#e5a04c}.ph .big{font-size:20px;line-height:1.3}.ph .s{color:var(--dim);font-size:13px;line-height:1.5}" +
+        ".lk{flex:1;display:flex;align-items:center;gap:24px;padding:18px 24px}.ring{width:clamp(64px,13vh,96px);height:clamp(64px,13vh,96px);border-radius:50%;border:3px solid #e5a04c;display:grid;place-items:center;color:#e5a04c;flex:none;--mdc-icon-size:clamp(30px,6vh,44px)}" +
+        ".lk .t{font-size:clamp(20px,4vh,30px);letter-spacing:.08em}.lk .s{color:var(--dim);font-size:14px;line-height:1.5;margin-top:8px}" +
+        ".apps{flex:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}" +
+        ".app{background:#111418;border:1px solid var(--line);height:clamp(70px,14vh,100px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;color:#e8e4dc;--mdc-icon-size:28px;font-size:11px;letter-spacing:.14em;text-transform:uppercase}" +
+        ".app:active{background:#1b1f24}.app.acc{border-color:#59d0e0;color:#59d0e0}" +
+        "</style><div class=w>" +
+        "<div class=bar><span class=eye>" + EYE + "</span><span class=brand>IGOR</span><span>verrouillé</span><span class=wx></span><span class=clk></span></div>" +
+        "<div class=g><div class=col><div class=c><div class=h>vitesse</div><div class=sp><b class=v>—</b><span class=lim>—</span></div><div class=sub></div></div>" +
+        "<div class='c ph'><div class=h>téléphone</div><div class=big></div><div class=s>Igor se déverrouille seul dès que <b style='color:#e8e4dc;font-weight:400'>votre</b> téléphone se connecte en Bluetooth.</div></div></div>" +
+        "<div class=col><div class='c lk'><div class=ring><ha-icon icon='mdi:lock'></ha-icon></div><div><div class=t>IGOR VERROUILLÉ</div><div class=s>Messages, appels, trajets, carnet, réglages et Igor restent privés.<br>Les applications et la conduite restent accessibles.</div></div></div>" +
+        "<div class=apps></div></div></div></div>";
+      var apps = root.querySelector(".apps"), na = (c.apps || []).length;
+      // Two even rows when there are many (10 → 5 + 5).
+      if (na > 5) apps.style.gridTemplateColumns = "repeat(" + Math.ceil(na / 2) + ", minmax(0, 1fr))";
+      (c.apps || []).forEach(function (a, i) {
+        var b = document.createElement("div");
+        b.className = "app" + (i === 0 ? " acc" : "");
+        var ic = document.createElement("ha-icon"); ic.setAttribute("icon", a.icon || "mdi:application"); b.appendChild(ic);
+        var t = document.createElement("span"); t.textContent = a.name || ""; b.appendChild(t);
+        b.addEventListener("click", function () { if (a.url) window.open(a.url, "_blank"); });
+        apps.appendChild(b);
+      });
+      document.body.appendChild(el);
+      drawn = "";
+    }
+    function hide() { if (el) { el.remove(); el = null; root = null; } }
+    function draw(c, h) {
+      if (!root) return;
+      var v = num(h, c.speed), lim = num(h, c.limit), cool = num(h, c.coolant), bat = num(h, c.battery);
+      var w = c.weather && h && h.states[c.weather], wt = w ? ((w.attributes.temperature != null ? Math.round(w.attributes.temperature) + " °C · " : "") + (FR[w.state] || w.state)) : "";
+      var d = new Date(), clk = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+      var wait = Date.now() - startedAt < 45000;
+      var key = [v, lim, cool, bat, wt, clk, wait].join("|");
+      if (key === drawn) return;
+      drawn = key;
+      root.querySelector(".v").innerHTML = (v == null ? "—" : Math.round(v)) + "<small>km/h</small>";
+      var l = root.querySelector(".lim"); l.textContent = lim == null ? "" : Math.round(lim); l.style.visibility = lim == null ? "hidden" : "";
+      root.querySelector(".sub").textContent = [cool != null ? "moteur " + Math.round(cool) + " °C" : "", bat != null ? "batterie " + bat.toFixed(1).replace(".", ",") + " V" : ""].filter(Boolean).join(" · ");
+      root.querySelector(".wx").textContent = wt;
+      root.querySelector(".clk").textContent = clk;
+      root.querySelector(".big").textContent = wait ? "Connexion du téléphone…" : "Aucun téléphone connecté";
+    }
+    setInterval(function () {
+      var c = ls("igor-autoradio") === "1" ? conf() : null;
+      if (!c || !c.present) { hide(); open = false; return; }
+      var h = hassNow(), st = h && h.states && h.states[c.present];
+      // The key entity missing from a running Home Assistant (a package not loaded): no lock
+      // rather than a screen locked for good.
+      if (h && h.states && h.connected !== false && Object.keys(h.states).length > 20 && !st) { hide(); return; }
+      var now = Date.now(), here = st ? (st.state === "unavailable" || st.state === "unknown" ? null : st.state === "on") : null;
+      if (here === true) { absentSince = null; open = true; hide(); return; }
+      if (here === null) { if (!open) { show(c); draw(c, h); } return; }  // Home Assistant not answering: as it was
+      if (absentSince == null) absentSince = now;
+      if (open) {
+        // Unlocked, the phone gone: a hiccup waits 20 s; while the car rolls, until it stops (5 min at most).
+        var v = num(h, c.speed), gone = now - absentSince;
+        if (gone < 20000 || (v != null && v > 5 && gone < 300000)) return;
+        open = false;
+      }
+      show(c); draw(c, h);
+    }, 700);
+    window.__igorPhoneLockConf = function (c) {
+      if (c) ls("igor-phone-lock", JSON.stringify(c)); else ls("igor-phone-lock", null);
+    };
   })();
 
   // ===== back to the wall =====
