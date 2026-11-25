@@ -973,3 +973,23 @@ def _note(places: list[dict], label: str) -> str:
     if not places:
         return f"aucun(e) {label} près de l'itinéraire"
     return ""
+
+
+def duplicate_pairs(entries: Sequence[tuple[str, str]], orphans: set[str], match: str = "peugeot_407") -> dict[str, list]:
+    """The car's entities left twice by a changed `unique_id` (a package pasted
+    with another adapter address): « sensor.x » that no configuration provides
+    any more (`orphans`: restored, or without state) beside « sensor.x_2 » that
+    now receives the data. Returns the pairs to mend (old, new) and those left
+    alone (the original still provided: both are live, nothing is guessed)."""
+    by_id = {eid: platform for eid, platform in entries}
+    fix: list[tuple[str, str]] = []
+    keep: list[tuple[str, str]] = []
+    for eid, platform in entries:
+        m = re.match(r"^((?:sensor|binary_sensor)\.[a-z0-9_]+)_2$", eid)
+        if not m or match not in eid:
+            continue
+        old = m.group(1)
+        if old not in by_id or by_id[old] != platform:
+            continue
+        (fix if old in orphans else keep).append((old, eid))
+    return {"fix": sorted(fix), "keep": sorted(keep)}

@@ -80,6 +80,7 @@ from .const import (
     SERVICE_CAR_STOP,
     SERVICE_CAR_SEARCH,
     SERVICE_CAR_CAMERAS,
+    SERVICE_CAR_FIX_DUPLICATES,
     SERVICE_CAR_LIMIT,
     SERVICE_CAR_STATUS,
     SERVICE_CAR_POIS,
@@ -1179,6 +1180,12 @@ CAR_SEARCH_SCHEMA = vol.Schema(
         vol.Optional("limit", default=6): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
     }
 )
+CAR_FIX_DUPLICATES_SCHEMA = vol.Schema(
+    {
+        vol.Optional("dry_run", default=True): cv.boolean,
+        vol.Optional("match", default="peugeot_407"): vol.All(cv.string, vol.Length(min=3, max=60)),
+    }
+)
 CAR_CAMERAS_SCHEMA = vol.Schema(
     {
         vol.Required("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
@@ -1619,6 +1626,38 @@ def _async_register_car(hass: HomeAssistant) -> None:
         fuel_cache[where] = (now, stations)
         return {"ok": True, "source": "data.economie.gouv.fr", "stations": stations}
 
+    async def _fix_duplicates(call: ServiceCall) -> ServiceResponse:
+        """The car's entities doubled by a changed unique_id (« x » orphaned,
+        « x_2 » receiving): the orphan removed, « x_2 » renamed « x », so the
+        dashboards find their data again. dry_run (default): only says what it would do."""
+        from homeassistant.helpers import entity_registry as er
+
+        reg = er.async_get(hass)
+        entries = [(e.entity_id, e.platform) for e in reg.entities.values()]
+        orphans = set()
+        for eid, _platform in entries:
+            st = hass.states.get(eid)
+            if st is None or st.attributes.get("restored"):
+                orphans.add(eid)
+        pairs = car.duplicate_pairs(entries, orphans, call.data["match"])
+        done = []
+        if not call.data["dry_run"]:
+            for old, new in pairs["fix"]:
+                try:
+                    reg.async_remove(old)
+                    reg.async_update_entity(new, new_entity_id=old)
+                    done.append(old)
+                except Exception as err:  # noqa: BLE001 - one refused, the others go on
+                    _LOGGER.warning("car_fix_duplicates: %s → %s refused: %s", new, old, err)
+            _LOGGER.info("car_fix_duplicates: %d mended", len(done))
+        return {
+            "ok": True,
+            "dry_run": call.data["dry_run"],
+            "a_reparer": [f"{new} → {old}" for old, new in pairs["fix"]],
+            "repare": done,
+            "laisses": [f"{old} et {new} reçoivent tous deux (rien touché)" for old, new in pairs["keep"]],
+        }
+
     for name, handler, schema in (
         (SERVICE_CAR_SEARCH, _search, CAR_SEARCH_SCHEMA),
         (SERVICE_CAR_CAMERAS, _cameras, CAR_CAMERAS_SCHEMA),
@@ -1629,6 +1668,7 @@ def _async_register_car(hass: HomeAssistant) -> None:
         (SERVICE_CAR_STOP, _stop, CAR_STOP_SCHEMA),
         (SERVICE_CAR_POIS, _pois, CAR_POIS_SCHEMA),
         (SERVICE_CAR_FUEL, _fuel, CAR_FUEL_SCHEMA),
+        (SERVICE_CAR_FIX_DUPLICATES, _fix_duplicates, CAR_FIX_DUPLICATES_SCHEMA),
     ):
         _async_register_car_service(hass, name, handler, schema)
     _async_register_offline_services(hass)

@@ -1,3 +1,7 @@
+## 0.48.1 — Réparer les capteurs de la voiture en double
+
+- **`nives.car_fix_duplicates`** : quand le paquet de la voiture a été recollé avec une autre adresse d'adaptateur, Home Assistant crée un second jeu de capteurs (`sensor.peugeot_407_regime_moteur_2`…) qui reçoit les données, pendant que le tableau de bord lit les anciens, devenus orphelins. L'action supprime chaque orphelin et donne son nom au « _2 » : le tableau de bord retrouve ses mesures. Par défaut elle dit seulement ce qu'elle ferait (`dry_run`) ; elle ne touche jamais une paire dont les deux reçoivent encore. Testée sur la liste réelle des entités d'une installation.
+
 ## 0.48.0 — Tout tient sur l'écran de l'autoradio, l'itinéraire se choisit au centre
 
 - **Petit écran** : rendu vérifié page par page à 1024 × 600 et 1280 × 720 avec le vrai tableau de bord. Le bloc vitesse se resserre sous 660 px de haut ; le bloc guidage, sous 300 px, garde la flèche, la distance, l'arrivée et le reste (la ligne « puis… », le trafic et la destination s'effacent) ; le centre, sous 250 px, montre les chiffres sans la courbe ; la frise est plus basse et ses étiquettes ne sont plus coupées.
