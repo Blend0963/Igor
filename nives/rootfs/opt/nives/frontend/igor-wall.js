@@ -5435,6 +5435,7 @@
   //   sdk_trees: false                      # no 3D trees in the woods and parks (the SDK's)
   //   buildings_opacity: 0.85               # the SDK's buildings, 0 (invisible) to 1 (solid); the route is drawn over them anyway
   //   settings: input_text.igor_carte      # the look set from the head unit (igor-settings-card map3d:), applied live: presets, buildings, route, names, ground, light, camera
+  //   route_color: bleu, route_color_after: cyan   # the route, and its colour after the first stop (bleu, cyan, violet, jaune, gris)
   //   jam_gradient: false                   # the jams as separate strokes over the route (default: the route itself fades to orange/red and back, halo included)
   //   buildings_windows: false              # plain facades, as TomTom's own navigation draws them (true: windows, lit at night)
   //   sdk_buildings: { … }                  # any other knob of TomTom's Buildings3D (preset, shadows, walls.color…)
@@ -5516,7 +5517,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.52.0";
+  var GPS_CARD_VERSION = "0.52.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7064,10 +7065,11 @@
       this.routeTopBusy = false;
     }
     // The route's colours: [line, halo, edge, core] of the colour chosen.
-    routePal() {
+    routePal(which) {
       var P = { bleu: ["#46b4ff", "#3fa9ff", "#0b3f86", "#d4f0ff"], cyan: ["#59d0e0", "#4fd6e8", "#0b4a55", "#dcfbff"],
-        violet: ["#b48cff", "#a97bff", "#3d1f78", "#efe3ff"], jaune: ["#f4d35e", "#f4c542", "#5e4a0a", "#fff6d0"] };
-      var p = P[(this.look && this.look.rc) || "bleu"] || P.bleu;
+        violet: ["#b48cff", "#a97bff", "#3d1f78", "#efe3ff"], jaune: ["#f4d35e", "#f4c542", "#5e4a0a", "#fff6d0"], gris: ["#aeb6c2", "#c9d1dc", "#2e343c", "#f2f5f8"] };
+      var L = this.look || {}, name = which === "after" ? (L.rc2 || this.config.route_color_after || "cyan") : (L.rc || this.config.route_color || "bleu");
+      var p = P[name] || (which === "after" ? P.cyan : P.bleu);
       return { "route": p[0], "route-glow": p[1], "route-case": p[2], "route-core": p[3] };
     }
     // The look set from the head unit, put into effect — each part on its own,
@@ -8103,6 +8105,9 @@
         "route": [base.route, "#f08c1a", "#e5323b"], "route-glow": [base["route-glow"], "#ff9a2e", "#ff3b3b"],
         "route-case": [base["route-case"], "#6b3a08", "#6e1016"], "route-core": [base["route-core"], "#ffe3c2", "#ffd0d0"] };
       var mode = this.look && this.look.jm ? this.look.jm : this.config.jam_gradient === false ? "traits" : "degrade";
+      // After the first stop, the way goes on in another colour (as Waze: blue to the stop, cyan after).
+      var after = this.routePal("after"), viaP = this.viaProgress();
+      var AFT = { "route": after.route, "route-glow": after["route-glow"], "route-case": after["route-case"], "route-core": after["route-core"] };
       var stops = null;
       if (R && R.jams && R.jams.length && R.total > 0 && R.cum && mode === "degrade") {
         var n = R.cum.length - 1, T = R.total;
@@ -8121,15 +8126,25 @@
         pts.forEach((p) => { if (p[0] > last && p[0] <= 1) { clean.push(p); last = p[0]; } });
         if (clean.length >= 2) stops = clean;
       }
+      // The stop's break: the route's own colour (level 0) turns to the « after » colour there.
+      if (viaP != null && viaP > 0.002 && viaP < 0.998) {
+        var withVia = (stops || [[0, 0], [1, 0]]).slice();
+        var lvlAt = (p) => { var a = null, b = null; withVia.forEach((q) => { if (q[0] <= p) a = q; if (q[0] >= p && !b) b = q; }); return a && a[1] && b && b[1] ? Math.max(a[1], b[1]) : 0; };
+        if (!lvlAt(viaP)) withVia.push([viaP - 0.0015, 0], [viaP, 0]);
+        withVia.sort((x, y) => x[0] - y[0]);
+        var cl2 = [], l2 = -1; withVia.forEach((q) => { if (q[0] > l2 && q[0] >= 0 && q[0] <= 1) { cl2.push(q); l2 = q[0]; } });
+        stops = cl2; stops.viaP = viaP;
+      }
       try {
         Object.keys(PAL).forEach((id) => {
           if (!map.getLayer(id)) return;
           var expr = null;
           if (stops) {
             expr = ["interpolate-lab", ["linear"], ["line-progress"]];
-            if (stops[0][0] > 0) expr.push(0, PAL[id][0]);
-            stops.forEach((p) => expr.push(p[0], PAL[id][p[1]]));
-            if (stops[stops.length - 1][0] < 1) expr.push(1, PAL[id][0]);
+            var vp = stops.viaP, col0 = (p) => vp != null && p >= vp ? AFT[id] : PAL[id][0];
+            if (stops[0][0] > 0) expr.push(0, col0(0));
+            stops.forEach((p) => expr.push(p[0], p[1] ? PAL[id][p[1]] : col0(p[0])));
+            if (stops[stops.length - 1][0] < 1) expr.push(1, col0(1));
           }
           map.setPaintProperty(id, "line-gradient", expr);
         });
@@ -8141,6 +8156,13 @@
         Object.keys(PAL).forEach((id) => { try { if (map.getLayer(id)) map.setPaintProperty(id, "line-gradient", null); } catch (e2) { /* as it was */ } });
         try { if (map.getLayer("routejam")) map.setLayoutProperty("routejam", "visibility", "visible"); } catch (e3) { /* as it was */ }
       }
+    },
+    // Where the first stop lies along the route (0 … 1), or null.
+    viaProgress() {
+      var R = this.route, d = this.dest, v = d && d.via && d.via[0];
+      if (!R || !R.coords || !R.cum || !R.total || !v) return null;
+      var o = gpsOnLine([v.lon, v.lat], R.coords);
+      return o ? (R.cum[o.seg - 1] + gpsDist(R.coords[o.seg - 1], o.point)) / R.total : null;
     },
     routeData() {
       var R = this.route;
@@ -12720,10 +12742,10 @@
   // then only what differs from it. The phone's map (igor-gps-card
   // `settings:`) applies it live; igor-settings-card `map3d:` edits it.
   var MAP3D_PRESETS = {
-    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 40, rf: 10, bz: 15, rp: "noms", rw: "normale", rc: "bleu", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max" } },
-    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "sol", rw: "normale", rc: "bleu", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max" } },
-    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", rw: "large", rc: "bleu", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max" } },
-    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", rw: "normale", rc: "bleu", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco" } }
+    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 40, rf: 10, bz: 15, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max" } },
+    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "sol", rw: "normale", rc: "bleu", rc2: "cyan", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max" } },
+    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", rw: "large", rc: "bleu", rc2: "cyan", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max" } },
+    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", rw: "normale", rc: "bleu", rc2: "cyan", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco" } }
   };
   // Each setting: key, tab, label, hint, kind (seg | sw | sl), choices or range.
   var MAP3D_ROWS = [
@@ -12738,6 +12760,7 @@
     ["rp", "Route & noms", "Place de la route", "« sous les noms » : le nom de la rue reste lisible", "seg", [["sol", "au sol"], ["noms", "sous les noms"], ["top", "par-dessus tout"]]],
     ["rw", "Route & noms", "Épaisseur", "", "seg", [["fine", "fine"], ["normale", "normale"], ["large", "large"]]],
     ["rc", "Route & noms", "Couleur", "", "seg", [["bleu", "bleu"], ["cyan", "cyan"], ["violet", "violet"], ["jaune", "jaune"]]],
+    ["rc2", "Route & noms", "Couleur après l'étape", "la suite du trajet, comme Waze", "seg", [["cyan", "cyan"], ["bleu", "bleu"], ["violet", "violet"], ["gris", "gris"]]],
     ["gl", "Route & noms", "Halo lumineux", "", "sl", 0, 100, 5, "%"],
     ["tr", "Route & noms", "Trajet déjà parcouru", "", "seg", [["cache", "caché"], ["pale", "pâle"], ["visible", "visible"]]],
     ["jm", "Route & noms", "Bouchons", "", "seg", [["degrade", "en dégradé"], ["traits", "en traits"], ["aucun", "aucun"]]],

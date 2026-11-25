@@ -1,3 +1,7 @@
+## 0.52.1 — La route en deux couleurs autour de l'étape
+
+- `igor-gps-card` : avec une étape, la route est bleue jusqu'à elle puis cyan au-delà, comme Waze (`route_color`, `route_color_after` : bleu, cyan, violet, jaune, gris) ; les bouchons gardent leur orange ou leur rouge par-dessus. Réglages → Carte 3D → Route & noms : nouvelle ligne « Couleur après l'étape ».
+
 ## 0.52.0 — Télémétrie, maximums, départ lancé, défauts ignorés
 
 - **`igor-telemetry-card`** (nouvelle) : le moteur comme un ingénieur piste. En haut, huit valeurs en direct (régime, vitesse et rapport, charge, turbo, débit d'air, puissance et couple estimés, rampe) ; au centre, toutes les courbes sur la dernière minute, sur le même axe de temps, passages de rapport en pointillés — remplies dès l'ouverture par l'historique de Home Assistant ; à droite, la courbe puissance / couple de votre moteur, construite seule à chaque pied au plancher (débit d'air → carburant → puissance, une estimation), sur la courbe d'usine en pointillés (`power_max`, `power_rpm`, `torque_max`, `torque_rpm`) ; en bas, chronos, températures, turbo, batterie, lambda, rampe. Sur 1024 × 600, la rangée du bas laisse sa place aux courbes.
