@@ -1,3 +1,7 @@
+## 0.49.3 — La réparation des capteurs en double fonctionne
+
+- **`nives.car_fix_duplicates` répondait « Unknown error »** : l'action appelait sa fonction à travers l'objet de guidage au lieu du module. Corrigé, et un test vérifie désormais chaque appel de ce genre.
+
 ## 0.49.2 — Les réglages sur toute la largeur, le verrouillage choisi écran par écran
 
 - `igor-settings-card` : les tuiles se partagent toute la largeur, alignées sur les boutons du dessous (elles s'entassaient à gauche, titres coupés sur l'autoradio).
