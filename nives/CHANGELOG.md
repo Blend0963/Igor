@@ -1,3 +1,9 @@
+## 0.59.3 — Itinéraires de rechange : seulement à la bifurcation, seulement s'ils valent la peine
+
+- Un itinéraire de rechange n'est plus dessiné par-dessus le trajet : seulement sa partie à lui, de la bifurcation au point où il rejoint la route ; un itinéraire qui ne quitte jamais le trajet n'apparaît pas.
+- Il n'apparaît que s'il vaut la peine : plus rapide (une minute au moins), moins cher (un euro au moins : sans péage, moins de gazole) ou sans la ZFE que le trajet traverse ; un itinéraire qui entre dans une ZFE que le trajet évite n'est jamais proposé. La bulle dit pourquoi : « −3 min », « −6 € · +4 min », « sans ZFE ».
+- La comparaison se fait avec ce qu'il reste du trajet (les itinéraires de rechange partent de la voiture), plus avec sa durée totale. Les choix laissés de côté au départ suivent la même règle.
+
 ## 0.59.2 — La conversion Tasker reconnaît telegram_bot.send_message
 
 - `nives.tasker_convert` reconnaît aussi la forme qu'écrit l'éditeur de Home Assistant : `telegram_bot.send_message` avec `entity_id: notify.ha_command` sous `data:` (et `parse_mode`, `metadata`) ; elle devient `script.tasker_envoyer` avec le même message. Les envois vers une autre conversation (photos d'intrusion…) ne sont pas touchés.

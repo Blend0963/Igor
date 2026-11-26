@@ -5518,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.59.1";
+  var GPS_CARD_VERSION = "0.59.3";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -8825,13 +8825,38 @@
     },
     // The other routes, greyed on the map, each with its bubble (the minutes
     // it wins or costs); a touch on the line or the bubble changes the trip.
+    // Only the alternates worth taking (altWhy), and of each only its own way:
+    // from where it leaves the route to where it comes back — never drawn
+    // over the route itself.
     altsData() {
       var feats = [];
       (this.alts || []).forEach((a, i) => {
-        var R0 = a.route;
-        if (R0 && R0.coords && R0.coords.length > 1) feats.push({ type: "Feature", geometry: { type: "LineString", coordinates: R0.smooth || (R0.smooth = gpsSmoothed(R0.coords)) }, properties: { idx: i } });
+        var R0 = a.route, why = a.route ? this.altWhy(R0) : null;
+        a.why = why;
+        if (!why) return;
+        var own = R0.coords.slice(Math.max(0, why.band[0] - 2), Math.min(R0.coords.length, why.band[1] + 3));
+        if (own.length > 1) feats.push({ type: "Feature", geometry: { type: "LineString", coordinates: gpsSmoothed(own) }, properties: { idx: i } });
       });
       return { type: "FeatureCollection", features: feats };
+    },
+    // Why an alternate deserves to be shown: it leaves the route (a fork),
+    // and it is faster (a minute at least), or cheaper (a euro at least: no
+    // toll, less fuel), or it keeps out of a low-emission zone the route
+    // crosses. null otherwise — then nothing is drawn, no bubble. The route
+    // compared is what is left of it (the alternates start from the car).
+    altWhy(R0) {
+      var R = this.route;
+      if (!R || !R0 || !R0.coords || R0.coords.length < 2) return null;
+      var band = this.altBand(R0);
+      if (!band) return null;
+      if ((R0.lez || []).length && !(R.lez || []).length) return null;  // into a ZFE the route avoids
+      var left = Math.max(0, (R.total || 0) - (this.along || 0)), share = R.total ? left / R.total : 1;
+      var leftDur = (R.duration || 0) * share;
+      var dsec = leftDur - (R0.duration || 0);
+      var C0 = this.routeCost(R0), Cr = this.routeCost({ distance: left, tolls: R.tolls, toll_eur: R.toll_eur != null ? R.toll_eur * share : null, coords: R.coords });
+      var saving = C0 && Cr && C0.total != null && Cr.total != null ? Cr.total - C0.total : (R.tolls || []).length && !(R0.tolls || []).length ? 1 : 0;
+      var why = { band: band, dsec: dsec, saving: saving, noZfe: (R.lez || []).length > 0 && !(R0.lez || []).length };
+      return dsec >= 60 || saving >= 1 || why.noZfe ? why : null;
     },
     drawAlts() {
       var map = this.map;
@@ -8858,15 +8883,19 @@
       this.altMarkers = [];
       var R = this.route;
       (this.alts || []).forEach((a) => {
-        var R0 = a.route;
-        if (!R0 || !R0.coords || R0.coords.length < 2) return;
-        var dmin = Math.round((R0.duration - (R ? R.duration : R0.duration)) / 60);
+        var R0 = a.route, why = a.why;
+        if (!R0 || !R0.coords || R0.coords.length < 2 || !why) return;
+        // What it brings: minutes won, euros saved, the ZFE kept out of
+        // (and what it costs, when it brings something else).
+        var dmin = Math.round(-why.dsec / 60), parts = [];
+        if (dmin <= -1) parts.push("−" + Math.abs(dmin) + " min");
+        if (why.saving >= 1) parts.push("−" + Math.round(why.saving) + " €");
+        if (why.noZfe) parts.push("sans ZFE");
+        if (dmin >= 1) parts.push("+" + dmin + " min");
         var el = document.createElement("div");
-        el.className = "alttag" + (dmin < 0 ? " win" : dmin > 0 ? " lose" : "");
-        if (R0.lez && R0.lez.length) { var z = document.createElement("span"); z.className = "lez"; z.textContent = "ZFE"; el.appendChild(z); }
-        if (R0.tolls && R0.tolls.length) { var e = document.createElement("span"); e.className = "eur"; e.textContent = "€"; el.appendChild(e); }
-        el.appendChild(document.createTextNode(dmin === 0 ? "≈ 0 min" : (dmin > 0 ? "+" : "−") + Math.abs(dmin) + " min"));
-        var band = this.altBand(R0);
+        el.className = "alttag" + (dmin <= -1 || why.saving >= 1 || why.noZfe ? " win" : "");
+        el.appendChild(document.createTextNode(parts.join(" · ")));
+        var band = why.band;
         var mk = new window.maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(R0.coords[band ? (band[0] + band[1]) >> 1 : Math.floor(R0.coords.length / 2)]).addTo(map);
         mk._igorAlt = a;
         mk._igorBand = band;
@@ -9403,14 +9432,9 @@
       if (!this.alts.length) return;
       var got = await Promise.all(this.alts.map((a) => this.askRoute(d, from, a.types || [], a.routeType)));
       if (this.dest !== d) return;
-      // Only the better deserve the map: an alternate longer than the way
-      // already held is noise, and a noise drawn is a driver tempted. Better
-      // means plainly faster (half a minute at least), or as fast and
-      // plainly shorter (two per cent at least).
-      var ref = this.route;
-      var better = (r) => !!ref && (r.duration < ref.duration - 30 ||
-        (Math.abs(r.duration - ref.duration) <= 30 && r.distance < ref.distance * 0.98));
-      got.forEach((r, i) => { if (r && r.ok && r.route && this.alts[i]) this.alts[i].route = better(r.route) ? r.route : null; });
+      // Kept, all of them: altWhy decides what the map shows — a fork that is
+      // faster, cheaper (no toll) or keeps out of a ZFE; the rest stays unseen.
+      got.forEach((r, i) => { if (this.alts[i]) this.alts[i].route = r && r.ok && r.route ? r.route : null; });
       this.drawAlts();
     },
     useTomTom(R0) {
