@@ -5432,7 +5432,7 @@
   //   sdk_theme: auto                       # auto: light driving style by day, dark as soon as the sun is low (sun.sun); day | night: held
   //   night_elevation: 3                    # the sun's height (°) under which the map turns to night
   //   sdk_style: streetDarkDriving          # one style for good (streetLight, streetDark, streetLightDriving, streetDarkDriving, monoDark…)
-  //   sdk_trees: false                      # no 3D trees in the woods and parks (the SDK's)
+  //   sdk_trees: true                       # 3D trees in the woods and parks (the SDK's); off by default (heavy), with settings: « Arbres des bois »
   //   buildings_opacity: 0.85               # the SDK's buildings, 0 (invisible) to 1 (solid); the route is drawn over them anyway
   //   settings: input_text.igor_carte      # the look set from the head unit (igor-settings-card map3d:), applied live: presets, buildings, route, names, ground, light, camera
   //   marker_dest: epingle, marker_stop: epingle    # the arrival's and the stops' marks: epingle, balise, anneau, damier, drapeau
@@ -5442,7 +5442,6 @@
   //   sdk_buildings: { … }                  # any other knob of TomTom's Buildings3D (preset, shadows, walls.color…)
   //   terrain: false                        # a flat ground (no hills, no valleys)
   //   sdk_surfaces: false                   # no textured surfaces (lighter); or its knobs, e.g. { wind: { speedFactor: 1 } }
-  //   trees: false                          # no 3D trees (OpenStreetMap's real trees, natural=tree and tree_row)
   //   voice_to: input_text.car_voice        # what the guidance says goes there (« ms|kind|text »), said by the head unit's igor-guide-card
   //   publish_ahead: input_text.car_ahead   # the radar within reach and what lies ahead on the route, for igor-drive-card
   //   publish_routes: input_text.car_routes  # the routes offered, for the head unit to choose (route_choice: input_text.car_choice brings the answer)
@@ -5518,7 +5517,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.55.0";
+  var GPS_CARD_VERSION = "0.56.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7072,20 +7071,16 @@
     // same data (Igor's copies of TomTom's layers, theirs hidden); « tout »
     // TomTom's own lines as they are.
     trafficLook(map, mode) {
-      var layers = ((map.getStyle() && map.getStyle().layers) || []).filter((l) => l.type === "line" && !/^(route|routejam|incidents|igor|trail|alt|man)/.test(l.id) &&
-        /traffic|flow/i.test(l.id + " " + (l["source-layer"] || "") + " " + (typeof l.source === "string" ? l.source : "")));
-      var first = ["route-glow", "route-case", "trail-case", "trail"].find((id) => map.getLayer(id));
-      layers.forEach((l) => {
-        var glow = "igor-tf-glow-" + l.id, tint = "igor-tf-" + l.id;
-        map.setLayoutProperty(l.id, "visibility", mode === "tout" ? "visible" : "none");
-        if (mode !== "chaussee") { [glow, tint].forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); }); return; }
-        var color = (l.paint && l.paint["line-color"]) || "#5cc28f", base = { source: l.source, layout: { "line-cap": "round", "line-join": "round" } };
-        if (l.filter) base.filter = l.filter;
-        if (l["source-layer"]) base["source-layer"] = l["source-layer"];
-        if (l.minzoom != null) base.minzoom = l.minzoom; if (l.maxzoom != null) base.maxzoom = l.maxzoom;
-        if (!map.getLayer(glow)) map.addLayer(Object.assign({ id: glow, type: "line", paint: { "line-color": color, "line-width": this.metersWidth(22, 6), "line-blur": this.metersWidth(10, 4), "line-opacity": 0.22 } }, base), first);
-        if (!map.getLayer(tint)) map.addLayer(Object.assign({ id: tint, type: "line", paint: { "line-color": color, "line-width": this.metersWidth(9, 2.5), "line-blur": 1, "line-opacity": 0.6 } }, base), first);
+      var show = mode === "tout" || mode === "chaussee";
+      ((map.getStyle() && map.getStyle().layers) || []).forEach((l) => {
+        if (/^igor-tf-/.test(l.id)) { map.removeLayer(l.id); return; }
+        if (this.isTrafficLayer(l)) map.setLayoutProperty(l.id, "visibility", show ? "visible" : "none");
       });
+    }
+    // A line of the base map's own traffic (TomTom's green, orange, red).
+    isTrafficLayer(l) {
+      return !!l && l.type === "line" && !/^(route|routejam|incidents|igor|trail|alt|man)/.test(l.id) &&
+        /traffic|flow/i.test(l.id + " " + (l["source-layer"] || "") + " " + (typeof l.source === "string" ? l.source : ""));
     }
     // A width in metres on the ground, as a zoom curve (each zoom doubles it),
     // never thinner than `min` pixels (seen from far, a road is still a line).
@@ -7115,48 +7110,23 @@
       var n = 0, t0 = performance.now(), onR = () => { n++; var t = performance.now(); if (t - t0 >= 1000) { var f = Math.round(n * 1000 / (t - t0)); box.textContent = f + " img/s · cible " + (this.fpsNow || "—") + (this.fluidSteps && this.fluidSteps.length ? " · allégé : " + this.fluidSteps.join(", ") : ""); box.style.color = f >= 25 ? "#5cc28f" : f >= 15 ? "#e5a04c" : "#e0675f"; n = 0; t0 = t; } };
       map.on("render", onR); this.fpsOff = () => map.off("render", onR);
     }
-    // Where the route lies among the 3D layers (TomTom's buildings and
-    // surfaces are custom layers added after Igor's): « noms » (default) just
-    // above them, under the labels that follow; « top » over everything;
-    // « sol » under them, on the ground as in reality. Moved only when it is
-    // not already there (moving fires styledata, which calls this again).
+    // Where the route lies: over everything the map draws (the ground, the
+    // 3D buildings, the trees), with TomTom's traffic lines and Igor's
+    // arrows; under the names, places, shields and signs (every symbol
+    // layer), so a street's name stays readable. Moved only when not
+    // already so (moving fires styledata, which calls this again).
     routeOnTop(map) {
       if (this.routeTopBusy || !map || !map.getLayer) return;
       this.routeTopBusy = true;
       try {
-        var mode = (this.look && this.look.rp) || "noms", xray = mode === "xray";
-        if (xray) mode = "sol";
-        // The faint copy: shown only « en transparence », always the last layer drawn.
-        if (map.getLayer("route-xray")) {
-          if ((map.getLayoutProperty("route-xray", "visibility") || "visible") !== (xray ? "visible" : "none")) map.setLayoutProperty("route-xray", "visibility", xray ? "visible" : "none");
-        }
-        var ids = ["trail-case", "trail", "route-case", "route-glow", "route", "route-core", "routejam", "man-case", "man", "man-head"].filter((id) => map.getLayer(id));
-        // getLayersOrder: the custom layers too (getStyle leaves them out).
         var order = map.getLayersOrder ? map.getLayersOrder() : ((map.getStyle() && map.getStyle().layers) || []).map((l) => l.id);
-        var layers = order.map((id) => { var l = map.getLayer(id); return { id: id, type: l && l.type }; });
-        var pos = (id) => order.indexOf(id);
-        ids.sort((a, b) => pos(a) - pos(b));  // as they stand: the glow under the case, the jams over the route
-        var mine = (l) => ids.indexOf(l.id) >= 0, is3d = (l) => !mine(l) && (l.type === "custom" || l.type === "fill-extrusion");
-        var first3d = layers.findIndex(is3d), last3d = -1;
-        layers.forEach((l, i) => { if (is3d(l)) last3d = i; });
-        if (ids.length) {
-          if (mode === "top") {
-            if (order.slice(order.length - ids.length).join() !== ids.join()) ids.forEach((id) => map.moveLayer(id));
-          } else if (first3d >= 0 && mode === "sol") {
-            if (pos(ids[0]) > first3d) ids.forEach((id) => map.moveLayer(id, layers[first3d].id));
-          } else if (first3d >= 0) {
-            if (order.slice(last3d + 1, last3d + 1 + ids.length).join() !== ids.join()) {
-              var nxt = layers.slice(last3d + 1).find((l) => !mine(l));
-              ids.forEach((id) => map.moveLayer(id, nxt ? nxt.id : undefined));
-            }
-          }
-        }
-        if (xray && map.getLayer("route-xray")) {
-          var ord2 = map.getLayersOrder ? map.getLayersOrder() : ((map.getStyle() && map.getStyle().layers) || []).map((l) => l.id);
-          // Over it, the way driven and the arrows: the copy does not paint them blue.
-          var over = ["route-xray", "trail-case", "trail", "man-case", "man", "man-head"].filter((id) => map.getLayer(id));
-          if (ord2.slice(ord2.length - over.length).join() !== over.join()) over.forEach((id) => map.moveLayer(id));
-        }
+        var mine = ["route-glow", "route-case", "route", "route-core", "routejam", "trail-case", "trail", "man-case", "man", "man-head"];
+        var lay = (id) => map.getLayer(id);
+        var under = order.filter((id) => { var l = lay(id); return l && l.type === "line" && (/^(alt|incidents)/.test(id) || this.isTrafficLayer(l)); });
+        var top = under.concat(mine.filter((id) => lay(id)));
+        var labels = order.filter((id) => { var l = lay(id); return l && l.type === "symbol" && top.indexOf(id) < 0; });
+        var want = top.concat(labels);
+        if (order.slice(order.length - want.length).join() !== want.join()) want.forEach((id) => map.moveLayer(id));
       } catch (e) { /* a style changing under it: the next styledata */ }
       this.routeTopBusy = false;
     }
@@ -7181,42 +7151,31 @@
         return x == null ? x : ["*", x, k];
       };
       tryIt(() => { if (this.tt3d && this.tt3d.applyConfig) this.tt3d.applyConfig(this.buildingsLook()); });
-      tryIt(() => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ visible: !!Number(L.sf), trees: { visible: !!Number(L.ts) && this.config.sdk_trees !== false }, wind: { speedFactor: Number(L.wd) || 0 } }); });
+      tryIt(() => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ visible: !!Number(L.sf), trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: Number(L.wd) || 0 } }); });
       tryIt(() => { var T = this.ttTerrain; if (T && T.setElevationVisible) { T.setElevationVisible(!!Number(L.te)); T.setHillshadeVisible(!!Number(L.hs)); } });
       tryIt(() => {
-        if (Number(L.to) && !map.getSource("igor-trees")) this.treesSetup(map);
-        ["igor-trunks", "igor-crowns"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", Number(L.to) ? "visible" : "none"); });
-      });
-      tryIt(() => {
-        var pal = this.routePal(), k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1, real = L.rw === "chaussee" || L.rw === "route";
-        // « la chaussée » : the route as wide as the road itself (about 9 m),
-        // growing and shrinking with the zoom as the road does — it covers the
-        // road taken instead of running over it as a line.
-        var RW = { "route-case": [1.0, 2], "route-glow": [2.2, 4], "route": [0.86, 2.5], "route-core": [0.22, 0.8], "routejam": [0.86, 2.5], "route-xray": [0.86, 2.5] };
-        [["route-case", GPS_CASE_W], ["route-glow", GPS_GLOW_W], ["route", GPS_ROUTE_W], ["route-core", GPS_CORE_W], ["routejam", GPS_ROUTE_W], ["route-xray", GPS_ROUTE_W]].forEach((x) => {
+        var pal = this.routePal(), k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1;
+        [["route-case", GPS_CASE_W], ["route-glow", GPS_GLOW_W], ["route", GPS_ROUTE_W], ["route-core", GPS_CORE_W], ["routejam", GPS_ROUTE_W]].forEach((x) => {
           if (!map.getLayer(x[0])) return;
-          map.setPaintProperty(x[0], "line-width", real ? this.metersWidth(9 * RW[x[0]][0], RW[x[0]][1]) : scale(x[1], k));
+          map.setPaintProperty(x[0], "line-width", scale(x[1], k));
           if (pal[x[0]]) map.setPaintProperty(x[0], "line-color", pal[x[0]]);
-          else if (x[0] === "route-xray") map.setPaintProperty(x[0], "line-color", pal.route);
         });
         if (map.getLayer("route-glow")) map.setPaintProperty("route-glow", "line-opacity", Math.max(0, Math.min(1, (Number(L.gl) || 0) / 100)));
-        if (map.getLayer("route-xray")) map.setPaintProperty("route-xray", "line-opacity", Math.max(0.1, Math.min(0.9, (L.xo != null && L.xo !== "" ? Number(L.xo) : 45) / 100)));
         // The way driven: as wide as the route, over it (it covers the blue
         // behind the car); « pâle » grey, « visible » the after-stop colour.
         var tw = L.tr === "cache" ? 0 : 1, after = this.routePal("after");
         if (map.getLayer("trail")) {
-          map.setPaintProperty("trail", "line-width", real ? this.metersWidth(9 * RW.route[0], RW.route[1]) : scale(GPS_ROUTE_W, k));
+          map.setPaintProperty("trail", "line-width", scale(GPS_ROUTE_W, k));
           map.setPaintProperty("trail", "line-color", L.tr === "visible" ? after.route : "#7f8c9c");
           map.setPaintProperty("trail", "line-opacity", tw);
         }
         if (map.getLayer("trail-case")) {
-          map.setPaintProperty("trail-case", "line-width", real ? this.metersWidth(9 * RW["route-case"][0], RW["route-case"][1]) : scale(GPS_CASE_W, k));
+          map.setPaintProperty("trail-case", "line-width", scale(GPS_CASE_W, k));
           map.setPaintProperty("trail-case", "line-color", L.tr === "visible" ? after["route-case"] : "#262d36");
           map.setPaintProperty("trail-case", "line-opacity", tw);
         }
       });
       tryIt(() => this.maneuverLook());
-      tryIt(() => this.roadRouteVis());
       this.rrAt = 0;
       this.jamGradient();
       this.routeOnTop(map);
@@ -7267,11 +7226,9 @@
         };
         map.on("idle", hideFuel);
       }
-      // Real trees, where OpenStreetMap has them (with or without the SDK).
-      this.treesSetup(map);
       // TomTom's SDK: its buildings (facades, lit windows, shadows) and its
-      // surfaces (rippling water, woods, fields, asphalt) — without its 3D
-      // trees, which it would place at random: the real ones are Igor's.
+      // surfaces (rippling water, woods, fields, asphalt), its woods' 3D
+      // trees only when asked (heavy).
       if (this.tt && this.ttKit) {
         var lm = this.ttKit.lm, why = [];
         if (!this.tt3d) { try { this.tt3d = new lm.Buildings3D(this.tt, this.buildingsLook()); } catch (e) { why.push("bâtiments : " + (e && e.message)); } }
@@ -7280,7 +7237,7 @@
         // grows them. The woods are the map's own; where each tree stands
         // in them is the SDK's (nobody maps a wood tree by tree).
         if (!this.ttSurf && this.config.sdk_surfaces !== false) {
-          try { this.ttSurf = new lm.GLSurfaces(this.tt, Object.assign({ trees: { visible: this.config.sdk_trees !== false }, wind: { speedFactor: 0 } }, typeof this.config.sdk_surfaces === "object" ? this.config.sdk_surfaces : {})); } catch (e) { why.push("surfaces : " + (e && e.message)); }
+          try { this.ttSurf = new lm.GLSurfaces(this.tt, Object.assign({ trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: 0 } }, typeof this.config.sdk_surfaces === "object" ? this.config.sdk_surfaces : {})); } catch (e) { why.push("surfaces : " + (e && e.message)); }
         }
         // The ground in relief (hills, valleys) with its shading; the
         // buildings, the trees and the route stand on it. `terrain: false`: flat.
@@ -7293,7 +7250,7 @@
         this.routeOnTop(map);
         this.applyLook();
         if (!this.routeTopWatch) { this.routeTopWatch = true; map.on("styledata", () => this.routeOnTop(map)); }
-        this.diag3d = "SDK TomTom (" + this.ttStyle + ") : " + [this.tt3d ? "bâtiments 3D" : "", this.ttSurf ? "surfaces" + (this.config.sdk_trees !== false ? " et arbres des bois" : "") : "", this.config.terrain !== false ? "relief" : ""].filter(Boolean).join(" + ") + (why.length ? " · " + why.join(" · ") : "");
+        this.diag3d = "SDK TomTom (" + this.ttStyle + ") : " + [this.tt3d ? "bâtiments 3D" : "", this.ttSurf ? "surfaces" + (this.sdkTreesOn() ? " et arbres des bois" : "") : "", this.config.terrain !== false ? "relief" : ""].filter(Boolean).join(" + ") + (why.length ? " · " + why.join(" · ") : "");
         if (this.config.debug) this.message("relief : " + this.diag3d);
         return;
       }
@@ -7647,8 +7604,7 @@
       var piece = pieces[pieces.length - 1] || (pieces[0] = []);
       // A jump far ahead (the car found again much later): a new piece.
       if (along - this.drivenAt > 1500) { pieces.push(piece = []); this.drivenAt = along - 1; }
-      // « la route elle-même »: the way driven on the carriageway too.
-      var bit = R.disp && R.smCum && R.smShift != null ? gpsSlice(R.disp, R.smCum, this.drivenAt + R.smShift, along + R.smShift) : gpsSlice(R.coords, R.cum, this.drivenAt, along);
+      var bit = gpsSlice(R.coords, R.cum, this.drivenAt, along);
       piece.push.apply(piece, piece.length ? bit.slice(1) : bit);
       this.drivenAt = along;
       var n = pieces.reduce(function (a, x) { return a + x.length; }, 0);
@@ -7670,8 +7626,6 @@
         var sm = R.smooth || (R.smooth = gpsSmoothed(R.coords));
         if (!R.smCum || R.smCum.length !== sm.length) { R.smCum = [0]; for (var i = 1; i < sm.length; i++) R.smCum.push(R.smCum[i - 1] + gpsDist(sm[i - 1], sm[i])); }
         var cum = R.smCum, total = cum[cum.length - 1], base = sm;
-        // « la route elle-même »: the line as drawn, moved onto its carriageway.
-        if (R.disp && R.disp.length === sm.length) sm = R.disp;
         var plain = /navigation-variant|flag|arrow-up$|ferry/;
         R.steps.filter((x) => x.at > along + 2 && x.at - along < 2000 && !plain.test(x.icon || "")).slice(0, 2).forEach((x, n, list) => {
           if (x.atS == null) { var o = gpsOnLine(x.loc || R.coords[0], base); x.atS = o ? cum[o.seg - 1] + gpsDist(base[o.seg - 1], o.point) : x.at; }
@@ -7723,18 +7677,16 @@
     maneuverLook() {
       var map = this.map;
       if (!map || !map.getLayer || !map.getLayer("man")) return;
-      var L = this.look || {}, k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1, real = L.rw === "chaussee";
+      var L = this.look || {}, k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1;
       var times = (x, f) => x.map((v, i) => i >= 4 && i % 2 === 0 ? Math.round(v * f * 100) / 100 : v);
-      var line = real ? this.metersWidth(9 * 0.86, 2.5) : times(GPS_ROUTE_W, k), edge = real ? this.metersWidth(9, 2) : times(GPS_CASE_W, k);
-      // « la route elle-même »: the road's own width (or « la chaussée » until known).
-      if (this.roadRouteOn()) { line = this.rrW != null ? this.mulW(this.rrW, 0.96) : this.metersWidth(9 * 0.86, 2.5); edge = this.rrW != null ? this.mulW(this.rrW, 1.12) : this.metersWidth(9, 2); }
+      var line = times(GPS_ROUTE_W, k), edge = times(GPS_CASE_W, k);
       var pal = this.routePal();
       try {
         map.setPaintProperty("man", "line-width", line);
         map.setPaintProperty("man-case", "line-width", edge);
         map.setPaintProperty("man-case", "line-color", pal["route-case"]);
         // The head 29 px wide at size 1: a bit more than twice the edge.
-        map.setLayoutProperty("man-head", "icon-size", this.mulW(edge, 2.3 / 29));
+        map.setLayoutProperty("man-head", "icon-size", times(edge, 2.3 / 29));
         if (this.manEdge !== pal["route-case"]) { this.manEdge = pal["route-case"]; map.updateImage("igor-man-head", this.manHead(this.manEdge)); }
       } catch (e) { /* as it was */ }
     }
@@ -7752,176 +7704,6 @@
         layout: { "icon-image": "igor-man-head", "icon-anchor": "bottom", "icon-rotate": ["get", "brg"], "icon-rotation-alignment": "map", "icon-pitch-alignment": "map",
           "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-size": 0.5 } });
       this.manKey = null;
-      this.maneuverLook();
-    }
-    // ----- « la route elle-même » (Épaisseur) -----
-    // TomTom's route follows a road's middle line, where the map may draw a
-    // boulevard as two carriageways (the route then ran between them), and
-    // the style draws its roads wider than the 9 m of « la chaussée ». The
-    // route stays one smooth line (its gradient, halo, edge, arrows), but:
-    // as wide as the map draws the road the car is on (the style's own
-    // width), and moved sideways onto the carriageway on the right where
-    // the map has one — a shift found every 6 m along the screen and
-    // smoothed over some 30 m, so it slides, never jumps.
-    roadRouteOn() { return !!(this.look && this.look.rw === "route"); }
-    // A width expression's value at a zoom (numbers, interpolate, step);
-    // null when it depends on a feature's properties.
-    exprAt(x, z) {
-      if (typeof x === "number") return x;
-      if (!Array.isArray(x)) return null;
-      if (x[0] === "step" && Array.isArray(x[1]) && x[1][0] === "zoom") {
-        var v = this.exprAt(x[2], z);
-        for (var i = 3; i + 1 < x.length; i += 2) if (z >= x[i]) v = this.exprAt(x[i + 1], z);
-        return v;
-      }
-      if (/^interpolate/.test(x[0]) && Array.isArray(x[2]) && x[2][0] === "zoom") {
-        var base = Array.isArray(x[1]) && x[1][0] === "exponential" ? Number(x[1][1]) || 1 : 1, st = [];
-        for (var j = 3; j + 1 < x.length; j += 2) st.push([x[j], this.exprAt(x[j + 1], z)]);
-        if (!st.length || st.some((s) => s[1] == null)) return null;
-        if (z <= st[0][0]) return st[0][1];
-        for (var k = 1; k < st.length; k++) {
-          if (z <= st[k][0]) {
-            var a = st[k - 1], b = st[k], span = b[0] - a[0], t = span ? (base === 1 ? (z - a[0]) / span : (Math.pow(base, z - a[0]) - 1) / (Math.pow(base, span) - 1)) : 1;
-            return a[1] + (b[1] - a[1]) * t;
-          }
-        }
-        return st[st.length - 1][1];
-      }
-      return null;
-    }
-    // A width expression times f (numbers, zoom interpolate or step).
-    mulW(x, f) {
-      var r = (v) => Math.round(v * f * 100) / 100;
-      if (typeof x === "number") return r(x);
-      if (Array.isArray(x) && /^interpolate/.test(x[0])) return x.map((v, i) => i >= 4 && i % 2 === 0 && typeof v === "number" ? r(v) : v);
-      if (Array.isArray(x) && x[0] === "step") return x.map((v, i) => (i === 2 || (i >= 4 && i % 2 === 0)) && typeof v === "number" ? r(v) : v);
-      return x;
-    }
-    // Where the car is along the smoothed line (metres), searched near the last place.
-    smAlong(R, p) {
-      var sm = R.smooth, cum = R.smCum, h = R.smHint || 1, best = null;
-      var scan = (a, b) => { for (var i = Math.max(1, a); i < Math.min(sm.length, b); i++) { var o = gpsOnLine(p, [sm[i - 1], sm[i]]); if (o && (!best || o.dist < best.dist)) { best = o; best.i = i; } } };
-      scan(h - 30, h + 300);
-      if (!best || best.dist > 60) scan(1, sm.length);
-      if (!best) return 0;
-      R.smHint = best.i;
-      return cum[best.i - 1] + gpsDist(sm[best.i - 1], best.point);
-    }
-    roadPaint(R, along) {
-      var map = this.map;
-      if (!R || !map || !map.getSource || !this.roadRouteOn() || !this.pos || !this.roads || !this.roads.length || map.getZoom() < 13) return;
-      var sm = R.smooth || (R.smooth = gpsSmoothed(R.coords));
-      if (!R.smCum || R.smCum.length !== sm.length) { R.smCum = [0]; for (var i = 1; i < sm.length; i++) R.smCum.push(R.smCum[i - 1] + gpsDist(sm[i - 1], sm[i])); }
-      var cum = R.smCum, total = cum[cum.length - 1], carS = this.smAlong(R, this.pos);
-      R.smShift = carS - along;
-      // The route every 6 m, from a little behind the car to the screen's end.
-      var cv = map.getCanvas(), W = cv.clientWidth || cv.width, H = cv.clientHeight || cv.height, pad = 40;
-      var samples = [], seen = false, outFor = 0, seg = Math.max(1, (R.smHint || 1) - 80);
-      for (var d = Math.max(0, carS - 300); d <= Math.min(total, carS + 6000); d += 6) {
-        while (seg > 1 && cum[seg - 1] > d) seg--;
-        while (seg < sm.length - 1 && cum[seg] < d) seg++;
-        var len = cum[seg] - cum[seg - 1] || 1, f = Math.max(0, Math.min(1, (d - cum[seg - 1]) / len));
-        var p = [sm[seg - 1][0] + (sm[seg][0] - sm[seg - 1][0]) * f, sm[seg - 1][1] + (sm[seg][1] - sm[seg - 1][1]) * f];
-        var px = map.project(p), inside = px.x > -pad && px.y > -pad && px.x < W + pad && px.y < H + pad;
-        if (inside) { seen = true; outFor = 0; samples.push({ d: d, p: p, px: px, brg: gpsBearing(sm[seg - 1], sm[seg]) }); }
-        else if (seen && (outFor += 6) > 300) break;
-      }
-      if (samples.length < 3) return;
-      var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      samples.forEach((s) => { x0 = Math.min(x0, s.px.x); y0 = Math.min(y0, s.px.y); x1 = Math.max(x1, s.px.x); y1 = Math.max(y1, s.px.y); });
-      var feats;
-      try { feats = map.queryRenderedFeatures([[x0 - pad, y0 - pad], [x1 + pad, y1 + pad]], { layers: this.roads }); } catch (e) { feats = []; }
-      // The road's fill, not its outline (a style draws each road twice).
-      var edgeRe = /outline|casing|case|border|shadow|halo|bg/i;
-      var fills = feats.filter((f) => f.layer && !edgeRe.test(f.layer.id));
-      if (fills.length) feats = fills;
-      var lines = [];
-      feats.forEach((f) => {
-        var g = f.geometry, props = f.properties || {};
-        var cls = String(props.class || props.subclass || props.roadClass || props.roadFunction || "");
-        if (!g || /rail|transit|path|footway|pedestrian|cycle|bicycle|bridleway|steps|track|ferry|cable|aerial|pier|service/.test(cls)) return;
-        if (/rail|path|ferry|aeroway|pier|transit|cable/.test(String(f.layer && f.layer.id || ""))) return;
-        (g.type === "LineString" ? [g.coordinates] : g.type === "MultiLineString" ? g.coordinates : []).forEach((l) => {
-          if (l.length < 2) return;
-          var bx = [Infinity, Infinity, -Infinity, -Infinity];
-          l.forEach((c) => { bx[0] = Math.min(bx[0], c[0]); bx[1] = Math.min(bx[1], c[1]); bx[2] = Math.max(bx[2], c[0]); bx[3] = Math.max(bx[3], c[1]); });
-          lines.push({ l: l, lyr: f.layer.id, bx: bx });
-        });
-      });
-      // Each sample's road: near (16 m), the same way (30°), the carriageway
-      // on the right before the one on the left. Its side gives the shift.
-      var mlat = 16 / 111320, mlon = mlat / Math.cos(gpsRad(this.pos[1]));
-      samples.forEach((s) => {
-        var best = null;
-        lines.forEach((L) => {
-          if (s.p[0] < L.bx[0] - mlon || s.p[0] > L.bx[2] + mlon || s.p[1] < L.bx[1] - mlat || s.p[1] > L.bx[3] + mlat) return;
-          var o = gpsOnLine(s.p, L.l);
-          if (!o || o.dist > 16) return;
-          var off = Math.abs(((o.bearing - s.brg) % 180 + 180) % 180); if (off > 90) off = 180 - off;
-          if (off > 30) return;
-          var right = Math.sin(gpsRad(gpsBearing(s.p, o.point) - s.brg)) > 0;
-          var score = o.dist + (right || o.dist < 1.5 ? 0 : 9) + off * 0.1;
-          if (!best || score < best.score) best = { score: score, off: right ? o.dist : -o.dist, lyr: L.lyr };
-        });
-        s.m = best;
-      });
-      // The shift, smoothed: the middle value over ±30 m (a stray match is
-      // dropped), then the mean over ±24 m; small ones are none.
-      var raw = samples.map((s) => s.m ? s.m.off : null), n = samples.length;
-      var med = raw.map((v, i) => {
-        var w = raw.slice(Math.max(0, i - 5), i + 6).filter((x) => x != null);
-        if (w.length < 3) return 0;
-        w.sort((a, b) => a - b);
-        return w[w.length >> 1];
-      });
-      var offs = med.map((v, i) => {
-        var w = med.slice(Math.max(0, i - 4), i + 5), m = w.reduce((a, b) => a + b, 0) / w.length;
-        return Math.abs(m) < 1.5 ? 0 : Math.max(-16, Math.min(16, m));
-      });
-      // The width: the road the car is on (the first matched just ahead).
-      var here = samples.find((s) => s.d >= carS - 6 && s.m), z = map.getZoom();
-      if (here && here.m.lyr !== this.rrLyr) {
-        var w = null;
-        try { w = map.getPaintProperty(here.m.lyr, "line-width"); } catch (e) { w = null; }
-        if (w != null && this.exprAt(w, z) != null) { this.rrLyr = here.m.lyr; this.rrW = w; this.roadRouteVis(); }
-      }
-      // The line moved sideways, vertex by vertex, along the screen.
-      var offAt = (dd) => {
-        if (dd <= samples[0].d) return offs[0];
-        if (dd >= samples[n - 1].d) return offs[n - 1];
-        var k = Math.min(n - 1, Math.max(1, Math.ceil((dd - samples[0].d) / 6)));
-        while (k < n - 1 && samples[k].d < dd) k++;
-        var a = samples[k - 1], b = samples[k], t = (dd - a.d) / ((b.d - a.d) || 1);
-        return offs[k - 1] + (offs[k] - offs[k - 1]) * t;
-      };
-      var disp = R.disp && R.disp.length === sm.length ? R.disp.slice() : sm.slice(), moved = 0;
-      var d0 = samples[0].d, d1 = samples[n - 1].d;
-      for (var v = 0; v < sm.length; v++) {
-        if (cum[v] < d0 - 30) continue;
-        if (cum[v] > d1 + 30) break;
-        var o2 = offAt(cum[v]), q = sm[v];
-        if (o2) {
-          var brg = gpsBearing(sm[Math.max(0, v - 1)], sm[Math.min(sm.length - 1, v + 1)]);
-          q = gpsProject(sm[v], brg + 90, o2);
-        }
-        moved = Math.max(moved, gpsDist(q, disp[v]));
-        disp[v] = q;
-      }
-      if (moved > 0.7) {
-        R.disp = disp; R.dispV = (R.dispV || 0) + 1;
-        var src = map.getSource("route");
-        if (src) src.setData(this.routeData());
-        this.manKey = null;
-        this.drawManeuvers(R, along);
-      }
-    }
-    // The route's lines as wide as the road under the car (the style's
-    // width), with its edge and halo around; « la chaussée » until a road is found.
-    roadRouteVis() {
-      var map = this.map;
-      if (!map || !map.getLayer || !this.roadRouteOn() || this.rrW == null) return;
-      var W = { "route-case": 1.12, "route-glow": 2.2, "route": 0.96, "route-core": 0.24, "routejam": 0.96, "route-xray": 0.96, "trail": 0.96, "trail-case": 1.12 };
-      try { Object.keys(W).forEach((id) => { if (map.getLayer(id)) map.setPaintProperty(id, "line-width", this.mulW(this.rrW, W[id])); }); } catch (e) { /* as it was */ }
       this.maneuverLook();
     }
     // Each request of the map: Igor's addresses on the page's own origin (a
@@ -8071,12 +7853,6 @@
           map.addLayer({ id: "route-core", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
             paint: { "line-color": "#d4f0ff", "line-width": GPS_CORE_W, "line-opacity": 0.75, "line-blur": 0.6 } });
         }
-        // The route seen through the buildings (« en transparence »): the
-        // same line again, faint, over everything. Where nothing hides the
-        // route it lies on the route itself and changes nothing; where a
-        // building stands in front, it is all that shows — the way goes on.
-        if (!map.getLayer("route-xray")) map.addLayer({ id: "route-xray", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round", visibility: "none" },
-          paint: { "line-color": "#46b4ff", "line-width": GPS_ROUTE_W, "line-opacity": 0.45 } });
         // The route's slow stretches (TomTom): orange when it slows, red when it is jammed.
         if (!map.getSource("routejam")) {
           map.addSource("routejam", { type: "geojson", data: this.routeJamData() });
@@ -8292,7 +8068,7 @@
       else if (!this.route && this.guideOn) this.publishGuide(null);
       if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > (this.offlineReady ? 3000 : 800))) { this.limitAt = now; this.limitTick(now, moving); }
       if (!this.alertAt || now - this.alertAt > 500) { this.alertAt = now; this.alertTick(now, speed); }
-      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); this.publishAhead(now); this.treesTick(); this.themeTick(); }
+      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); this.publishAhead(now); this.themeTick(); }
       // The stations' panel, left open, follows the car: gone far enough from
       // where it last asked (400 m, and never twice within ten seconds), it
       // asks again — the list is the stations around the car, not the ones
@@ -8532,11 +8308,11 @@
       if (!map || !map.getLayer || !map.getLayer("route")) return;
       var base = this.routePal(), R = this.route, PAL = {
         "route": [base.route, "#f08c1a", "#e5323b"], "route-glow": [base["route-glow"], "#ff9a2e", "#ff3b3b"],
-        "route-case": [base["route-case"], "#6b3a08", "#6e1016"], "route-core": [base["route-core"], "#ffe3c2", "#ffd0d0"], "route-xray": [base.route, "#f08c1a", "#e5323b"] };
+        "route-case": [base["route-case"], "#6b3a08", "#6e1016"], "route-core": [base["route-core"], "#ffe3c2", "#ffd0d0"] };
       var mode = this.look && this.look.jm ? this.look.jm : this.config.jam_gradient === false ? "traits" : "degrade";
       // After the first stop, the way goes on in another colour (as Waze: blue to the stop, cyan after).
       var after = this.routePal("after"), viaP = this.viaProgress();
-      var AFT = { "route": after.route, "route-glow": after["route-glow"], "route-case": after["route-case"], "route-core": after["route-core"], "route-xray": after.route };
+      var AFT = { "route": after.route, "route-glow": after["route-glow"], "route-case": after["route-case"], "route-core": after["route-core"] };
       var stops = null;
       if (R && R.jams && R.jams.length && R.total > 0 && R.cum && mode === "degrade") {
         var n = R.cum.length - 1, T = R.total;
@@ -8595,7 +8371,7 @@
     },
     routeData() {
       var R = this.route;
-      return { type: "Feature", geometry: { type: "LineString", coordinates: R ? (R.disp || R.smooth || (R.smooth = gpsSmoothed(R.coords))) : [] } };
+      return { type: "Feature", geometry: { type: "LineString", coordinates: R ? (R.smooth || (R.smooth = gpsSmoothed(R.coords))) : [] } };
     },
     // The hours of the trip: a stop sits on the route (it was placed there),
     // so its place along the line gives its share of the way, and the way's
@@ -9654,12 +9430,6 @@
     //   « j~distance~libellé~longueur~1|2 »), « ; »-separated.
     // Written when it changes (the radar at once), at most every 2 s, and at
     // least every 8 s: its time is also the map's heartbeat.
-    // ----- the trees, real ones: OpenStreetMap's (natural=tree, tree_row) -----
-    // Each tree where it is mapped, a trunk and a crown in 3D, its own height
-    // and crown when the map says them (height, diameter_crown), a common
-    // street tree otherwise. A row of trees (tree_row) is planted every 9 m
-    // along its line — the row is real, the spacing is the usual one. Read by
-    // squares of about 1.2 km (zoom 15) around the car, kept for the session.
     // Day or night: the SDK's light driving style by day, the dark one by
     // night (its windows lit), after Home Assistant's sun (sun.sun), else
     // the clock. `sdk_theme: day | night` holds one; `sdk_style:` sets it.
@@ -9673,9 +9443,9 @@
       this.fluidOn = true;
       var frames = 0, slow = 0, last = performance.now(), step = 0;
       var steps = [
-        ["ombres et reflets retirés", () => { if (this.tt3d && this.tt3d.updateConfig) this.tt3d.updateConfig({ shadows: { visible: false }, reflections: { intensity: 0 } }); }],
-        ["arbres de rue retirés", () => { ["igor-trunks", "igor-crowns"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none"); }); }],
+        // The trees first: the heaviest of all (enough to stop a phone).
         ["arbres des bois retirés", () => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ trees: { visible: false } }); }],
+        ["ombres et reflets retirés", () => { if (this.tt3d && this.tt3d.updateConfig) this.tt3d.updateConfig({ shadows: { visible: false }, reflections: { intensity: 0 } }); }],
         ["relief du sol retiré", () => { if (this.ttTerrain && this.ttTerrain.setElevationVisible) this.ttTerrain.setElevationVisible(false); }],
         ["textures retirées", () => { if (this.ttSurf && this.ttSurf.remove) { try { this.ttSurf.remove(); } catch (e) { /* kept */ } this.ttSurf = null; } }],
         ["netteté un peu réduite", () => { var d = window.devicePixelRatio || 1; if (map.setPixelRatio && d > 1.5) { map.setPixelRatio(Math.max(1.5, Math.min(d, 2) * 0.8)); this.pxNow = null; } }]
@@ -9725,82 +9495,12 @@
       this.ttStyle = want; this.themeBusy = true;
       Promise.resolve().then(() => this.tt.setStyle(want)).catch(() => {}).then(() => { this.themeBusy = false; });
     },
-    treesOn() { return this.config.trees !== false && !(this.look && !Number(this.look.to)) && this.config.basemap === "tomtom-3d" && !this.offlineReady; },
-    treesSetup(map) {
-      if (!this.treesOn() || !map || map.getSource("igor-trees")) return;
-      var layers = map.getStyle().layers || [], first = layers.find((l) => l.type === "symbol");
-      map.addSource("igor-trees", { type: "geojson", data: this.treesData() });
-      map.addLayer({ id: "igor-trunks", type: "fill-extrusion", source: "igor-trees", minzoom: 15.5, filter: ["==", ["get", "k"], "t"],
-        paint: { "fill-extrusion-color": "#4a3b2e", "fill-extrusion-height": ["get", "h"], "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.95 } }, first ? first.id : undefined);
-      map.addLayer({ id: "igor-crowns", type: "fill-extrusion", source: "igor-trees", minzoom: 15.5, filter: ["==", ["get", "k"], "c"],
-        paint: { "fill-extrusion-color": ["match", ["get", "v"], 0, "#2d5838", 1, "#33613d", "#294f33"],
-          "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 15.5, ["*", 0.4, ["get", "h"]], 16.5, ["get", "h"]],
-          "fill-extrusion-base": ["interpolate", ["linear"], ["zoom"], 15.5, ["*", 0.4, ["get", "b"]], 16.5, ["get", "b"]],
-          "fill-extrusion-opacity": 0.93, "fill-extrusion-vertical-gradient": true } }, first ? first.id : undefined);
-    },
-    treesTick() {
-      if (!this.treesOn() || !this.map || !this.pos || !this.map.getSource("igor-trees") || this.treesBusy) return;
-      if (this.map.getZoom() < 14.5) return;
-      var T = this.treeTiles || (this.treeTiles = {}), c = gpsTileOf(this.pos, 15), want = [];
-      // The car's square and the eight around it, the nearest first.
-      for (var dx = -1; dx <= 1; dx++) for (var dy = -1; dy <= 1; dy++) want.push([c[0] + dx, c[1] + dy, Math.abs(dx) + Math.abs(dy)]);
-      want.sort((a, b) => a[2] - b[2]);
-      var t = Date.now(), next = want.find((w) => { var k = w[0] + "/" + w[1], e = T[k]; return !e || (e.fail && t - e.at > 60000); });
-      if (!next) return;
-      var key = next[0] + "/" + next[1], b = gpsTileBox(next[0], next[1], 15), bb = [b.s, b.w, b.n, b.e].map((x) => x.toFixed(6)).join(",");
-      this.treesBusy = true;
-      gpsOverpass(this.config, "[out:json][timeout:25];(node[natural=tree](" + bb + ");way[natural=tree_row](" + bb + "););out geom;")
-        .then((res) => { T[key] = { at: Date.now(), els: (res && res.elements) || [] }; this.treesDraw(); })
-        .catch(() => { T[key] = { at: Date.now(), fail: true, els: [] }; this.treesDraw(); })
-        .then(() => { this.treesBusy = false; });
-    },
-    treesDraw() {
-      var src = this.map && this.map.getSource("igor-trees");
-      if (!src) return;
-      // Only the squares near the car stay drawn (2 squares around it).
-      var T = this.treeTiles || {}, c = this.pos ? gpsTileOf(this.pos, 15) : null;
-      Object.keys(T).forEach((k) => { var xy = k.split("/").map(Number); if (c && (Math.abs(xy[0] - c[0]) > 2 || Math.abs(xy[1] - c[1]) > 2)) delete T[k]; });
-      var d = this.treesData();
-      src.setData(d);
-      if (this.config.debug) {
-        var n = d.features.filter((f) => f.properties.k === "t").length, tiles = Object.keys(T), fails = tiles.filter((k) => T[k].fail).length;
-        this.message((this.diag3d ? "relief : " + this.diag3d + " · " : "") + "arbres OpenStreetMap : " + n + " (" + tiles.length + " carrés" + (fails ? ", " + fails + " sans réponse" : "") + ")");
-      }
-    },
-    treesData() {
-      var feats = [], T = this.treeTiles || {}, seen = {};
-      var ring = (p, r) => {
-        var kx = 1 / (111320 * Math.cos(gpsRad(p[1]))), ky = 1 / 110540, out = [];
-        for (var i = 0; i <= 8; i++) { var a = (i % 8) * Math.PI / 4; out.push([p[0] + Math.cos(a) * r * kx, p[1] + Math.sin(a) * r * ky]); }
-        return [out];
-      };
-      var plant = (p, tags) => {
-        var id = p[0].toFixed(6) + "," + p[1].toFixed(6); if (seen[id]) return; seen[id] = 1;
-        var h = parseFloat(tags && tags.height), d = parseFloat(tags && tags.diameter_crown);
-        h = isFinite(h) && h > 1 ? Math.min(35, h) : 9;
-        var r = isFinite(d) && d > 0.5 ? Math.min(9, d / 2) : Math.max(1.6, Math.min(4, h * 0.3));
-        var trunkH = Math.max(1.6, Math.min(4.5, h * 0.32));
-        feats.push({ type: "Feature", properties: { k: "t", h: trunkH }, geometry: { type: "Polygon", coordinates: ring(p, Math.max(0.2, Math.min(0.5, r * 0.12))) } });
-        // The crown in three tiers, widest in the middle: a rounded tree,
-        // not a column, still only a few faces for the phone to draw.
-        var cb = trunkH * 0.85, ch = h - cb, tone = (Math.abs(Math.round(p[0] * 1e5 + p[1] * 1e5)) % 3);
-        [[cb, cb + ch * 0.28, 0.72], [cb + ch * 0.28, cb + ch * 0.72, 1], [cb + ch * 0.72, h, 0.62]].forEach((t) => {
-          feats.push({ type: "Feature", properties: { k: "c", b: t[0], h: t[1], v: tone }, geometry: { type: "Polygon", coordinates: ring(p, r * t[2]) } });
-        });
-      };
-      Object.keys(T).forEach((k) => (T[k].els || []).forEach((e) => {
-        if (feats.length > 16000) return;
-        if (e.type === "node" && e.lon != null) plant([e.lon, e.lat], e.tags);
-        else if (e.type === "way" && e.geometry && e.geometry.length > 1) {
-          var g = e.geometry.map((q) => [q.lon, q.lat]), carry = 0;
-          for (var i = 1; i < g.length; i++) {
-            var len = gpsDist(g[i - 1], g[i]), d = carry;
-            for (; d <= len; d += 9) { var f = len ? d / len : 0; plant([g[i - 1][0] + (g[i][0] - g[i - 1][0]) * f, g[i - 1][1] + (g[i][1] - g[i - 1][1]) * f], e.tags); }
-            carry = d - len;
-          }
-        }
-      }));
-      return { type: "FeatureCollection", features: feats };
+    // The woods' trees (TomTom's SDK): thousands of 3D shapes, heavy on a
+    // phone (enough to stop it): only when asked — « Arbres des bois » in the
+    // settings, or `sdk_trees: true` on a card without settings.
+    sdkTreesOn() {
+      if (this.config.sdk_trees === false) return false;
+      return this.config.settings ? !!(this.look && Number(this.look.ts)) : this.config.sdk_trees === true;
     },
     publishAhead(now) {
       if (this.destLabel && (!this.labelAt || Date.now() - this.labelAt > 15000)) { this.labelAt = Date.now(); this.markerLabels(); }
@@ -10025,7 +9725,6 @@
       var offNow = best.dist > gpsTrust(this.accuracy, 25, 120, 45);
       this.drivenTo(R, along, !offNow);
       this.drawManeuvers(R, along);
-      if (this.roadRouteOn() && (!this.rrAt || now - this.rrAt > 1500)) { this.rrAt = now; this.roadPaint(R, along); }
       // Off the route for a few seconds, driving: a new one from here.
       // Off the route only after 5 seconds farther than the GPS may be off,
       // driving: a parallel street seen for a moment is not a new route.
@@ -13258,10 +12957,10 @@
   // then only what differs from it. The phone's map (igor-gps-card
   // `settings:`) applies it live; igor-settings-card `map3d:` edits it.
   var MAP3D_PRESETS = {
-    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, tf: "aucun", aa: "auto", bz: 15, rp: "xray", xo: 45, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
-    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { tf: "chaussee", aa: "auto", b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "xray", xo: 45, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max", ips: 60, cpt: 0 } },
-    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { tf: "aucun", aa: "auto", b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", xo: 45, rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
-    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { tf: "aucun", aa: "non", b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", xo: 45, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco", ips: 30, cpt: 0 } }
+    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, tf: "aucun", aa: "auto", bz: 15, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
+    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { tf: "tout", aa: "auto", b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max", ips: 60, cpt: 0 } },
+    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { tf: "aucun", aa: "auto", b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
+    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { tf: "aucun", aa: "non", b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco", ips: 30, cpt: 0 } }
   };
   // Each setting: key, tab, label, hint, kind (seg | sw | sl), choices or range.
   var MAP3D_ROWS = [
@@ -13273,23 +12972,20 @@
     ["sh", "Bâtiments", "Ombres portées", "0 : aucune", "sl", 0, 100, 10, "%"],
     ["rf", "Bâtiments", "Reflets du ciel", "", "sl", 0, 100, 10, "%"],
     ["bz", "Bâtiments", "Bâtiments dès le zoom", "plus haut : moins de calcul", "seg", [[14, "14"], [15, "15"], [16, "16"], [17, "17"]]],
-    ["rp", "Route & noms", "Place de la route", "« en transparence » : au sol, et devinée à travers les bâtiments qui la cachent ; « sous les noms » : le nom de la rue reste lisible", "seg", [["xray", "en transparence"], ["sol", "au sol"], ["noms", "sous les noms"], ["top", "par-dessus tout"]]],
-    ["xo", "Route & noms", "Route vue à travers les bâtiments", "avec « en transparence »", "sl", 15, 80, 5, "%"],
-    ["rw", "Route & noms", "Épaisseur", "« la chaussée » : la route prise, de sa vraie largeur", "seg", [["fine", "fine"], ["normale", "normale"], ["large", "large"], ["chaussee", "la chaussée"], ["route", "la route elle-même"]]],
+    ["rw", "Route & noms", "Épaisseur", "", "seg", [["fine", "petite"], ["normale", "moyenne"], ["large", "large"]]],
     ["rc", "Route & noms", "Couleur", "", "seg", [["bleu", "bleu"], ["cyan", "cyan"], ["violet", "violet"], ["jaune", "jaune"]]],
     ["md", "Route & noms", "Repère d'arrivée", "nom et heure d'arrivée au-dessus", "seg", [["epingle", "épingle"], ["balise", "balise"], ["anneau", "anneau au sol"], ["damier", "damier"], ["drapeau", "drapeau"]]],
     ["ms", "Route & noms", "Repère des étapes", "numérotées, couleur « après l'étape »", "seg", [["epingle", "épingle"], ["balise", "balise"], ["anneau", "anneau au sol"], ["damier", "damier"], ["drapeau", "drapeau"]]],
     ["rc2", "Route & noms", "Couleur après l'étape", "la suite du trajet, comme Waze", "seg", [["cyan", "cyan"], ["bleu", "bleu"], ["violet", "violet"], ["gris", "gris"]]],
     ["gl", "Route & noms", "Halo lumineux", "", "sl", 0, 100, 5, "%"],
     ["tr", "Route & noms", "Trajet déjà parcouru", "", "seg", [["cache", "caché"], ["pale", "pâle"], ["visible", "visible"]]],
-    ["tf", "Route & noms", "Trafic sur toute la carte", "« sur la chaussée » : chaque route teintée de son trafic, avec un halo ; « aucun » : seulement sur votre itinéraire", "seg", [["aucun", "aucun"], ["chaussee", "sur la chaussée"], ["tout", "traits TomTom"]]],
+    ["tf", "Route & noms", "Trafic sur toute la carte", "« aucun » : seulement sur votre itinéraire", "seg", [["aucun", "aucun"], ["tout", "traits TomTom"]]],
     ["jm", "Route & noms", "Bouchons", "", "seg", [["degrade", "en dégradé"], ["traits", "en traits"], ["aucun", "aucun"]]],
     ["rl", "Route & noms", "Noms cachés par les bâtiments", "comme dans la réalité", "sw"],
     ["ns", "Route & noms", "Taille des noms de rues", "", "seg", [["petite", "petite"], ["normale", "normale"], ["grande", "grande"]]],
     ["poi", "Route & noms", "Lieux TomTom", "commerces, parkings, gares", "seg", [["aucun", "aucun"], ["tous", "tous"]]],
     ["sf", "Sol & nature", "Sol texturé", "eau, herbe, champs", "sw"],
-    ["ts", "Sol & nature", "Arbres des bois", "ceux du SDK de TomTom", "sw"],
-    ["to", "Sol & nature", "Arbres de rue", "les vrais, d'OpenStreetMap", "sw"],
+    ["ts", "Sol & nature", "Arbres des bois", "ceux du SDK de TomTom · très lourd, déconseillé sur téléphone", "sw"],
     ["wd", "Sol & nature", "Vent", "feuilles et eau", "seg", [[0, "calme"], [0.5, "léger"], [1, "fort"]]],
     ["te", "Sol & nature", "Relief", "collines et vallées", "sw"],
     ["hs", "Sol & nature", "Ombrage des collines", "", "sw"],
@@ -13315,6 +13011,13 @@
       if (k === "p") { if (MAP3D_PRESETS[v]) out.p = v; return; }
       out.o[k] = v !== "" && isFinite(Number(v)) ? Number(v) : v;
     });
+    // Settings saved by an older version, brought to today's choices: the
+    // thickness is small, medium or large; the map's traffic, TomTom's lines
+    // or none; the route's place and the street trees are no longer chosen.
+    var o = out.o;
+    if (o.rw != null && ["fine", "normale", "large"].indexOf(o.rw) < 0) o.rw = "normale";
+    if (o.tf === "chaussee") o.tf = "tout";
+    delete o.rp; delete o.xo; delete o.to;
     return out;
   }
   function map3dResolve(str) { var x = map3dParse(str); return Object.assign({ p: x.p }, MAP3D_PRESETS[x.p].v, x.o); }
@@ -13361,12 +13064,6 @@
         ".m3t { display: flex; gap: 6px; padding: 0 14px; flex: none; border-bottom: 1px solid var(--acc, #59d0e0); overflow-x: auto; } .m3tt { padding: 10px 14px; border: 1px solid var(--line); border-bottom: none; background: none; color: var(--dim); font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; } .m3tt.on { color: var(--acc, #59d0e0); border-color: var(--acc, #59d0e0); background: #111418; }",
         ".m3b { flex: 1; min-height: 0; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; align-content: start; padding: 4px 16px 10px; }",
         "@media (max-width: 900px) { .m3b { grid-template-columns: 1fr; } }",
-        // A phone held upright: the window fills the screen, the presets wrap, each
-        // setting has its choices under its name, across the whole width.
-        "@media (max-width: 600px) { .ov { padding-top: 0; } .dl.m3 { width: 100vw; height: 100vh; max-height: 100vh; border: 0; } .m3s { display: none; }" +
-        " .m3p { flex-wrap: wrap; } .m3pp { flex: 1 1 30%; } .m3pp small { display: none; }" +
-        " .m3r { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; } .m3r .sw { justify-self: start; }" +
-        " .m3g { justify-content: flex-start; } .m3g button { flex: 1 1 auto; } .m3l { width: 100%; grid-template-columns: 48px minmax(0, 1fr) 48px; } }",
         ".m3r { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #1a1e24; font-size: 15px; min-height: 52px; } .m3r small { display: block; color: var(--dim); font-size: 11px; margin-top: 3px; }",
         ".m3g { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; } .m3g button { min-height: 40px; padding: 0 11px; border: 1px solid var(--line); background: none; color: var(--dim); font: inherit; font-size: 13px; cursor: pointer; } .m3g button.on { background: #123c44; color: var(--acc, #59d0e0); border-color: var(--acc, #59d0e0); }",
         ".m3l { display: grid; grid-template-columns: 40px 62px 40px; grid-template-rows: auto 18px; align-items: center; gap: 2px 6px; width: 170px; flex: none; } .m3l button { height: 40px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; font-size: 20px; cursor: pointer; } .m3l span { text-align: center; font-size: 14px; }",
@@ -13381,7 +13078,18 @@
         ".r input:focus { outline: none; border-color: var(--acc, #59d0e0); } .r .ok { font-size: 12px; color: " + CAR_OK + "; }",
         ".sw { justify-self: start; min-width: 92px; min-height: 44px; border: 1px solid var(--line); background: var(--card); color: var(--dim); font: inherit; font-size: 14px; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }",
         ".sw.on { border-color: " + CAR_OK + "; color: " + CAR_OK + "; }",
-        "button.b.close { min-height: 44px; padding: 0 18px; flex-direction: row; }"
+        "button.b.close { min-height: 44px; padding: 0 18px; flex-direction: row; }",
+        // A phone held upright: the window fills the screen, the presets wrap, each
+        // setting has its choices under its name, across the whole width. After
+        // the rules above (written before them, they were overridden: the rows
+        // stayed side by side and their choices ran over the next rows).
+        "@media (max-width: 600px) { .ov { padding-top: 0; } .dl.m3 { width: 100vw; height: 100vh; max-height: 100vh; border: 0; } .m3s { display: none; }" +
+        " .m3p { flex-wrap: wrap; } .m3pp { flex: 1 1 30%; } .m3pp small { display: none; }" +
+        // One column: the rows one under the other, each as tall as its choices
+        // (as a grid, every row got the same height and the choices ran over).
+        " .m3b { display: block; }" +
+        " .m3r { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; } .m3r .sw { justify-self: start; }" +
+        " .m3g { justify-content: flex-start; } .m3g button { flex: 1 1 auto; } .m3l { width: 100%; grid-template-columns: 48px minmax(0, 1fr) 48px; } }"
       ].join("\n"));
       var card = el("ha-card", "", this.shadowRoot);
       if (this.config.window_only) { card.style.display = "none"; this.tiles = []; return; }
