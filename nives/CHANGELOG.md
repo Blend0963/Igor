@@ -1,3 +1,7 @@
+## 0.59.2 — La conversion Tasker reconnaît telegram_bot.send_message
+
+- `nives.tasker_convert` reconnaît aussi la forme qu'écrit l'éditeur de Home Assistant : `telegram_bot.send_message` avec `entity_id: notify.ha_command` sous `data:` (et `parse_mode`, `metadata`) ; elle devient `script.tasker_envoyer` avec le même message. Les envois vers une autre conversation (photos d'intrusion…) ne sont pas touchés.
+
 ## 0.59.1 — La météo sans position, l'autoradio à jour
 
 - `weather.igor_voiture` n'est plus « indisponible » quand la voiture ne donne pas sa position (GPSLogger arrêté) : sa dernière position connue, sinon la maison (attribut `position` : voiture, dernière position connue ou maison). Créée dès qu'une clé HERE est donnée.
