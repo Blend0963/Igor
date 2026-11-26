@@ -5432,7 +5432,7 @@
   //   sdk_theme: auto                       # auto: light driving style by day, dark as soon as the sun is low (sun.sun); day | night: held
   //   night_elevation: 3                    # the sun's height (°) under which the map turns to night
   //   sdk_style: streetDarkDriving          # one style for good (streetLight, streetDark, streetLightDriving, streetDarkDriving, monoDark…)
-  //   sdk_trees: false                      # no 3D trees in the woods and parks (the SDK's)
+  //   sdk_trees: true                       # 3D trees in the woods and parks (the SDK's); off by default (heavy), with settings: « Arbres des bois »
   //   buildings_opacity: 0.85               # the SDK's buildings, 0 (invisible) to 1 (solid); the route is drawn over them anyway
   //   settings: input_text.igor_carte      # the look set from the head unit (igor-settings-card map3d:), applied live: presets, buildings, route, names, ground, light, camera
   //   marker_dest: epingle, marker_stop: epingle    # the arrival's and the stops' marks: epingle, balise, anneau, damier, drapeau
@@ -5442,7 +5442,7 @@
   //   sdk_buildings: { … }                  # any other knob of TomTom's Buildings3D (preset, shadows, walls.color…)
   //   terrain: false                        # a flat ground (no hills, no valleys)
   //   sdk_surfaces: false                   # no textured surfaces (lighter); or its knobs, e.g. { wind: { speedFactor: 1 } }
-  //   trees: false                          # no 3D trees (OpenStreetMap's real trees, natural=tree and tree_row)
+  //   trees: true                           # 3D street trees (OpenStreetMap's, natural=tree and tree_row); off by default (heavy), with settings: « Arbres de rue »
   //   voice_to: input_text.car_voice        # what the guidance says goes there (« ms|kind|text »), said by the head unit's igor-guide-card
   //   publish_ahead: input_text.car_ahead   # the radar within reach and what lies ahead on the route, for igor-drive-card
   //   publish_routes: input_text.car_routes  # the routes offered, for the head unit to choose (route_choice: input_text.car_choice brings the answer)
@@ -5518,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.55.0";
+  var GPS_CARD_VERSION = "0.55.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7181,11 +7181,16 @@
         return x == null ? x : ["*", x, k];
       };
       tryIt(() => { if (this.tt3d && this.tt3d.applyConfig) this.tt3d.applyConfig(this.buildingsLook()); });
-      tryIt(() => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ visible: !!Number(L.sf), trees: { visible: !!Number(L.ts) && this.config.sdk_trees !== false }, wind: { speedFactor: Number(L.wd) || 0 } }); });
+      tryIt(() => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ visible: !!Number(L.sf), trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: Number(L.wd) || 0 } }); });
       tryIt(() => { var T = this.ttTerrain; if (T && T.setElevationVisible) { T.setElevationVisible(!!Number(L.te)); T.setHillshadeVisible(!!Number(L.hs)); } });
       tryIt(() => {
-        if (Number(L.to) && !map.getSource("igor-trees")) this.treesSetup(map);
-        ["igor-trunks", "igor-crowns"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", Number(L.to) ? "visible" : "none"); });
+        if (this.treesOn() && !map.getSource("igor-trees")) this.treesSetup(map);
+        if (!this.treesOn()) {
+          // Off: the shapes go (not just hidden), the memory with them.
+          ["igor-trunks", "igor-crowns"].forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); });
+          if (map.getSource("igor-trees")) map.removeSource("igor-trees");
+          this.treeTiles = {};
+        }
       });
       tryIt(() => {
         var pal = this.routePal(), k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1, real = L.rw === "chaussee" || L.rw === "route";
@@ -7280,7 +7285,7 @@
         // grows them. The woods are the map's own; where each tree stands
         // in them is the SDK's (nobody maps a wood tree by tree).
         if (!this.ttSurf && this.config.sdk_surfaces !== false) {
-          try { this.ttSurf = new lm.GLSurfaces(this.tt, Object.assign({ trees: { visible: this.config.sdk_trees !== false }, wind: { speedFactor: 0 } }, typeof this.config.sdk_surfaces === "object" ? this.config.sdk_surfaces : {})); } catch (e) { why.push("surfaces : " + (e && e.message)); }
+          try { this.ttSurf = new lm.GLSurfaces(this.tt, Object.assign({ trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: 0 } }, typeof this.config.sdk_surfaces === "object" ? this.config.sdk_surfaces : {})); } catch (e) { why.push("surfaces : " + (e && e.message)); }
         }
         // The ground in relief (hills, valleys) with its shading; the
         // buildings, the trees and the route stand on it. `terrain: false`: flat.
@@ -7293,7 +7298,7 @@
         this.routeOnTop(map);
         this.applyLook();
         if (!this.routeTopWatch) { this.routeTopWatch = true; map.on("styledata", () => this.routeOnTop(map)); }
-        this.diag3d = "SDK TomTom (" + this.ttStyle + ") : " + [this.tt3d ? "bâtiments 3D" : "", this.ttSurf ? "surfaces" + (this.config.sdk_trees !== false ? " et arbres des bois" : "") : "", this.config.terrain !== false ? "relief" : ""].filter(Boolean).join(" + ") + (why.length ? " · " + why.join(" · ") : "");
+        this.diag3d = "SDK TomTom (" + this.ttStyle + ") : " + [this.tt3d ? "bâtiments 3D" : "", this.ttSurf ? "surfaces" + (this.sdkTreesOn() ? " et arbres des bois" : "") : "", this.config.terrain !== false ? "relief" : ""].filter(Boolean).join(" + ") + (why.length ? " · " + why.join(" · ") : "");
         if (this.config.debug) this.message("relief : " + this.diag3d);
         return;
       }
@@ -9673,9 +9678,10 @@
       this.fluidOn = true;
       var frames = 0, slow = 0, last = performance.now(), step = 0;
       var steps = [
-        ["ombres et reflets retirés", () => { if (this.tt3d && this.tt3d.updateConfig) this.tt3d.updateConfig({ shadows: { visible: false }, reflections: { intensity: 0 } }); }],
-        ["arbres de rue retirés", () => { ["igor-trunks", "igor-crowns"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none"); }); }],
+        // The trees first: the heaviest of all (enough to stop a phone).
         ["arbres des bois retirés", () => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ trees: { visible: false } }); }],
+        ["arbres de rue retirés", () => { ["igor-trunks", "igor-crowns"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none"); }); }],
+        ["ombres et reflets retirés", () => { if (this.tt3d && this.tt3d.updateConfig) this.tt3d.updateConfig({ shadows: { visible: false }, reflections: { intensity: 0 } }); }],
         ["relief du sol retiré", () => { if (this.ttTerrain && this.ttTerrain.setElevationVisible) this.ttTerrain.setElevationVisible(false); }],
         ["textures retirées", () => { if (this.ttSurf && this.ttSurf.remove) { try { this.ttSurf.remove(); } catch (e) { /* kept */ } this.ttSurf = null; } }],
         ["netteté un peu réduite", () => { var d = window.devicePixelRatio || 1; if (map.setPixelRatio && d > 1.5) { map.setPixelRatio(Math.max(1.5, Math.min(d, 2) * 0.8)); this.pxNow = null; } }]
@@ -9725,7 +9731,18 @@
       this.ttStyle = want; this.themeBusy = true;
       Promise.resolve().then(() => this.tt.setStyle(want)).catch(() => {}).then(() => { this.themeBusy = false; });
     },
-    treesOn() { return this.config.trees !== false && !(this.look && !Number(this.look.to)) && this.config.basemap === "tomtom-3d" && !this.offlineReady; },
+    // Street trees: thousands of 3D shapes, heavy on a phone (enough to stop
+    // it): only when asked — « Arbres de rue » in the settings, or `trees: true`
+    // on a card without settings. Not before the settings are read.
+    treesOn() {
+      var asked = this.config.settings ? !!(this.look && Number(this.look.to)) : this.config.trees === true;
+      return asked && this.config.trees !== false && this.config.basemap === "tomtom-3d" && !this.offlineReady;
+    },
+    // The woods' trees (TomTom's SDK): the same, only when asked.
+    sdkTreesOn() {
+      if (this.config.sdk_trees === false) return false;
+      return this.config.settings ? !!(this.look && Number(this.look.ts)) : this.config.sdk_trees === true;
+    },
     treesSetup(map) {
       if (!this.treesOn() || !map || map.getSource("igor-trees")) return;
       var layers = map.getStyle().layers || [], first = layers.find((l) => l.type === "symbol");
@@ -13258,7 +13275,7 @@
   // then only what differs from it. The phone's map (igor-gps-card
   // `settings:`) applies it live; igor-settings-card `map3d:` edits it.
   var MAP3D_PRESETS = {
-    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, tf: "aucun", aa: "auto", bz: 15, rp: "xray", xo: 45, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 1, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
+    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, tf: "aucun", aa: "auto", bz: 15, rp: "xray", xo: 45, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
     realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { tf: "chaussee", aa: "auto", b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rp: "xray", xo: 45, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, to: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max", ips: 60, cpt: 0 } },
     lisible: { name: "Lisible", sub: "route et noms avant tout", v: { tf: "aucun", aa: "auto", b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rp: "top", xo: 45, rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, to: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
     economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { tf: "aucun", aa: "non", b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rp: "noms", xo: 45, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, to: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco", ips: 30, cpt: 0 } }
@@ -13288,8 +13305,8 @@
     ["ns", "Route & noms", "Taille des noms de rues", "", "seg", [["petite", "petite"], ["normale", "normale"], ["grande", "grande"]]],
     ["poi", "Route & noms", "Lieux TomTom", "commerces, parkings, gares", "seg", [["aucun", "aucun"], ["tous", "tous"]]],
     ["sf", "Sol & nature", "Sol texturé", "eau, herbe, champs", "sw"],
-    ["ts", "Sol & nature", "Arbres des bois", "ceux du SDK de TomTom", "sw"],
-    ["to", "Sol & nature", "Arbres de rue", "les vrais, d'OpenStreetMap", "sw"],
+    ["ts", "Sol & nature", "Arbres des bois", "ceux du SDK de TomTom · très lourd, déconseillé sur téléphone", "sw"],
+    ["to", "Sol & nature", "Arbres de rue", "les vrais, d'OpenStreetMap · très lourd, déconseillé sur téléphone", "sw"],
     ["wd", "Sol & nature", "Vent", "feuilles et eau", "seg", [[0, "calme"], [0.5, "léger"], [1, "fort"]]],
     ["te", "Sol & nature", "Relief", "collines et vallées", "sw"],
     ["hs", "Sol & nature", "Ombrage des collines", "", "sw"],

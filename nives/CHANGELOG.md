@@ -1,3 +1,10 @@
+## 0.55.1 — Les arbres ne font plus tomber le téléphone
+
+- Les arbres 3D (des milliers de formes) faisaient ramer la carte au point d'arrêter le téléphone (écran noir, autres applications fermées). Deux défauts : les **arbres des bois** (SDK TomTom) étaient créés allumés au démarrage, avant la lecture des réglages ; les **arbres de rue** (OpenStreetMap) étaient téléchargés et construits même réglés sur « non ».
+- Désormais les deux ne sont créés que si les réglages les demandent (Réglages → Carte 3D → Sol & nature), et rien avant la lecture des réglages. Éteints, les arbres de rue sont retirés de la mémoire, pas seulement cachés. « Épuré » ne met plus les arbres des bois. Les deux réglages portent la mention « très lourd, déconseillé sur téléphone ».
+- Mode fluide : les arbres partent en premier (avant les ombres).
+- Sans réglages (`settings`), `sdk_trees: true` et `trees: true` les demandent ; par défaut : aucun.
+
 ## 0.55.0 — Le tracé de TomTom Orbis, la carte affichée
 
 - `nives.route` : après la route classique de TomTom (instructions, voix, heure d'arrivée, bouchons, limitations, voies, péages), Igor redemande **le même chemin à TomTom Orbis** — la carte que l'on voit — en lui donnant la route classique comme points d'appui. Le **tracé dessiné** devient celui d'Orbis : il suit les routes de la carte (la bonne chaussée d'un boulevard, les bretelles, les ronds-points) comme sur Waze ou un vrai GPS TomTom. Les bouchons, limitations, voies, péages, tunnels, ferries et zones à faibles émissions de la route classique y sont reportés à leur place ; les virages et les flèches se placent sur le nouveau tracé ; tout le reste vient de la route classique.
