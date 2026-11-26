@@ -1,3 +1,7 @@
+## 0.58.1 — Plus de « péage ? »
+
+- Choix de l'itinéraire : quand HERE ne donne pas le prix (pas de clé, plafond du jour atteint, pas de réponse), le péage est **estimé** au lieu d'un point d'interrogation : la longueur des sections à péage × 0,10 €/km (la moyenne des autoroutes françaises pour une voiture), affiché « péage ≈ … » et le total « ≈ … ». Un itinéraire sans section à péage dit toujours « sans péage », sans rien demander.
+
 ## 0.58.0 — HERE : prix des péages, coût des itinéraires, secours de TomTom
 
 - Options d'Igor : **clé HERE** (gardée dans Home Assistant, jamais réaffichée ; « - » l'efface) et **plafond de demandes HERE par jour** (150 par défaut, 0 : jamais), pour ne jamais dépasser la part gratuite sans le savoir.

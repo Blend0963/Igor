@@ -5518,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.58.0";
+  var GPS_CARD_VERSION = "0.58.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -9377,8 +9377,16 @@
         if (ps.length) price = ps.reduce((a, b) => a + b, 0) / ps.length;
       }
       var litres = (R0.distance || 0) / 1000 * l100 / 100, fuel = price != null ? litres * price : null;
-      var hasToll = !!(R0.tolls && R0.tolls.length), toll = R0.toll_eur != null ? Number(R0.toll_eur) : hasToll ? null : 0;
-      return { litres: litres, price: price, fuel: fuel, toll: toll, total: fuel != null && toll != null ? fuel + toll : null };
+      var hasToll = !!(R0.tolls && R0.tolls.length), toll = R0.toll_eur != null ? Number(R0.toll_eur) : hasToll ? null : 0, approx = false;
+      // No price from HERE (no key, the day's cap, no answer): an estimate
+      // rather than a question mark — the toll stretches' length at the
+      // French motorways' average for a car (about 0.10 € a km), marked « ≈ ».
+      if (toll == null && R0.coords && R0.coords.length > 1) {
+        var km = 0, n = R0.coords.length - 1;
+        R0.tolls.forEach((sp) => { for (var i = Math.max(1, sp[0] + 1); i <= Math.min(n, sp[1]); i++) km += gpsDist(R0.coords[i - 1], R0.coords[i]) / 1000; });
+        if (km > 0.5) { toll = Math.max(0.5, Math.round(km * 0.10 * 2) / 2); approx = true; }
+      }
+      return { litres: litres, price: price, fuel: fuel, toll: toll, approx: approx, total: fuel != null && toll != null ? fuel + toll : null };
     },
     // Every way to choose from: the fastest, the shortest, without
     // motorways, without tolls, without the low-emission zones (the ZFE a
@@ -9453,14 +9461,14 @@
         if (C && (C.toll != null || C.fuel != null)) {
           var cs = document.createElement("span"); cs.className = "cost";
           var parts = [];
-          parts.push(C.toll == null ? "péage ?" : C.toll ? "péage " + eur(C.toll) : "sans péage");
+          parts.push(C.toll == null ? "avec péage" : C.toll ? "péage " + (C.approx ? "≈ " : "") + eur(C.toll) : "sans péage");
           if (C.fuel != null) parts.push("gazole " + eur(C.fuel));
           cs.innerHTML = "";
           var em = document.createElement("em"); em.textContent = parts[0]; cs.appendChild(em);
           if (parts[1]) cs.appendChild(document.createTextNode(" + " + parts[1]));
           if (C.total != null) {
             cs.appendChild(document.createTextNode(" = "));
-            var st = document.createElement("strong"); st.textContent = eur(C.total); cs.appendChild(st);
+            var st = document.createElement("strong"); st.textContent = (C.approx ? "≈ " : "") + eur(C.total); cs.appendChild(st);
             if (i && C0 && C0.total != null && Math.abs(C.total - C0.total) >= 0.5) cs.appendChild(document.createTextNode(" (" + (C.total < C0.total ? "−" : "+") + eur(Math.abs(C.total - C0.total)) + ")"));
           }
           mid.appendChild(cs);
