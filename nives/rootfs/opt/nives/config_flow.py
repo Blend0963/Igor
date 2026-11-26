@@ -29,6 +29,8 @@ from .const import (
     CONF_NEW_CODE,
     CONF_CODE_HASH,
     CONF_TRAFFIC_KEY,
+    CONF_HERE_KEY,
+    CONF_HERE_DAILY,
     CONF_ALLOWED_USERS,
     CONF_CAR_TRACKER,
     CONF_CAR_DESTINATION,
@@ -225,6 +227,14 @@ class OptionsFlow(config_entries.OptionsFlow):
                     key = str(current.get(CONF_TRAFFIC_KEY) or "")
                 if key:
                     user_input[CONF_TRAFFIC_KEY] = key
+                # The HERE key, kept the same way (never shown back).
+                hk = str(user_input.pop(CONF_HERE_KEY, "") or "").strip()
+                if hk == "-":
+                    hk = ""
+                elif not hk:
+                    hk = str(current.get(CONF_HERE_KEY) or "")
+                if hk:
+                    user_input[CONF_HERE_KEY] = hk
                 return self.async_create_entry(title="", data=user_input)
 
         # Home Assistant's people, to pick who Igor still answers while the
@@ -293,6 +303,12 @@ class OptionsFlow(config_entries.OptionsFlow):
                     ),
                     vol.Optional(CONF_TRAFFIC_KEY, default=""): selector.TextSelector(
                         selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+                    ),
+                    vol.Optional(CONF_HERE_KEY, default=""): selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+                    ),
+                    vol.Optional(CONF_HERE_DAILY, default=int(current.get(CONF_HERE_DAILY) or 150)): selector.NumberSelector(
+                        selector.NumberSelectorConfig(min=0, max=2000, step=10, mode=selector.NumberSelectorMode.BOX)
                     ),
                 }
             ),

@@ -5397,6 +5397,8 @@
   //   fallback_entity: device_tracker.phone # a second position (the car's own): carries the arrow while the first is silent
   //   fallback_after: 4                     # seconds of silence of the first before the second carries the arrow
   //   speed_entity: sensor.car_speed        # km/h from the car (OBD), better than the GPS's
+  //   consumption: input_number.car_l100    # L/100 km, for each route's fuel cost (else 6.5)
+  //   fuel_price: input_number.fuel_price   # €/L (else the gazole's average around the car)
   //   speed_limit_entity: sensor.speed_limit  # the limit sign, top right
   //   show_speed: true                      # false: no speed box on the map
   //   zoom: 16
@@ -5516,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.57.1";
+  var GPS_CARD_VERSION = "0.58.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6735,6 +6737,8 @@
         // The routes to choose from, and the lanes to take.
         ".rpanel .ropt { gap: 14px; } .rpanel .ropt.sel { border-color: #59d0e0; } .rpanel .ropt .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }" +
         ".rpanel .ropt b { font-family: 'Chakra Petch', " + MONO + "; font-size: 24px; font-weight: 500; } .rpanel .ropt .r { margin-left: auto; text-align: right; font-size: 15px; }" +
+        // Each route's cost: tolls (HERE) + fuel, and the total.
+        ".rpanel .ropt .cost { display: block; margin-top: 3px; font-size: 12px; color: #c9ccd1; white-space: normal; overflow-wrap: anywhere; } .rpanel .ropt > div:not(.r) { min-width: 0; flex: 1 1 auto; } .rpanel .ropt .cost em { font-style: normal; color: #c792ea; } .rpanel .ropt .cost strong { font-weight: 500; color: #e9e4da; }" +
         ".rpanel .seg { display: flex; gap: 8px; margin-top: auto; } .rpanel .seg button { flex: 1; justify-content: center; font-size: 13px; padding: 10px 6px; } .rpanel .seg button.on { border-color: #59d0e0; color: #59d0e0; }" +
         ".nav .l { display: flex; gap: 4px; margin-top: 6px; } .nav .l[hidden] { display: none; } .nav .l span { min-width: 26px; height: 30px; padding: 0 3px; display: grid; place-items: center; border: 1px solid #3d454e; border-radius: 2px; color: #5a5f66; font-size: 18px; line-height: 1; }" +
         ".nav .l span.go { border-color: #59d0e0; color: #07080a; background: #59d0e0; }" +
@@ -9360,6 +9364,22 @@
       // Debug: where the line comes from (Orbis, the map shown, or the classic routing).
       if (this.config.debug) this.message("tracé : " + (R0.geometry === "orbis" ? "TomTom Orbis (comme la carte)" : "TomTom classique"));
     },
+    // A route's cost: its tolls (HERE's price, when a HERE key is set:
+    // `toll_eur`) and its fuel (length × the car's L/100 × the gazole's price:
+    // `fuel_price`, else the average of the stations around), and the total.
+    // Unknown parts stay unknown: « péage ? », no figure invented.
+    routeCost(R0) {
+      if (!R0) return null;
+      var h = this._hass, num = (id) => { var e = id && h && h.states[id]; var v = e ? parseFloat(e.state) : NaN; return isFinite(v) && v > 0 ? v : null; };
+      var l100 = num(this.config.consumption) || 6.5, price = num(this.config.fuel_price);
+      if (price == null) {
+        var ps = (this.fluxFuel || []).map((q) => (q.prices || {}).gazole).filter((v) => isFinite(v) && v > 0.5);
+        if (ps.length) price = ps.reduce((a, b) => a + b, 0) / ps.length;
+      }
+      var litres = (R0.distance || 0) / 1000 * l100 / 100, fuel = price != null ? litres * price : null;
+      var hasToll = !!(R0.tolls && R0.tolls.length), toll = R0.toll_eur != null ? Number(R0.toll_eur) : hasToll ? null : 0;
+      return { litres: litres, price: price, fuel: fuel, toll: toll, total: fuel != null && toll != null ? fuel + toll : null };
+    },
     // Every way to choose from: the fastest, the shortest, without
     // motorways, without tolls, without the low-emission zones (the ZFE a
     // vignette may not enter) - the whole board, each time a destination is
@@ -9406,7 +9426,9 @@
       this.routeOpts = { opts: opts, pick: pick };
       this.publishRoutes(Date.now() + "|" + opts.map((o) => {
         var R0 = o.route;
-        return [Math.round(R0.duration / 60), gpsMetres(R0.distance), R0.delay >= 60 ? Math.round(R0.delay / 60) : 0, String(o.label).replace(/[~;|]/g, " "), R0.tolls && R0.tolls.length ? 1 : 0, R0.lez && R0.lez.length ? 1 : 0].join("~");
+        var C = this.routeCost(R0);
+        return [Math.round(R0.duration / 60), gpsMetres(R0.distance), R0.delay >= 60 ? Math.round(R0.delay / 60) : 0, String(o.label).replace(/[~;|]/g, " "), R0.tolls && R0.tolls.length ? 1 : 0, R0.lez && R0.lez.length ? 1 : 0,
+          C && C.toll != null ? C.toll.toFixed(2) : "", C && C.total != null ? C.total.toFixed(2) : ""].join("~");
       }).join(";"));
       var $ = this.$, list = $("rlist");
       list.innerHTML = "";
@@ -9426,6 +9448,23 @@
         r.appendChild(document.createTextNode(gpsMetres(R0.distance)));
         var tr = document.createElement("small"); tr.textContent = R0.delay >= 60 ? "+" + Math.round(R0.delay / 60) + " min de bouchons" : "fluide"; tr.style.color = R0.delay >= 60 ? "#f08c1a" : "#5cc28f"; r.appendChild(tr);
         b.appendChild(r);
+        // The cost under the time: tolls + gazole = total (and the gap to the first).
+        var C = this.routeCost(R0), C0 = this.routeCost(opts[0].route), eur = (v) => v.toFixed(2).replace(".", ",") + " €";
+        if (C && (C.toll != null || C.fuel != null)) {
+          var cs = document.createElement("span"); cs.className = "cost";
+          var parts = [];
+          parts.push(C.toll == null ? "péage ?" : C.toll ? "péage " + eur(C.toll) : "sans péage");
+          if (C.fuel != null) parts.push("gazole " + eur(C.fuel));
+          cs.innerHTML = "";
+          var em = document.createElement("em"); em.textContent = parts[0]; cs.appendChild(em);
+          if (parts[1]) cs.appendChild(document.createTextNode(" + " + parts[1]));
+          if (C.total != null) {
+            cs.appendChild(document.createTextNode(" = "));
+            var st = document.createElement("strong"); st.textContent = eur(C.total); cs.appendChild(st);
+            if (i && C0 && C0.total != null && Math.abs(C.total - C0.total) >= 0.5) cs.appendChild(document.createTextNode(" (" + (C.total < C0.total ? "−" : "+") + eur(Math.abs(C.total - C0.total)) + ")"));
+          }
+          mid.appendChild(cs);
+        }
         b.addEventListener("click", () => pick(o));
         list.appendChild(b);
       });
@@ -12067,7 +12106,7 @@
         var t = mins >= 60 ? Math.floor(mins / 60) + " h " + String(mins % 60).padStart(2, "0") : mins + " min";
         var it = el("div", "it", this.findList), l = el("div", "", it);
         var big = el("div", "", l, t); big.style.fontSize = "24px";
-        el("small", "", l, [p[3], p[1], p[4] === "1" ? "péage" : "", p[5] === "1" ? "ZFE" : ""].filter(Boolean).join(" · "));
+        el("small", "", l, [p[3], p[1], p[6] ? "péage " + Number(p[6]).toFixed(2).replace(".", ",") + " €" : p[4] === "1" ? "péage" : "", p[5] === "1" ? "ZFE" : "", p[7] ? "total " + Number(p[7]).toFixed(2).replace(".", ",") + " €" : ""].filter(Boolean).join(" · "));
         var r = el("span", "r", it, jam ? "+" + jam + " min de bouchons" : "fluide"); r.style.color = jam ? CAR_WARN : CAR_OK;
         if (!i) it.style.boxShadow = "inset 3px 0 var(--acc)";
         it.addEventListener("click", () => {
@@ -12586,7 +12625,7 @@
         var p = x.split("~"), mins = Number(p[0]) || 0, jam = Number(p[2]) || 0;
         var it = el("div", "rt" + (i ? "" : " first"), list);
         el("b", "", it, mins >= 60 ? Math.floor(mins / 60) + " h " + String(mins % 60).padStart(2, "0") : mins + " min");
-        var l = el("div", "l", it); el("div", "", l, p[3] || "itinéraire " + (i + 1)); el("small", "", l, [p[1], p[4] === "1" ? "péage" : "", p[5] === "1" ? "ZFE" : ""].filter(Boolean).join(" · "));
+        var l = el("div", "l", it); el("div", "", l, p[3] || "itinéraire " + (i + 1)); el("small", "", l, [p[1], p[6] ? "péage " + Number(p[6]).toFixed(2).replace(".", ",") + " €" : p[4] === "1" ? "péage" : "", p[5] === "1" ? "ZFE" : "", p[7] ? "total " + Number(p[7]).toFixed(2).replace(".", ",") + " €" : ""].filter(Boolean).join(" · "));
         var j = el("span", "j", it, jam ? "+" + jam + " min" : "fluide"); j.style.color = jam ? CAR_WARN : CAR_OK;
         it.addEventListener("click", () => {
           this.routesPicked = String(o.at);

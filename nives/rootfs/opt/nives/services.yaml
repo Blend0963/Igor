@@ -153,6 +153,9 @@ traffic:
           max: 50
 route:
   fields:
+    tolls:
+      selector:
+        boolean:
     from:
       required: true
       selector:
@@ -452,3 +455,55 @@ tasker_convert:
       default: script.tasker_envoyer
       selector:
         text:
+
+here_weather:
+  fields:
+    latitude:
+      required: true
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: any
+    longitude:
+      required: true
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any
+here_parking:
+  fields:
+    latitude:
+      required: true
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: any
+    longitude:
+      required: true
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any
+    limit:
+      selector:
+        number:
+          min: 1
+          max: 20
+here_check:
+  fields:
+    latitude:
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: any
+    longitude:
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any

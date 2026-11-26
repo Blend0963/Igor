@@ -1,3 +1,11 @@
+## 0.58.0 — HERE : prix des péages, coût des itinéraires, secours de TomTom
+
+- Options d'Igor : **clé HERE** (gardée dans Home Assistant, jamais réaffichée ; « - » l'efface) et **plafond de demandes HERE par jour** (150 par défaut, 0 : jamais), pour ne jamais dépasser la part gratuite sans le savoir.
+- `nives.route` : le **prix des péages** de chaque itinéraire (HERE, l'itinéraire tenu sur les mêmes routes par des points de passage), seulement quand TomTom y voit une section à péage, gardé 30 minutes (les recalculs toutes les 3 minutes ne redemandent rien). Option `tolls: false`.
+- **Secours** : sans réponse de TomTom (pas de clé, refus, silence), l'itinéraire vient de HERE (avec ses instructions en français et ses péages, sans les tronçons de bouchons), et les incidents de trafic aussi.
+- Nouvelles actions : `nives.here_weather` (la météo maintenant et les prochaines heures en un point), `nives.here_parking` (les parkings autour d'un point), `nives.here_check` (chaque service HERE essayé une fois avec la clé : ce qui répond, et le compte du jour).
+- Carte GPS, choix de l'itinéraire : sous chaque choix, **péage + gazole = total** (et l'écart avec le premier). Le gazole : longueur × `consumption` (L/100, sinon 6,5) × `fuel_price` (sinon la moyenne des stations autour). Un péage inconnu reste « péage ? ». L'autoradio (choix des itinéraires) affiche aussi le péage et le total.
+
 ## 0.57.1 — La recherche de stations répond de nouveau
 
 - « Stations » ne trouvait plus rien : la liste dépendait d'abord d'OpenStreetMap et d'OSRM (serveurs gratuits souvent saturés) ; le flux du ministère ne servait qu'aux prix. Les deux sont maintenant demandés en même temps, et la liste officielle des stations du ministère suffit seule : sur le trajet d'abord quand on est guidé (dans l'ordre où elles viennent), puis les plus proches. Chaque ligne donne le prix du gazole.
