@@ -307,7 +307,7 @@ class OptionsFlow(config_entries.OptionsFlow):
                     vol.Optional(CONF_HERE_KEY, default=""): selector.TextSelector(
                         selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
                     ),
-                    vol.Optional(CONF_HERE_DAILY, default=int(current.get(CONF_HERE_DAILY) or 150)): selector.NumberSelector(
+                    vol.Optional(CONF_HERE_DAILY, default=int(current.get(CONF_HERE_DAILY) or 300)): selector.NumberSelector(
                         selector.NumberSelectorConfig(min=0, max=2000, step=10, mode=selector.NumberSelectorMode.BOX)
                     ),
                 }

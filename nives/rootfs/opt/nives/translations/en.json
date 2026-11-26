@@ -65,8 +65,8 @@
           "car_destination": "The input_text the GPS card guides to (its `destination:`), such as input_text.voiture_destination, 120 characters.",
           "car_users": "Users who may use the car's services without being administrators: live traffic, routes, the GPS guidance Igor drives. Pick the head unit's account. Everything else stays for administrators.",
           "lock_threads": "Off (default): the thread panel always answers, whether the key is there or not; the key only locks Assist, the voice and the screens. On: the threads also refuse while the key is away, except for the users still answered.",
-          "here_key": "Optional. A HERE key (platform.here.com): the tolls' price of each route, and a backup when TomTom does not answer (route, traffic incidents), the weather and the car parks at the destination. Kept in Home Assistant only. Leave empty to keep the current key; a single dash (-) removes it.",
-          "here_daily": "At most this many HERE requests a day (all services together), so the free allowance is never passed unseen. 0: HERE never asked."
+          "here_key": "Optional. A HERE key (platform.here.com): the tolls' price of each route, the weather where the car is (weather.igor_voiture) and along the route, the car parks at the destination, and a backup when TomTom does not answer (route, traffic incidents). Kept in Home Assistant only. Leave empty to keep the current key; a single dash (-) removes it.",
+          "here_daily": "At most this many HERE requests a day (all services together), so the free allowance is never passed unseen. 300 by default; 0: HERE never asked."
         }
       }
     },
@@ -529,6 +529,16 @@
         "longitude": {
           "name": "Longitude",
           "description": "Where to test (Paris by default)."
+        }
+      }
+    },
+    "route_weather": {
+      "name": "Weather along a route (HERE)",
+      "description": "The weather at points of a route, each at the hour the car will pass it: what troubles the driving (rain, snow, ice, fog, storm, wind). With the HERE key in Igor's options.",
+      "fields": {
+        "points": {
+          "name": "Points",
+          "description": "[[latitude, longitude, passing time in epoch seconds], …], up to 12."
         }
       }
     }

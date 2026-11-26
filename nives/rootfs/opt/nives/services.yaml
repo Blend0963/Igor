@@ -507,3 +507,9 @@ here_check:
           min: -180
           max: 180
           step: any
+route_weather:
+  fields:
+    points:
+      required: true
+      selector:
+        object:

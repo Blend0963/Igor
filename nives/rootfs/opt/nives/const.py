@@ -193,6 +193,7 @@ SERVICE_ROUTE = "route"
 SERVICE_HERE_WEATHER = "here_weather"
 SERVICE_HERE_PARKING = "here_parking"
 SERVICE_HERE_CHECK = "here_check"
+SERVICE_HERE_ROUTE_WEATHER = "route_weather"
 # The car Igor guides (car.py): its position and the GPS card's destination.
 CONF_CAR_TRACKER = "car_tracker"
 CONF_CAR_DESTINATION = "car_destination"

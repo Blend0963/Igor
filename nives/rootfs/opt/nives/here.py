@@ -341,22 +341,100 @@ def _num(v: Any) -> float | None:
         return None
 
 
+def condition(icon: str, text: str, night: bool = False) -> str:
+    """HERE's icon and words → Home Assistant's weather condition."""
+    s = f"{icon} {text}".lower()
+    rules = (
+        (("tstorm", "thunder", "orage"), "lightning-rainy"),
+        (("sleet", "freezing", "grésil", "verglas", "ice"), "snowy-rainy"),
+        (("snow", "neige", "flurr"), "snowy"),
+        (("heavy_rain", "heavy rain", "forte pluie", "pluies fortes", "downpour"), "pouring"),
+        (("rain", "drizzle", "shower", "pluie", "averse", "bruine"), "rainy"),
+        (("fog", "haze", "mist", "brouillard", "brume"), "fog"),
+        (("wind", "venteux", "vent fort"), "windy"),
+        (("partly", "mostly_sunny", "mostly sunny", "few_cloud", "scattered", "éclaircie", "partiellement", "passages nuageux"), "partlycloudy"),
+        (("cloud", "overcast", "couvert", "nuage"), "cloudy"),
+        (("clear", "sunny", "soleil", "ensoleillé", "dégagé"), "clear-night" if night or "night" in s else "sunny"),
+    )
+    for words, cond in rules:
+        if any(w in s for w in words):
+            return cond
+    return "cloudy"
+
+
+def _one(o: dict) -> dict:
+    icon, text = str(o.get("iconName") or ""), str(o.get("description") or o.get("skyDesc") or "")
+    rain = _num(o.get("precipitation1H"))
+    if rain is None:
+        rain = _num(o.get("rainFall"))
+    vis = _num(o.get("visibility"))
+    return {
+        "time": str(o.get("time") or ""), "temp": _num(o.get("temperature")), "text": text[:60], "icon": icon,
+        "condition": condition(icon, text, bool(o.get("daylight") == "N")),
+        "rain_pct": _num(o.get("precipitationProbability")), "rain_mm": rain, "snow_cm": _num(o.get("snowFall")),
+        "wind_kmh": _num(o.get("windSpeed")), "gust_kmh": _num(o.get("windGust") if o.get("windGust") is not None else o.get("windGustSpeed")),
+        "humidity": _num(o.get("humidity")), "visibility_km": vis,
+    }
+
+
 def parse_weather(body: Any) -> dict | None:
-    """The observation now and the next hours → {now: {…}, hours: [{…}]}."""
+    """The observation now and the next hours → {now, hours, place}."""
     places = body.get("places") if isinstance(body, dict) else None
     if not places:
         return None
     pl = places[0] or {}
     obs = (pl.get("observations") or [{}])[0] or {}
-    def one(o: dict) -> dict:
-        return {"time": str(o.get("time") or ""), "temp": _num(o.get("temperature")),
-                "text": str(o.get("description") or o.get("skyDesc") or "")[:60],
-                "rain_pct": _num(o.get("precipitationProbability")), "wind_kmh": _num(o.get("windSpeed")),
-                "icon": str(o.get("iconName") or "")}
     hours = []
     for f in pl.get("hourlyForecasts") or []:
         for o in (f or {}).get("forecasts") or []:
-            hours.append(one(o))
+            if isinstance(o, dict):
+                hours.append(_one(o))
     if not obs and not hours:
         return None
-    return {"now": one(obs) if obs else None, "hours": hours[:12]}
+    place = ((obs.get("place") or {}).get("address") or {}) if obs else {}
+    return {"now": _one(obs) if obs else None, "hours": hours[:24], "place": str(place.get("city") or "")[:60]}
+
+
+def at_time(w: dict, epoch_s: float) -> dict | None:
+    """The forecast hour nearest a moment (the observation within the next half hour)."""
+    import datetime as _dt
+
+    if not w:
+        return None
+    now = _dt.datetime.now(_dt.timezone.utc).timestamp()
+    if w.get("now") and epoch_s - now < 1800:
+        return w["now"]
+    best, bd = None, None
+    for h in w.get("hours") or []:
+        try:
+            t = _dt.datetime.fromisoformat(str(h.get("time")).replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            continue
+        d = abs(t - epoch_s)
+        if bd is None or d < bd:
+            best, bd = h, d
+    return best or w.get("now")
+
+
+def hazard(x: dict | None) -> dict | None:
+    """What troubles the driving in a forecast: {"kind", "label", "advice"}, else None.
+    storm, snow, ice (≤ 1 °C with water), rain (moderate or more), fog, wind."""
+    if not x:
+        return None
+    c, t = x.get("condition"), x.get("temp")
+    rain, pct = x.get("rain_mm") or 0, x.get("rain_pct") or 0
+    wet = rain > 0.2 or pct >= 60 or c in ("rainy", "pouring", "snowy", "snowy-rainy")
+    vis, wind, gust = x.get("visibility_km"), x.get("wind_kmh") or 0, x.get("gust_kmh") or 0
+    if c == "lightning-rainy":
+        return {"kind": "storm", "label": "Orage", "advice": "s'arrêter sur une aire en cas de grêle"}
+    if c in ("snowy", "snowy-rainy") or (x.get("snow_cm") or 0) > 0:
+        return {"kind": "snow", "label": "Neige" if c == "snowy" else "Pluie et neige", "advice": "route glissante, vitesse réduite"}
+    if t is not None and t <= 1 and wet:
+        return {"kind": "ice", "label": "Risque de verglas", "advice": "route glissante, freinage doux"}
+    if c == "pouring" or rain >= 1.5 or (c == "rainy" and pct >= 60):
+        return {"kind": "rain", "label": "Forte pluie" if (c == "pouring" or rain >= 4) else "Pluie", "advice": "distances doublées"}
+    if c == "fog" or (vis is not None and vis < 1):
+        return {"kind": "fog", "label": "Brouillard", "advice": "feux de brouillard, 50 km/h sous 50 m de visibilité"}
+    if wind >= 60 or gust >= 70:
+        return {"kind": "wind", "label": "Vent fort", "advice": "tenir le volant, prudence aux camions"}
+    return None

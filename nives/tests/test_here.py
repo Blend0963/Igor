@@ -73,5 +73,30 @@ def test_incidents_places_weather():
     assert pl == [{"name": "Parking Indigo", "lat": 47.1, "lon": 1.5, "address": "Rue X", "distance_m": 120, "hours": ""}]
     w = here.parse_weather({"places": [{"observations": [{"temperature": "12.0", "description": "Nuageux"}],
                                         "hourlyForecasts": [{"forecasts": [{"time": "t", "temperature": 11, "precipitationProbability": 40}]}]}]})
-    assert w["now"]["temp"] == 12.0 and w["hours"][0]["rain_pct"] == 40
+    assert w["now"]["temp"] == 12.0 and w["hours"][0]["rain_pct"] == 40 and w["now"]["condition"] == "cloudy"
     assert here.parse_weather({}) is None
+
+
+def test_conditions_and_hazards():
+    assert here.condition("tstorms", "") == "lightning-rainy"
+    assert here.condition("light_rain", "Pluie faible") == "rainy"
+    assert here.condition("", "Brouillard") == "fog"
+    assert here.condition("night_clear", "") == "clear-night" and here.condition("sunny", "") == "sunny"
+    h = lambda **k: here.hazard(dict({"condition": "cloudy", "temp": 10}, **k))
+    assert h() is None
+    assert h(condition="rainy", rain_pct=80)["kind"] == "rain"
+    assert h(condition="rainy", rain_pct=30, rain_mm=0.3) is None
+    assert h(condition="rainy", rain_mm=0.5, temp=0)["kind"] == "ice"
+    assert h(condition="snowy")["kind"] == "snow"
+    assert h(visibility_km=0.4)["kind"] == "fog"
+    assert h(gust_kmh=80)["kind"] == "wind"
+    assert h(condition="lightning-rainy")["kind"] == "storm"
+
+
+def test_at_time_picks_nearest_hour():
+    import datetime as dt
+    now = dt.datetime.now(dt.timezone.utc)
+    iso = lambda h: (now + dt.timedelta(hours=h)).isoformat()
+    w = {"now": {"temp": 1}, "hours": [{"time": iso(1), "temp": 2}, {"time": iso(2), "temp": 3}, {"time": iso(3), "temp": 4}]}
+    assert here.at_time(w, now.timestamp() + 600)["temp"] == 1
+    assert here.at_time(w, now.timestamp() + 2.1 * 3600)["temp"] == 3

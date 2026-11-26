@@ -76,6 +76,7 @@ from .const import (
     SERVICE_HERE_WEATHER,
     SERVICE_HERE_PARKING,
     SERVICE_HERE_CHECK,
+    SERVICE_HERE_ROUTE_WEATHER,
     CONF_HERE_KEY,
     CONF_HERE_DAILY,
     CONF_CAR_TRACKER,
@@ -495,6 +496,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     settings = {**entry.data, **entry.options}
     voice_display = bool(settings.get(CONF_VOICE_DISPLAY, DEFAULT_VOICE_DISPLAY))
     platforms = _get_platforms(caps["stt"], caps["tts"], voice_display)
+    # weather.igor_voiture: the weather where the car is (HERE), with a HERE
+    # key and the car's position set.
+    if str(settings.get(CONF_HERE_KEY) or "").strip() and settings.get(CONF_CAR_TRACKER):
+        platforms.append(Platform.WEATHER)
     entry.runtime_data = IgorData(
         api_url=api_url,
         api_token=await _async_resolve_token(hass, entry),
@@ -985,9 +990,9 @@ def _here_key(hass: HomeAssistant) -> str | None:
 
 
 def _here_take(hass: HomeAssistant, service: str) -> bool:
-    """One HERE request more today, if the daily cap (Igor's options, 150 by
+    """One HERE request more today, if the daily cap (Igor's options, 300 by
     default, 0: never) allows it — so the free allowance is never passed unseen."""
-    cap = 150
+    cap = 300
     for entry in hass.config_entries.async_entries(DOMAIN):
         v = {**entry.data, **entry.options}.get(CONF_HERE_DAILY)
         if v is not None:
@@ -1457,6 +1462,40 @@ def _async_register_here(hass: HomeAssistant) -> None:
                 out[name] = {"status": status, "ok": status == 200 and body is not None}
         return {"enabled": True, "services": out, "today": hass.data.get(HERE_COUNT_KEY)}
 
+    route_wx: dict = {}
+
+    async def _route_weather(call: ServiceCall) -> ServiceResponse:
+        """The weather along a route, each point at the hour the car will pass
+        it (points: [[lat, lon, epoch_s], …], up to 12): what troubles the
+        driving (rain, snow, ice, fog, storm, wind), and the arrival's. A
+        point's forecast is kept 30 minutes (points 10 km apart share one)."""
+        hk = _here_key(hass)
+        if not hk:
+            return {"enabled": False}
+
+        async def one(p) -> dict:
+            lat, lon, eta = float(p[0]), float(p[1]), float(p[2])
+            where = (round(lat, 1), round(lon, 1))
+            hit = route_wx.get(where)
+            if hit and time.monotonic() - hit[0] < 1800:
+                w = hit[1]
+            else:
+                status, body = await _here_get(hass, "route_weather", here.WEATHER_URL, here.weather_params(hk, lat, lon))
+                w = here.parse_weather(body) if status == 200 else None
+                if w:
+                    if len(route_wx) > 200:
+                        route_wx.clear()
+                    route_wx[where] = (time.monotonic(), w)
+            x = here.at_time(w, eta) if w else None
+            return {"lat": lat, "lon": lon, "eta": eta, "ok": bool(x), "weather": x, "hazard": here.hazard(x)}
+
+        pts = await asyncio.gather(*(one(p) for p in call.data["points"]))
+        return {"enabled": True, "points": list(pts)}
+
+    _async_register_car_service(hass, SERVICE_HERE_ROUTE_WEATHER, _route_weather, vol.Schema({
+        vol.Required("points"): vol.All(cv.ensure_list, vol.Length(min=1, max=12),
+                                        [vol.ExactSequence([vol.Coerce(float), vol.Coerce(float), vol.Coerce(float)])]),
+    }))
     _async_register_car_service(hass, SERVICE_HERE_WEATHER, _weather, HERE_POINT_SCHEMA)
     _async_register_car_service(hass, SERVICE_HERE_PARKING, _parking, HERE_POINT_SCHEMA)
     _async_register_car_service(hass, SERVICE_HERE_CHECK, _check, vol.Schema({

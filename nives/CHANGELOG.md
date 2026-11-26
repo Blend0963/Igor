@@ -1,3 +1,12 @@
+## 0.59.0 — Météo HERE, vignettes de la barre, stations refaites
+
+- **`weather.igor_voiture`** : la météo là où est la voiture (HERE), avec ses prochaines heures et « prochainement » (« pluie vers 15 h ») ; demandée toutes les 30 minutes en roulant, toutes les heures à l'arrêt. Créée quand une clé HERE et la position de la voiture sont dans les options d'Igor. À mettre dans la barre (`weather:`) à la place de l'ancienne météo.
+- **Météo du trajet** (`nives.route_weather`) : un point tous les 40 km environ, à l'heure où la voiture y passera ; ce qui gêne la conduite devient une zone (pluie, neige, verglas, brouillard, orage, vent fort), annoncée une fois 5 minutes avant. La météo à l'arrivée. Sur chaque choix d'itinéraire : son pire temps et la météo d'arrivée.
+- **Barre de l'autoradio** : chaque point se touche et ouvre sa vignette au-dessus de lui — une seule à la fois, fermée seule après 6 s (un toucher la garde 6 s de plus) : station (tous ses carburants, prix, n/a ou rupture, adresse), radar (limite, votre vitesse), bouchon (longueur, retard), péage, météo (longueur, conseil), arrivée (heure, météo). Bandes météo sous la route (pluie en pointillé bleu, neige blanche, verglas, brouillard gris, orage violet, vent orange) ; la météo d'arrivée dans l'en-tête.
+- **Étiquettes des carburants** : celles de la pompe (norme européenne) — carré B7 (gazole), ronds E5, E10, E85, losange LPG — à la place des pastilles.
+- **Stations** : trois tris (sur le trajet, les plus proches, les moins chères), le carburant choisi, le prix en grand sur chaque ligne, la moins chère en vert, « Prix » ; sur un téléphone en portrait, les boutons sous la station.
+- Plafond HERE par défaut : 300 demandes par jour.
+
 ## 0.58.2 — L'autoradio marque aussi le péage estimé
 
 - Choix des itinéraires sur l'autoradio : un péage estimé (sans prix de HERE) est affiché « péage ≈ … » et « total ≈ … », comme sur la carte.
