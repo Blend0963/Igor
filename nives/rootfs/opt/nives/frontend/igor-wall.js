@@ -5518,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.59.0";
+  var GPS_CARD_VERSION = "0.59.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -9542,12 +9542,14 @@
       // card `routes`), « ms|min~dist~bouchons~libellé~péage~zfe;… »; its
       // answer comes back by route_choice (« ms|n »).
       this.routeOpts = { opts: opts, pick: pick };
-      this.publishRoutes(Date.now() + "|" + opts.map((o) => {
+      // « min~dist~bouchons~libellé~péage~zfe~péage€~total€~estimé~météo » (the weather once HERE answered).
+      var routesAt = Date.now(), routesText = () => routesAt + "|" + opts.map((o) => {
         var R0 = o.route;
         var C = this.routeCost(R0);
         return [Math.round(R0.duration / 60), gpsMetres(R0.distance), R0.delay >= 60 ? Math.round(R0.delay / 60) : 0, String(o.label).replace(/[~;|]/g, " "), R0.tolls && R0.tolls.length ? 1 : 0, R0.lez && R0.lez.length ? 1 : 0,
-          C && C.toll != null ? C.toll.toFixed(2) : "", C && C.total != null ? C.total.toFixed(2) : "", C && C.approx ? 1 : 0].join("~");
-      }).join(";"));
+          C && C.toll != null ? C.toll.toFixed(2) : "", C && C.total != null ? C.total.toFixed(2) : "", C && C.approx ? 1 : 0, String(o.wxShort || "").replace(/[~;|]/g, " ").slice(0, 34)].join("~");
+      }).join(";");
+      this.publishRoutes(routesText());
       var $ = this.$, list = $("rlist");
       list.innerHTML = "";
       $("rtitle").textContent = "vers " + d.name;
@@ -9597,6 +9599,9 @@
         if (a) parts.push("arrivée " + (a.temp != null ? Math.round(a.temp) + " °C" : "") + (a.text ? " " + String(a.text).toLowerCase() : ""));
         o.wxEl.textContent = parts.join(" · ");
         o.wxEl.classList.toggle("bad", !!z);
+        // The head unit's choice gets it too (while the choice stands).
+        o.wxShort = (z ? z.label + (z.eta ? " " + hhmm(new Date(z.eta * 1000)) : "") : "") + (a && a.temp != null ? (z ? " · " : "") + "arr. " + Math.round(a.temp) + " °C" : "");
+        if (this.routeOpts && this.routeOpts.opts === opts) this.publishRoutes(routesText());
       }));
       // What to keep off, for this trip and the next ones.
       var chips = $("rchips");
@@ -12133,8 +12138,8 @@
     // (`fuel_type`: gazole by default). « Plus proche » sorts by the detour.
     runFuel(sort) {
       if (!this._hass) return;
-      var c = this.config, ft = c.fuel_type || "gazole", here = this.near();
-      this.fuelSort = sort || this.fuelSort || "prix";
+      var c = this.config, ft = this.fuelKind || c.fuel_type || "gazole", here = this.near();
+      this.fuelSort = sort || this.fuelSort || (this.guided() ? "trajet" : "prix");
       if (!sort) this.note("stations autour…");
       var ws = (service, data) => this._hass.callWS({ type: "call_service", domain: "nives", service: service, return_response: true, service_data: data })
         .then((r) => (r && r.response) || {}).catch(() => ({}));
@@ -12147,29 +12152,38 @@
         var rows = near.map((p) => {
           var best = null, bd = 150;
           flux.forEach((s) => { var d = at(p, s); if (d < bd) { bd = d; best = s; } });
-          return Object.assign({}, p, { price: best && best.prices ? best.prices[ft] : null, dry: best && best.rupture ? best.rupture[ft] : null, brand: p.brand || (best && best.brand) || "" });
+          return Object.assign({}, p, { prices: best && best.prices || {}, rupture: best && best.rupture || {}, brand: p.brand || (best && best.brand) || "" });
         });
         // Not guided and Igor's list empty (OpenStreetMap asleep): the flux alone.
         if (!rows.length && flux.length && here.latitude != null) rows = flux.map((s) => ({ name: s.brand || s.city || "station", brand: s.brand || "", lat: s.lat, lon: s.lon, city: s.city || "",
-          distance_km: Math.round(gpsDist([here.longitude, here.latitude], [s.lon, s.lat]) / 100) / 10, price: s.prices ? s.prices[ft] : null, dry: s.rupture ? s.rupture[ft] : null }));
+          distance_km: Math.round(gpsDist([here.longitude, here.latitude], [s.lon, s.lat]) / 100) / 10, prices: s.prices || {}, rupture: s.rupture || {} }));
         this.fuelRows = rows; this.fuelNote = both[0].error || both[0].note || "";
         return rows;
       });
       asks.then((rows) => {
         if (!rows.length) { this.note(this.fuelNote || "aucune station"); return; }
+        rows = rows.map((p) => Object.assign({}, p, { price: (p.prices || {})[ft] != null ? (p.prices || {})[ft] : null, dry: (p.rupture || {})[ft] || null }));
         var cost = (p) => p.detour_min != null ? p.detour_min : p.minutes != null ? p.minutes : (p.distance_km || 99) * 1.5;
-        rows = rows.slice().sort(this.fuelSort === "prix"
+        rows = this.fuelSort === "trajet" ? rows.slice() : rows.slice().sort(this.fuelSort === "prix"
           ? (a, b) => (a.price == null) - (b.price == null) || (a.price || 0) - (b.price || 0) || cost(a) - cost(b)
           : (a, b) => cost(a) - cost(b));
         this.findList.innerHTML = "";
-        var chips = el("div", "", this.findList); chips.style.cssText = "display:flex;gap:8px;padding:4px 0 8px";
-        [["prix", "moins cher"], ["proche", "plus proche"]].forEach((x) => {
+        var chips = el("div", "", this.findList); chips.style.cssText = "display:flex;gap:8px;padding:4px 0 8px;flex-wrap:wrap";
+        [["trajet", "sur le trajet"], ["proche", "plus proches"], ["prix", "moins chères"]].forEach((x) => {
+          if (x[0] === "trajet" && !this.guided()) return;
           var b = el("button", "b" + (this.fuelSort === x[0] ? " go" : ""), chips, x[1]); b.type = "button"; b.style.cssText = "flex:1;min-height:40px;font-size:12px;letter-spacing:.12em;text-transform:uppercase";
           b.addEventListener("click", (ev) => { ev.stopPropagation(); this.runFuel(x[0]); });
         });
+        // The fuel: a touch changes it (gazole, SP95-E10, SP95, SP98, E85, GPLc), its pump label beside.
+        var fname = (GPS_FUELS.find((x) => x[0] === ft) || GPS_FUELS[0])[1];
+        var fb = el("button", "b", chips); fb.type = "button"; fb.style.cssText = "flex:none;min-height:40px;font-size:13px;display:flex;align-items:center;gap:8px;padding:0 12px";
+        fb.appendChild(fuelIcon(ft, fname)); fb.appendChild(document.createTextNode(fname + " ▾"));
+        fb.addEventListener("click", (ev) => { ev.stopPropagation(); var i = GPS_FUELS.findIndex((x) => x[0] === ft); this.fuelKind = GPS_FUELS[(i + 1) % GPS_FUELS.length][0]; this.runFuel(this.fuelSort); });
         var cheapest = rows.reduce((m, p) => p.price != null && (m == null || p.price < m) ? p.price : m, null);
         rows.forEach((p) => {
-          var it = el("div", "it", this.findList), l = el("div", "", it);
+          var it = el("div", "it", this.findList), lg = brandLogo(p.brand || p.name || "");
+          if (lg) { var im = el("img", "", it); im.src = lg; im.alt = ""; im.style.cssText = "height:22px;max-width:62px;object-fit:contain;background:#f4f1ea;border-radius:3px;padding:3px 5px;flex:none;margin-right:10px"; }
+          var l = el("div", "", it); l.style.flex = "1"; l.style.minWidth = "0";
           el("div", "", l, [p.brand, p.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(" · "));
           el("small", "", l, [p.detour_min != null ? "+" + Math.round(p.detour_min) + " min" : p.minutes != null ? p.minutes + " min" : "", p.distance_km != null ? p.distance_km + " km" : "", p.service_area || "", p.city || ""].filter(Boolean).join(" · "));
           var r = el("span", "r", it);
@@ -12244,7 +12258,7 @@
         var t = mins >= 60 ? Math.floor(mins / 60) + " h " + String(mins % 60).padStart(2, "0") : mins + " min";
         var it = el("div", "it", this.findList), l = el("div", "", it);
         var big = el("div", "", l, t); big.style.fontSize = "24px";
-        el("small", "", l, [p[3], p[1], p[6] ? "péage " + (p[8] === "1" ? "≈ " : "") + Number(p[6]).toFixed(2).replace(".", ",") + " €" : p[4] === "1" ? "péage" : "", p[5] === "1" ? "ZFE" : "", p[7] ? "total " + (p[8] === "1" ? "≈ " : "") + Number(p[7]).toFixed(2).replace(".", ",") + " €" : ""].filter(Boolean).join(" · "));
+        el("small", "", l, [p[3], p[1], p[6] ? "péage " + (p[8] === "1" ? "≈ " : "") + Number(p[6]).toFixed(2).replace(".", ",") + " €" : p[4] === "1" ? "péage" : "", p[5] === "1" ? "ZFE" : "", p[7] ? "total " + (p[8] === "1" ? "≈ " : "") + Number(p[7]).toFixed(2).replace(".", ",") + " €" : "", p[9] || ""].filter(Boolean).join(" · "));
         var r = el("span", "r", it, jam ? "+" + jam + " min de bouchons" : "fluide"); r.style.color = jam ? CAR_WARN : CAR_OK;
         if (!i) it.style.boxShadow = "inset 3px 0 var(--acc)";
         it.addEventListener("click", () => {
@@ -12775,7 +12789,7 @@
         var p = x.split("~"), mins = Number(p[0]) || 0, jam = Number(p[2]) || 0;
         var it = el("div", "rt" + (i ? "" : " first"), list);
         el("b", "", it, mins >= 60 ? Math.floor(mins / 60) + " h " + String(mins % 60).padStart(2, "0") : mins + " min");
-        var l = el("div", "l", it); el("div", "", l, p[3] || "itinéraire " + (i + 1)); el("small", "", l, [p[1], p[6] ? "péage " + (p[8] === "1" ? "≈ " : "") + Number(p[6]).toFixed(2).replace(".", ",") + " €" : p[4] === "1" ? "péage" : "", p[5] === "1" ? "ZFE" : "", p[7] ? "total " + (p[8] === "1" ? "≈ " : "") + Number(p[7]).toFixed(2).replace(".", ",") + " €" : ""].filter(Boolean).join(" · "));
+        var l = el("div", "l", it); el("div", "", l, p[3] || "itinéraire " + (i + 1)); el("small", "", l, [p[1], p[6] ? "péage " + (p[8] === "1" ? "≈ " : "") + Number(p[6]).toFixed(2).replace(".", ",") + " €" : p[4] === "1" ? "péage" : "", p[5] === "1" ? "ZFE" : "", p[7] ? "total " + (p[8] === "1" ? "≈ " : "") + Number(p[7]).toFixed(2).replace(".", ",") + " €" : "", p[9] || ""].filter(Boolean).join(" · "));
         var j = el("span", "j", it, jam ? "+" + jam + " min" : "fluide"); j.style.color = jam ? CAR_WARN : CAR_OK;
         it.addEventListener("click", () => {
           this.routesPicked = String(o.at);
