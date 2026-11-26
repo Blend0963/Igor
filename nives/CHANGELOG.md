@@ -1,3 +1,7 @@
+## 0.57.1 — La recherche de stations répond de nouveau
+
+- « Stations » ne trouvait plus rien : la liste dépendait d'abord d'OpenStreetMap et d'OSRM (serveurs gratuits souvent saturés) ; le flux du ministère ne servait qu'aux prix. Les deux sont maintenant demandés en même temps, et la liste officielle des stations du ministère suffit seule : sur le trajet d'abord quand on est guidé (dans l'ordre où elles viennent), puis les plus proches. Chaque ligne donne le prix du gazole.
+
 ## 0.57.0 — Relief en option, prix des stations à leur place
 
 - **Relief** de retour dans Réglages → Carte 3D → Sol & nature, éteint par défaut : collines, vallées et leur ombrage, chargés seulement quand on l'allume. Coupé pendant le guidage (avec le relief, les bâtiments cachent la route) ; l'ombrage reste.

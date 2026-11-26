@@ -5516,7 +5516,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.57.0";
+  var GPS_CARD_VERSION = "0.57.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -9181,16 +9181,30 @@
       var seq = this.fuelSeq = (this.fuelSeq || 0) + 1;
       var found = null, prices = null, fuelErr = "", asked = false;
       this.fuelPrices = null;
-      try {
-        var r = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_nearby", return_response: true, service_data: { kind: "fuel", count: 15, latitude: here[1], longitude: here[0] } });
-        asked = true;
-        if (r && r.response) { if (r.response.ok) found = r.response.places || []; else fuelErr = r.response.error || ""; }
-      } catch (e) { found = null; }
-      try {
-        var pr = await this._hass.callWS({ type: "call_service", domain: "nives", service: "car_fuel", return_response: true, service_data: { latitude: here[1], longitude: here[0], radius_km: 15 } });
-        if (pr && pr.response && pr.response.ok) prices = pr.response.stations || [];
-      } catch (e) { prices = null; }
+      // Both asked at once: the places along the way (OpenStreetMap, OSRM —
+      // free servers, often busy) and the Ministry's own list of stations
+      // with their prices. Either one alone is enough for a list.
+      var ask = (service, data) => this._hass.callWS({ type: "call_service", domain: "nives", service: service, return_response: true, service_data: data })
+        .then((r) => { asked = true; return (r && r.response) || null; }).catch(() => null);
+      var got = await Promise.all([
+        ask("car_nearby", { kind: "fuel", count: 15, latitude: here[1], longitude: here[0] }),
+        ask("car_fuel", { latitude: here[1], longitude: here[0], radius_km: 15 })
+      ]);
+      if (got[0]) { if (got[0].ok) found = got[0].places || []; else fuelErr = got[0].error || ""; }
+      if (got[1] && got[1].ok) prices = got[1].stations || [];
+      else if (got[1] && got[1].error && !fuelErr) fuelErr = got[1].error;
       this.fuelPrices = prices;
+      // No places from OpenStreetMap: the Ministry's stations make the list —
+      // on the way first when guided (in the order they come), then the
+      // nearest; their prices are known.
+      if ((!found || !found.length) && prices && prices.length) {
+        var R0 = this.route, ahead = (q) => R0 && this.routeAhead ? this.routeAhead([q.lon, q.lat], 400) : null;
+        found = prices.filter((q) => isFinite(Number(q.lat)) && isFinite(Number(q.lon)) && ((q.prices && Object.keys(q.prices).length) || (q.rupture && Object.keys(q.rupture).length)))
+          .map((q) => ({ id: q.id, name: q.brand || "Station-service", brand: q.brand || "", lat: Number(q.lat), lon: Number(q.lon), address: q.address || "", city: q.city || "", minutes: null, along: ahead(q) }))
+          .sort((a, b) => (a.along == null) - (b.along == null) || (a.along != null ? a.along - b.along : gpsDist(here, [a.lon, a.lat]) - gpsDist(here, [b.lon, b.lat])))
+          .slice(0, 15);
+        fuelErr = "";
+      }
       if (!found || !found.length) {
         // The route's server (OSRM, Overpass) can be down while TomTom answers:
         // the map's own places then carry the list — without the detour's
@@ -9227,7 +9241,8 @@
         var t = document.createElement("div"); t.textContent = nm; b.appendChild(t);
         var detour = p.detour_min != null ? "d\u00e9tour +" + p.detour_min + " min" : (p.minutes != null ? p.minutes + " min" : "");
         var sm = document.createElement("small");
-        sm.textContent = [p.service_area || p.address || "", here ? gpsMetres(gpsDist(here, [lon, lat])) : "", detour].filter(Boolean).join(" \u00b7 ");
+        var fq = this.nearestFuel(prices, lat, lon), gz = fq && fq.prices && fq.prices.gazole;
+        sm.textContent = [p.service_area || p.address || "", p.along != null ? "sur le trajet · " + gpsMetres(p.along) : here ? gpsMetres(gpsDist(here, [lon, lat])) : "", detour, gz != null ? "gazole " + Number(gz).toFixed(3).replace(".", ",") + " €" : ""].filter(Boolean).join(" \u00b7 ");
         t.appendChild(sm);
         var row = document.createElement("div"); row.className = "row2";
         b.addEventListener("click", () => { this.chooseNext = true; this.setDestination({ lat: lat, lon: lon, name: nm }, true); this.closeFuelPrices(); $("fpanel").hidden = true; });
