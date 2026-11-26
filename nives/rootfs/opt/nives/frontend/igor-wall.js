@@ -5518,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.53.1";
+  var GPS_CARD_VERSION = "0.54.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7154,7 +7154,7 @@
         if (xray && map.getLayer("route-xray")) {
           var ord2 = map.getLayersOrder ? map.getLayersOrder() : ((map.getStyle() && map.getStyle().layers) || []).map((l) => l.id);
           // Over it, the way driven and the arrows: the copy does not paint them blue.
-          var over = ["route-xray", "trail-case", "trail", "man-case", "man", "man-head"].filter((id) => map.getLayer(id));
+          var over = ["route-xray"].concat(ord2.filter((id) => /^igor-rrx-/.test(id)), ["trail-case", "trail", "man-case", "man", "man-head"]).filter((id) => map.getLayer(id));
           if (ord2.slice(ord2.length - over.length).join() !== over.join()) over.forEach((id) => map.moveLayer(id));
         }
       } catch (e) { /* a style changing under it: the next styledata */ }
@@ -7216,6 +7216,8 @@
         }
       });
       tryIt(() => this.maneuverLook());
+      tryIt(() => this.roadRouteVis());
+      this.rrAt = 0;
       this.jamGradient();
       this.routeOnTop(map);
       // The base map's own traffic (the green, orange and red lines on every
@@ -7688,6 +7690,7 @@
     drawManeuvers(R, along) {
       var map = this.map, src = map && map.getSource && map.getSource("maneuvers");
       if (!src) return;
+      if (R && this.roadRouteOn() && map.getZoom() >= 12.5) return;  // roadPaint's
       var key = R && R.steps ? R.steps.filter((s) => s.at > along + 2 && s.at - along < 2000).slice(0, 2).map((s) => s.at).join() + "|" + (R.total || 0) : "";
       // Drawn again when the turns shown change, and as the car comes onto
       // the arrow's tail (it shortens with the way left before the turn).
@@ -7727,7 +7730,7 @@
         map.setPaintProperty("man-case", "line-width", edge);
         map.setPaintProperty("man-case", "line-color", pal["route-case"]);
         // The head 29 px wide at size 1: a bit more than twice the edge.
-        map.setLayoutProperty("man-head", "icon-size", times(edge, 2.3 / 29));
+        if (!this.roadRouteOn()) map.setLayoutProperty("man-head", "icon-size", times(edge, 2.3 / 29));
         if (this.manEdge !== pal["route-case"]) { this.manEdge = pal["route-case"]; map.updateImage("igor-man-head", this.manHead(this.manEdge)); }
       } catch (e) { /* as it was */ }
     }
@@ -7736,6 +7739,8 @@
       this.manEdge = this.routePal()["route-case"];
       if (!map.hasImage("igor-man-head")) map.addImage("igor-man-head", this.manHead(this.manEdge), { pixelRatio: 4 });
       map.addSource("maneuvers", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      if (!map.getSource("roadroute")) map.addSource("roadroute", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      this.rrFull = false;
       var lines = ["==", ["geometry-type"], "LineString"], round = { "line-cap": "round", "line-join": "round" };
       map.addLayer({ id: "man-case", type: "line", source: "maneuvers", minzoom: 12, filter: lines, layout: round,
         paint: { "line-color": "#0b3f86", "line-width": GPS_CASE_W } });
@@ -7746,6 +7751,241 @@
           "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-size": 0.5 } });
       this.manKey = null;
       this.maneuverLook();
+    }
+    // ----- « la route elle-même » (Épaisseur): the map's own road coloured -----
+    // TomTom's route follows a road's middle line, where the map may draw a
+    // boulevard as two carriageways (the route then ran between them), and
+    // the style draws its roads wider than the 9 m of « la chaussée ». Here
+    // the route is not drawn over the road: the roads the map has drawn
+    // under the route are found (the carriageway on the right, the way the
+    // car goes), and the very same lines are drawn again with the same
+    // widths, in the route's colours — slow stretches, after the stop, the
+    // way driven, the turns' arrows in white. Only what is on the screen;
+    // from far (under zoom 13) the route line as before.
+    roadRouteOn() { return !!(this.look && this.look.rw === "route"); }
+    // A width expression's value at a zoom (numbers, interpolate, step);
+    // null when it depends on a feature's properties.
+    exprAt(x, z) {
+      if (typeof x === "number") return x;
+      if (!Array.isArray(x)) return null;
+      if (x[0] === "step" && Array.isArray(x[1]) && x[1][0] === "zoom") {
+        var v = this.exprAt(x[2], z);
+        for (var i = 3; i + 1 < x.length; i += 2) if (z >= x[i]) v = this.exprAt(x[i + 1], z);
+        return v;
+      }
+      if (/^interpolate/.test(x[0]) && Array.isArray(x[2]) && x[2][0] === "zoom") {
+        var base = Array.isArray(x[1]) && x[1][0] === "exponential" ? Number(x[1][1]) || 1 : 1, st = [];
+        for (var j = 3; j + 1 < x.length; j += 2) st.push([x[j], this.exprAt(x[j + 1], z)]);
+        if (!st.length || st.some((s) => s[1] == null)) return null;
+        if (z <= st[0][0]) return st[0][1];
+        for (var k = 1; k < st.length; k++) {
+          if (z <= st[k][0]) {
+            var a = st[k - 1], b = st[k], span = b[0] - a[0], t = span ? (base === 1 ? (z - a[0]) / span : (Math.pow(base, z - a[0]) - 1) / (Math.pow(base, span) - 1)) : 1;
+            return a[1] + (b[1] - a[1]) * t;
+          }
+        }
+        return st[st.length - 1][1];
+      }
+      return null;
+    }
+    // Where the car is along the smoothed line (metres), searched near the last place.
+    smAlong(R, p) {
+      var sm = R.smooth, cum = R.smCum, h = R.smHint || 1, best = null;
+      var scan = (a, b) => { for (var i = Math.max(1, a); i < Math.min(sm.length, b); i++) { var o = gpsOnLine(p, [sm[i - 1], sm[i]]); if (o && (!best || o.dist < best.dist)) { best = o; best.i = i; } } };
+      scan(h - 30, h + 300);
+      if (!best || best.dist > 60) scan(1, sm.length);
+      if (!best) return 0;
+      R.smHint = best.i;
+      return cum[best.i - 1] + gpsDist(sm[best.i - 1], best.point);
+    }
+    roadPaint(R, along) {
+      var map = this.map, src = map && map.getSource && map.getSource("roadroute");
+      if (!src) return;
+      var empty = { type: "FeatureCollection", features: [] };
+      if (!R || !this.roadRouteOn() || !this.pos || !this.roads || !this.roads.length || map.getZoom() < 12.5) {
+        if (this.rrFull) { src.setData(empty); this.rrFull = false; }
+        if (this.rrHeads) { this.rrHeads = false; this.manKey = null; }
+        return;
+      }
+      var sm = R.smooth || (R.smooth = gpsSmoothed(R.coords));
+      if (!R.smCum || R.smCum.length !== sm.length) { R.smCum = [0]; for (var i = 1; i < sm.length; i++) R.smCum.push(R.smCum[i - 1] + gpsDist(sm[i - 1], sm[i])); }
+      var cum = R.smCum, total = cum[cum.length - 1], carS = this.smAlong(R, this.pos), shift = carS - along;
+      // The route every 6 m, from a little behind the car to the screen's end.
+      var cv = map.getCanvas(), W = cv.clientWidth || cv.width, H = cv.clientHeight || cv.height, pad = 40;
+      var samples = [], seen = false, outFor = 0, seg = Math.max(1, (R.smHint || 1) - 80);
+      for (var d = Math.max(0, carS - 300); d <= Math.min(total, carS + 6000); d += 6) {
+        while (seg > 1 && cum[seg - 1] > d) seg--;
+        while (seg < sm.length - 1 && cum[seg] < d) seg++;
+        var len = cum[seg] - cum[seg - 1] || 1, f = Math.max(0, Math.min(1, (d - cum[seg - 1]) / len));
+        var p = [sm[seg - 1][0] + (sm[seg][0] - sm[seg - 1][0]) * f, sm[seg - 1][1] + (sm[seg][1] - sm[seg - 1][1]) * f];
+        var px = map.project(p), inside = px.x > -pad && px.y > -pad && px.x < W + pad && px.y < H + pad;
+        if (inside) { seen = true; outFor = 0; samples.push({ d: d, p: p, px: px, brg: gpsBearing(sm[seg - 1], sm[seg]) }); }
+        else if (seen && (outFor += 6) > 300) break;
+      }
+      if (samples.length < 2) { src.setData(empty); this.rrFull = false; return; }
+      var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      samples.forEach((s) => { x0 = Math.min(x0, s.px.x); y0 = Math.min(y0, s.px.y); x1 = Math.max(x1, s.px.x); y1 = Math.max(y1, s.px.y); });
+      var feats;
+      try { feats = map.queryRenderedFeatures([[x0 - pad, y0 - pad], [x1 + pad, y1 + pad]], { layers: this.roads }); } catch (e) { feats = []; }
+      // The road's fill, not its outline (a style draws each road twice).
+      var edgeRe = /outline|casing|case|border|shadow|halo|bg/i;
+      var fills = feats.filter((f) => f.layer && !edgeRe.test(f.layer.id));
+      if (fills.length) feats = fills;
+      var lines = [], keys = {};
+      feats.forEach((f) => {
+        var g = f.geometry, props = f.properties || {};
+        var cls = String(props.class || props.subclass || props.roadClass || props.roadFunction || "");
+        if (!g || /rail|transit|path|footway|pedestrian|cycle|bicycle|bridleway|steps|track|ferry|cable|aerial|pier/.test(cls)) return;
+        if (/rail|path|ferry|aeroway|pier|transit|cable/.test(String(f.layer && f.layer.id || ""))) return;
+        (g.type === "LineString" ? [g.coordinates] : g.type === "MultiLineString" ? g.coordinates : []).forEach((l) => {
+          if (l.length < 2) return;
+          var key = f.layer.id + "|" + l[0].join() + "|" + l[l.length - 1].join() + "|" + l.length;
+          if (keys[key]) return; keys[key] = 1;
+          var bx = [Infinity, Infinity, -Infinity, -Infinity];
+          l.forEach((c) => { bx[0] = Math.min(bx[0], c[0]); bx[1] = Math.min(bx[1], c[1]); bx[2] = Math.max(bx[2], c[0]); bx[3] = Math.max(bx[3], c[1]); });
+          lines.push({ l: l, lyr: f.layer.id, props: props, bx: bx });
+        });
+      });
+      // Each sample on its road: near (22 m), going the same way (35°), the
+      // carriageway on the right before the one on the left, and the road
+      // already followed before another.
+      var mlat = 22 / 111320, mlon = mlat / Math.cos(gpsRad(this.pos[1])), prev = null;
+      samples.forEach((s) => {
+        var best = null;
+        lines.forEach((L) => {
+          if (s.p[0] < L.bx[0] - mlon || s.p[0] > L.bx[2] + mlon || s.p[1] < L.bx[1] - mlat || s.p[1] > L.bx[3] + mlat) return;
+          var o = gpsOnLine(s.p, L.l);
+          if (!o || o.dist > 22) return;
+          var off = Math.abs(((o.bearing - s.brg) % 180 + 180) % 180); if (off > 90) off = 180 - off;
+          if (off > 35) return;
+          var right = o.dist < 2.5 || Math.sin(gpsRad(gpsBearing(s.p, o.point) - s.brg)) > 0;
+          var score = o.dist + (right ? 0 : 9) + (prev && prev.L !== L ? 4 : 0) + off * 0.1;
+          if (!best || score < best.score) best = { L: L, o: o, score: score };
+        });
+        s.m = best; if (best) prev = best;
+      });
+      // The colours along the way (the route's own, slow, jammed, after the stop, driven, arrows).
+      var pal = this.routePal(), aft = this.routePal("after"), Lk = this.look || {};
+      var viaP = this.viaProgress(), viaAt = viaP != null ? viaP * R.total : null;
+      var jams = (R.jams || []).map((j) => ({ a: R.cum[Math.min(j.start, R.cum.length - 1)], b: R.cum[Math.min(j.end, R.cum.length - 1)], l: j.level }));
+      var plain = /navigation-variant|flag|arrow-up$|ferry/, arrows = [];
+      R.steps.filter((x) => x.at > along + 2 && x.at - along < 2000 && !plain.test(x.icon || "")).slice(0, 2).forEach((x) => {
+        var at = x.at + shift, round = /rotate/.test(x.icon || ""), after = round ? 46 : 26, nx = R.steps[R.steps.indexOf(x) + 1];
+        if (nx && nx.at - x.at - 6 < after) after = Math.max(10, nx.at - x.at - 6);
+        var a = Math.max(carS + 4, at - 34), b = at + after;
+        if (b - a >= 14) arrows.push([a, b]);
+      });
+      var colour = (d) => {
+        if (d < carS) return Lk.tr === "cache" ? null : Lk.tr === "visible" ? aft.route : "#7f8c9c";
+        if (arrows.some((w) => d >= w[0] && d <= w[1])) return "#ffffff";
+        var raw = d - shift, j = jams.find((q) => raw >= q.a && raw <= q.b);
+        if (j && Lk.jm !== "aucun") return j.l === 2 ? "#e5323b" : "#f08c1a";
+        return viaAt != null && raw >= viaAt ? aft.route : pal.route;
+      };
+      // Chains of road points: the road's own vertices between two samples.
+      var out = [], cur = null, last = null;
+      var close = () => { if (cur && cur.c.length > 1) out.push(cur); cur = null; };
+      samples.forEach((s) => {
+        var col = colour(s.d), m = s.m;
+        var lyr = m ? m.L.lyr : "_route", pt = m ? m.o.point : s.p;
+        if (!col) { close(); last = null; return; }
+        var same = cur && last && cur.lyr === lyr && cur.col === col && ((m && last.m && last.m.L === m.L) || (!m && !last.m));
+        if (same && m) {
+          var a = last.m.o.seg, b = m.o.seg, line = m.L.l;
+          if (b > a) for (var k = a; k < b; k++) cur.c.push(line[k]);
+          else if (b < a) for (var k2 = a - 1; k2 >= b; k2--) cur.c.push(line[k2]);
+          cur.c.push(pt);
+        } else if (same) cur.c.push(pt);
+        else {
+          var from = last && gpsDist(last.pt, pt) < 20 ? last.pt : null;
+          // From one road to the next: both lines go to their crossing (the
+          // vertex they share), not straight across the corner.
+          if (from && m && last.m && last.m.L !== m.L) {
+            var jv = null, jd = 16;
+            m.L.l.forEach((v) => { var dd = gpsDist(v, last.pt); if (dd < jd) { var on = gpsOnLine(v, last.m.L.l); if (on && on.dist < 2) { jv = v; jd = dd; } } });
+            if (jv) { if (cur) cur.c.push(jv); from = jv; }
+          }
+          close();
+          var c0 = from ? [from] : [];
+          // On the new road from where `from` falls on it: its own vertices up to the sample.
+          if (from && m) {
+            var o2 = gpsOnLine(from, m.L.l);
+            if (o2 && o2.dist < 16) {
+              c0.push(o2.point);
+              if (m.o.seg > o2.seg) for (var q = o2.seg; q < m.o.seg; q++) c0.push(m.L.l[q]);
+              else if (m.o.seg < o2.seg) for (var q2 = o2.seg - 1; q2 >= m.o.seg; q2--) c0.push(m.L.l[q2]);
+            }
+          }
+          c0.push(pt);
+          cur = { lyr: lyr, col: col, props: m ? m.L.props : {}, c: c0, arrow: col === "#ffffff", d1: s.d };
+        }
+        if (cur) cur.d1 = s.d;
+        last = { m: m, pt: pt };
+      });
+      close();
+      var feats2 = out.map((x) => ({ type: "Feature", properties: Object.assign({}, x.props, { igor_lyr: x.lyr, igor_c: x.col }), geometry: { type: "LineString", coordinates: x.c } }));
+      // The layers: one per road layer met, with that layer's own widths.
+      var z = map.getZoom(), heads = [];
+      out.forEach((x) => { this.roadRouteLayer(x.lyr); });
+      // One head per arrow, at its end (not where it changes road).
+      out.filter((x) => x.arrow && arrows.some((w) => x.d1 >= w[1] - 7 && x.d1 <= w[1] + 1)).forEach((x) => {
+        var c = x.c, tip = c[c.length - 1], k = c.length - 2;
+        while (k > 0 && gpsDist(c[k], tip) < 4) k--;
+        var wexp = x.lyr === "_route" ? this.metersWidth(9 * 0.86, 2.5) : (this.rrWidth || {})[x.lyr];
+        var w = this.exprAt(wexp, z);
+        if (w == null) w = this.exprAt(GPS_CASE_W, z);
+        heads.push({ type: "Feature", properties: { brg: gpsBearing(c[k], tip), igor_hs: Math.round(Math.max(0.2, w * 2.3 / 29) * 100) / 100 }, geometry: { type: "Point", coordinates: tip } });
+      });
+      src.setData({ type: "FeatureCollection", features: feats2 });
+      this.rrFull = true;
+      var ms = map.getSource("maneuvers");
+      if (ms) { ms.setData({ type: "FeatureCollection", features: heads }); this.rrHeads = true; this.manKey = "rr"; }
+    }
+    // The copy of a road layer of the map, fed with the route's roads.
+    roadRouteLayer(lyr) {
+      var map = this.map, id = "igor-rr-" + lyr;
+      if (map.getLayer(id)) return;
+      this.rrWidth = this.rrWidth || {};
+      var width = lyr === "_route" ? this.metersWidth(9 * 0.86, 2.5) : null, offset = null;
+      if (lyr !== "_route") { try { width = map.getPaintProperty(lyr, "line-width"); offset = map.getPaintProperty(lyr, "line-offset"); } catch (e) { width = null; } }
+      if (width == null) width = GPS_ROUTE_W;
+      this.rrWidth[lyr] = width;
+      // Just over the map's roads: under their names and the buildings.
+      var order = map.getLayersOrder ? map.getLayersOrder() : ((map.getStyle() && map.getStyle().layers) || []).map((l) => l.id);
+      var lastRoad = -1; order.forEach((l, i) => { if ((this.roads || []).indexOf(l) >= 0 || /^igor-rr-/.test(l)) lastRoad = i; });
+      var before = order.slice(lastRoad + 1).find((l) => !/^igor-rr-/.test(l));
+      var def = { id: id, type: "line", source: "roadroute", filter: ["==", ["get", "igor_lyr"], lyr], layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": ["get", "igor_c"], "line-width": width } };
+      if (offset != null) def.paint["line-offset"] = offset;
+      try { map.addLayer(def, before); }
+      catch (e) { def.paint = { "line-color": ["get", "igor_c"], "line-width": GPS_ROUTE_W }; this.rrWidth[lyr] = GPS_ROUTE_W; try { map.addLayer(def, before); } catch (e2) { /* left out */ } }
+      // Its copy seen through the buildings (« en transparence »).
+      var xid = "igor-rrx-" + lyr;
+      if (!map.getLayer(xid) && map.getLayer(id)) {
+        try { map.addLayer({ id: xid, type: "line", source: "roadroute", filter: def.filter, layout: { "line-cap": "round", "line-join": "round", visibility: "none" },
+          paint: Object.assign({}, map.getLayer(id) ? { "line-color": ["get", "igor_c"], "line-width": this.rrWidth[lyr] } : {}, { "line-opacity": 0.45 }) }); } catch (e3) { /* left out */ }
+      }
+      this.roadRouteVis();
+    }
+    // In « la route elle-même »: Igor's own line hidden from zoom 13 (the
+    // roads carry the route there), the arrows' shafts too (they are road),
+    // the heads sized per feature; the see-through copies with « en transparence ».
+    roadRouteVis() {
+      var map = this.map;
+      if (!map || !map.getLayer) return;
+      var on = this.roadRouteOn(), L = this.look || {}, xray = L.rp === "xray";
+      var xo = Math.max(0.1, Math.min(0.9, (L.xo != null && L.xo !== "" ? Number(L.xo) : 45) / 100));
+      try {
+        ["route-case", "route-glow", "route", "route-core", "routejam", "route-xray", "trail-case", "trail", "man-case", "man"].forEach((id) => { if (map.getLayer(id)) map.setLayerZoomRange(id, 0, on ? 13 : 24); });
+        if (map.getLayer("man-head") && on) map.setLayoutProperty("man-head", "icon-size", ["coalesce", ["get", "igor_hs"], 0.5]);
+        var order = map.getLayersOrder ? map.getLayersOrder() : ((map.getStyle() && map.getStyle().layers) || []).map((l) => l.id);
+        order.filter((id) => /^igor-rr(x)?-/.test(id)).forEach((id) => {
+          var x = /^igor-rrx-/.test(id), vis = on && (!x || xray) ? "visible" : "none";
+          if (map.getLayoutProperty(id, "visibility") !== vis) map.setLayoutProperty(id, "visibility", vis);
+          if (x) map.setPaintProperty(id, "line-opacity", xo);
+        });
+      } catch (e) { /* as it was */ }
+      if (!on && this.rrFull) { var s = map.getSource("roadroute"); if (s) s.setData({ type: "FeatureCollection", features: [] }); this.rrFull = false; this.manKey = null; this.maneuverLook(); }
     }
     // Each request of the map: Igor's addresses on the page's own origin (a
     // reverse proxy may write them in http://), with the Home Assistant login.
@@ -8623,6 +8863,7 @@
       this.dest = d;
       this.route = null;
       this.drawManeuvers(null, 0);
+      this.roadPaint(null, 0);
       this.alts = [];
       this.altCycle = 0;
       if (d) this.remember(d);
@@ -9846,6 +10087,7 @@
       var offNow = best.dist > gpsTrust(this.accuracy, 25, 120, 45);
       this.drivenTo(R, along, !offNow);
       this.drawManeuvers(R, along);
+      if (this.roadRouteOn() && (!this.rrAt || now - this.rrAt > 1500)) { this.rrAt = now; this.roadPaint(R, along); }
       // Off the route for a few seconds, driving: a new one from here.
       // Off the route only after 5 seconds farther than the GPS may be off,
       // driving: a parallel street seen for a moment is not a new route.
@@ -13095,7 +13337,7 @@
     ["bz", "Bâtiments", "Bâtiments dès le zoom", "plus haut : moins de calcul", "seg", [[14, "14"], [15, "15"], [16, "16"], [17, "17"]]],
     ["rp", "Route & noms", "Place de la route", "« en transparence » : au sol, et devinée à travers les bâtiments qui la cachent ; « sous les noms » : le nom de la rue reste lisible", "seg", [["xray", "en transparence"], ["sol", "au sol"], ["noms", "sous les noms"], ["top", "par-dessus tout"]]],
     ["xo", "Route & noms", "Route vue à travers les bâtiments", "avec « en transparence »", "sl", 15, 80, 5, "%"],
-    ["rw", "Route & noms", "Épaisseur", "« la chaussée » : la route prise, de sa vraie largeur", "seg", [["fine", "fine"], ["normale", "normale"], ["large", "large"], ["chaussee", "la chaussée"]]],
+    ["rw", "Route & noms", "Épaisseur", "« la chaussée » : la route prise, de sa vraie largeur", "seg", [["fine", "fine"], ["normale", "normale"], ["large", "large"], ["chaussee", "la chaussée"], ["route", "la route elle-même"]]],
     ["rc", "Route & noms", "Couleur", "", "seg", [["bleu", "bleu"], ["cyan", "cyan"], ["violet", "violet"], ["jaune", "jaune"]]],
     ["md", "Route & noms", "Repère d'arrivée", "nom et heure d'arrivée au-dessus", "seg", [["epingle", "épingle"], ["balise", "balise"], ["anneau", "anneau au sol"], ["damier", "damier"], ["drapeau", "drapeau"]]],
     ["ms", "Route & noms", "Repère des étapes", "numérotées, couleur « après l'étape »", "seg", [["epingle", "épingle"], ["balise", "balise"], ["anneau", "anneau au sol"], ["damier", "damier"], ["drapeau", "drapeau"]]],
