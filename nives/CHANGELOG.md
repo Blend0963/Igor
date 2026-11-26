@@ -1,3 +1,8 @@
+## 0.59.1 — La météo sans position, l'autoradio à jour
+
+- `weather.igor_voiture` n'est plus « indisponible » quand la voiture ne donne pas sa position (GPSLogger arrêté) : sa dernière position connue, sinon la maison (attribut `position` : voiture, dernière position connue ou maison). Créée dès qu'une clé HERE est donnée.
+- Autoradio : le choix des itinéraires montre aussi la météo de chaque trajet (« Pluie 14:42 · arr. 9 °C ») ; sa recherche de stations prend le nouveau style : logos, étiquettes de la pompe, trois tris (sur le trajet, plus proches, moins chères), le carburant choisi d'un toucher.
+
 ## 0.59.0 — Météo HERE, vignettes de la barre, stations refaites
 
 - **`weather.igor_voiture`** : la météo là où est la voiture (HERE), avec ses prochaines heures et « prochainement » (« pluie vers 15 h ») ; demandée toutes les 30 minutes en roulant, toutes les heures à l'arrêt. Créée quand une clé HERE et la position de la voiture sont dans les options d'Igor. À mettre dans la barre (`weather:`) à la place de l'ancienne météo.

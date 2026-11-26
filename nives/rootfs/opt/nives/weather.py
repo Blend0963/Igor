@@ -1,4 +1,5 @@
-"""weather.igor_voiture: the weather where the car is, from HERE.
+"""weather.igor_voiture: the weather where the car is, from HERE (its last
+known place, else home, while the car's tracker gives no position).
 
 There while a HERE key and the car's position are set in Igor's options.
 Asked again every 30 minutes while the car moves (more than 3 km since the
@@ -56,18 +57,30 @@ class IgorCarWeather(WeatherEntity):
         self.where: list[float] | None = None
         self.last_pos: list[float] | None = None
         self.last_pos_at = 0.0
+        self.source = ""
 
     async def async_tick(self, _now=None) -> None:
         if not _here_key(self.hass):
             return
         tracker, _ = _car_settings(self.hass)
         pos = _car_position(self.hass, tracker)
-        if not pos:
-            return
+        # No position from the car (GPSLogger stopped, the tracker without
+        # coordinates): its last known place, else home — the weather is never
+        # left « unavailable » for want of a position.
+        if pos:
+            self.source = "voiture"
+        elif self.last_pos:
+            pos, self.source = self.last_pos, "dernière position connue"
+        else:
+            lat, lon = self.hass.config.latitude, self.hass.config.longitude
+            if lat is None or lon is None:
+                return
+            pos, self.source = [float(lon), float(lat)], "maison"
         now = time.monotonic()
         # Moving: the car went more than 3 km in the last check's time.
-        moving = bool(self.last_pos and _dist(self.last_pos, pos) > 500)
-        self.last_pos, self.last_pos_at = pos, now
+        moving = bool(self.source == "voiture" and self.last_pos and _dist(self.last_pos, pos) > 500)
+        if self.source == "voiture":
+            self.last_pos, self.last_pos_at = pos, now
         due = not self.data or now - self.at > (MOVING_S if moving else PARKED_S) or (self.where and _dist(self.where, pos) > MOVED_M and now - self.at > 600)
         if not due:
             return
@@ -109,7 +122,7 @@ class IgorCarWeather(WeatherEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         d = self.data or {}
-        return {"lieu": d.get("place") or "", "description": self._now().get("text") or "", "prochainement": self._soon()}
+        return {"lieu": d.get("place") or "", "position": self.source, "description": self._now().get("text") or "", "prochainement": self._soon()}
 
     def _soon(self) -> str:
         """Rain, snow or a storm due within two hours: « pluie vers 15 h »."""

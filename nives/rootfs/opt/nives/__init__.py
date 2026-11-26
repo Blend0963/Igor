@@ -497,8 +497,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     voice_display = bool(settings.get(CONF_VOICE_DISPLAY, DEFAULT_VOICE_DISPLAY))
     platforms = _get_platforms(caps["stt"], caps["tts"], voice_display)
     # weather.igor_voiture: the weather where the car is (HERE), with a HERE
-    # key and the car's position set.
-    if str(settings.get(CONF_HERE_KEY) or "").strip() and settings.get(CONF_CAR_TRACKER):
+    # key (without the car's position: its last known place, else home).
+    if str(settings.get(CONF_HERE_KEY) or "").strip():
         platforms.append(Platform.WEATHER)
     entry.runtime_data = IgorData(
         api_url=api_url,
