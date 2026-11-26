@@ -5516,7 +5516,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.56.2";
+  var GPS_CARD_VERSION = "0.57.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7109,6 +7109,22 @@
       var n = 0, t0 = performance.now(), onR = () => { n++; var t = performance.now(); if (t - t0 >= 1000) { var f = Math.round(n * 1000 / (t - t0)); box.textContent = f + " img/s · cible " + (this.fpsNow || "—") + (this.fluidSteps && this.fluidSteps.length ? " · allégé : " + this.fluidSteps.join(", ") : ""); box.style.color = f >= 25 ? "#5cc28f" : f >= 15 ? "#e5a04c" : "#e0675f"; n = 0; t0 = t; } };
       map.on("render", onR); this.fpsOff = () => map.off("render", onR);
     }
+    // The ground in relief (hills, valleys and their shading): only when asked
+    // — « Relief » in the settings, off by default —, made the first time.
+    // Off while guiding: with relief, MapLibre lays every line (the route,
+    // its arrows, the traffic) on the ground before the buildings, which
+    // then hide it whatever the order of the layers; the shading stays.
+    terrainLook() {
+      var L = this.look || {}, on = !!Number(L.te), T = this.ttTerrain;
+      if (on && !T && this.tt && this.ttKit && this.ttKit.sdk && this.ttKit.sdk.TerrainModule) {
+        this.ttTerrain = "…";
+        this.ttKit.sdk.TerrainModule.get(this.tt, { hillshade: { visible: true }, elevation: { visible: !this.route } })
+          .then((m) => { this.ttTerrain = m; this.terrainLook(); }).catch(() => { this.ttTerrain = null; });
+        return;
+      }
+      if (!T || T === "…" || !T.setElevationVisible) return;
+      try { T.setElevationVisible(on && !this.route); if (T.setHillshadeVisible) T.setHillshadeVisible(on); } catch (e) { /* as it was */ }
+    }
     // Where the route lies: over everything the map draws (the ground, the
     // 3D buildings, the trees), with TomTom's traffic lines and Igor's
     // arrows; under the names, places, shields and signs (every symbol
@@ -7150,6 +7166,7 @@
         return x == null ? x : ["*", x, k];
       };
       tryIt(() => { if (this.tt3d && this.tt3d.applyConfig) this.tt3d.applyConfig(this.buildingsLook()); });
+      tryIt(() => this.terrainLook());
       tryIt(() => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ visible: !!Number(L.sf), trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: Number(L.wd) || 0 } }); });
       tryIt(() => {
         var pal = this.routePal(), k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1;
@@ -7237,9 +7254,8 @@
         if (!this.ttSurf && this.config.sdk_surfaces !== false) {
           try { this.ttSurf = new lm.GLSurfaces(this.tt, Object.assign({ trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: 0 } }, typeof this.config.sdk_surfaces === "object" ? this.config.sdk_surfaces : {})); } catch (e) { why.push("surfaces : " + (e && e.message)); }
         }
-        // No ground in relief: with it, MapLibre lays every line (the route,
-        // its arrows, the traffic) on the ground before the buildings, which
-        // then hide it; and it costs heights to load and frames to draw.
+        // The ground in relief, only when asked (Sol & nature → Relief).
+        this.terrainLook();
         // The route over all of it: never hidden behind a building or the textured ground.
         this.routeOnTop(map);
         this.applyLook();
@@ -8062,7 +8078,7 @@
       else if (!this.route && this.guideOn) this.publishGuide(null);
       if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > (this.offlineReady ? 3000 : 800))) { this.limitAt = now; this.limitTick(now, moving); }
       if (!this.alertAt || now - this.alertAt > 500) { this.alertAt = now; this.alertTick(now, speed); }
-      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); this.publishAhead(now); this.themeTick(); }
+      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); this.publishAhead(now); this.refreshFuelTags(this.lastShown); this.themeTick(); }
       // The stations' panel, left open, follows the car: gone far enough from
       // where it last asked (400 m, and never twice within ten seconds), it
       // asks again — the list is the stations around the car, not the ones
@@ -8570,6 +8586,7 @@
       this.dest = d;
       this.route = null;
       this.drawManeuvers(null, 0);
+      try { this.terrainLook(); } catch (e) { /* as it was */ }
       this.alts = [];
       this.altCycle = 0;
       if (d) this.remember(d);
@@ -9572,6 +9589,7 @@
         limits: extra && extra.limits || [], lanes: extra && extra.lanes || [], tolls: extra && extra.tolls || [], ferries: extra && extra.ferries || [], lez: extra && extra.lez || [] };
       this.$("overview").hidden = false;
       this.seg = 1;
+      try { this.terrainLook(); } catch (e) { /* as it was */ }
       this.showStreet();
       var src = this.map && this.map.getSource("route");
       if (src) src.setData(this.routeData());
@@ -10344,6 +10362,7 @@
         this.poiShown = sig;
         var src = map && map.getSource("pois");
         if (src) src.setData({ type: "FeatureCollection", features: marks.filter((q) => q.kind !== "camera").map(asFeat) });
+        this.lastShown = shown;
         this.refreshFuelTags(shown);
       }
       if (isig !== this.poiIconSig) {
@@ -10378,17 +10397,30 @@
             .map((f) => f.geometry.coordinates);
         } catch (e) { pumps = []; }
       }
-      ((shown || this.pois) || []).forEach((q) => {
+      // On TomTom's map, a price only where TomTom draws its pump (zoomed
+      // out, no pump, no price), on that pump, one price per pump (the
+      // nearest station); elsewhere, on the station's own point.
+      var taken = {}, far = !tt && map.getZoom() < 13;  // another map, zoomed out: no prices either
+      (far ? [] : (shown || this.pois) || []).forEach((q) => {
         if (q.kind !== "fuel") return;
         var pr = (q.prices || {}).gazole, ru = (q.rupture || {}).gazole;
         if (pr == null && !ru) return;
-        seen[q.id] = true;
         var at = q.p;
-        if (pumps.length) { var bd = 80; pumps.forEach((c) => { var d = gpsDist(c, q.p); if (d < bd) { bd = d; at = c; } }); }
+        if (tt) {
+          var bd = 80, bi = -1;
+          pumps.forEach((c, i) => { var d = gpsDist(c, q.p); if (d < bd) { bd = d; bi = i; } });
+          if (bi < 0) return;
+          var key = pumps[bi].join();
+          if (taken[key] && taken[key].d <= bd) return;
+          if (taken[key]) delete seen[taken[key].id];
+          taken[key] = { d: bd, id: q.id };
+          at = pumps[bi];
+        }
+        seen[q.id] = true;
         var m = this.fuelTags[q.id];
         if (!m) {
           var el = document.createElement("div"); el.className = "ftag" + (tt ? " slim" : "");
-          m = new window.maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, tt ? -18 : -14] }).setLngLat(at).addTo(map);
+          m = new window.maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, tt ? -24 : -14] }).setLngLat(at).addTo(map);
           this.fuelTags[q.id] = m;
         } else if (tt) m.setLngLat(at);
         var el = m.getElement();
@@ -12979,6 +13011,7 @@
     ["poi", "Route & noms", "Lieux TomTom", "commerces, parkings, gares", "seg", [["aucun", "aucun"], ["tous", "tous"]]],
     ["sf", "Sol & nature", "Sol texturé", "eau, herbe, champs", "sw"],
     ["ts", "Sol & nature", "Arbres des bois", "ceux du SDK de TomTom · très lourd, déconseillé sur téléphone", "sw"],
+    ["te", "Sol & nature", "Relief", "collines, vallées et leur ombrage · coupé pendant le guidage (sinon les bâtiments cachent la route)", "sw"],
     ["wd", "Sol & nature", "Vent", "feuilles et eau", "seg", [[0, "calme"], [0.5, "léger"], [1, "fort"]]],
     ["dn", "Lumière", "Jour et nuit", "", "seg", [["auto", "selon le soleil"], ["day", "toujours jour"], ["night", "toujours nuit"]]],
     ["ne", "Lumière", "Nuit quand le soleil passe sous", "en degrés au-dessus de l'horizon", "seg", [[0, "0°"], [3, "3°"], [6, "6°"], [10, "10°"]]],
@@ -13004,11 +13037,11 @@
     });
     // Settings saved by an older version, brought to today's choices: the
     // thickness is small, medium or large; the map's traffic, TomTom's lines
-    // or none; the route's place, the street trees and the relief are no longer chosen.
+    // or none; the route's place, the street trees, the hills' shading alone are no longer chosen.
     var o = out.o;
     if (o.rw != null && ["fine", "normale", "large"].indexOf(o.rw) < 0) o.rw = "normale";
     if (o.tf === "chaussee") o.tf = "tout";
-    delete o.rp; delete o.xo; delete o.to; delete o.te; delete o.hs;
+    delete o.rp; delete o.xo; delete o.to; delete o.hs;
     return out;
   }
   function map3dResolve(str) { var x = map3dParse(str); return Object.assign({ p: x.p }, MAP3D_PRESETS[x.p].v, x.o); }

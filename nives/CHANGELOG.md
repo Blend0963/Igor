@@ -1,3 +1,9 @@
+## 0.57.0 — Relief en option, prix des stations à leur place
+
+- **Relief** de retour dans Réglages → Carte 3D → Sol & nature, éteint par défaut : collines, vallées et leur ombrage, chargés seulement quand on l'allume. Coupé pendant le guidage (avec le relief, les bâtiments cachent la route) ; l'ombrage reste.
+- **Prix des stations sur la carte TomTom** : une étiquette seulement là où TomTom dessine son pictogramme de station — dézoomé, plus de pictogramme, plus de prix (fini les prix sur toute l'Île-de-France) —, posée sur ce pictogramme, un peu plus haut, et une seule par pictogramme (la station la plus proche). Les étiquettes suivent la vue chaque seconde (zoom, déplacement). Sur une autre carte, pas de prix sous le zoom 13.
+- Croquis des vignettes de la barre de trajet de l'autoradio (`livraison/croquis7/`), à valider.
+
 ## 0.56.2 — Plus de relief
 
 - Le relief du sol (collines et vallées en 3D) et l'ombrage des collines sont retirés : peu visibles sur la plupart des trajets, ils coûtaient des données à charger et du calcul à chaque image, et le relief faisait passer la route sous les bâtiments (MapLibre plaque alors les traits sur le sol). La coupure pendant le guidage de la 0.56.1 devient inutile ; les réglages « Relief » et « Ombrage des collines » disparaissent.
