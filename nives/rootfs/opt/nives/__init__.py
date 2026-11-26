@@ -73,6 +73,12 @@ from .const import (
     CONF_TRAFFIC_KEY,
     SERVICE_TRAFFIC,
     SERVICE_ROUTE,
+    SERVICE_HERE_WEATHER,
+    SERVICE_HERE_PARKING,
+    SERVICE_HERE_CHECK,
+    SERVICE_HERE_ROUTE_WEATHER,
+    CONF_HERE_KEY,
+    CONF_HERE_DAILY,
     CONF_CAR_TRACKER,
     CONF_CAR_DESTINATION,
     SERVICE_CAR_GO,
@@ -490,6 +496,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     settings = {**entry.data, **entry.options}
     voice_display = bool(settings.get(CONF_VOICE_DISPLAY, DEFAULT_VOICE_DISPLAY))
     platforms = _get_platforms(caps["stt"], caps["tts"], voice_display)
+    # weather.igor_voiture: the weather where the car is (HERE), with a HERE
+    # key and the car's position set.
+    if str(settings.get(CONF_HERE_KEY) or "").strip() and settings.get(CONF_CAR_TRACKER):
+        platforms.append(Platform.WEATHER)
     entry.runtime_data = IgorData(
         api_url=api_url,
         api_token=await _async_resolve_token(hass, entry),
@@ -517,6 +527,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     _async_register_traffic(hass)
     _async_register_basemap(hass)
     _async_register_route(hass)
+    _async_register_here(hass)
     _async_register_car(hass)
     _async_register_tasker(hass)
     _async_register_offline_maps(hass)
@@ -966,6 +977,55 @@ def _async_register_car_service(hass: HomeAssistant, name: str, handler, schema)
     hass.services.async_register(DOMAIN, name, _checked, schema=schema, supports_response=SupportsResponse.ONLY)
 
 
+HERE_COUNT_KEY = "nives_here_count"
+
+
+def _here_key(hass: HomeAssistant) -> str | None:
+    """The HERE key set in Igor's options, or None."""
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        key = str({**entry.data, **entry.options}.get(CONF_HERE_KEY) or "").strip()
+        if key:
+            return key
+    return None
+
+
+def _here_take(hass: HomeAssistant, service: str) -> bool:
+    """One HERE request more today, if the daily cap (Igor's options, 300 by
+    default, 0: never) allows it — so the free allowance is never passed unseen."""
+    cap = 300
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        v = {**entry.data, **entry.options}.get(CONF_HERE_DAILY)
+        if v is not None:
+            try:
+                cap = int(v)
+            except (TypeError, ValueError):
+                pass
+    day = time.strftime("%Y-%m-%d")
+    c = hass.data.get(HERE_COUNT_KEY)
+    if not c or c.get("day") != day:
+        c = hass.data[HERE_COUNT_KEY] = {"day": day, "n": 0, "by": {}, "cap": cap}
+    c["cap"] = cap
+    if c["n"] >= cap:
+        return False
+    c["n"] += 1
+    c["by"][service] = c["by"].get(service, 0) + 1
+    return True
+
+
+async def _here_get(hass: HomeAssistant, service: str, url: str, params) -> tuple[int, Any]:
+    """A GET to HERE within the cap: (status, body); (0, None) refused by the cap or unreachable."""
+    if not _here_take(hass, service):
+        return 0, None
+    try:
+        async with async_get_clientsession(hass).get(url, params=params, timeout=aiohttp.ClientTimeout(total=12)) as r:
+            body = await r.json(content_type=None) if r.status == 200 else None
+            if r.status != 200:
+                _LOGGER.debug("HERE %s answered %s", service, r.status)
+            return r.status, body
+    except (aiohttp.ClientError, TimeoutError, ValueError):
+        return 0, None
+
+
 def _traffic_key(hass: HomeAssistant) -> str | None:
     """The TomTom key set in Igor's options, or None."""
     for entry in hass.config_entries.async_entries(DOMAIN):
@@ -1119,7 +1179,33 @@ def _async_register_traffic(hass: HomeAssistant) -> None:
 
     cache: dict[tuple, tuple[float, dict]] = {}
 
+    async def _here_incidents(lat: float, lon: float, radius: float) -> dict | None:
+        """HERE's incidents when TomTom has none to give (no key, refused, silent)."""
+        from . import here
+
+        hk = _here_key(hass)
+        if not hk:
+            return None
+        status, body = await _here_get(hass, "incidents", here.INCIDENTS_URL, here.incidents_params(hk, lat, lon, radius))
+        if status != 200 or body is None:
+            return None
+        return {"enabled": True, "incidents": here.parse_incidents(body), "source": "here"}
+
     async def _traffic(call: ServiceCall) -> ServiceResponse:
+        lat, lon, radius = call.data["latitude"], call.data["longitude"], call.data["radius_km"]
+        out = await _traffic_tomtom(call)
+        if out.get("enabled") is False or out.get("error"):
+            where = ("here", round(lat, 2), round(lon, 2), round(radius))
+            hit = cache.get(where)
+            if hit and time.monotonic() - hit[0] < TRAFFIC_CACHE_S:
+                return hit[1]
+            backup = await _here_incidents(lat, lon, radius)
+            if backup is not None:
+                cache[where] = (time.monotonic(), backup)
+                return backup
+        return out
+
+    async def _traffic_tomtom(call: ServiceCall) -> dict:
         key = _traffic_key(hass)
         if not key:
             return {"enabled": False, "incidents": []}
@@ -1169,6 +1255,8 @@ ROUTE_SCHEMA = vol.Schema(
         vol.Optional("route_type", default="fastest"): vol.In(["fastest", "shortest"]),
         # le tracé de TomTom Orbis (la carte affichée), le reste de la route classique
         vol.Optional("orbis", default=True): cv.boolean,
+        # le prix des péages de chaque itinéraire (HERE, si une clé HERE est donnée)
+        vol.Optional("tolls", default=True): cv.boolean,
     }
 )
 
@@ -1204,7 +1292,66 @@ def _async_register_route(hass: HomeAssistant) -> None:
             _LOGGER.debug("Orbis line refused (not the same way: %s points)", len(line))
         return out
 
+    toll_cache: dict = {}
+
+    async def _tolls(routes: list[dict], a, b, avoid_types) -> None:
+        """Each route's tolls' price from HERE (its own roads kept by points
+        it must pass), cached 30 minutes per way: the 3-minute refreshes do
+        not ask again."""
+        from . import here
+
+        hk = _here_key(hass)
+        if not hk:
+            return
+
+        async def one(r: dict) -> None:
+            if r.get("toll_eur") is not None:
+                return
+            sig = (round(b[0], 3), round(b[1], 3), round(float(r.get("distance") or 0) / 2000), tuple(sorted(avoid_types)), len(r.get("tolls") or []))
+            hit = toll_cache.get(sig)
+            if hit and time.monotonic() - hit[0] < 1800:
+                r["toll_eur"] = hit[1]
+                return
+            if not r.get("tolls"):
+                # The route has no toll stretch (TomTom says so): nothing to ask.
+                r["toll_eur"] = 0.0
+                return
+            params = here.route_params(hk, tuple(a), tuple(b), here.shape_points(r.get("coords") or []), avoid_types)
+            status, body = await _here_get(hass, "tolls", here.ROUTES_URL, params)
+            t = here.toll_cost(body) if status == 200 else None
+            if t is not None:
+                r["toll_eur"] = t["eur"]
+                toll_cache[sig] = (time.monotonic(), t["eur"])
+                if len(toll_cache) > 100:
+                    toll_cache.clear()
+
+        await asyncio.gather(*(one(r) for r in routes[:3]))
+
+    async def _here_route(a, b, via, avoid_types) -> dict | None:
+        """The whole route from HERE, when TomTom gives none."""
+        from . import here
+
+        hk = _here_key(hass)
+        if not hk:
+            return None
+        status, body = await _here_get(hass, "route", here.ROUTES_URL, here.route_params(hk, tuple(a), tuple(b), [tuple(v) for v in via], avoid_types, full=True))
+        return here.parse_route(body) if status == 200 and body else None
+
     async def _route(call: ServiceCall) -> ServiceResponse:
+        out = await _route_tomtom(call)
+        a, b = call.data["from"], call.data["to"]
+        if out.get("ok"):
+            if call.data["tolls"]:
+                await _tolls(out["routes"], a, b, call.data["avoid_types"])
+                out["route"] = out["routes"][0]
+            return out
+        # TomTom without a key, refusing or silent: HERE's route (no traffic stretches).
+        backup = await _here_route(a, b, call.data["via"], call.data["avoid_types"])
+        if backup:
+            return {"enabled": True, "ok": True, "route": backup, "routes": [backup], "source": "here"}
+        return out
+
+    async def _route_tomtom(call: ServiceCall) -> dict:
         key = _traffic_key(hass)
         if not key:
             return {"enabled": False}
@@ -1240,6 +1387,121 @@ def _async_register_route(hass: HomeAssistant) -> None:
         return {"enabled": True, "ok": True, "route": routes[0], "routes": routes}
 
     _async_register_car_service(hass, SERVICE_ROUTE, _route, ROUTE_SCHEMA)
+
+
+HERE_POINT_SCHEMA = vol.Schema(
+    {
+        vol.Required("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
+        vol.Required("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
+        vol.Optional("limit", default=6): vol.All(vol.Coerce(int), vol.Range(min=1, max=20)),
+    }
+)
+
+
+@callback
+def _async_register_here(hass: HomeAssistant) -> None:
+    """HERE's extras: the weather and the car parks at a point (a destination),
+    and a check of every HERE service with the key (here_check: which answer,
+    today's count against the daily cap)."""
+    if hass.services.has_service(DOMAIN, SERVICE_HERE_CHECK):
+        return
+    from . import here
+
+    weather_cache: dict = {}
+
+    async def _weather(call: ServiceCall) -> ServiceResponse:
+        hk = _here_key(hass)
+        if not hk:
+            return {"enabled": False}
+        lat, lon = call.data["latitude"], call.data["longitude"]
+        where = (round(lat, 2), round(lon, 2))
+        hit = weather_cache.get(where)
+        if hit and time.monotonic() - hit[0] < 1800:
+            return hit[1]
+        status, body = await _here_get(hass, "weather", here.WEATHER_URL, here.weather_params(hk, lat, lon))
+        w = here.parse_weather(body) if status == 200 else None
+        out = {"enabled": True, "ok": bool(w), **(w or {"error": f"HERE a répondu {status}" if status else "HERE injoignable ou plafond du jour atteint"})}
+        if w:
+            if len(weather_cache) > 50:
+                weather_cache.clear()
+            weather_cache[where] = (time.monotonic(), out)
+        return out
+
+    async def _parking(call: ServiceCall) -> ServiceResponse:
+        hk = _here_key(hass)
+        if not hk:
+            return {"enabled": False}
+        lat, lon = call.data["latitude"], call.data["longitude"]
+        status, body = await _here_get(hass, "parking", here.DISCOVER_URL, here.discover_params(hk, "parking", lat, lon, call.data["limit"]))
+        if status != 200 or body is None:
+            return {"enabled": True, "ok": False, "error": f"HERE a répondu {status}" if status else "HERE injoignable ou plafond du jour atteint"}
+        return {"enabled": True, "ok": True, "parkings": here.parse_places(body)}
+
+    async def _check(call: ServiceCall) -> ServiceResponse:
+        """Each HERE service asked once around a point (Paris by default):
+        what answers with this key, and today's count."""
+        hk = _here_key(hass)
+        if not hk:
+            return {"enabled": False, "note": "aucune clé HERE dans les options d'Igor"}
+        lat, lon = call.data.get("latitude", 48.8566), call.data.get("longitude", 2.3522)
+        dest = (lat - 0.25, lon + 0.35)
+        tests = {
+            "itinéraire et péages": (here.ROUTES_URL, here.route_params(hk, (lat, lon), dest, full=True)),
+            "incidents de trafic": (here.INCIDENTS_URL, here.incidents_params(hk, lat, lon, 5)),
+            "recherche (parkings)": (here.DISCOVER_URL, here.discover_params(hk, "parking", lat, lon, 2)),
+            "géocodage": (here.GEOCODE_URL, {"q": "Tour Eiffel, Paris", "apikey": hk}),
+            "météo": (here.WEATHER_URL, here.weather_params(hk, lat, lon)),
+        }
+        out = {}
+        for name, (url, params) in tests.items():
+            status, body = await _here_get(hass, "check", url, params)
+            if name == "itinéraire et péages" and body:
+                r = here.parse_route(body)
+                out[name] = {"status": status, "ok": bool(r), "km": round(r["distance"] / 1000, 1) if r else None, "péages_eur": r["toll_eur"] if r else None}
+            else:
+                out[name] = {"status": status, "ok": status == 200 and body is not None}
+        return {"enabled": True, "services": out, "today": hass.data.get(HERE_COUNT_KEY)}
+
+    route_wx: dict = {}
+
+    async def _route_weather(call: ServiceCall) -> ServiceResponse:
+        """The weather along a route, each point at the hour the car will pass
+        it (points: [[lat, lon, epoch_s], …], up to 12): what troubles the
+        driving (rain, snow, ice, fog, storm, wind), and the arrival's. A
+        point's forecast is kept 30 minutes (points 10 km apart share one)."""
+        hk = _here_key(hass)
+        if not hk:
+            return {"enabled": False}
+
+        async def one(p) -> dict:
+            lat, lon, eta = float(p[0]), float(p[1]), float(p[2])
+            where = (round(lat, 1), round(lon, 1))
+            hit = route_wx.get(where)
+            if hit and time.monotonic() - hit[0] < 1800:
+                w = hit[1]
+            else:
+                status, body = await _here_get(hass, "route_weather", here.WEATHER_URL, here.weather_params(hk, lat, lon))
+                w = here.parse_weather(body) if status == 200 else None
+                if w:
+                    if len(route_wx) > 200:
+                        route_wx.clear()
+                    route_wx[where] = (time.monotonic(), w)
+            x = here.at_time(w, eta) if w else None
+            return {"lat": lat, "lon": lon, "eta": eta, "ok": bool(x), "weather": x, "hazard": here.hazard(x)}
+
+        pts = await asyncio.gather(*(one(p) for p in call.data["points"]))
+        return {"enabled": True, "points": list(pts)}
+
+    _async_register_car_service(hass, SERVICE_HERE_ROUTE_WEATHER, _route_weather, vol.Schema({
+        vol.Required("points"): vol.All(cv.ensure_list, vol.Length(min=1, max=12),
+                                        [vol.ExactSequence([vol.Coerce(float), vol.Coerce(float), vol.Coerce(float)])]),
+    }))
+    _async_register_car_service(hass, SERVICE_HERE_WEATHER, _weather, HERE_POINT_SCHEMA)
+    _async_register_car_service(hass, SERVICE_HERE_PARKING, _parking, HERE_POINT_SCHEMA)
+    _async_register_car_service(hass, SERVICE_HERE_CHECK, _check, vol.Schema({
+        vol.Optional("latitude"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
+        vol.Optional("longitude"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180)),
+    }))
 
 
 def _car_settings(hass: HomeAssistant) -> tuple[str | None, str | None]:

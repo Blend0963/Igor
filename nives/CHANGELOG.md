@@ -1,3 +1,45 @@
+## 0.59.0 — Météo HERE, vignettes de la barre, stations refaites
+
+- **`weather.igor_voiture`** : la météo là où est la voiture (HERE), avec ses prochaines heures et « prochainement » (« pluie vers 15 h ») ; demandée toutes les 30 minutes en roulant, toutes les heures à l'arrêt. Créée quand une clé HERE et la position de la voiture sont dans les options d'Igor. À mettre dans la barre (`weather:`) à la place de l'ancienne météo.
+- **Météo du trajet** (`nives.route_weather`) : un point tous les 40 km environ, à l'heure où la voiture y passera ; ce qui gêne la conduite devient une zone (pluie, neige, verglas, brouillard, orage, vent fort), annoncée une fois 5 minutes avant. La météo à l'arrivée. Sur chaque choix d'itinéraire : son pire temps et la météo d'arrivée.
+- **Barre de l'autoradio** : chaque point se touche et ouvre sa vignette au-dessus de lui — une seule à la fois, fermée seule après 6 s (un toucher la garde 6 s de plus) : station (tous ses carburants, prix, n/a ou rupture, adresse), radar (limite, votre vitesse), bouchon (longueur, retard), péage, météo (longueur, conseil), arrivée (heure, météo). Bandes météo sous la route (pluie en pointillé bleu, neige blanche, verglas, brouillard gris, orage violet, vent orange) ; la météo d'arrivée dans l'en-tête.
+- **Étiquettes des carburants** : celles de la pompe (norme européenne) — carré B7 (gazole), ronds E5, E10, E85, losange LPG — à la place des pastilles.
+- **Stations** : trois tris (sur le trajet, les plus proches, les moins chères), le carburant choisi, le prix en grand sur chaque ligne, la moins chère en vert, « Prix » ; sur un téléphone en portrait, les boutons sous la station.
+- Plafond HERE par défaut : 300 demandes par jour.
+
+## 0.58.2 — L'autoradio marque aussi le péage estimé
+
+- Choix des itinéraires sur l'autoradio : un péage estimé (sans prix de HERE) est affiché « péage ≈ … » et « total ≈ … », comme sur la carte.
+
+## 0.58.1 — Plus de « péage ? »
+
+- Choix de l'itinéraire : quand HERE ne donne pas le prix (pas de clé, plafond du jour atteint, pas de réponse), le péage est **estimé** au lieu d'un point d'interrogation : la longueur des sections à péage × 0,10 €/km (la moyenne des autoroutes françaises pour une voiture), affiché « péage ≈ … » et le total « ≈ … ». Un itinéraire sans section à péage dit toujours « sans péage », sans rien demander.
+
+## 0.58.0 — HERE : prix des péages, coût des itinéraires, secours de TomTom
+
+- Options d'Igor : **clé HERE** (gardée dans Home Assistant, jamais réaffichée ; « - » l'efface) et **plafond de demandes HERE par jour** (150 par défaut, 0 : jamais), pour ne jamais dépasser la part gratuite sans le savoir.
+- `nives.route` : le **prix des péages** de chaque itinéraire (HERE, l'itinéraire tenu sur les mêmes routes par des points de passage), seulement quand TomTom y voit une section à péage, gardé 30 minutes (les recalculs toutes les 3 minutes ne redemandent rien). Option `tolls: false`.
+- **Secours** : sans réponse de TomTom (pas de clé, refus, silence), l'itinéraire vient de HERE (avec ses instructions en français et ses péages, sans les tronçons de bouchons), et les incidents de trafic aussi.
+- Nouvelles actions : `nives.here_weather` (la météo maintenant et les prochaines heures en un point), `nives.here_parking` (les parkings autour d'un point), `nives.here_check` (chaque service HERE essayé une fois avec la clé : ce qui répond, et le compte du jour).
+- Carte GPS, choix de l'itinéraire : sous chaque choix, **péage + gazole = total** (et l'écart avec le premier). Le gazole : longueur × `consumption` (L/100, sinon 6,5) × `fuel_price` (sinon la moyenne des stations autour). Un péage inconnu reste « péage ? ». L'autoradio (choix des itinéraires) affiche aussi le péage et le total.
+
+## 0.57.1 — La recherche de stations répond de nouveau
+
+- « Stations » ne trouvait plus rien : la liste dépendait d'abord d'OpenStreetMap et d'OSRM (serveurs gratuits souvent saturés) ; le flux du ministère ne servait qu'aux prix. Les deux sont maintenant demandés en même temps, et la liste officielle des stations du ministère suffit seule : sur le trajet d'abord quand on est guidé (dans l'ordre où elles viennent), puis les plus proches. Chaque ligne donne le prix du gazole.
+
+## 0.57.0 — Relief en option, prix des stations à leur place
+
+- **Relief** de retour dans Réglages → Carte 3D → Sol & nature, éteint par défaut : collines, vallées et leur ombrage, chargés seulement quand on l'allume. Coupé pendant le guidage (avec le relief, les bâtiments cachent la route) ; l'ombrage reste.
+- **Prix des stations sur la carte TomTom** : une étiquette seulement là où TomTom dessine son pictogramme de station — dézoomé, plus de pictogramme, plus de prix (fini les prix sur toute l'Île-de-France) —, posée sur ce pictogramme, un peu plus haut, et une seule par pictogramme (la station la plus proche). Les étiquettes suivent la vue chaque seconde (zoom, déplacement). Sur une autre carte, pas de prix sous le zoom 13.
+
+## 0.56.2 — Plus de relief
+
+- Le relief du sol (collines et vallées en 3D) et l'ombrage des collines sont retirés : peu visibles sur la plupart des trajets, ils coûtaient des données à charger et du calcul à chaque image, et le relief faisait passer la route sous les bâtiments (MapLibre plaque alors les traits sur le sol). La coupure pendant le guidage de la 0.56.1 devient inutile ; les réglages « Relief » et « Ombrage des collines » disparaissent.
+
+## 0.56.1 — La route entière visible à travers les bâtiments
+
+- Avec le relief du sol allumé, MapLibre plaque tous les traits (la route, ses flèches, le trafic) sur le sol avant de dessiner les bâtiments : ceux-ci les cachaient, quel que soit l'ordre des couches, et seule la pointe des flèches (un symbole) passait devant. Pendant le guidage, le relief est désormais coupé (le sol devient plat, l'ombrage des collines reste) : la route, les flèches et le trafic passent par-dessus les bâtiments. Le relief revient à la fin du guidage.
+
 ## 0.56.0 — Réglages de la carte simplifiés, fenêtre réparée sur téléphone
 
 - **Arbres de rue retirés** (OpenStreetMap) : trop lourds pour un téléphone. Restent les arbres des bois du SDK TomTom, éteints par défaut.

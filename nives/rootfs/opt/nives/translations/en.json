@@ -47,7 +47,9 @@
           "car_tracker": "The car's position",
           "car_destination": "The car's GPS destination",
           "car_users": "The car's screen (not administrators)",
-          "lock_threads": "Lock the chat threads with the key too"
+          "lock_threads": "Lock the chat threads with the key too",
+          "here_key": "HERE key (tolls, backup)",
+          "here_daily": "HERE requests per day (cap)"
         },
         "data_description": {
           "shared_memory": "On (recommended): everyone shares one memory, so something you tell a voice satellite is also known in the app and on the dashboard, and the other way round. Off: each Home Assistant user gets a memory of their own, and voice satellites and automations use the memory named below.",
@@ -62,7 +64,9 @@
           "car_tracker": "The car's device_tracker (the head unit's companion app or GPSLogger). With the destination below, Igor can guide the car (« emmène-moi à la maison »), find a fuel station on the way and add it as a stop.",
           "car_destination": "The input_text the GPS card guides to (its `destination:`), such as input_text.voiture_destination, 120 characters.",
           "car_users": "Users who may use the car's services without being administrators: live traffic, routes, the GPS guidance Igor drives. Pick the head unit's account. Everything else stays for administrators.",
-          "lock_threads": "Off (default): the thread panel always answers, whether the key is there or not; the key only locks Assist, the voice and the screens. On: the threads also refuse while the key is away, except for the users still answered."
+          "lock_threads": "Off (default): the thread panel always answers, whether the key is there or not; the key only locks Assist, the voice and the screens. On: the threads also refuse while the key is away, except for the users still answered.",
+          "here_key": "Optional. A HERE key (platform.here.com): the tolls' price of each route, the weather where the car is (weather.igor_voiture) and along the route, the car parks at the destination, and a backup when TomTom does not answer (route, traffic incidents). Kept in Home Assistant only. Leave empty to keep the current key; a single dash (-) removes it.",
+          "here_daily": "At most this many HERE requests a day (all services together), so the free allowance is never passed unseen. 300 by default; 0: HERE never asked."
         }
       }
     },
@@ -311,6 +315,10 @@
         "via": {
           "name": "Stops",
           "description": "[latitude, longitude] of stops on the way, in order."
+        },
+        "tolls": {
+          "name": "Tolls' price",
+          "description": "Each route's tolls' price from HERE (with a HERE key in Igor's options); on by default. HERE also answers the route when TomTom cannot."
         }
       }
     },
@@ -475,6 +483,62 @@
         "script": {
           "name": "Script",
           "description": "The script that sends them now (script.tasker_envoyer)."
+        }
+      }
+    },
+    "here_weather": {
+      "name": "Weather (HERE)",
+      "description": "The weather now and the next hours at a point (a destination), from HERE Destination Weather, with the HERE key in Igor's options. Kept 30 minutes. Without a key it answers enabled: false.",
+      "fields": {
+        "latitude": {
+          "name": "Latitude",
+          "description": "Of the point."
+        },
+        "longitude": {
+          "name": "Longitude",
+          "description": "Of the point."
+        }
+      }
+    },
+    "here_parking": {
+      "name": "Car parks (HERE)",
+      "description": "The car parks around a point (a destination), from HERE's search, with the HERE key in Igor's options.",
+      "fields": {
+        "latitude": {
+          "name": "Latitude",
+          "description": "Of the point."
+        },
+        "longitude": {
+          "name": "Longitude",
+          "description": "Of the point."
+        },
+        "limit": {
+          "name": "How many",
+          "description": "1 to 20 (6 by default)."
+        }
+      }
+    },
+    "here_check": {
+      "name": "Check the HERE key",
+      "description": "Asks each HERE service once (route and tolls, traffic incidents, search, geocoding, weather) and says which answer with the key, and today's requests against the daily cap.",
+      "fields": {
+        "latitude": {
+          "name": "Latitude",
+          "description": "Where to test (Paris by default)."
+        },
+        "longitude": {
+          "name": "Longitude",
+          "description": "Where to test (Paris by default)."
+        }
+      }
+    },
+    "route_weather": {
+      "name": "Weather along a route (HERE)",
+      "description": "The weather at points of a route, each at the hour the car will pass it: what troubles the driving (rain, snow, ice, fog, storm, wind). With the HERE key in Igor's options.",
+      "fields": {
+        "points": {
+          "name": "Points",
+          "description": "[[latitude, longitude, passing time in epoch seconds], …], up to 12."
         }
       }
     }

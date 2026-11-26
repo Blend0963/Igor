@@ -186,8 +186,14 @@ SERVICE_TRIP_MAP = "trip_map"
 # Live traffic on the GPS card (traffic.py): a TomTom key set in the options,
 # never in a dashboard. Without one, the card simply shows no traffic.
 CONF_TRAFFIC_KEY = "traffic_key"
+CONF_HERE_KEY = "here_key"
+CONF_HERE_DAILY = "here_daily"
 SERVICE_TRAFFIC = "traffic"
 SERVICE_ROUTE = "route"
+SERVICE_HERE_WEATHER = "here_weather"
+SERVICE_HERE_PARKING = "here_parking"
+SERVICE_HERE_CHECK = "here_check"
+SERVICE_HERE_ROUTE_WEATHER = "route_weather"
 # The car Igor guides (car.py): its position and the GPS card's destination.
 CONF_CAR_TRACKER = "car_tracker"
 CONF_CAR_DESTINATION = "car_destination"
