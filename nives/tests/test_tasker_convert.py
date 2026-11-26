@@ -105,3 +105,15 @@ def test_step_to_several_entities_is_named_not_changed():
     new, places = tk.convert(AUTOMATIONS, where="automations", skipped=skipped)
     assert skipped == ["automations › Autre notification"]
     assert new[2]["actions"][1] == AUTOMATIONS[2]["actions"][1]
+
+
+def test_telegram_bot_form_from_the_ui():
+    """The UI's form: telegram_bot.send_message, the entity under data: (parse_mode dropped)."""
+    scripts = {"appeler": {"alias": "Appeler", "sequence": [
+        {"action": "telegram_bot.send_message", "metadata": {},
+         "data": {"entity_id": ["notify.ha_command"], "message": "HA_CALL|{{ recipient }}", "parse_mode": "html"}}]},
+        "photo": {"sequence": [{"action": "telegram_bot.send_message", "data": {"entity_id": ["notify.ha_intrusion"], "message": "x"}}]}}
+    out, places = tk.convert(scripts)
+    assert out["appeler"]["sequence"][0] == {"action": "script.tasker_envoyer", "data": {"message": "HA_CALL|{{ recipient }}"}}
+    assert out["photo"] == scripts["photo"]  # another chat: left alone
+    assert places == ["script Appeler"]

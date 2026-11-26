@@ -1,5 +1,6 @@
-"""Moving the commands sent to Tasker through Telegram (notify.ha_command) onto
-the direct way (script.tasker_envoyer: an intent first, Telegram as a fallback).
+"""Moving the commands sent to Tasker through Telegram (notify.ha_command, by
+notify.send_message or telegram_bot.send_message) onto the direct way
+(script.tasker_envoyer: ntfy first, Telegram as a fallback).
 
 Pure: given the automations or scripts as Home Assistant keeps them (lists and
 dicts), each step that sends a message to the notify entity becomes a call of
@@ -30,7 +31,9 @@ def _targets(step: dict, entity: str) -> bool:
     legacy = "notify." + entity.split(".", 1)[1] if entity.startswith("notify.") else None
     if svc == legacy:  # the old service form: action: notify.ha_command
         return True
-    if svc != "notify.send_message":
+    # notify.send_message, and the Telegram bot's own sending (telegram_bot.send_message,
+    # the entity named under data: as the UI writes it).
+    if svc not in ("notify.send_message", "telegram_bot.send_message"):
         return False
     return _ids(step) == [entity]
 
@@ -60,7 +63,7 @@ def convert(obj: Any, entity: str = "notify.ha_command", script: str = "script.t
         if isinstance(node, list):
             return [walk(x, path) for x in node]
         if isinstance(node, dict):
-            if node.get("action", node.get("service")) == "notify.send_message" and entity in _ids(node) and len(_ids(node)) > 1:
+            if node.get("action", node.get("service")) in ("notify.send_message", "telegram_bot.send_message") and entity in _ids(node) and len(_ids(node)) > 1:
                 skipped.append(path or "?")
             if _targets(node, entity):
                 out = _convert_step(node, entity, script)
