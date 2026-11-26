@@ -5518,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.54.1";
+  var GPS_CARD_VERSION = "0.55.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -9555,6 +9555,8 @@
     useTomTom(R0) {
       this.useRoute(R0.coords, R0.steps.map((x) => Object.assign(gpsTomTomStep(x), { loc: x.loc })), R0.duration, "tomtom",
         { jams: R0.jams || [], delay: R0.delay || 0, limits: R0.limits || [], lanes: R0.lanes || [], tolls: R0.tolls || [], tunnels: R0.tunnels || [], ferries: R0.ferries || [], lez: R0.lez || [] });
+      // Debug: where the line comes from (Orbis, the map shown, or the classic routing).
+      if (this.config.debug) this.message("tracé : " + (R0.geometry === "orbis" ? "TomTom Orbis (comme la carte)" : "TomTom classique"));
     },
     // Every way to choose from: the fastest, the shortest, without
     // motorways, without tolls, without the low-emission zones (the ZFE a
