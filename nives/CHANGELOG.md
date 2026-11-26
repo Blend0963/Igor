@@ -1,3 +1,9 @@
+## 0.54.0 — La route elle-même, coloriée
+
+- Réglages → Carte 3D → Route & noms → Épaisseur : **« la route elle-même »**. L'itinéraire n'est plus un trait posé sur la carte : Igor retrouve les routes que la carte dessine sous l'itinéraire et les redessine avec leur propre forme et leur propre largeur (celles du style), aux couleurs du trajet — bleu, orange et rouge des bouchons, couleur « après l'étape », gris du chemin parcouru, et le blanc des flèches aux virages, qui deviennent la route elle-même avec leur pointe.
+- Boulevards à deux chaussées : le tracé de TomTom passe par le milieu (entre les deux) ; Igor prend la chaussée de droite, celle du sens de la voiture. D'une rue à l'autre, le dessin passe par le carrefour.
+- Seulement ce qui est à l'écran, recalculé toutes les 1,5 s ; vu de loin (sous le zoom 13), le trait habituel. Avec « en transparence », la route coloriée se voit aussi à travers les bâtiments.
+
 ## 0.53.1 — Les flèches font partie du tracé
 
 - Flèches de manœuvre : découpées dans la ligne même de la route (ses virages lissés), elles en ont exactement la largeur, le liseré (couleur du bord de la route) et les bouts arrondis — la route qui devient blanche au virage, plus un trait posé dessus. La pointe a le même liseré, coins arrondis, sans trait à la jonction. Une flèche s'arrête avant le virage suivant, et sa queue raccourcit à mesure que la voiture arrive dessus.
