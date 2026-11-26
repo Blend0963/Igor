@@ -1167,6 +1167,8 @@ ROUTE_SCHEMA = vol.Schema(
         vol.Optional("alternatives", default=0): vol.All(vol.Coerce(int), vol.Range(min=0, max=2)),
         # la façon de calculer : le plus rapide (défaut) ou le plus court
         vol.Optional("route_type", default="fastest"): vol.In(["fastest", "shortest"]),
+        # le tracé de TomTom Orbis (la carte affichée), le reste de la route classique
+        vol.Optional("orbis", default=True): cv.boolean,
     }
 )
 
@@ -1180,7 +1182,27 @@ def _async_register_route(hass: HomeAssistant) -> None:
     if hass.services.has_service(DOMAIN, SERVICE_ROUTE):
         return
 
-    from .traffic import avoid_body, parse_routes, route_params, route_url
+    from .traffic import avoid_body, onto_orbis, orbis_body, orbis_coords, orbis_params, orbis_url, parse_routes, route_params, route_url
+
+    async def _orbis_line(session, key: str, a, b, via, route: dict, avoid_types, boxes) -> dict | None:
+        """The same way on TomTom Orbis (the map shown), or None (the classic line stays)."""
+        body = {**orbis_body(route["coords"]), **avoid_body(boxes)}
+        try:
+            async with session.post(
+                orbis_url(tuple(a), tuple(b), via), params=orbis_params(key, avoid_types), json=body,
+                timeout=aiohttp.ClientTimeout(total=12),
+            ) as r:
+                if r.status != 200:
+                    _LOGGER.debug("Orbis routing answered %s", r.status)
+                    return None
+                line = orbis_coords(await r.json(content_type=None))
+        except (aiohttp.ClientError, TimeoutError, ValueError):
+            return None
+        # Off the event loop: a long route is thousands of points.
+        out = await hass.async_add_executor_job(onto_orbis, route, line)
+        if out is None:
+            _LOGGER.debug("Orbis line refused (not the same way: %s points)", len(line))
+        return out
 
     async def _route(call: ServiceCall) -> ServiceResponse:
         key = _traffic_key(hass)
@@ -1210,6 +1232,11 @@ def _async_register_route(hass: HomeAssistant) -> None:
         routes = parse_routes(data)
         if not routes:
             return {"enabled": True, "ok": False, "error": "pas d'itinéraire"}
+        # The line drawn from TomTom Orbis (the map shown), the rest classic.
+        if call.data["orbis"]:
+            better = await _orbis_line(session, key, a, b, via, routes[0], call.data["avoid_types"], call.data["avoid"])
+            if better:
+                routes[0] = better
         return {"enabled": True, "ok": True, "route": routes[0], "routes": routes}
 
     _async_register_car_service(hass, SERVICE_ROUTE, _route, ROUTE_SCHEMA)

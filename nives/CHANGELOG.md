@@ -1,3 +1,9 @@
+## 0.55.0 — Le tracé de TomTom Orbis, la carte affichée
+
+- `nives.route` : après la route classique de TomTom (instructions, voix, heure d'arrivée, bouchons, limitations, voies, péages), Igor redemande **le même chemin à TomTom Orbis** — la carte que l'on voit — en lui donnant la route classique comme points d'appui. Le **tracé dessiné** devient celui d'Orbis : il suit les routes de la carte (la bonne chaussée d'un boulevard, les bretelles, les ronds-points) comme sur Waze ou un vrai GPS TomTom. Les bouchons, limitations, voies, péages, tunnels, ferries et zones à faibles émissions de la route classique y sont reportés à leur place ; les virages et les flèches se placent sur le nouveau tracé ; tout le reste vient de la route classique.
+- Si Orbis ne répond pas, ou propose un autre chemin (plus de 15 % de longueur d'écart, ou la route classique à plus de 60 m de son tracé), le tracé classique reste : rien ne change pour le guidage. Une demande de plus à TomTom à chaque calcul d'itinéraire (pas pour les itinéraires de rechange).
+- Mode débug de la carte : « tracé : TomTom Orbis » ou « TomTom classique ». Option `orbis: false` de `nives.route` pour revenir au tracé classique.
+
 ## 0.54.1 — « La route elle-même » : un seul trait, lisse, posé sur la bonne chaussée
 
 - Fini la recopie des morceaux de rue de la carte (coupés par tuile, voie par voie : le tracé sautait d'une chaussée à l'autre, faisait des marches et des angles, et perdait dégradé et halo). L'itinéraire reste une seule ligne lisse — dégradé des bouchons, couleur après l'étape, liseré, halo, flèches, chemin parcouru — mais :

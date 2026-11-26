@@ -296,6 +296,125 @@ def _parse_one(r: dict) -> dict[str, Any] | None:
     }
 
 
+# ----- the line drawn: the same way, on TomTom Orbis (the map shown) -----
+# The route above comes from TomTom's classic routing, made on its older map;
+# the card shows TomTom Orbis, which draws some roads otherwise (a boulevard
+# as two carriageways where the older map has one middle line). Orbis is
+# asked to rebuild the same way (the classic route's points as supporting
+# points) and its line replaces the classic one: every stretch of the classic
+# answer (jams, limits, lanes, tolls…) is carried onto it by place, the
+# instructions keep their own places. Everything else stays the classic
+# route's: the voice, the times, the traffic.
+ORBIS_ROUTE_URL = "https://api.tomtom.com/maps/orbis/routing/calculateRoute/{a}:{b}/json"
+# How far the classic line may stray from Orbis' (metres) before the Orbis
+# line is refused (not the same way), and the share of points allowed past it.
+ORBIS_MATCH_M = 60.0
+ORBIS_MATCH_SHARE = 0.03
+
+
+def orbis_url(origin: tuple[float, float], dest: tuple[float, float], via: list | tuple = ()) -> str:
+    return route_url(origin, dest, via).replace(ROUTE_URL.split("{")[0], ORBIS_ROUTE_URL.split("{")[0])
+
+
+def orbis_params(key: str, avoid: list[str] | tuple = ()) -> list[tuple[str, str]]:
+    params = [("key", key), ("apiVersion", "2"), ("travelMode", "car")]
+    params += [("avoid", a) for a in avoid if a in AVOIDABLE]
+    return params
+
+
+def _dist(a: list[float], b: list[float]) -> float:
+    """Metres between two [lon, lat] points."""
+    x = math.radians(b[0] - a[0]) * math.cos(math.radians((a[1] + b[1]) / 2))
+    y = math.radians(b[1] - a[1])
+    return math.hypot(x, y) * 6371008.8
+
+
+def orbis_body(coords: list[list[float]], every_m: float = 80.0, most: int = 1500) -> dict[str, Any]:
+    """The classic route as supporting points (one every ~80 m, at most 1500)."""
+    if len(coords) < 2:
+        return {}
+    total = sum(_dist(coords[i - 1], coords[i]) for i in range(1, len(coords)))
+    step = max(every_m, total / most)
+    pts, run = [coords[0]], 0.0
+    for i in range(1, len(coords)):
+        run += _dist(coords[i - 1], coords[i])
+        if run >= step:
+            pts.append(coords[i]); run = 0.0
+    if pts[-1] != coords[-1]:
+        pts.append(coords[-1])
+    return {"supportingPoints": [{"latitude": p[1], "longitude": p[0]} for p in pts]}
+
+
+def orbis_coords(body: Any) -> list[list[float]]:
+    """Orbis' first route as [lon, lat] points (repeats dropped)."""
+    routes = body.get("routes") if isinstance(body, dict) else None
+    out: list[list[float]] = []
+    for leg in ((routes or [{}])[0] or {}).get("legs") or []:
+        for pt in (leg or {}).get("points") or []:
+            try:
+                q = [float(pt["longitude"]), float(pt["latitude"])]
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not out or out[-1] != q:
+                out.append(q)
+    return out
+
+
+def _on_line(p: list[float], a: list[float], b: list[float]) -> tuple[float, float]:
+    """(distance in metres, t along a→b) of p's foot on the segment."""
+    k = math.cos(math.radians(p[1]))
+    ax, ay, bx, by = (a[0] - p[0]) * k, a[1] - p[1], (b[0] - p[0]) * k, b[1] - p[1]
+    dx, dy = bx - ax, by - ay
+    ln = dx * dx + dy * dy
+    t = max(0.0, min(1.0, -(ax * dx + ay * dy) / ln)) if ln else 0.0
+    return math.hypot(ax + t * dx, ay + t * dy) * 111195.0, t
+
+
+def onto_orbis(route: dict[str, Any], line: list[list[float]]) -> dict[str, Any] | None:
+    """The classic route with Orbis' line: each classic point's index → the
+    Orbis point at the same place (walking forward along both, so a road
+    taken twice keeps its order). None when the two are not the same way."""
+    old = route.get("coords") or []
+    if len(old) < 2 or len(line) < 2:
+        return None
+    total_old = sum(_dist(old[i - 1], old[i]) for i in range(1, len(old)))
+    total_new = sum(_dist(line[i - 1], line[i]) for i in range(1, len(line)))
+    if not total_old or not (0.85 <= total_new / total_old <= 1.15):
+        return None
+    mapped, far, j = [], 0, 1
+    for p in old:
+        best = None
+        for k in range(max(1, j - 3), min(len(line), j + 400)):
+            d, t = _on_line(p, line[k - 1], line[k])
+            if best is None or d < best[0]:
+                best = (d, k, t)
+            if best[0] < 15.0 and k > best[1] + 30:
+                break
+        d, k, t = best
+        if d > ORBIS_MATCH_M:
+            far += 1
+        j = k
+        mapped.append(k if t >= 0.5 else k - 1)
+    if far > max(2, ORBIS_MATCH_SHARE * len(old)):
+        return None
+    n = len(line) - 1
+    at = lambda i: min(n, mapped[max(0, min(int(i), len(mapped) - 1))])  # noqa: E731
+
+    def span(x: dict) -> dict:
+        y = dict(x)
+        y["start"], y["end"] = at(x["start"]), max(at(x["start"]), at(x["end"]))
+        return y
+
+    out = dict(route)
+    out["coords"] = line
+    for key in ("jams", "limits", "lanes"):
+        out[key] = [span(x) for x in route.get(key) or []]
+    for key in ("tolls", "tunnels", "ferries", "motorways", "lez"):
+        out[key] = [[at(a), max(at(a), at(b))] for a, b in route.get(key) or []]
+    out["geometry"] = "orbis"
+    return out
+
+
 # ----- the basemap: TomTom's dark raster map, relayed with the same key -----
 # The card never sees the key: it asks /api/nives/basemap/{z}/{x}/{y}.png
 # (Home Assistant, logged in), which asks TomTom. Pre-drawn 512 px PNG = nothing
