@@ -5518,7 +5518,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.58.1";
+  var GPS_CARD_VERSION = "0.58.2";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -9436,7 +9436,7 @@
         var R0 = o.route;
         var C = this.routeCost(R0);
         return [Math.round(R0.duration / 60), gpsMetres(R0.distance), R0.delay >= 60 ? Math.round(R0.delay / 60) : 0, String(o.label).replace(/[~;|]/g, " "), R0.tolls && R0.tolls.length ? 1 : 0, R0.lez && R0.lez.length ? 1 : 0,
-          C && C.toll != null ? C.toll.toFixed(2) : "", C && C.total != null ? C.total.toFixed(2) : ""].join("~");
+          C && C.toll != null ? C.toll.toFixed(2) : "", C && C.total != null ? C.total.toFixed(2) : "", C && C.approx ? 1 : 0].join("~");
       }).join(";"));
       var $ = this.$, list = $("rlist");
       list.innerHTML = "";
@@ -12114,7 +12114,7 @@
         var t = mins >= 60 ? Math.floor(mins / 60) + " h " + String(mins % 60).padStart(2, "0") : mins + " min";
         var it = el("div", "it", this.findList), l = el("div", "", it);
         var big = el("div", "", l, t); big.style.fontSize = "24px";
-        el("small", "", l, [p[3], p[1], p[6] ? "péage " + Number(p[6]).toFixed(2).replace(".", ",") + " €" : p[4] === "1" ? "péage" : "", p[5] === "1" ? "ZFE" : "", p[7] ? "total " + Number(p[7]).toFixed(2).replace(".", ",") + " €" : ""].filter(Boolean).join(" · "));
+        el("small", "", l, [p[3], p[1], p[6] ? "péage " + (p[8] === "1" ? "≈ " : "") + Number(p[6]).toFixed(2).replace(".", ",") + " €" : p[4] === "1" ? "péage" : "", p[5] === "1" ? "ZFE" : "", p[7] ? "total " + (p[8] === "1" ? "≈ " : "") + Number(p[7]).toFixed(2).replace(".", ",") + " €" : ""].filter(Boolean).join(" · "));
         var r = el("span", "r", it, jam ? "+" + jam + " min de bouchons" : "fluide"); r.style.color = jam ? CAR_WARN : CAR_OK;
         if (!i) it.style.boxShadow = "inset 3px 0 var(--acc)";
         it.addEventListener("click", () => {
@@ -12633,7 +12633,7 @@
         var p = x.split("~"), mins = Number(p[0]) || 0, jam = Number(p[2]) || 0;
         var it = el("div", "rt" + (i ? "" : " first"), list);
         el("b", "", it, mins >= 60 ? Math.floor(mins / 60) + " h " + String(mins % 60).padStart(2, "0") : mins + " min");
-        var l = el("div", "l", it); el("div", "", l, p[3] || "itinéraire " + (i + 1)); el("small", "", l, [p[1], p[6] ? "péage " + Number(p[6]).toFixed(2).replace(".", ",") + " €" : p[4] === "1" ? "péage" : "", p[5] === "1" ? "ZFE" : "", p[7] ? "total " + Number(p[7]).toFixed(2).replace(".", ",") + " €" : ""].filter(Boolean).join(" · "));
+        var l = el("div", "l", it); el("div", "", l, p[3] || "itinéraire " + (i + 1)); el("small", "", l, [p[1], p[6] ? "péage " + (p[8] === "1" ? "≈ " : "") + Number(p[6]).toFixed(2).replace(".", ",") + " €" : p[4] === "1" ? "péage" : "", p[5] === "1" ? "ZFE" : "", p[7] ? "total " + (p[8] === "1" ? "≈ " : "") + Number(p[7]).toFixed(2).replace(".", ",") + " €" : ""].filter(Boolean).join(" · "));
         var j = el("span", "j", it, jam ? "+" + jam + " min" : "fluide"); j.style.color = jam ? CAR_WARN : CAR_OK;
         it.addEventListener("click", () => {
           this.routesPicked = String(o.at);

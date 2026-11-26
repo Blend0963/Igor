@@ -1,3 +1,7 @@
+## 0.58.2 — L'autoradio marque aussi le péage estimé
+
+- Choix des itinéraires sur l'autoradio : un péage estimé (sans prix de HERE) est affiché « péage ≈ … » et « total ≈ … », comme sur la carte.
+
 ## 0.58.1 — Plus de « péage ? »
 
 - Choix de l'itinéraire : quand HERE ne donne pas le prix (pas de clé, plafond du jour atteint, pas de réponse), le péage est **estimé** au lieu d'un point d'interrogation : la longueur des sections à péage × 0,10 €/km (la moyenne des autoroutes françaises pour une voiture), affiché « péage ≈ … » et le total « ≈ … ». Un itinéraire sans section à péage dit toujours « sans péage », sans rien demander.
