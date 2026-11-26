@@ -5440,7 +5440,6 @@
   //   jam_gradient: false                   # the jams as separate strokes over the route (default: the route itself fades to orange/red and back, halo included)
   //   buildings_windows: false              # plain facades, as TomTom's own navigation draws them (true: windows, lit at night)
   //   sdk_buildings: { … }                  # any other knob of TomTom's Buildings3D (preset, shadows, walls.color…)
-  //   terrain: false                        # a flat ground (no hills, no valleys)
   //   sdk_surfaces: false                   # no textured surfaces (lighter); or its knobs, e.g. { wind: { speedFactor: 1 } }
   //   voice_to: input_text.car_voice        # what the guidance says goes there (« ms|kind|text »), said by the head unit's igor-guide-card
   //   publish_ahead: input_text.car_ahead   # the radar within reach and what lies ahead on the route, for igor-drive-card
@@ -5517,7 +5516,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.56.1";
+  var GPS_CARD_VERSION = "0.56.2";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7110,19 +7109,6 @@
       var n = 0, t0 = performance.now(), onR = () => { n++; var t = performance.now(); if (t - t0 >= 1000) { var f = Math.round(n * 1000 / (t - t0)); box.textContent = f + " img/s · cible " + (this.fpsNow || "—") + (this.fluidSteps && this.fluidSteps.length ? " · allégé : " + this.fluidSteps.join(", ") : ""); box.style.color = f >= 25 ? "#5cc28f" : f >= 15 ? "#e5a04c" : "#e0675f"; n = 0; t0 = t; } };
       map.on("render", onR); this.fpsOff = () => map.off("render", onR);
     }
-    // The ground in relief, off while guiding: with relief, MapLibre lays
-    // every line (the route, its arrows, the traffic) on the ground as a
-    // texture before the buildings, which then hide it whatever the order
-    // of the layers — only the symbols (names, signs, the arrows' heads)
-    // stay over them. Guided, the route must be seen: the ground goes flat
-    // (the hills' shading stays). Back when the guidance ends.
-    terrainLook() {
-      var T = this.ttTerrain, L = this.look || {};
-      if (!T || !T.setElevationVisible) return;
-      var want = !!Number(L.te) && !this.route;
-      T.setElevationVisible(want);
-      if (T.setHillshadeVisible) T.setHillshadeVisible(!!Number(L.hs));
-    }
     // Where the route lies: over everything the map draws (the ground, the
     // 3D buildings, the trees), with TomTom's traffic lines and Igor's
     // arrows; under the names, places, shields and signs (every symbol
@@ -7165,7 +7151,6 @@
       };
       tryIt(() => { if (this.tt3d && this.tt3d.applyConfig) this.tt3d.applyConfig(this.buildingsLook()); });
       tryIt(() => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ visible: !!Number(L.sf), trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: Number(L.wd) || 0 } }); });
-      tryIt(() => this.terrainLook());
       tryIt(() => {
         var pal = this.routePal(), k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1;
         [["route-case", GPS_CASE_W], ["route-glow", GPS_GLOW_W], ["route", GPS_ROUTE_W], ["route-core", GPS_CORE_W], ["routejam", GPS_ROUTE_W]].forEach((x) => {
@@ -7252,18 +7237,14 @@
         if (!this.ttSurf && this.config.sdk_surfaces !== false) {
           try { this.ttSurf = new lm.GLSurfaces(this.tt, Object.assign({ trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: 0 } }, typeof this.config.sdk_surfaces === "object" ? this.config.sdk_surfaces : {})); } catch (e) { why.push("surfaces : " + (e && e.message)); }
         }
-        // The ground in relief (hills, valleys) with its shading; the
-        // buildings, the trees and the route stand on it. `terrain: false`: flat.
-        if (this.config.terrain !== false && !this.ttTerrain && this.ttKit.sdk.TerrainModule) {
-          this.ttTerrain = "…";
-          this.ttKit.sdk.TerrainModule.get(this.tt, { hillshade: { visible: true }, elevation: { visible: true } })
-            .then((m) => { this.ttTerrain = m; try { this.terrainLook(); } catch (e) { /* as it was */ } }).catch((e) => { this.ttTerrain = null; this.terrainWhy = (e && e.message) || "relief refusé"; });
-        }
+        // No ground in relief: with it, MapLibre lays every line (the route,
+        // its arrows, the traffic) on the ground before the buildings, which
+        // then hide it; and it costs heights to load and frames to draw.
         // The route over all of it: never hidden behind a building or the textured ground.
         this.routeOnTop(map);
         this.applyLook();
         if (!this.routeTopWatch) { this.routeTopWatch = true; map.on("styledata", () => this.routeOnTop(map)); }
-        this.diag3d = "SDK TomTom (" + this.ttStyle + ") : " + [this.tt3d ? "bâtiments 3D" : "", this.ttSurf ? "surfaces" + (this.sdkTreesOn() ? " et arbres des bois" : "") : "", this.config.terrain !== false ? "relief" : ""].filter(Boolean).join(" + ") + (why.length ? " · " + why.join(" · ") : "");
+        this.diag3d = "SDK TomTom (" + this.ttStyle + ") : " + [this.tt3d ? "bâtiments 3D" : "", this.ttSurf ? "surfaces" + (this.sdkTreesOn() ? " et arbres des bois" : "") : ""].filter(Boolean).join(" + ") + (why.length ? " · " + why.join(" · ") : "");
         if (this.config.debug) this.message("relief : " + this.diag3d);
         return;
       }
@@ -8589,7 +8570,6 @@
       this.dest = d;
       this.route = null;
       this.drawManeuvers(null, 0);
-      try { this.terrainLook(); } catch (e) { /* as it was */ }
       this.alts = [];
       this.altCycle = 0;
       if (d) this.remember(d);
@@ -9450,7 +9430,7 @@
     // Smooth before beautiful: the frames are counted; under 24 a second for
     // 4 s while the map moves, the scene is lightened a step — first what costs
     // much and shows little (the buildings' shadows and reflections, the trees,
-    // the relief, the textures), the sharpness last of all and never below 1.5
+    // the textures), the sharpness last of all and never below 1.5
     // device pixels: a blurred map was worse than a plainer one. `fluid: false`: never.
     fluidWatch(map) {
       if (this.config.fluid === false || this.fluidOn) return;
@@ -9460,7 +9440,6 @@
         // The trees first: the heaviest of all (enough to stop a phone).
         ["arbres des bois retirés", () => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ trees: { visible: false } }); }],
         ["ombres et reflets retirés", () => { if (this.tt3d && this.tt3d.updateConfig) this.tt3d.updateConfig({ shadows: { visible: false }, reflections: { intensity: 0 } }); }],
-        ["relief du sol retiré", () => { if (this.ttTerrain && this.ttTerrain.setElevationVisible) this.ttTerrain.setElevationVisible(false); }],
         ["textures retirées", () => { if (this.ttSurf && this.ttSurf.remove) { try { this.ttSurf.remove(); } catch (e) { /* kept */ } this.ttSurf = null; } }],
         ["netteté un peu réduite", () => { var d = window.devicePixelRatio || 1; if (map.setPixelRatio && d > 1.5) { map.setPixelRatio(Math.max(1.5, Math.min(d, 2) * 0.8)); this.pxNow = null; } }]
       ];
@@ -9593,7 +9572,6 @@
         limits: extra && extra.limits || [], lanes: extra && extra.lanes || [], tolls: extra && extra.tolls || [], ferries: extra && extra.ferries || [], lez: extra && extra.lez || [] };
       this.$("overview").hidden = false;
       this.seg = 1;
-      try { this.terrainLook(); } catch (e) { /* as it was */ }
       this.showStreet();
       var src = this.map && this.map.getSource("route");
       if (src) src.setData(this.routeData());
@@ -12972,10 +12950,10 @@
   // then only what differs from it. The phone's map (igor-gps-card
   // `settings:`) applies it live; igor-settings-card `map3d:` edits it.
   var MAP3D_PRESETS = {
-    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, tf: "aucun", aa: "auto", bz: 15, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 0, wd: 0, te: 1, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
-    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { tf: "tout", aa: "auto", b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, wd: 0.5, te: 1, hs: 1, fl: 1, px: "max", ips: 60, cpt: 0 } },
-    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { tf: "aucun", aa: "auto", b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, wd: 0, te: 0, hs: 1, fl: 1, px: "max", ips: 45, cpt: 0 } },
-    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { tf: "aucun", aa: "non", b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, wd: 0, te: 0, hs: 0, fl: 1, px: "eco", ips: 30, cpt: 0 } }
+    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, tf: "aucun", aa: "auto", bz: 15, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 0, wd: 0, fl: 1, px: "max", ips: 45, cpt: 0 } },
+    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { tf: "tout", aa: "auto", b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, wd: 0.5, fl: 1, px: "max", ips: 60, cpt: 0 } },
+    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { tf: "aucun", aa: "auto", b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, wd: 0, fl: 1, px: "max", ips: 45, cpt: 0 } },
+    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { tf: "aucun", aa: "non", b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, wd: 0, fl: 1, px: "eco", ips: 30, cpt: 0 } }
   };
   // Each setting: key, tab, label, hint, kind (seg | sw | sl), choices or range.
   var MAP3D_ROWS = [
@@ -13002,8 +12980,6 @@
     ["sf", "Sol & nature", "Sol texturé", "eau, herbe, champs", "sw"],
     ["ts", "Sol & nature", "Arbres des bois", "ceux du SDK de TomTom · très lourd, déconseillé sur téléphone", "sw"],
     ["wd", "Sol & nature", "Vent", "feuilles et eau", "seg", [[0, "calme"], [0.5, "léger"], [1, "fort"]]],
-    ["te", "Sol & nature", "Relief", "collines et vallées · coupé pendant le guidage (sinon les bâtiments cachent la route)", "sw"],
-    ["hs", "Sol & nature", "Ombrage des collines", "", "sw"],
     ["dn", "Lumière", "Jour et nuit", "", "seg", [["auto", "selon le soleil"], ["day", "toujours jour"], ["night", "toujours nuit"]]],
     ["ne", "Lumière", "Nuit quand le soleil passe sous", "en degrés au-dessus de l'horizon", "seg", [[0, "0°"], [3, "3°"], [6, "6°"], [10, "10°"]]],
     ["pi", "Caméra", "Inclinaison", "", "sl", 0, 75, 5, "°"],
@@ -13028,11 +13004,11 @@
     });
     // Settings saved by an older version, brought to today's choices: the
     // thickness is small, medium or large; the map's traffic, TomTom's lines
-    // or none; the route's place and the street trees are no longer chosen.
+    // or none; the route's place, the street trees and the relief are no longer chosen.
     var o = out.o;
     if (o.rw != null && ["fine", "normale", "large"].indexOf(o.rw) < 0) o.rw = "normale";
     if (o.tf === "chaussee") o.tf = "tout";
-    delete o.rp; delete o.xo; delete o.to;
+    delete o.rp; delete o.xo; delete o.to; delete o.te; delete o.hs;
     return out;
   }
   function map3dResolve(str) { var x = map3dParse(str); return Object.assign({ p: x.p }, MAP3D_PRESETS[x.p].v, x.o); }

@@ -1,3 +1,7 @@
+## 0.56.2 — Plus de relief
+
+- Le relief du sol (collines et vallées en 3D) et l'ombrage des collines sont retirés : peu visibles sur la plupart des trajets, ils coûtaient des données à charger et du calcul à chaque image, et le relief faisait passer la route sous les bâtiments (MapLibre plaque alors les traits sur le sol). La coupure pendant le guidage de la 0.56.1 devient inutile ; les réglages « Relief » et « Ombrage des collines » disparaissent.
+
 ## 0.56.1 — La route entière visible à travers les bâtiments
 
 - Avec le relief du sol allumé, MapLibre plaque tous les traits (la route, ses flèches, le trafic) sur le sol avant de dessiner les bâtiments : ceux-ci les cachaient, quel que soit l'ordre des couches, et seule la pointe des flèches (un symbole) passait devant. Pendant le guidage, le relief est désormais coupé (le sol devient plat, l'ombrage des collines reste) : la route, les flèches et le trafic passent par-dessus les bâtiments. Le relief revient à la fin du guidage.
