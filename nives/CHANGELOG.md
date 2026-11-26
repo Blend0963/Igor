@@ -1,3 +1,9 @@
+## 0.54.1 — « La route elle-même » : un seul trait, lisse, posé sur la bonne chaussée
+
+- Fini la recopie des morceaux de rue de la carte (coupés par tuile, voie par voie : le tracé sautait d'une chaussée à l'autre, faisait des marches et des angles, et perdait dégradé et halo). L'itinéraire reste une seule ligne lisse — dégradé des bouchons, couleur après l'étape, liseré, halo, flèches, chemin parcouru — mais :
+  - **de la largeur de la route** telle que la carte la dessine (la largeur du style pour la route où roule la voiture) ;
+  - **décalée sur la chaussée de droite** quand la carte dessine deux chaussées et que TomTom passe au milieu : un décalage mesuré tous les 6 m à l'écran, lissé sur une trentaine de mètres (valeur médiane, puis moyenne) ; il glisse, il ne saute pas. Les petits écarts (moins de 1,5 m) sont ignorés.
+
 ## 0.54.0 — La route elle-même, coloriée
 
 - Réglages → Carte 3D → Route & noms → Épaisseur : **« la route elle-même »**. L'itinéraire n'est plus un trait posé sur la carte : Igor retrouve les routes que la carte dessine sous l'itinéraire et les redessine avec leur propre forme et leur propre largeur (celles du style), aux couleurs du trajet — bleu, orange et rouge des bouchons, couleur « après l'étape », gris du chemin parcouru, et le blanc des flèches aux virages, qui deviennent la route elle-même avec leur pointe.
