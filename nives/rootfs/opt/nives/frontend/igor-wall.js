@@ -5517,7 +5517,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.56.0";
+  var GPS_CARD_VERSION = "0.56.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7110,6 +7110,19 @@
       var n = 0, t0 = performance.now(), onR = () => { n++; var t = performance.now(); if (t - t0 >= 1000) { var f = Math.round(n * 1000 / (t - t0)); box.textContent = f + " img/s · cible " + (this.fpsNow || "—") + (this.fluidSteps && this.fluidSteps.length ? " · allégé : " + this.fluidSteps.join(", ") : ""); box.style.color = f >= 25 ? "#5cc28f" : f >= 15 ? "#e5a04c" : "#e0675f"; n = 0; t0 = t; } };
       map.on("render", onR); this.fpsOff = () => map.off("render", onR);
     }
+    // The ground in relief, off while guiding: with relief, MapLibre lays
+    // every line (the route, its arrows, the traffic) on the ground as a
+    // texture before the buildings, which then hide it whatever the order
+    // of the layers — only the symbols (names, signs, the arrows' heads)
+    // stay over them. Guided, the route must be seen: the ground goes flat
+    // (the hills' shading stays). Back when the guidance ends.
+    terrainLook() {
+      var T = this.ttTerrain, L = this.look || {};
+      if (!T || !T.setElevationVisible) return;
+      var want = !!Number(L.te) && !this.route;
+      T.setElevationVisible(want);
+      if (T.setHillshadeVisible) T.setHillshadeVisible(!!Number(L.hs));
+    }
     // Where the route lies: over everything the map draws (the ground, the
     // 3D buildings, the trees), with TomTom's traffic lines and Igor's
     // arrows; under the names, places, shields and signs (every symbol
@@ -7152,7 +7165,7 @@
       };
       tryIt(() => { if (this.tt3d && this.tt3d.applyConfig) this.tt3d.applyConfig(this.buildingsLook()); });
       tryIt(() => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ visible: !!Number(L.sf), trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: Number(L.wd) || 0 } }); });
-      tryIt(() => { var T = this.ttTerrain; if (T && T.setElevationVisible) { T.setElevationVisible(!!Number(L.te)); T.setHillshadeVisible(!!Number(L.hs)); } });
+      tryIt(() => this.terrainLook());
       tryIt(() => {
         var pal = this.routePal(), k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1;
         [["route-case", GPS_CASE_W], ["route-glow", GPS_GLOW_W], ["route", GPS_ROUTE_W], ["route-core", GPS_CORE_W], ["routejam", GPS_ROUTE_W]].forEach((x) => {
@@ -7244,7 +7257,7 @@
         if (this.config.terrain !== false && !this.ttTerrain && this.ttKit.sdk.TerrainModule) {
           this.ttTerrain = "…";
           this.ttKit.sdk.TerrainModule.get(this.tt, { hillshade: { visible: true }, elevation: { visible: true } })
-            .then((m) => { this.ttTerrain = m; }).catch((e) => { this.ttTerrain = null; this.terrainWhy = (e && e.message) || "relief refusé"; });
+            .then((m) => { this.ttTerrain = m; try { this.terrainLook(); } catch (e) { /* as it was */ } }).catch((e) => { this.ttTerrain = null; this.terrainWhy = (e && e.message) || "relief refusé"; });
         }
         // The route over all of it: never hidden behind a building or the textured ground.
         this.routeOnTop(map);
@@ -8576,6 +8589,7 @@
       this.dest = d;
       this.route = null;
       this.drawManeuvers(null, 0);
+      try { this.terrainLook(); } catch (e) { /* as it was */ }
       this.alts = [];
       this.altCycle = 0;
       if (d) this.remember(d);
@@ -9579,6 +9593,7 @@
         limits: extra && extra.limits || [], lanes: extra && extra.lanes || [], tolls: extra && extra.tolls || [], ferries: extra && extra.ferries || [], lez: extra && extra.lez || [] };
       this.$("overview").hidden = false;
       this.seg = 1;
+      try { this.terrainLook(); } catch (e) { /* as it was */ }
       this.showStreet();
       var src = this.map && this.map.getSource("route");
       if (src) src.setData(this.routeData());
@@ -12987,7 +13002,7 @@
     ["sf", "Sol & nature", "Sol texturé", "eau, herbe, champs", "sw"],
     ["ts", "Sol & nature", "Arbres des bois", "ceux du SDK de TomTom · très lourd, déconseillé sur téléphone", "sw"],
     ["wd", "Sol & nature", "Vent", "feuilles et eau", "seg", [[0, "calme"], [0.5, "léger"], [1, "fort"]]],
-    ["te", "Sol & nature", "Relief", "collines et vallées", "sw"],
+    ["te", "Sol & nature", "Relief", "collines et vallées · coupé pendant le guidage (sinon les bâtiments cachent la route)", "sw"],
     ["hs", "Sol & nature", "Ombrage des collines", "", "sw"],
     ["dn", "Lumière", "Jour et nuit", "", "seg", [["auto", "selon le soleil"], ["day", "toujours jour"], ["night", "toujours nuit"]]],
     ["ne", "Lumière", "Nuit quand le soleil passe sous", "en degrés au-dessus de l'horizon", "seg", [[0, "0°"], [3, "3°"], [6, "6°"], [10, "10°"]]],

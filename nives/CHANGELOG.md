@@ -1,3 +1,7 @@
+## 0.56.1 — La route entière visible à travers les bâtiments
+
+- Avec le relief du sol allumé, MapLibre plaque tous les traits (la route, ses flèches, le trafic) sur le sol avant de dessiner les bâtiments : ceux-ci les cachaient, quel que soit l'ordre des couches, et seule la pointe des flèches (un symbole) passait devant. Pendant le guidage, le relief est désormais coupé (le sol devient plat, l'ombrage des collines reste) : la route, les flèches et le trafic passent par-dessus les bâtiments. Le relief revient à la fin du guidage.
+
 ## 0.56.0 — Réglages de la carte simplifiés, fenêtre réparée sur téléphone
 
 - **Arbres de rue retirés** (OpenStreetMap) : trop lourds pour un téléphone. Restent les arbres des bois du SDK TomTom, éteints par défaut.
