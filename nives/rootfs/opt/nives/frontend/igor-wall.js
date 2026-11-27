@@ -5559,7 +5559,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.10";
+  var GPS_CARD_VERSION = "0.62.11";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6850,6 +6850,18 @@
       if (config.edge_to_edge === true) {
         var vp = document.querySelector('meta[name="viewport"]');
         if (vp && !/viewport-fit\s*=\s*cover/.test(vp.content)) vp.content += ", viewport-fit=cover";
+        // The status bar and the notch's band are the system's: only the
+        // browser's real fullscreen gives them to the page. It needs a touch:
+        // the first one on the map asks for it (and again after it was left).
+        if (!this.edgeWired) {
+          this.edgeWired = true;
+          this.addEventListener("pointerdown", () => {
+            // The card itself in fullscreen: drawn in the page's top layer,
+            // over everything and out of any container that would hold it.
+            if (this.config.edge_to_edge !== true || document.fullscreenElement || !this.requestFullscreen) return;
+            try { this.requestFullscreen({ navigationUI: "hide" }).catch(() => {}); } catch (e) { /* not offered here */ }
+          }, { passive: true });
+        }
       }
     }
     getCardSize() { return 6; }
@@ -6923,7 +6935,11 @@
         // edge_to_edge: the map over the whole screen, the notch's band and the
         // system bars' places included (a phone in portrait or landscape); the
         // buttons and panels keep out of the cut-outs (safe-area insets).
-        ":host(.edge) { position: fixed; inset: 0; z-index: 3; height: auto; }" +
+        // edge_to_edge: the card itself fixed over the whole page (as the full
+        // mode, which works where the host's own fixing was trapped by the
+        // page's containers), above the wall's bar.
+        ":host(.edge) ha-card { position: fixed; inset: 0; z-index: 2147481000; height: auto; min-height: 0; border-radius: 0; border: 0; }" +
+        ":host(:fullscreen) { width: 100vw; height: 100vh; background: #000; } :host(:fullscreen) ha-card { position: fixed; inset: 0; height: auto; }" +
         ":host(.edge) .btns, :host(.edge) .hud, :host(.edge) .panel, :host(.edge) .side { margin-top: env(safe-area-inset-top, 0px); margin-left: env(safe-area-inset-left, 0px); margin-right: env(safe-area-inset-right, 0px); }" +
         "ha-card { display: block; position: relative; height: 100%; min-height: 240px; overflow: hidden; background: #07080a; border-radius: var(--igor-radius, 3px); }" +
         "#map { position: absolute; inset: 0; touch-action: none; } #map .maplibregl-canvas { touch-action: none; }" +
@@ -13525,7 +13541,7 @@
   //   tune.hold_peak_s: 5                  # how long a peak (red line) stays before sinking
   //   tabs: true                           # the radar / moteur / conso buttons under the view (default: none, the views change by themselves)
   //   resume: { entity: binary_sensor.car_resume_offered, button: input_button.car_resume }   # a big green « Reprendre le trajet » over the view while offered (attributes precedent_debut, precedent_km)
-  //   tune: { load_on: 75, accel_on: 1.4, window_s: 3, min_kmh: 15, boost_on: 0.8, gain_s: 4, hold_s: 20, calm_s: 8, min_view_s: 8, cooldown_s: 30, override_s: 60 }
+  //   tune: { load_on: 85, accel_on: 1.8, window_s: 3, min_kmh: 15, boost_on: 0.8, gain_s: 4, hold_s: 20, calm_s: 8, min_view_s: 8, cooldown_s: 30, override_s: 60 }
   // Which view, by priority: a radar within reach (green, amber, red as the
   // speed goes), a hard acceleration (the engine, held while the effort
   // lasts, gear changes included), the route ahead while guided, else the
@@ -13741,9 +13757,15 @@
       if (w.length < 4) return no;
       var first = w.find((x) => x.v != null), last = w[w.length - 1];
       if (!first || last.v == null || last.v < this.tune("min_kmh", 15) || last.t <= first.t) return no;
-      var acc = ((last.v - first.v) / 3.6) / ((last.t - first.t) / 1000), on = this.tune("accel_on", 1.4);
+      // The gain measured over most of the window, never over two speed
+      // readings a fraction of a second apart (a 2 km/h step there read as a
+      // hard pull — the engine view at a roundabout's exit).
+      if (last.t - first.t < win * 0.7) return no;
+      var vs = w.filter((x) => x.v != null);
+      if (vs.length < 3) return no;
+      var acc = ((last.v - first.v) / 3.6) / ((last.t - first.t) / 1000), on = this.tune("accel_on", 1.8);
       var loads = w.filter((x) => x.load != null), boosts = w.filter((x) => x.boost != null);
-      var floored = loads.length >= 3 ? loads.filter((x) => x.load >= this.tune("load_on", 75)).length / loads.length >= 0.6 : null;
+      var floored = loads.length >= 3 ? loads.filter((x) => x.load >= this.tune("load_on", 85)).length / loads.length >= 0.6 : null;
       var boosted = boosts.length >= 3 ? boosts.filter((x) => x.boost >= this.tune("boost_on", 0.8)).length / boosts.length >= 0.6 : null;
       // Load or turbo, whichever the car gives; neither: a harder gain alone.
       var hit = floored === null && boosted === null ? acc >= on * 1.45 : (!!floored || !!boosted) && acc >= on;

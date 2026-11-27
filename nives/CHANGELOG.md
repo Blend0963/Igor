@@ -1,3 +1,8 @@
+## 0.62.11 — Plein écran du téléphone, écran moteur sans fausse alerte
+
+- **`edge_to_edge: true`** (carte GPS du téléphone) : la carte se fixe sur toute la page, au-dessus de la barre d'Igor, et au premier toucher passe en vrai plein écran (barre d'état et bande de l'encoche comprises).
+- **Écran moteur (autoradio)** : l'accélération se mesure sur la quasi-totalité de la fenêtre de 3 s et sur au moins 3 relevés de vitesse ; deux relevés à quelques dixièmes de seconde d'écart (un saut de 2 km/h) passaient pour une forte accélération — l'écran moteur apparaissait en sortie de rond-point. Seuils relevés (1,8 m/s², charge 85 %).
+
 ## 0.62.10 — Flèche en dégradé, sans risque
 
 - **Flèche de la voiture** : le dégradé revient. Chaque flèche dessinée a ses propres noms de dégradés (une autre copie sur la page ne peut plus les masquer), et une couleur pleine sous chaque face : jamais de face transparente.
