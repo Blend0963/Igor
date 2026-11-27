@@ -1,3 +1,8 @@
+## 0.61.1 — Monuments 3D, teinte de nuit TomTom
+
+- **Monuments 3D** (Réglages de la carte → Bâtiments) : les modèles détaillés des bâtiments connus de TomTom (Orbis 3D Landmarks), seuls, sans les autres bâtiments. TomTom les garde en accès restreint : la clé doit avoir l'accès « Orbis 3D Landmarks » ; sinon la carte le signale une fois.
+- **Teinte de la nuit « TomTom »** : les couleurs relevées sur la navigation de nuit de TomTom — sol bleu-gris, rues un ton plus clair, eau bleu ardoise, murs des bâtiments 3D #425f69.
+
 ## 0.61.0 — Vue de jonction, flèche et flèches au sol façon TomTom, teinte et éclairage de nuit
 
 - **Vue de jonction sur l'autoradio** (`junction:` sur igor-drive-card, `publish_junction:` sur la carte du téléphone) : à l'approche d'une sortie, d'une bifurcation, d'un échangeur, d'un rond-point ou d'un carrefour, toute la colonne du centre montre la route telle qu'on la voit, tracé cyan avec son halo, sans flèche. Elle disparaît dès que la voiture est dans le carrefour (à la sortie pour un rond-point).

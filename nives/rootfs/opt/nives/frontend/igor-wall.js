@@ -5540,7 +5540,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.61.0";
+  var GPS_CARD_VERSION = "0.61.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7122,15 +7122,42 @@
     // (no windows), a little see-through so the streets behind them show.
     // « Teinte de la nuit »: bleu — the ground, water and parks of the night
     // style moved towards a navy blue (as TomTom's demo); gris — the style's own.
+    // « Monuments 3D »: TomTom's detailed models of known buildings
+    // (cathedrals, towers…), drawn alone — light on the phone, without the
+    // ordinary blocks. TomTom keeps them in private preview: the key needs
+    // its « Orbis 3D Landmarks » access; refused, the map says so once.
+    landmarksLook() {
+      var L = this.look || {}, on = !!Number(L.lm3);
+      if (!this.tt || !this.ttKit || !this.ttKit.lm || !this.ttKit.lm.Landmarks3D) return;
+      if (on && !this.ttLm) {
+        try {
+          this.ttLm = new this.ttKit.lm.Landmarks3D(this.tt, { opacity: 1, texture: "color", minZoom: 14 });
+          var map = this.map, seen = false;
+          var onErr = (e) => { var u = e && (e.url || (e.error && e.error.url) || ""), st = e && e.error && e.error.status; if (!seen && /landmark/i.test(String(u) + String(e && e.error && e.error.message)) && (st === 401 || st === 403 || /40[13]/.test(String(e && e.error && e.error.message)))) { seen = true; this.toast && this.toast("Monuments 3D : votre clé TomTom n'y a pas accès (accès « Orbis 3D Landmarks » à demander à TomTom)", 8000); } };
+          if (map && map.on) map.on("error", onErr);
+        } catch (e) { this.ttLm = null; if (this.config.debug) this.message("monuments : " + (e && e.message)); return; }
+      }
+      if (this.ttLm && this.ttLm.setVisible) { try { this.ttLm.setVisible(on); } catch (e) { /* as it was */ } }
+    }
     tintLook(map, L) {
       var night = this.ttStyle === "streetDarkDriving" || (this.config.sdk_style || "").indexOf("Dark") >= 0;
-      var blue = night && L && L.tn === "bleu";
+      // « tomtom »: the colours read off TomTom's own night navigation —
+      // a blue-grey ground, its streets a shade lighter, the water slate blue,
+      // the buildings' walls #425f69.
+      var tt = night && L && L.tn === "tomtom", blue = night && L && (L.tn === "bleu" || tt);
+      var TT = { water: "#3b5871", park: "#2f4f57", urban: "#2f4957", ground: "#213a49" };
       var keep = this.tintKept || (this.tintKept = {});
       (map.getStyle().layers || []).forEach((l) => {
         var prop = l.type === "background" ? "background-color" : l.type === "fill" ? "fill-color" : null;
-        if (!prop || !/background|land|earth|water|ocean|sea|river|lake|park|green|wood|forest|grass|urban|built|residential/i.test(l.id)) return;
+        if (l.type === "line" && /road|street|motorway|primary|secondary|tertiary|minor/i.test(l.id) && !/label|shield|casing|outline|route|traffic|rail|path/i.test(l.id)) {
+          var kk = l.id + "#line"; if (!(kk in keep)) keep[kk] = map.getPaintProperty(l.id, "line-color");
+          try { map.setPaintProperty(l.id, "line-color", tt ? "#355362" : keep[kk]); } catch (e) { /* as it was */ }
+          return;
+        }
+        if (!prop || (l.type !== "background" && !/land|earth|water|ocean|sea|river|lake|park|green|wood|forest|grass|urban|built|residential/i.test(l.id))) return;
         if (!(l.id in keep)) keep[l.id] = map.getPaintProperty(l.id, prop);
-        var c = /water|ocean|sea|river|lake/i.test(l.id) ? "#14324a" : /park|green|wood|forest|grass/i.test(l.id) ? "#1b3440" : /urban|built|residential/i.test(l.id) ? "#22384c" : "#1d2c3c";
+        var c = tt ? (/water|ocean|sea|river|lake/i.test(l.id) ? TT.water : /park|green|wood|forest|grass/i.test(l.id) ? TT.park : /urban|built|residential/i.test(l.id) ? TT.urban : TT.ground)
+          : /water|ocean|sea|river|lake/i.test(l.id) ? "#14324a" : /park|green|wood|forest|grass/i.test(l.id) ? "#1b3440" : /urban|built|residential/i.test(l.id) ? "#22384c" : "#1d2c3c";
         try { map.setPaintProperty(l.id, prop, blue ? c : keep[l.id]); } catch (e) { /* that layer as it was */ }
       });
     }
@@ -7143,6 +7170,7 @@
           roadLabels: { occluded: !!Number(L.rl) } };
         if (L.wc === "unie") look.walls = { variation: 0 }; else if (L.wc === "variee") look.walls = { variation: 0.6 };
         // Lit at night (« Éclairage des bâtiments »): many windows on, the façades' pattern shown.
+        if (L.tn === "tomtom" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#425f69" });
         if (Number(L.eb) && this.ttStyle === "streetDarkDriving") { look.litWindows = { fraction: Math.max(0.55, (Number(L.lw) || 0) / 100) }; look.facade = { pattern: L.fw && L.fw !== "none" ? L.fw : "mixed", intensity: 1 }; }
       } else {
         look = { opacity: isFinite(op) && op > 0 ? Math.min(1, op) : 0.85 };
@@ -7259,6 +7287,7 @@
       tryIt(() => { if (this.tt3d && this.tt3d.applyConfig) this.tt3d.applyConfig(this.buildingsLook()); });
       tryIt(() => this.terrainLook());
       tryIt(() => this.tintLook(map, L));
+      tryIt(() => this.landmarksLook());
       tryIt(() => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ visible: !!Number(L.sf), trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: Number(L.wd) || 0 } }); });
       tryIt(() => {
         var pal = this.routePal(), k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1;
@@ -7353,6 +7382,7 @@
         if (!this.ttSurf && this.config.sdk_surfaces !== false) {
           try { this.ttSurf = new lm.GLSurfaces(this.tt, Object.assign({ trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: 0 } }, typeof this.config.sdk_surfaces === "object" ? this.config.sdk_surfaces : {})); } catch (e) { why.push("surfaces : " + (e && e.message)); }
         }
+        this.landmarksLook();
         // The ground in relief, only when asked (Sol & nature → Relief).
         this.terrainLook();
         // The route over all of it: never hidden behind a building or the textured ground.
@@ -14010,6 +14040,7 @@
     ["bo", "Bâtiments", "Opacité", "plus bas : la route se voit au travers", "sl", 30, 100, 5, "%"],
     ["fw", "Bâtiments", "Fenêtres", "", "seg", [["none", "aucune"], ["mixed", "mixtes"], ["residential", "logements"], ["office", "bureaux"], ["glass", "verre"]]],
     ["lw", "Bâtiments", "Fenêtres allumées la nuit", "", "sl", 0, 100, 10, "%"],
+    ["lm3", "Bâtiments", "Monuments 3D", "les bâtiments connus en 3D détaillée, même sans les autres (clé TomTom avec l'accès « 3D Landmarks »)", "seg", [[0, "non"], [1, "oui"]]],
     ["eb", "Bâtiments", "Éclairage des bâtiments la nuit", "fenêtres et façades éclairées, comme la navigation TomTom", "seg", [[0, "non"], [1, "oui"]]],
     ["wc", "Bâtiments", "Couleur des murs", "", "seg", [["style", "du style"], ["unie", "unie"], ["variee", "variée"]]],
     ["sh", "Bâtiments", "Ombres portées", "0 : aucune", "sl", 0, 100, 10, "%"],
@@ -14032,7 +14063,7 @@
     ["te", "Sol & nature", "Relief", "collines, vallées et leur ombrage · coupé pendant le guidage (sinon les bâtiments cachent la route)", "sw"],
     ["wd", "Sol & nature", "Vent", "feuilles et eau", "seg", [[0, "calme"], [0.5, "léger"], [1, "fort"]]],
     ["dn", "Lumière", "Jour et nuit", "", "seg", [["auto", "selon le soleil"], ["day", "toujours jour"], ["night", "toujours nuit"]]],
-    ["tn", "Lumière", "Teinte de la nuit", "gris (TomTom) ou bleu nuit", "seg", [["gris", "gris"], ["bleu", "bleu nuit"]]],
+    ["tn", "Lumière", "Teinte de la nuit", "celle du style, bleu nuit, ou les couleurs de la navigation TomTom", "seg", [["gris", "gris"], ["bleu", "bleu nuit"], ["tomtom", "TomTom"]]],
     ["ne", "Lumière", "Nuit quand le soleil passe sous", "en degrés au-dessus de l'horizon", "seg", [[0, "0°"], [3, "3°"], [6, "6°"], [10, "10°"]]],
     ["pi", "Caméra", "Inclinaison", "", "sl", 0, 75, 5, "°"],
     ["zm", "Caméra", "Zoom", "", "sl", 15, 18.5, 0.5, ""],
