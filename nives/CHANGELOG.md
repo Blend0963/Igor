@@ -1,3 +1,7 @@
+## 0.62.17 — Seuls les bâtiments TomTom
+
+- **Retirés** : les bâtiments Cesium (et le champ « Jeton Cesium ion » des options, et `/api/nives/cesium/endpoint`), les monuments détaillés (Tour Eiffel construite par Igor, modèles glTF `landmarks:`), les monuments 3D TomTom et les monuments éclairés. Restent les bâtiments de TomTom et leurs réglages, et la couleur des bâtiments du fond de carte avec « Couleurs de la carte la nuit ».
+
 ## 0.62.16 — Couleurs TomTom mesurées, flèches au sol, GPS toujours en grand
 
 - **Couleurs de la carte « TomTom »** : palette reprise d'une mesure côte à côte avec la navigation de nuit de TomTom — sol #233c4b, zones bâties #294353, rues #375461, grands axes #456168 — et **bâtiments #456168** (toits éclairés, murs plus sombres), y compris les bâtiments du fond de carte quand la 3D d'Igor est coupée : ils étaient presque noirs.

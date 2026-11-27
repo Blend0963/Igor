@@ -78,8 +78,6 @@ from .const import (
     SERVICE_HERE_CHECK,
     SERVICE_HERE_ROUTE_WEATHER,
     CONF_HERE_KEY,
-    CONF_CESIUM_TOKEN,
-    CESIUM_OSM_BUILDINGS,
     CONF_HERE_DAILY,
     CONF_CAR_TRACKER,
     CONF_CAR_DESTINATION,
@@ -1163,47 +1161,8 @@ def _async_register_basemap(hass: HomeAssistant) -> None:
                 relay_cache.popitem(last=False)
             return web.Response(body=body, content_type=ctype, headers={"Cache-Control": "private, max-age=86400"})
 
-    # Cesium ion (the city's buildings in 3D, Cesium OSM Buildings): the
-    # token stays here; the phone is given the dataset's address and the
-    # short-lived token ion hands out for it alone (asked again every 50 min).
-    cesium_cache: dict = {}
-
-    class CesiumEndpointView(HomeAssistantView):
-        url = "/api/nives/cesium/endpoint"
-        name = "api:nives:cesium"
-        requires_auth = True
-
-        async def get(self, request: web.Request) -> web.Response:
-            token = ""
-            for entry in hass.config_entries.async_entries(DOMAIN):
-                token = str({**entry.data, **entry.options}.get(CONF_CESIUM_TOKEN) or "").strip() or token
-            if not token:
-                return web.json_response({"enabled": False}, status=404)
-            try:
-                asset = int(request.query.get("asset") or CESIUM_OSM_BUILDINGS)
-            except ValueError:
-                return web.Response(status=400)
-            hit = cesium_cache.get(asset)
-            if hit and time.monotonic() - hit[0] < 3000:
-                return web.json_response(hit[1])
-            session = async_get_clientsession(hass)
-            try:
-                async with session.get(f"https://api.cesium.com/v1/assets/{asset}/endpoint",
-                                       headers={"Authorization": f"Bearer {token}"}, timeout=aiohttp.ClientTimeout(total=10)) as r:
-                    if r.status != 200:
-                        _LOGGER.warning("Cesium ion : accès refusé à l'asset %s (%s)", asset, r.status)
-                        return web.json_response({"enabled": True, "ok": False, "status": r.status}, status=502)
-                    body = await r.json()
-            except (aiohttp.ClientError, TimeoutError, ValueError):
-                return web.json_response({"enabled": True, "ok": False}, status=504)
-            out = {"enabled": True, "ok": True, "url": body.get("url"), "accessToken": body.get("accessToken"),
-                   "attributions": [a.get("html", "") for a in body.get("attributions") or [] if isinstance(a, dict)][:4]}
-            cesium_cache[asset] = (time.monotonic(), out)
-            return web.json_response(out)
-
     hass.http.register_view(BasemapTileView())
     hass.http.register_view(TomTomRelayView())
-    hass.http.register_view(CesiumEndpointView())
 
     # Which screen is this? The car's screen is the head unit's Home
     # Assistant ACCOUNT (Igor's options, « écran de la voiture »), checked

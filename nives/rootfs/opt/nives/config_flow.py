@@ -30,7 +30,6 @@ from .const import (
     CONF_CODE_HASH,
     CONF_TRAFFIC_KEY,
     CONF_HERE_KEY,
-    CONF_CESIUM_TOKEN,
     CONF_HERE_DAILY,
     CONF_ALLOWED_USERS,
     CONF_CAR_TRACKER,
@@ -236,14 +235,6 @@ class OptionsFlow(config_entries.OptionsFlow):
                     hk = str(current.get(CONF_HERE_KEY) or "")
                 if hk:
                     user_input[CONF_HERE_KEY] = hk
-                # The Cesium ion token (the city in 3D), kept the same way.
-                ck = str(user_input.pop(CONF_CESIUM_TOKEN, "") or "").strip()
-                if ck == "-":
-                    ck = ""
-                elif not ck:
-                    ck = str(current.get(CONF_CESIUM_TOKEN) or "")
-                if ck:
-                    user_input[CONF_CESIUM_TOKEN] = ck
                 return self.async_create_entry(title="", data=user_input)
 
         # Home Assistant's people, to pick who Igor still answers while the
@@ -314,9 +305,6 @@ class OptionsFlow(config_entries.OptionsFlow):
                         selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
                     ),
                     vol.Optional(CONF_HERE_KEY, default=""): selector.TextSelector(
-                        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
-                    ),
-                    vol.Optional(CONF_CESIUM_TOKEN, default=""): selector.TextSelector(
                         selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
                     ),
                     vol.Optional(CONF_HERE_DAILY, default=int(current.get(CONF_HERE_DAILY) or 300)): selector.NumberSelector(
