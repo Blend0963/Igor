@@ -1,3 +1,7 @@
+## 0.62.6 — Un seul écran guide la voiture
+
+- **Un seul guide** : chaque écran qui ouvrait la carte « Téléphone · Carte » (un deuxième onglet, l'appli et un navigateur, une tablette ou un ordinateur resté sur la page) écrivait le guidage de l'autoradio depuis SA position et SON itinéraire, chacun par-dessus l'autre — d'où des virages qui n'existent pas. Désormais l'écran qui guide signe son signe de vie (le téléphone, avec son GPS en direct, l'emporte sur un écran sans GPS) ; les autres n'écrivent rien (guidage, jonction, itinéraires, voix, signe de vie) tant qu'il est en vie, et le disent. Une page cachée n'écrit jamais.
+
 ## 0.62.5 — Réglages de la carte à la taille de l'autoradio
 
 - **Fenêtre des réglages de la carte** (1024 × 600, 1280 × 720) : chaque ligne prend la hauteur de son contenu (les lignes étaient toutes forcées à la même hauteur sur un écran bas, et leurs choix débordaient sur les suivantes) ; les choix ne se replient plus en colonne : ceux qui en ont beaucoup passent sous le nom du réglage, sur toute la largeur. Vérifié sur tous les onglets, à 1024 × 600, 1280 × 720 et sur téléphone.

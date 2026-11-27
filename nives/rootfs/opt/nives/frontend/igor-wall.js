@@ -5549,7 +5549,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.5";
+  var GPS_CARD_VERSION = "0.62.6";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -8277,7 +8277,7 @@
       try { box.innerHTML = window.igorJunction2(J.model, Object.assign(carJunctionOpts(Jr, W, H, "tel"), { bar: false })); } catch (e) { box.hidden = true; }
     }
     publishJunction(R, along, next) {
-      var e = this.config.publish_junction;
+      var e = this.publishing === false ? null : this.config.publish_junction;
       var show = !!(next && next.at - along < 2000 && next.at - along > -60);
       var J = show ? (next.jx || (next.jx = this.junctionModel(R, next) || { none: true })) : null;
       if (J && J.none) J = null;
@@ -10363,10 +10363,31 @@
       if (this.config.sdk_trees === false) return false;
       return this.config.settings ? !!(this.look && Number(this.look.ts)) : this.config.sdk_trees === true;
     },
+    // One guide only. Every screen that opens this card (the phone, a second
+    // tab, a tablet or computer left on this page) would otherwise write the
+    // car's guidance from ITS OWN position and route, each over the other.
+    // The writer signs its heartbeat (last field of publish_ahead: « g » with
+    // the phone's live GPS, « t » with a tracker only, then its id). Another
+    // screen writes nothing while that writer is alive (20 s), unless it has
+    // live GPS and the writer has not. A hidden page never writes.
+    mayPublish() {
+      if (document.hidden) return false;
+      var e = this.config.publish_ahead, h = this._hass;
+      this.pubId = this.pubId || Math.random().toString(36).slice(2, 8);
+      if (!e || !h) return true;
+      var st = h.states[e], p = st ? String(st.state || "").split("|") : [], sig = p.length >= 9 ? p[p.length - 1] : "";
+      var other = sig && sig.slice(1) !== this.pubId, alive = other && Date.now() - carSeen(st) < 20000;
+      if (!alive) return true;
+      return sig[0] === "t" && this.localLive && this.localLive();
+    },
+    pubSig() { return (this.localLive && this.localLive() ? "g" : "t") + (this.pubId || ""); },
     publishAhead(now) {
       if (this.destLabel && (!this.labelAt || Date.now() - this.labelAt > 15000)) { this.labelAt = Date.now(); this.markerLabels(); }
       var e = this.config.publish_ahead;
       if (!e || !this._hass || !this._hass.callService || !this.pos) return;
+      var may = this.mayPublish();
+      if (!may && this.publishing !== false && !document.hidden && this.toast) this.toast("Un autre écran guide déjà la voiture : celui-ci n'envoie rien à l'autoradio", 8000);
+      if (!(this.publishing = may)) return;
       var R = this.route, guided = !!(R && this.seg), here = 0, left = 0;
       if (guided) {
         var o0 = gpsOnLine(this.pos, [R.coords[this.seg - 1], R.coords[Math.min(this.seg, R.coords.length - 1)]]);
@@ -10411,7 +10432,7 @@
       var rn = this.roadName, street = rn ? String(rn.name || rn.refs.join(" ")).replace(/[~;|]/g, " ").slice(0, 40) : "";
       // The arrival's weather: « température~mots~condition ».
       var aw = guided && this.wx && this.wxR === R && this.wx.arrival, awx = aw ? [aw.temp == null ? "" : Math.round(aw.temp), String(aw.text || "").replace(/[~;|]/g, " ").slice(0, 24), aw.condition || ""].join("~") : "";
-      var tail = "|" + lim + "|" + street + "|" + awx, head0 = [guided ? 1 : 0, Math.round(left), cam].join("|") + "|";
+      var tail = "|" + lim + "|" + street + "|" + awx + "|" + this.pubSig(), head0 = [guided ? 1 : 0, Math.round(left), cam].join("|") + "|";
       while (evl.length && (String(Date.now()) + "|" + head0 + evl.join(";") + tail).length > 250) evl.pop();
       var body = head0 + evl.join(";") + tail;
       // Not guiding: an arrow left by an earlier trip is wiped once, so the head unit shows none.
@@ -10426,6 +10447,7 @@
     },
     publishRoutes(v) {
       var e = this.config.publish_routes;
+      if (this.publishing === false) return;
       if (!e || !this._hass || !this._hass.callService || v === this.routesSent) return;
       this.routesSent = v;
       this._hass.callService("input_text", "set_value", { entity_id: e, value: String(v).slice(0, 250) }).catch(() => { this.routesSent = null; });
@@ -10512,7 +10534,7 @@
       // head unit's igor-guide-card), not out of this one: « ms|kind|text ».
       // Home Assistant out of reach: said here instead — the phone is on the
       // head unit's Bluetooth, the voice still comes out of the car.
-      var vt = this.config.voice_to;
+      var vt = this.publishing === false ? null : this.config.voice_to;
       if (vt && text && !here && this._hass && this._hass.callService && this._hass.connected !== false) {
         var sent = false, msg = (Date.now() + "|" + (kind || "nav") + "|" + String(text)).slice(0, 250);
         this._hass.callService("input_text", "set_value", { entity_id: vt, value: msg }).then(() => { sent = true; }, () => { if (!sent) { sent = true; this.say(text, kind, true); } });
@@ -10721,7 +10743,7 @@
       // publish_turn: input_text.x — the whole guidance for the head unit
       // (igor-guide-card `entity`): « icon|dist|text|then|eta|left|min|jam|dest »,
       // at once when the turn changes, else at most every 2 s; "" at the end.
-      var pt = this.config.publish_turn;
+      var pt = this.publishing === false ? null : this.config.publish_turn;
       if (pt && this._hass && this._hass.callService) {
         var clean = (x) => String(x == null ? "" : x).replace(/\|/g, "/");
         // « icon|dist|text|then|eta|left|min|jam|dest|lanes|lanes_m|turn_m|exit|to|refs »: the junction
@@ -10736,7 +10758,7 @@
           this._hass.callService("input_text", "set_value", { entity_id: pt, value: tv }).catch(() => { this.turnSent = null; });
         }
       }
-      var pg = this.config.publish_guide;
+      var pg = this.publishing === false ? null : this.config.publish_guide;
       if (pg && this._hass && this._hass.callService) {
         var left = g ? (/ km$/.test(g.left || "") ? Math.round(parseFloat(String(g.left).replace(",", "."))) + " km" : "< 1 km") : "";
         var v = g ? [g.eta, left, g.min + " min", g.dest || ""].join("|") : "";
