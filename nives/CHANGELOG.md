@@ -1,3 +1,9 @@
+## 0.62.9 — Départ dans le bon sens, jonction à jour, flèche pleine
+
+- **Itinéraire au départ** : à l'arrêt, le téléphone donne maintenant à TomTom le sens de la voiture — celui qu'elle avait en se garant, gardé sur le téléphone (à 40 m près). Sans lui, TomTom partait de la chaussée la plus proche, celle d'en face sur une route à deux chaussées, et l'itinéraire commençait par un demi-tour.
+- **Vue de jonction (autoradio)** : gardée seulement tant que le téléphone ne dit rien de neuf ; un nouvel itinéraire ou plus de jonction l'efface aussitôt (elle restait jusqu'à 25 s, avec l'ancien rond-point).
+- **Flèche de la voiture** : couleurs pleines au lieu de dégradés ; là où le navigateur ne trouvait pas les dégradés, les faces devenaient transparentes et il ne restait que le liseré blanc.
+
 ## 0.62.8 — Vue de jonction : autoradio, ou GPS du téléphone seul
 
 - La vue de jonction (sorties, ronds-points…) n'apparaît plus sur le téléphone posé en écran déporté de l'autoradio (`display_only`) : elle est alors sur l'autoradio seulement. Sur le téléphone, elle n'apparaît qu'en mode GPS à part entière.

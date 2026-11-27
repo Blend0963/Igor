@@ -5559,7 +5559,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.8";
+  var GPS_CARD_VERSION = "0.62.9";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6135,15 +6135,15 @@
   // The car, as TomTom's navigation draws it: a thick chevron with rounded
   // corners, blue (lighter on its left facet), a broad white rim, its
   // thickness showing underneath, a soft light on the ground.
-  var GPS_ARROW = '<svg viewBox="0 0 60 60" width="62" height="62"><defs>' +
-    '<radialGradient id="igglow"><stop offset="0" stop-color="#4fb3ff" stop-opacity=".45"/><stop offset="1" stop-color="#4fb3ff" stop-opacity="0"/></radialGradient>' +
-    '<linearGradient id="igl" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#8fd3ff"/><stop offset="1" stop-color="#4aa8f0"/></linearGradient>' +
-    '<linearGradient id="igr" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#3d9be8"/><stop offset="1" stop-color="#1f74c9"/></linearGradient></defs>' +
-    '<ellipse cx="30" cy="36" rx="25" ry="22" fill="url(#igglow)"/>' +
+  // Plain colours, no gradient: a gradient is found by its id, and where the
+  // browser does not find it (the map inside a shadow root, a second copy of
+  // the card) the faces went transparent — only the white rim was left.
+  var GPS_ARROW = '<svg viewBox="0 0 60 60" width="62" height="62">' +
+    '<ellipse cx="30" cy="36" rx="22" ry="19" fill="#4fb3ff" opacity=".22"/>' +
     '<path d="M30 12 L45 45 L30 37 L15 45 Z" transform="translate(0 3.2)" fill="#174f8c" stroke="#174f8c" stroke-width="7" stroke-linejoin="round"/>' +
     '<path d="M30 12 L45 45 L30 37 L15 45 Z" fill="#ffffff" stroke="#ffffff" stroke-width="7" stroke-linejoin="round"/>' +
-    '<path d="M30 13.5 L30 36.4 L16.6 43.4 Z" fill="url(#igl)" stroke="url(#igl)" stroke-width="1.2" stroke-linejoin="round"/>' +
-    '<path d="M30 13.5 L43.4 43.4 L30 36.4 Z" fill="url(#igr)" stroke="url(#igr)" stroke-width="1.2" stroke-linejoin="round"/></svg>';
+    '<path d="M30 13.5 L30 36.4 L16.6 43.4 Z" fill="#7cc6fb" stroke="#7cc6fb" stroke-width="1.2" stroke-linejoin="round"/>' +
+    '<path d="M30 13.5 L43.4 43.4 L30 36.4 Z" fill="#2f86d6" stroke="#2f86d6" stroke-width="1.2" stroke-linejoin="round"/></svg>';
   // The French speed limit sign (B14): kept as the real thing, readable at a glance.
   var GPS_SIGN = '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="49.5" fill="#fff" stroke="rgba(0,0,0,0.35)" stroke-width="1"/>' +
     '<circle cx="50" cy="50" r="42.5" fill="none" stroke="#c8102e" stroke-width="11"/>' +
@@ -7968,10 +7968,26 @@
       var prevP = this.fix && this.fix.point;
       if (isFinite(course) && course != null && isFinite(gpsSpeed) && gpsSpeed > 3) { this.moveCourse = course; this.moveAt = Date.now(); }
       else if (prevP && gpsDist(prevP, p) > 12) { this.moveCourse = gpsBearing(prevP, p); this.moveAt = Date.now(); }
+      // Kept on the phone: where the car stood and which way it faced when
+      // it last rolled — a car parked still faces that way at the next start.
+      if (this.moveAt === Date.now() || this.moveAt && Date.now() - this.moveAt < 50) { try { window.localStorage.setItem("igor-last-course", JSON.stringify({ p: p, c: Math.round(this.moveCourse), t: Date.now() })); } catch (e) { /* no storage */ } }
       this.fix = { point: p, time: performance.now(), gpsSpeed: isFinite(gpsSpeed) ? gpsSpeed : 0, updated: updated, at: at };
     }
     // The way the car goes, if known lately (8 s), else the arrow's heading.
     goingTo() { return this.moveCourse != null && Date.now() - (this.moveAt || 0) < 8000 ? this.moveCourse : this.heading; }
+    // The way the car faces, for a route asked at a standstill: rolling, its
+    // course; stopped, the course it had when it parked here (within 40 m) —
+    // without it TomTom starts from the nearest carriageway, the other one
+    // on a dual road, and the route begins with a U-turn.
+    startHeading() {
+      if (this.speedMps() > 2) return Math.round(this.goingTo()) % 360;
+      if (this.moveCourse != null && Date.now() - (this.moveAt || 0) < 120000) return Math.round(this.moveCourse) % 360;
+      try {
+        var k = JSON.parse(window.localStorage.getItem("igor-last-course") || "null");
+        if (k && this.pos && gpsDist(k.p, this.pos) < 40 && Date.now() - k.t < 14 * 86400000) return ((k.c % 360) + 360) % 360;
+      } catch (e) { /* none */ }
+      return null;
+    }
     // The trail is drawn on the roads only: each point the arrow takes on a
     // road, joined to the last one along that road's own shape; off the road
     // (snap on) nothing is drawn, and a gap that cannot be followed on the
@@ -9472,7 +9488,7 @@
     askRoute(d, from, types, routeType) {
       return this._hass.callWS({ type: "call_service", domain: "nives", service: "route", return_response: true,
         service_data: Object.assign({ from: [from[1], from[0]], to: [d.lat, d.lon], via: (d.via || []).map((v) => [v.lat, v.lon]), avoid: (this.avoid || []).slice(-10), avoid_types: types || [], route_type: routeType || "fastest" },
-          this.speedMps() > 2 ? { heading: Math.round(this.heading) % 360 } : {}) })
+          this.startHeading() != null ? { heading: this.startHeading() } : {}) })
         .then((res) => res && res.response).catch(() => null);
     },
     // The other routes, greyed on the map, each with its bubble (the minutes
@@ -13897,7 +13913,11 @@
     // the distance is then carried on with the car's own speed.
     junction(t, v) {
       var J = carJunction(this._hass, this.config.junction, v, t), H = this.jxHold;
-      if (J) { this.jxHold = { J: J, t: t }; }
+      var jst = this.st(this.config.junction), jseen = carSeen(jst);
+      if (J) { this.jxHold = { J: J, t: t, seen: jseen }; }
+      // Held only while the phone says nothing new: a new message from it (a
+      // new route, no junction any more) drops the held one at once.
+      else if (H && jseen !== H.seen) this.jxHold = null;
       else if (H && t - H.t < 25000) {
         var d = H.J.d - Math.max(0, (t - H.t) / 1000) * Math.max(0, v || 0) / 3.6;
         if (d > (H.J.model === "rond_point" ? -45 : -3)) J = Object.assign({}, H.J, { d: d }); else this.jxHold = null;
