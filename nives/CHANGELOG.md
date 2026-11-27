@@ -1,3 +1,9 @@
+## 0.62.16 — Couleurs TomTom mesurées, flèches au sol, GPS toujours en grand
+
+- **Couleurs de la carte « TomTom »** : palette reprise d'une mesure côte à côte avec la navigation de nuit de TomTom — sol #233c4b, zones bâties #294353, rues #375461, grands axes #456168 — et **bâtiments #456168** (toits éclairés, murs plus sombres), y compris les bâtiments du fond de carte quand la 3D d'Igor est coupée : ils étaient presque noirs.
+- **Flèches au sol** : la pointe revient ; la queue part de la couleur du tracé et devient blanche dans le virage.
+- **GPS** : s'ouvre toujours en grand ; le bouton agrandir / réduire est retiré (une carte affichée en petit, `compact`, s'ouvre toujours au toucher).
+
 ## 0.62.15 — Message du radar
 
 - **Vue radar** : « vitesse conforme » à la limite ou en dessous, « ralentissez de N km/h » au-dessus (plus de « tout va bien » ni de « levez le pied »).

@@ -5559,7 +5559,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.15";
+  var GPS_CARD_VERSION = "0.62.16";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7260,6 +7260,9 @@
       $("full").addEventListener("click", () => this.setFull(!this.full));
       // fullscreen_button: false — the car's dashboard is the map already.
       if (this.config.fullscreen_button === false) $("full").hidden = true;
+      // The GPS opens full, always: no « bigger / smaller » button any more
+      // (a card shown small in a dashboard, `compact`, still opens on a touch).
+      if (!this.config.compact && this.config.fullscreen_button !== true) { $("full").hidden = true; requestAnimationFrame(() => { if (!this.full) this.setFull(true); }); }
       $("card").classList.toggle("rail", this.config.controls === "rail");
       // The guidance column (igor-guide-card) asks: the destination panel,
       // a favourite, the end of the guidance.
@@ -7430,7 +7433,8 @@
       (map.getStyle().layers || []).forEach((l) => {
         if (l["source-layer"] !== "buildings" || l.type !== "fill-extrusion") return;
         if (!(l.id in keep)) keep[l.id] = map.getPaintProperty(l.id, "fill-extrusion-color");
-        try { map.setPaintProperty(l.id, "fill-extrusion-color", on && keep[l.id] != null ? ["case", isLm, "#e6dcc8", keep[l.id]] : keep[l.id]); } catch (e) { /* as it was */ }
+        var base = this.tintBuild || keep[l.id];
+        try { map.setPaintProperty(l.id, "fill-extrusion-color", on && base != null ? ["case", isLm, "#e6dcc8", base] : base); if (this.tintBuild) map.setPaintProperty(l.id, "fill-extrusion-vertical-gradient", true); } catch (e) { /* as it was */ }
       });
       if (this.tt3d && this.tt3d.setBuildingColors) { /* the SDK's own buildings keep their look */ }
     }
@@ -7491,11 +7495,16 @@
       this.tintSdkKey = key;
       // The colours read off TomTom's own night navigation, and a deeper navy.
       var PAL = {
-        tomtom: { land: "#213a49", water: "#3b5871", vegetation: "#2a4a4f", park: "#2f5652", artificial: "#2f4957", roadMajor: "#4f6f7d", road: "#3a5866", roadOutline: "#2a4452", label: "#cfdce2", labelHalo: "#18303d" },
+        // Measured on TomTom's own night navigation, side by side with this map.
+        tomtom: { land: "#233c4b", water: "#3b5871", vegetation: "#2c4b4f", park: "#30564f", artificial: "#294353", roadMajor: "#456168", road: "#375461", roadOutline: "#2b4553", label: "#d3dfe4", labelHalo: "#1b2f3b" },
         bleu: { land: "#16243a", water: "#1d3a5c", vegetation: "#1c3340", park: "#1f3a44", artificial: "#1d2d44", roadMajor: "#3a5878", road: "#2c4560", roadOutline: "#1f3047", label: "#c3cfe0", labelHalo: "#111c2c" }
       };
       var names = ["land", "water", "vegetation", "park", "artificial", "roadMajor", "road", "roadOutline", "label", "labelHalo"];
       this.ttStyling = this.ttStyling || sdk.StylingFoundationsModule.get(this.tt);
+      // The map's own buildings (those left when Igor's 3D is off): their
+      // colour from the same measure — #456168, lit roofs over darker walls.
+      this.tintBuild = mode === "tomtom" ? "#456168" : mode === "bleu" ? "#2f425a" : null;
+      try { this.monumentGlow(this.map, this.look || {}); } catch (e) { /* as it was */ }
       this.ttStyling.then((st) => {
         if (this.tintSdkKey !== key) return;
         if (mode) st.setMapColors(PAL[mode]);
@@ -7511,7 +7520,7 @@
           roadLabels: { occluded: !!Number(L.rl) } };
         if (L.wc === "unie") look.walls = { variation: 0 }; else if (L.wc === "variee") look.walls = { variation: 0.6 };
         // Lit at night (« Éclairage des bâtiments »): many windows on, the façades' pattern shown.
-        if (L.tn === "tomtom" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#425f69" });
+        if (L.tn === "tomtom" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#456168" });
         else if (L.tn === "bleu" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#2f425a" });
         if (Number(L.eb) && this.ttStyle === "streetDarkDriving") { look.litWindows = { fraction: Math.max(0.55, (Number(L.lw) || 0) / 100) }; look.facade = { pattern: L.fw && L.fw !== "none" ? L.fw : "mixed", intensity: 1 }; }
       } else {
@@ -8171,7 +8180,7 @@
       var g = c.getContext("2d");
       g.lineJoin = "round"; g.lineCap = "round";
       var tri = () => { g.beginPath(); g.moveTo(64, 8); g.lineTo(121, 120); g.lineTo(7, 120); g.closePath(); };
-      tri(); g.lineWidth = 10; g.strokeStyle = edge || "#0b3f86"; g.stroke();
+      tri(); g.lineWidth = 10; g.strokeStyle = "#ffffff"; g.stroke();
       tri(); g.fillStyle = "#ffffff"; g.fill();
       // The shaft's mouth: as wide as the white line (0.86 of the edge, the
       // base being two edges wide).
@@ -8192,9 +8201,11 @@
         map.setPaintProperty("man", "line-width", line);
         // As TomTom: the turn's stretch turns white and fades back into the
         // route's colour at both ends — no head, no edge of its own.
-        map.setPaintProperty("man", "line-gradient", ["interpolate", ["linear"], ["line-progress"], 0, "rgba(255,255,255,0)", 0.3, "rgba(255,255,255,0.95)", 0.6, "rgba(255,255,255,0.95)", 1, "rgba(255,255,255,0)"]);
+        // The arrow on the road: its tail fades in from the route's colour,
+        // white through the turn, and its head at the end — no edge of its own.
+        map.setPaintProperty("man", "line-gradient", ["interpolate", ["linear"], ["line-progress"], 0, "rgba(255,255,255,0)", 0.35, "rgba(255,255,255,0.95)", 1, "rgba(255,255,255,1)"]);
         map.setPaintProperty("man-case", "line-opacity", 0);
-        map.setLayoutProperty("man-head", "visibility", "none");
+        map.setLayoutProperty("man-head", "visibility", "visible");
         map.setPaintProperty("man-case", "line-width", edge);
         map.setPaintProperty("man-case", "line-color", pal["route-case"]);
         // The head 29 px wide at size 1: a bit more than twice the edge.
