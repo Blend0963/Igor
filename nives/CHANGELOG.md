@@ -1,3 +1,7 @@
+## 0.62.10 — Flèche en dégradé, sans risque
+
+- **Flèche de la voiture** : le dégradé revient. Chaque flèche dessinée a ses propres noms de dégradés (une autre copie sur la page ne peut plus les masquer), et une couleur pleine sous chaque face : jamais de face transparente.
+
 ## 0.62.9 — Départ dans le bon sens, jonction à jour, flèche pleine
 
 - **Itinéraire au départ** : à l'arrêt, le téléphone donne maintenant à TomTom le sens de la voiture — celui qu'elle avait en se garant, gardé sur le téléphone (à 40 m près). Sans lui, TomTom partait de la chaussée la plus proche, celle d'en face sur une route à deux chaussées, et l'itinéraire commençait par un demi-tour.
