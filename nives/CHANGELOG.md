@@ -1,3 +1,17 @@
+## 0.62.2 — Couleurs de toute la carte, plaque de rue, musique
+
+- **Couleurs de la carte la nuit** (« par défaut », « bleu nuit », « TomTom ») : passent maintenant par le thème officiel du kit TomTom, qui recolore toute la carte — sol, eau, bois, parcs, zones bâties, chaque classe de route et ses bords, les noms et leurs halos — et garde la teinte d'un changement de style à l'autre. « par défaut » remet les couleurs d'origine.
+- **Plaque de rue** (autoradio) : le nom défile dans les marges de la plaque, sans jamais toucher son bord.
+- **« reste »** : la distance, et les minutes en dessous — plus rien de coupé.
+- **Musique** : un titre n'est affiché que s'il a vraiment changé récemment (pendant le trajet, ou dans les 6 dernières heures) ; une session seulement mise à jour pour une lecture, une pause ou la position garde le titre d'il y a des jours — dans ce cas « Musique en lecture / en pause · titre inconnu ».
+
+## 0.62.1 — Autoradio : horloge décalée, vue de jonction stable, textes qui défilent
+
+- **Horloge de l'autoradio** : la fraîcheur des messages du téléphone (guidage, radar, jonction, panneau de rue, limitation) se mesure maintenant à leur réception, sur l'horloge de l'autoradio, et non plus en comparant l'heure du téléphone à la sienne. Une horloge décalée faisait croire le téléphone muet : l'autoradio reprenait le guidage avec son propre GPS (en retard, « radars : liste officielle · sans stations ») et la vue de jonction ne s'affichait pas.
+- **Vue de jonction** : une fois affichée, elle reste jusqu'au passage du carrefour (la sortie du rond-point), même si un message du téléphone tarde ; la distance continue avec la vitesse de la voiture.
+- **Colonne guidage** : pendant la vue, « après le rond-point · … » (ou « après la sortie »), et seulement quand la vue est bien à l'écran.
+- **Textes trop longs** (guidage, en-tête « devant vous ») : ils défilent au lieu d'être réduits ou coupés.
+
 ## 0.62.0 — Bâtiments Cesium et monuments détaillés
 
 - **Source des bâtiments 3D** (Réglages de la carte → Bâtiments) : TomTom, ou **Cesium** — les bâtiments d'OpenStreetMap en 3D (Cesium OSM Buildings), dessinés par Igor, la nuit dans le bleu-gris de la teinte choisie ; ceux de TomTom sont masqués pendant ce temps.
