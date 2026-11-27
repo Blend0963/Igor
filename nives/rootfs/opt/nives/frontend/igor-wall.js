@@ -5559,7 +5559,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.11";
+  var GPS_CARD_VERSION = "0.62.12";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -8333,7 +8333,9 @@
       try { box.innerHTML = window.igorJunction2(J.model, Object.assign(carJunctionOpts(Jr, W, H, "tel"), { bar: false })); } catch (e) { box.hidden = true; }
     }
     publishJunction(R, along, next) {
-      var e = this.publishing === false ? null : this.config.publish_junction;
+      // `publish_junction:`, else the car's usual entity when it exists.
+      var pj = this.config.publish_junction || (this.config.publish_turn && this._hass && this._hass.states["input_text.voiture_jonction"] ? "input_text.voiture_jonction" : null);
+      var e = this.publishing === false ? null : pj;
       var show = !!(next && next.at - along < 2000 && next.at - along > -60);
       var J = show ? (next.jx || (next.jx = this.junctionModel(R, next) || { none: true })) : null;
       if (J && J.none) J = null;
@@ -13222,7 +13224,7 @@
       if (!g) return;
       // The junction view on (the middle of the head unit shows this turn):
       // the column tells what comes after it, until the car is through.
-      var sh = window.__igorJx, Jx = this.config.junction && sh && Date.now() - sh.at < 3000 ? sh.J : null;
+      var sh = window.__igorJx, Jx = sh && Date.now() - sh.at < 3000 ? sh.J : null;
       if (Jx && Jx.nextText) {
         var after = Jx.model === "rond_point" ? "après le rond-point" : /^(sortie|echangeur)/.test(Jx.model) ? "après la sortie" : Jx.model === "bifurcation" ? "après la bifurcation" : "ensuite";
         g = Object.assign({}, g, { icon: Jx.nextIcon || g.icon, dist: Jx.nextM != null ? gpsMetres(Math.max(0, Jx.d) + Jx.nextM) : "", text: after + " · " + Jx.nextText, then: "" });
@@ -13827,7 +13829,9 @@
       // consumption, or the parked car); below, the route, whenever guided.
       var offer = this.routesOffer(t);
       var junc = this.junction(t, v); this.junc = junc;
-      var want = offer ? "routes" : rad && rad.d != null ? "radar" : junc ? "voies" : this.sport ? "moteur" : !on && (v == null || v < 1) ? "arret" : "conso";
+      // The junction first: the way to go is what matters most; then the
+      // radar (still on the frieze below); the engine never over either.
+      var want = offer ? "routes" : junc ? "voies" : rad && rad.d != null ? "radar" : this.sport && !this.guidedNow() ? "moteur" : !on && (v == null || v < 1) ? "arret" : "conso";
       if (this.manual && t < this.manual.until && want !== "radar") want = this.manual.view; else if (this.manual && t >= this.manual.until) this.manual = null;
       // A calm view stays at least min_view_s; the radar and the engine come at once.
       if (want !== this.view && this.view && want !== "radar" && want !== "moteur" && want !== "routes" && want !== "voies" && this.view !== "radar" && this.view !== "routes" && this.view !== "voies" && !force && t - this.viewAt < this.tune("min_view_s", 8) * 1000) want = this.view;
@@ -13939,12 +13943,22 @@
     // (800 m in town); gone once the car is in the junction — out of the
     // roundabout for a roundabout. Without `junction:`, the lanes view of
     // publish_turn as before.
+    // Guided by the phone (its heartbeat says so): the engine view stays away.
+    guidedNow() { var p = this.aheadParts; return !!(p && p[1] === "1"); }
+    // The junction's entity: `junction:`, else the car's usual one when it
+    // exists (input_text.voiture_jonction) — the view works without a line
+    // of YAML to add.
+    jxEntity() {
+      var c = this.config, h = this._hass;
+      if (c.junction) return c.junction;
+      return h && h.states["input_text.voiture_jonction"] ? "input_text.voiture_jonction" : null;
+    }
     // Held from the moment it shows until the car is through: a message that
     // comes late or not at all for a few seconds never makes it blink off;
     // the distance is then carried on with the car's own speed.
     junction(t, v) {
-      var J = carJunction(this._hass, this.config.junction, v, t), H = this.jxHold;
-      var jst = this.st(this.config.junction), jseen = carSeen(jst);
+      var je = this.jxEntity(), J = carJunction(this._hass, je, v, t), H = this.jxHold;
+      var jst = this.st(je), jseen = carSeen(jst);
       if (J) { this.jxHold = { J: J, t: t, seen: jseen }; }
       // Held only while the phone says nothing new: a new message from it (a
       // new route, no junction any more) drops the held one at once.
@@ -14093,6 +14107,9 @@
       if (this.relayed) carSetText(this.fzAside, "radars : liste officielle · sans stations");
       else {
         var aw0 = p[7] ? p[7].split("~") : null, awt = aw0 && aw0[0] !== "" ? aw0[0] + " °C" + (aw0[1] ? " " + aw0[1].toLowerCase() : "") : "";
+        // No junction entity in the house: said here, not left silent.
+        if (!this.jxEntity()) { carSetText(this.fzAside, "vue des jonctions : entité input_text.voiture_jonction absente (voiture_telephone.yaml)", 6000); }
+        else
         // Rounded so it changes rarely (the line scrolls when too long).
         carSetText(this.fzAside, left <= 30000 ? [gpsMetres(Math.round(left / 100) * 100), g[6] ? g[6] + " min" : "", g[4] ? "arrivée " + g[4] : "", awt].filter(Boolean).join(" · ") : ["les 30 prochains km", g[4] ? "arrivée " + g[4] : "", awt].filter(Boolean).join(" · "), 6000);
       }

@@ -1,3 +1,9 @@
+## 0.62.12 — Les jonctions d'abord
+
+- **Priorité au centre de l'autoradio** : la vue de jonction passe avant tout (avant le radar, qui reste sur la frise) ; l'écran moteur ne s'ouvre plus pendant un guidage.
+- **Sans ligne de YAML** : la carte de conduite et la carte GPS du téléphone utilisent d'elles-mêmes `input_text.voiture_jonction` quand il existe (`junction:` / `publish_junction:` ne sont plus nécessaires).
+- **Entité absente** : la frise le dit (« vue des jonctions : entité input_text.voiture_jonction absente ») au lieu de rester muette.
+
 ## 0.62.11 — Plein écran du téléphone, écran moteur sans fausse alerte
 
 - **`edge_to_edge: true`** (carte GPS du téléphone) : la carte se fixe sur toute la page, au-dessus de la barre d'Igor, et au premier toucher passe en vrai plein écran (barre d'état et bande de l'encoche comprises).
