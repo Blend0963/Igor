@@ -1,3 +1,19 @@
+## 0.60.0 — Voies et sorties, trajet effacé en direct, autoradio peaufiné
+
+- **Voies et sorties** : à l'approche d'une sortie ou d'un échangeur (1,5 km avant, 800 m en ville), la page centrale de l'autoradio montre, comme pour les radars, le panneau (bleu autoroute, vert nationale, blanc sinon) avec le numéro de sortie, les numéros de route et les villes, et les voies en perspective, celles à prendre dans la couleur du tracé avec son halo. Le téléphone envoie ces données avec le guidage (`publish_turn`, champs ajoutés à la fin : compatible). Sur la carte, les voies sont dessinées au lieu des flèches texte.
+- **Trajet déjà parcouru** : « effacé » efface la route sous la flèche en direct (plus par blocs) ; « pâle » garde la route derrière dans sa propre couleur estompée, halo compris ; « laissé » laisse la route telle quelle. Les couleurs des bouchons suivent la route raccourcie.
+- **Halo** fondu sur toute sa largeur ; le fil blanc au centre devient un reflet léger.
+- **Préchargement des tuiles** : avant un virage, les tuiles autour du virage et sur les 2 km suivants sont demandées à l'avance (`prefetch: false` pour couper).
+- **Sens de circulation** : la flèche ne part plus à contresens dans un virage ; le demi-tour n'est retenu qu'après 6 s dans l'autre sens.
+- **Plein écran** (`edge_to_edge: true`) : la carte du téléphone occupe tout l'écran, encoche comprise, en portrait comme en paysage. Les liens d'erreur de la carte ne s'affichent plus qu'en débogage.
+- **Autoradio** :
+  - vignette direction : les panneaux de rue et de ville vont jusqu'au bord ; un texte trop long passe en police plus petite, puis défile ;
+  - moteur : les libellés gris « max » retirés (les repères rouges restent) ; le 0-100 dans une pastille sous le compte-tours ;
+  - rapport engagé : il ne change qu'une fois stable (1,2 s, 2,5 s pour un saut de deux rapports), jamais pendant la chute ou la montée de régime d'un changement de vitesse ;
+  - barre d'itinéraire : la flèche du GPS tout au début, la route avec ses couleurs et son halo ;
+  - vignettes : sur une ligne, avec pictogrammes ; un texte long défile ;
+  - télémétrie : la dernière minute est gardée entre les onglets.
+
 ## 0.59.3 — Itinéraires de rechange : seulement à la bifurcation, seulement s'ils valent la peine
 
 - Un itinéraire de rechange n'est plus dessiné par-dessus le trajet : seulement sa partie à lui, de la bifurcation au point où il rejoint la route ; un itinéraire qui ne quitte jamais le trajet n'apparaît pas.
