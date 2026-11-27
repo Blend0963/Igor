@@ -1,3 +1,9 @@
+## 0.62.13 — Affiché jusqu'au passage, sans minuterie
+
+- **Vue de jonction** : le téléphone garde la jonction atteinte jusqu'à ce que la voiture en soit sortie (un rond-point jusqu'à sa sortie, une sortie ou un virage un peu après) au lieu de passer à l'instruction suivante dès le point de l'instruction ; l'autoradio la garde sans minuterie tant que le téléphone ne dit rien de neuf, jusqu'au passage.
+- **Radar** : une fois annoncé, il reste jusqu'à ce qu'il soit dépassé (en ralentissant sous 90 km/h, la portée passait de 1 km à 500 m et il disparaissait).
+- Revenir sur l'onglet Route en cours de route montre ce qui doit l'être à ce moment (vérifié : changement d'onglet, 40 s sans nouvelles du téléphone).
+
 ## 0.62.12 — Les jonctions d'abord
 
 - **Priorité au centre de l'autoradio** : la vue de jonction passe avant tout (avant le radar, qui reste sur la frise) ; l'écran moteur ne s'ouvre plus pendant un guidage.

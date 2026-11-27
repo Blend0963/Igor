@@ -5559,7 +5559,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.12";
+  var GPS_CARD_VERSION = "0.62.13";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -8336,7 +8336,13 @@
       // `publish_junction:`, else the car's usual entity when it exists.
       var pj = this.config.publish_junction || (this.config.publish_turn && this._hass && this._hass.states["input_text.voiture_jonction"] ? "input_text.voiture_jonction" : null);
       var e = this.publishing === false ? null : pj;
-      var show = !!(next && next.at - along < 2000 && next.at - along > -60);
+      // The junction just reached stays the one shown until the car is
+      // through it — a roundabout until its exit (the instruction's point is
+      // its entry), a turn or an exit a little after its point — not the next
+      // instruction the moment its point is passed.
+      var passLen = (st) => /rotate|ROUNDABOUT/.test((st.icon || "") + (st.m || "")) ? 90 : /EXIT|KEEP|BEAR|sortie/i.test((st.m || "") + (st.text || "")) ? 60 : 30;
+      for (var ki = 0; ki < R.steps.length; ki++) { var stp = R.steps[ki]; if (stp.at <= along + 8 && along - stp.at < passLen(stp) && stp !== next) { var jm = stp.jx || (stp.jx = this.junctionModel(R, stp) || { none: true }); if (!jm.none) { next = stp; break; } } }
+      var show = !!(next && next.at - along < 2000 && next.at - along > -100);
       var J = show ? (next.jx || (next.jx = this.junctionModel(R, next) || { none: true })) : null;
       if (J && J.none) J = null;
       if (J && !J.arms && !J.armsTried && next.at - along < 900 && next.loc) {
@@ -10452,8 +10458,11 @@
         here = R.cum[this.seg - 1] + (o0 ? gpsDist(R.coords[this.seg - 1], o0.point) : 0);
         left = Math.max(0, R.total - here);
       }
+      // A radar once announced stays until it is passed: slowing under 90
+      // km/h (the reach going from 1 km to 500 m) no longer drops it.
       var kmh = (this.speedMps ? this.speedMps() : 0) * 3.6, reach = kmh > 90 ? 1000 : 500, c = this.camAhead;
-      var cam = c && c.d <= reach ? [Math.round(c.d), c.limit || "", String(c.what).replace(/[~;|]/g, " ").slice(0, 24), c.noSpeed ? 1 : 0].join("~") : "";
+      if (c && c.d <= reach) this.camKeep = c.id; else if (!c || c.id !== this.camKeep) this.camKeep = null;
+      var cam = c && (c.d <= reach || c.id === this.camKeep) ? [Math.round(c.d), c.limit || "", String(c.what).replace(/[~;|]/g, " ").slice(0, 24), c.noSpeed ? 1 : 0].join("~") : "";
       var ev = [];
       if (guided) {
         (this.pois || []).forEach((q) => {
@@ -11504,7 +11513,7 @@
       if (wkey !== this.onWayKey) { this.onWayKey = wkey; this.refreshPois(); }
       var limitNow = this.lastLimit ? this.lastLimit.v : NaN;
       // Kept for the head unit (publish_ahead): the camera ahead, its limit.
-      this.camAhead = cam ? { d: cam.d, limit: cam.q.noSpeed ? null : (cam.q.limit || (isFinite(limitNow) ? limitNow : null)), what: cam.q.what || "Radar", noSpeed: !!cam.q.noSpeed } : null;
+      this.camAhead = cam ? { id: cam.q.id, d: cam.d, limit: cam.q.noSpeed ? null : (cam.q.limit || (isFinite(limitNow) ? limitNow : null)), what: cam.q.what || "Radar", noSpeed: !!cam.q.noSpeed } : null;
       if (cam) {
         var reach = kmh > 90 ? 1000 : 500;
         if (cam.d <= reach) {
@@ -13492,7 +13501,7 @@
     t = t || Date.now();
     var at = Number(a[0]) ? carSeen(st) : t; if (!isFinite(at) || t - at > 15000) return null;
     var gone = Math.max(0, (t - at) / 1000) * Math.max(0, v || 0) / 3.6, d = Number(a[2]) - gone, model = a[1];
-    var reach = (v || 0) > 70 ? 1500 : 800, after = model === "rond_point" ? -45 : -3;
+    var reach = (v || 0) > 70 ? 1500 : 800, after = model === "rond_point" ? -100 : -70;
     if (d > reach || d < after) return null;
     return { raw: raw, model: model, d: d, side: a[3], lanes: Number(a[4]) || 0, exitLanes: Number(a[5]) || 1, branches: Number(a[6]) || 0, exit: Number(a[7]) || 0,
       angle: a[8] === "" ? null : Number(a[8]), arms: a[9] ? a[9].split(",").map(Number) : null, laneCode: a[10] || "", exitNo: a[11] || "", refs: a[12] || "", to: a[13] || "",
@@ -13963,9 +13972,9 @@
       // Held only while the phone says nothing new: a new message from it (a
       // new route, no junction any more) drops the held one at once.
       else if (H && jseen !== H.seen) this.jxHold = null;
-      else if (H && t - H.t < 25000) {
+      else if (H && t - H.t < 600000) {  // no timer: held until the car is through (10 min at most, a guard)
         var d = H.J.d - Math.max(0, (t - H.t) / 1000) * Math.max(0, v || 0) / 3.6;
-        if (d > (H.J.model === "rond_point" ? -45 : -3)) J = Object.assign({}, H.J, { d: d }); else this.jxHold = null;
+        if (d > (H.J.model === "rond_point" ? -100 : -70)) J = Object.assign({}, H.J, { d: d }); else this.jxHold = null;
       } else this.jxHold = null;
       // Shared with the guidance column of this screen: it shows what comes
       // after the junction only while the junction is on screen here.
