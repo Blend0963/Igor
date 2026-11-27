@@ -1,3 +1,28 @@
+## 0.62.15 — Message du radar
+
+- **Vue radar** : « vitesse conforme » à la limite ou en dessous, « ralentissez de N km/h » au-dessus (plus de « tout va bien » ni de « levez le pied »).
+
+## 0.62.14 — Couleur du radar selon la vitesse
+
+- **Vue radar (autoradio)** : orange tant que la vitesse est à la limite ou en dessous, rouge au-dessus (cadre, fond, barre, message).
+
+## 0.62.13 — Affiché jusqu'au passage, sans minuterie
+
+- **Vue de jonction** : le téléphone garde la jonction atteinte jusqu'à ce que la voiture en soit sortie (un rond-point jusqu'à sa sortie, une sortie ou un virage un peu après) au lieu de passer à l'instruction suivante dès le point de l'instruction ; l'autoradio la garde sans minuterie tant que le téléphone ne dit rien de neuf, jusqu'au passage.
+- **Radar** : une fois annoncé, il reste jusqu'à ce qu'il soit dépassé (en ralentissant sous 90 km/h, la portée passait de 1 km à 500 m et il disparaissait).
+- Revenir sur l'onglet Route en cours de route montre ce qui doit l'être à ce moment (vérifié : changement d'onglet, 40 s sans nouvelles du téléphone).
+
+## 0.62.12 — Les jonctions d'abord
+
+- **Priorité au centre de l'autoradio** : la vue de jonction passe avant tout (avant le radar, qui reste sur la frise) ; l'écran moteur ne s'ouvre plus pendant un guidage.
+- **Sans ligne de YAML** : la carte de conduite et la carte GPS du téléphone utilisent d'elles-mêmes `input_text.voiture_jonction` quand il existe (`junction:` / `publish_junction:` ne sont plus nécessaires).
+- **Entité absente** : la frise le dit (« vue des jonctions : entité input_text.voiture_jonction absente ») au lieu de rester muette.
+
+## 0.62.11 — Plein écran du téléphone, écran moteur sans fausse alerte
+
+- **`edge_to_edge: true`** (carte GPS du téléphone) : la carte se fixe sur toute la page, au-dessus de la barre d'Igor, et au premier toucher passe en vrai plein écran (barre d'état et bande de l'encoche comprises).
+- **Écran moteur (autoradio)** : l'accélération se mesure sur la quasi-totalité de la fenêtre de 3 s et sur au moins 3 relevés de vitesse ; deux relevés à quelques dixièmes de seconde d'écart (un saut de 2 km/h) passaient pour une forte accélération — l'écran moteur apparaissait en sortie de rond-point. Seuils relevés (1,8 m/s², charge 85 %).
+
 ## 0.62.10 — Flèche en dégradé, sans risque
 
 - **Flèche de la voiture** : le dégradé revient. Chaque flèche dessinée a ses propres noms de dégradés (une autre copie sur la page ne peut plus les masquer), et une couleur pleine sous chaque face : jamais de face transparente.

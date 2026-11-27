@@ -5559,7 +5559,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.10";
+  var GPS_CARD_VERSION = "0.62.15";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6850,6 +6850,18 @@
       if (config.edge_to_edge === true) {
         var vp = document.querySelector('meta[name="viewport"]');
         if (vp && !/viewport-fit\s*=\s*cover/.test(vp.content)) vp.content += ", viewport-fit=cover";
+        // The status bar and the notch's band are the system's: only the
+        // browser's real fullscreen gives them to the page. It needs a touch:
+        // the first one on the map asks for it (and again after it was left).
+        if (!this.edgeWired) {
+          this.edgeWired = true;
+          this.addEventListener("pointerdown", () => {
+            // The card itself in fullscreen: drawn in the page's top layer,
+            // over everything and out of any container that would hold it.
+            if (this.config.edge_to_edge !== true || document.fullscreenElement || !this.requestFullscreen) return;
+            try { this.requestFullscreen({ navigationUI: "hide" }).catch(() => {}); } catch (e) { /* not offered here */ }
+          }, { passive: true });
+        }
       }
     }
     getCardSize() { return 6; }
@@ -6923,7 +6935,11 @@
         // edge_to_edge: the map over the whole screen, the notch's band and the
         // system bars' places included (a phone in portrait or landscape); the
         // buttons and panels keep out of the cut-outs (safe-area insets).
-        ":host(.edge) { position: fixed; inset: 0; z-index: 3; height: auto; }" +
+        // edge_to_edge: the card itself fixed over the whole page (as the full
+        // mode, which works where the host's own fixing was trapped by the
+        // page's containers), above the wall's bar.
+        ":host(.edge) ha-card { position: fixed; inset: 0; z-index: 2147481000; height: auto; min-height: 0; border-radius: 0; border: 0; }" +
+        ":host(:fullscreen) { width: 100vw; height: 100vh; background: #000; } :host(:fullscreen) ha-card { position: fixed; inset: 0; height: auto; }" +
         ":host(.edge) .btns, :host(.edge) .hud, :host(.edge) .panel, :host(.edge) .side { margin-top: env(safe-area-inset-top, 0px); margin-left: env(safe-area-inset-left, 0px); margin-right: env(safe-area-inset-right, 0px); }" +
         "ha-card { display: block; position: relative; height: 100%; min-height: 240px; overflow: hidden; background: #07080a; border-radius: var(--igor-radius, 3px); }" +
         "#map { position: absolute; inset: 0; touch-action: none; } #map .maplibregl-canvas { touch-action: none; }" +
@@ -8317,8 +8333,16 @@
       try { box.innerHTML = window.igorJunction2(J.model, Object.assign(carJunctionOpts(Jr, W, H, "tel"), { bar: false })); } catch (e) { box.hidden = true; }
     }
     publishJunction(R, along, next) {
-      var e = this.publishing === false ? null : this.config.publish_junction;
-      var show = !!(next && next.at - along < 2000 && next.at - along > -60);
+      // `publish_junction:`, else the car's usual entity when it exists.
+      var pj = this.config.publish_junction || (this.config.publish_turn && this._hass && this._hass.states["input_text.voiture_jonction"] ? "input_text.voiture_jonction" : null);
+      var e = this.publishing === false ? null : pj;
+      // The junction just reached stays the one shown until the car is
+      // through it — a roundabout until its exit (the instruction's point is
+      // its entry), a turn or an exit a little after its point — not the next
+      // instruction the moment its point is passed.
+      var passLen = (st) => /rotate|ROUNDABOUT/.test((st.icon || "") + (st.m || "")) ? 90 : /EXIT|KEEP|BEAR|sortie/i.test((st.m || "") + (st.text || "")) ? 60 : 30;
+      for (var ki = 0; ki < R.steps.length; ki++) { var stp = R.steps[ki]; if (stp.at <= along + 8 && along - stp.at < passLen(stp) && stp !== next) { var jm = stp.jx || (stp.jx = this.junctionModel(R, stp) || { none: true }); if (!jm.none) { next = stp; break; } } }
+      var show = !!(next && next.at - along < 2000 && next.at - along > -100);
       var J = show ? (next.jx || (next.jx = this.junctionModel(R, next) || { none: true })) : null;
       if (J && J.none) J = null;
       if (J && !J.arms && !J.armsTried && next.at - along < 900 && next.loc) {
@@ -10434,8 +10458,11 @@
         here = R.cum[this.seg - 1] + (o0 ? gpsDist(R.coords[this.seg - 1], o0.point) : 0);
         left = Math.max(0, R.total - here);
       }
+      // A radar once announced stays until it is passed: slowing under 90
+      // km/h (the reach going from 1 km to 500 m) no longer drops it.
       var kmh = (this.speedMps ? this.speedMps() : 0) * 3.6, reach = kmh > 90 ? 1000 : 500, c = this.camAhead;
-      var cam = c && c.d <= reach ? [Math.round(c.d), c.limit || "", String(c.what).replace(/[~;|]/g, " ").slice(0, 24), c.noSpeed ? 1 : 0].join("~") : "";
+      if (c && c.d <= reach) this.camKeep = c.id; else if (!c || c.id !== this.camKeep) this.camKeep = null;
+      var cam = c && (c.d <= reach || c.id === this.camKeep) ? [Math.round(c.d), c.limit || "", String(c.what).replace(/[~;|]/g, " ").slice(0, 24), c.noSpeed ? 1 : 0].join("~") : "";
       var ev = [];
       if (guided) {
         (this.pois || []).forEach((q) => {
@@ -11486,7 +11513,7 @@
       if (wkey !== this.onWayKey) { this.onWayKey = wkey; this.refreshPois(); }
       var limitNow = this.lastLimit ? this.lastLimit.v : NaN;
       // Kept for the head unit (publish_ahead): the camera ahead, its limit.
-      this.camAhead = cam ? { d: cam.d, limit: cam.q.noSpeed ? null : (cam.q.limit || (isFinite(limitNow) ? limitNow : null)), what: cam.q.what || "Radar", noSpeed: !!cam.q.noSpeed } : null;
+      this.camAhead = cam ? { id: cam.q.id, d: cam.d, limit: cam.q.noSpeed ? null : (cam.q.limit || (isFinite(limitNow) ? limitNow : null)), what: cam.q.what || "Radar", noSpeed: !!cam.q.noSpeed } : null;
       if (cam) {
         var reach = kmh > 90 ? 1000 : 500;
         if (cam.d <= reach) {
@@ -13206,7 +13233,7 @@
       if (!g) return;
       // The junction view on (the middle of the head unit shows this turn):
       // the column tells what comes after it, until the car is through.
-      var sh = window.__igorJx, Jx = this.config.junction && sh && Date.now() - sh.at < 3000 ? sh.J : null;
+      var sh = window.__igorJx, Jx = sh && Date.now() - sh.at < 3000 ? sh.J : null;
       if (Jx && Jx.nextText) {
         var after = Jx.model === "rond_point" ? "après le rond-point" : /^(sortie|echangeur)/.test(Jx.model) ? "après la sortie" : Jx.model === "bifurcation" ? "après la bifurcation" : "ensuite";
         g = Object.assign({}, g, { icon: Jx.nextIcon || g.icon, dist: Jx.nextM != null ? gpsMetres(Math.max(0, Jx.d) + Jx.nextM) : "", text: after + " · " + Jx.nextText, then: "" });
@@ -13474,7 +13501,7 @@
     t = t || Date.now();
     var at = Number(a[0]) ? carSeen(st) : t; if (!isFinite(at) || t - at > 15000) return null;
     var gone = Math.max(0, (t - at) / 1000) * Math.max(0, v || 0) / 3.6, d = Number(a[2]) - gone, model = a[1];
-    var reach = (v || 0) > 70 ? 1500 : 800, after = model === "rond_point" ? -45 : -3;
+    var reach = (v || 0) > 70 ? 1500 : 800, after = model === "rond_point" ? -100 : -70;
     if (d > reach || d < after) return null;
     return { raw: raw, model: model, d: d, side: a[3], lanes: Number(a[4]) || 0, exitLanes: Number(a[5]) || 1, branches: Number(a[6]) || 0, exit: Number(a[7]) || 0,
       angle: a[8] === "" ? null : Number(a[8]), arms: a[9] ? a[9].split(",").map(Number) : null, laneCode: a[10] || "", exitNo: a[11] || "", refs: a[12] || "", to: a[13] || "",
@@ -13525,7 +13552,7 @@
   //   tune.hold_peak_s: 5                  # how long a peak (red line) stays before sinking
   //   tabs: true                           # the radar / moteur / conso buttons under the view (default: none, the views change by themselves)
   //   resume: { entity: binary_sensor.car_resume_offered, button: input_button.car_resume }   # a big green « Reprendre le trajet » over the view while offered (attributes precedent_debut, precedent_km)
-  //   tune: { load_on: 75, accel_on: 1.4, window_s: 3, min_kmh: 15, boost_on: 0.8, gain_s: 4, hold_s: 20, calm_s: 8, min_view_s: 8, cooldown_s: 30, override_s: 60 }
+  //   tune: { load_on: 85, accel_on: 1.8, window_s: 3, min_kmh: 15, boost_on: 0.8, gain_s: 4, hold_s: 20, calm_s: 8, min_view_s: 8, cooldown_s: 30, override_s: 60 }
   // Which view, by priority: a radar within reach (green, amber, red as the
   // speed goes), a hard acceleration (the engine, held while the effort
   // lasts, gear changes included), the route ahead while guided, else the
@@ -13741,9 +13768,15 @@
       if (w.length < 4) return no;
       var first = w.find((x) => x.v != null), last = w[w.length - 1];
       if (!first || last.v == null || last.v < this.tune("min_kmh", 15) || last.t <= first.t) return no;
-      var acc = ((last.v - first.v) / 3.6) / ((last.t - first.t) / 1000), on = this.tune("accel_on", 1.4);
+      // The gain measured over most of the window, never over two speed
+      // readings a fraction of a second apart (a 2 km/h step there read as a
+      // hard pull — the engine view at a roundabout's exit).
+      if (last.t - first.t < win * 0.7) return no;
+      var vs = w.filter((x) => x.v != null);
+      if (vs.length < 3) return no;
+      var acc = ((last.v - first.v) / 3.6) / ((last.t - first.t) / 1000), on = this.tune("accel_on", 1.8);
       var loads = w.filter((x) => x.load != null), boosts = w.filter((x) => x.boost != null);
-      var floored = loads.length >= 3 ? loads.filter((x) => x.load >= this.tune("load_on", 75)).length / loads.length >= 0.6 : null;
+      var floored = loads.length >= 3 ? loads.filter((x) => x.load >= this.tune("load_on", 85)).length / loads.length >= 0.6 : null;
       var boosted = boosts.length >= 3 ? boosts.filter((x) => x.boost >= this.tune("boost_on", 0.8)).length / boosts.length >= 0.6 : null;
       // Load or turbo, whichever the car gives; neither: a harder gain alone.
       var hit = floored === null && boosted === null ? acc >= on * 1.45 : (!!floored || !!boosted) && acc >= on;
@@ -13805,7 +13838,9 @@
       // consumption, or the parked car); below, the route, whenever guided.
       var offer = this.routesOffer(t);
       var junc = this.junction(t, v); this.junc = junc;
-      var want = offer ? "routes" : rad && rad.d != null ? "radar" : junc ? "voies" : this.sport ? "moteur" : !on && (v == null || v < 1) ? "arret" : "conso";
+      // The junction first: the way to go is what matters most; then the
+      // radar (still on the frieze below); the engine never over either.
+      var want = offer ? "routes" : junc ? "voies" : rad && rad.d != null ? "radar" : this.sport && !this.guidedNow() ? "moteur" : !on && (v == null || v < 1) ? "arret" : "conso";
       if (this.manual && t < this.manual.until && want !== "radar") want = this.manual.view; else if (this.manual && t >= this.manual.until) this.manual = null;
       // A calm view stays at least min_view_s; the radar and the engine come at once.
       if (want !== this.view && this.view && want !== "radar" && want !== "moteur" && want !== "routes" && want !== "voies" && this.view !== "radar" && this.view !== "routes" && this.view !== "voies" && !force && t - this.viewAt < this.tune("min_view_s", 8) * 1000) want = this.view;
@@ -13917,19 +13952,29 @@
     // (800 m in town); gone once the car is in the junction — out of the
     // roundabout for a roundabout. Without `junction:`, the lanes view of
     // publish_turn as before.
+    // Guided by the phone (its heartbeat says so): the engine view stays away.
+    guidedNow() { var p = this.aheadParts; return !!(p && p[1] === "1"); }
+    // The junction's entity: `junction:`, else the car's usual one when it
+    // exists (input_text.voiture_jonction) — the view works without a line
+    // of YAML to add.
+    jxEntity() {
+      var c = this.config, h = this._hass;
+      if (c.junction) return c.junction;
+      return h && h.states["input_text.voiture_jonction"] ? "input_text.voiture_jonction" : null;
+    }
     // Held from the moment it shows until the car is through: a message that
     // comes late or not at all for a few seconds never makes it blink off;
     // the distance is then carried on with the car's own speed.
     junction(t, v) {
-      var J = carJunction(this._hass, this.config.junction, v, t), H = this.jxHold;
-      var jst = this.st(this.config.junction), jseen = carSeen(jst);
+      var je = this.jxEntity(), J = carJunction(this._hass, je, v, t), H = this.jxHold;
+      var jst = this.st(je), jseen = carSeen(jst);
       if (J) { this.jxHold = { J: J, t: t, seen: jseen }; }
       // Held only while the phone says nothing new: a new message from it (a
       // new route, no junction any more) drops the held one at once.
       else if (H && jseen !== H.seen) this.jxHold = null;
-      else if (H && t - H.t < 25000) {
+      else if (H && t - H.t < 600000) {  // no timer: held until the car is through (10 min at most, a guard)
         var d = H.J.d - Math.max(0, (t - H.t) / 1000) * Math.max(0, v || 0) / 3.6;
-        if (d > (H.J.model === "rond_point" ? -45 : -3)) J = Object.assign({}, H.J, { d: d }); else this.jxHold = null;
+        if (d > (H.J.model === "rond_point" ? -100 : -70)) J = Object.assign({}, H.J, { d: d }); else this.jxHold = null;
       } else this.jxHold = null;
       // Shared with the guidance column of this screen: it shows what comes
       // after the junction only while the junction is on screen here.
@@ -13952,7 +13997,8 @@
       this.head.textContent = "radar";
       if (!rad) { if (this.drawn !== "r0") { this.drawn = "r0"; this.body.innerHTML = ""; el("div", "none", this.body, "aucun radar devant vous"); } return; }
       var lim = rad.limit || this.n(this.config.limit), over = v != null && lim ? v - lim : null;
-      var lvl = rad.noSpeed || over == null ? "warn" : over <= 0 ? "ok" : over <= 5 ? "warn" : "bad";
+      // Orange at or under the limit, red above it.
+      var lvl = rad.noSpeed || over == null || over <= 0 ? "warn" : "bad";
       var col = { ok: CAR_OK, warn: CAR_WARN, bad: "#e5323b" }[lvl], bg = { ok: "#101a15", warn: "#1c1710", bad: "#200f10" }[lvl];
       this.cardEl.style.background = bg; this.cardEl.style.borderColor = col;
       var reach = (v || 0) > 90 ? 1000 : 500, d = Math.max(0, rad.d);
@@ -13971,7 +14017,7 @@
       el("div", "rk", w, (rad.what || "radar") + (rad.approx ? " · environ" : "")).style.color = col;
       el("div", "rd", w, (rad.approx ? "≈ " : "") + gpsMetres(d));
       var bar = el("div", "rb", w), fill = el("i", "", bar); fill.style.width = Math.round(Math.max(0, Math.min(1, 1 - d / reach)) * 100) + "%"; fill.style.background = col;
-      var msg = rad.noSpeed ? (/passage|niveau/i.test(rad.what || "") ? "ne vous engagez pas si ça sonne" : "arrêtez-vous au rouge") : over == null ? (v != null ? Math.round(v) + " km/h" : "") : over <= 0 ? Math.round(v) + " km/h · tout va bien" : over <= 5 ? Math.round(v) + " km/h · levez le pied" : Math.round(v) + " km/h · ralentissez de " + Math.round(over) + " km/h";
+      var msg = rad.noSpeed ? (/passage|niveau/i.test(rad.what || "") ? "ne vous engagez pas si ça sonne" : "arrêtez-vous au rouge") : over == null ? (v != null ? Math.round(v) + " km/h" : "") : over <= 0 ? Math.round(v) + " km/h · vitesse conforme" : Math.round(v) + " km/h · ralentissez de " + Math.round(over) + " km/h";
       el("div", "rs", w, msg).style.color = col;
       if (rad.approx) el("div", "rn", w, "sans téléphone : position de l'autoradio, moins précise");
     }
@@ -14071,6 +14117,9 @@
       if (this.relayed) carSetText(this.fzAside, "radars : liste officielle · sans stations");
       else {
         var aw0 = p[7] ? p[7].split("~") : null, awt = aw0 && aw0[0] !== "" ? aw0[0] + " °C" + (aw0[1] ? " " + aw0[1].toLowerCase() : "") : "";
+        // No junction entity in the house: said here, not left silent.
+        if (!this.jxEntity()) { carSetText(this.fzAside, "vue des jonctions : entité input_text.voiture_jonction absente (voiture_telephone.yaml)", 6000); }
+        else
         // Rounded so it changes rarely (the line scrolls when too long).
         carSetText(this.fzAside, left <= 30000 ? [gpsMetres(Math.round(left / 100) * 100), g[6] ? g[6] + " min" : "", g[4] ? "arrivée " + g[4] : "", awt].filter(Boolean).join(" · ") : ["les 30 prochains km", g[4] ? "arrivée " + g[4] : "", awt].filter(Boolean).join(" · "), 6000);
       }
