@@ -5559,7 +5559,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.13";
+  var GPS_CARD_VERSION = "0.62.14";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -13997,7 +13997,8 @@
       this.head.textContent = "radar";
       if (!rad) { if (this.drawn !== "r0") { this.drawn = "r0"; this.body.innerHTML = ""; el("div", "none", this.body, "aucun radar devant vous"); } return; }
       var lim = rad.limit || this.n(this.config.limit), over = v != null && lim ? v - lim : null;
-      var lvl = rad.noSpeed || over == null ? "warn" : over <= 0 ? "ok" : over <= 5 ? "warn" : "bad";
+      // Orange at or under the limit, red above it.
+      var lvl = rad.noSpeed || over == null || over <= 0 ? "warn" : "bad";
       var col = { ok: CAR_OK, warn: CAR_WARN, bad: "#e5323b" }[lvl], bg = { ok: "#101a15", warn: "#1c1710", bad: "#200f10" }[lvl];
       this.cardEl.style.background = bg; this.cardEl.style.borderColor = col;
       var reach = (v || 0) > 90 ? 1000 : 500, d = Math.max(0, rad.d);

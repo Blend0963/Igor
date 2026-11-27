@@ -1,3 +1,7 @@
+## 0.62.14 — Couleur du radar selon la vitesse
+
+- **Vue radar (autoradio)** : orange tant que la vitesse est à la limite ou en dessous, rouge au-dessus (cadre, fond, barre, message).
+
 ## 0.62.13 — Affiché jusqu'au passage, sans minuterie
 
 - **Vue de jonction** : le téléphone garde la jonction atteinte jusqu'à ce que la voiture en soit sortie (un rond-point jusqu'à sa sortie, une sortie ou un virage un peu après) au lieu de passer à l'instruction suivante dès le point de l'instruction ; l'autoradio la garde sans minuterie tant que le téléphone ne dit rien de neuf, jusqu'au passage.
