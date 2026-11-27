@@ -5559,7 +5559,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.9";
+  var GPS_CARD_VERSION = "0.62.10";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6135,15 +6135,24 @@
   // The car, as TomTom's navigation draws it: a thick chevron with rounded
   // corners, blue (lighter on its left facet), a broad white rim, its
   // thickness showing underneath, a soft light on the ground.
-  // Plain colours, no gradient: a gradient is found by its id, and where the
-  // browser does not find it (the map inside a shadow root, a second copy of
-  // the card) the faces went transparent — only the white rim was left.
-  var GPS_ARROW = '<svg viewBox="0 0 60 60" width="62" height="62">' +
-    '<ellipse cx="30" cy="36" rx="22" ry="19" fill="#4fb3ff" opacity=".22"/>' +
-    '<path d="M30 12 L45 45 L30 37 L15 45 Z" transform="translate(0 3.2)" fill="#174f8c" stroke="#174f8c" stroke-width="7" stroke-linejoin="round"/>' +
-    '<path d="M30 12 L45 45 L30 37 L15 45 Z" fill="#ffffff" stroke="#ffffff" stroke-width="7" stroke-linejoin="round"/>' +
-    '<path d="M30 13.5 L30 36.4 L16.6 43.4 Z" fill="#7cc6fb" stroke="#7cc6fb" stroke-width="1.2" stroke-linejoin="round"/>' +
-    '<path d="M30 13.5 L43.4 43.4 L30 36.4 Z" fill="#2f86d6" stroke="#2f86d6" stroke-width="1.2" stroke-linejoin="round"/></svg>';
+  // The car's arrow, with its gradients — each drawing with ids of its own:
+  // a gradient is found by its id, and a second copy of the same ids
+  // elsewhere on the page (hidden, or gone) left the faces transparent.
+  function gpsArrow() {
+    var u = "ga" + Math.random().toString(36).slice(2, 8);
+    return '<svg viewBox="0 0 60 60" width="62" height="62"><defs>' +
+      '<radialGradient id="' + u + 'g"><stop offset="0" stop-color="#4fb3ff" stop-opacity=".45"/><stop offset="1" stop-color="#4fb3ff" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="' + u + 'l" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#8fd3ff"/><stop offset="1" stop-color="#4aa8f0"/></linearGradient>' +
+      '<linearGradient id="' + u + 'r" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#3d9be8"/><stop offset="1" stop-color="#1f74c9"/></linearGradient></defs>' +
+      '<ellipse cx="30" cy="36" rx="25" ry="22" fill="url(#' + u + 'g)"/>' +
+      '<path d="M30 12 L45 45 L30 37 L15 45 Z" transform="translate(0 3.2)" fill="#174f8c" stroke="#174f8c" stroke-width="7" stroke-linejoin="round"/>' +
+      '<path d="M30 12 L45 45 L30 37 L15 45 Z" fill="#ffffff" stroke="#ffffff" stroke-width="7" stroke-linejoin="round"/>' +
+      // Plain colour first, the gradient over it: never a transparent face.
+      '<path d="M30 13.5 L30 36.4 L16.6 43.4 Z" fill="#7cc6fb" stroke="#7cc6fb" stroke-width="1.2" stroke-linejoin="round"/>' +
+      '<path d="M30 13.5 L43.4 43.4 L30 36.4 Z" fill="#2f86d6" stroke="#2f86d6" stroke-width="1.2" stroke-linejoin="round"/>' +
+      '<path d="M30 13.5 L30 36.4 L16.6 43.4 Z" fill="url(#' + u + 'l)"/>' +
+      '<path d="M30 13.5 L43.4 43.4 L30 36.4 Z" fill="url(#' + u + 'r)"/></svg>';
+  }
   // The French speed limit sign (B14): kept as the real thing, readable at a glance.
   var GPS_SIGN = '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="49.5" fill="#fff" stroke="rgba(0,0,0,0.35)" stroke-width="1"/>' +
     '<circle cx="50" cy="50" r="42.5" fill="none" stroke="#c8102e" stroke-width="11"/>' +
@@ -8438,7 +8447,7 @@
       }); } catch (e) { this.message("carte : " + (e && e.message || "WebGL indisponible sur cet appareil")); this.loading = false; return; }
       this.map = map;
       var arrow = document.createElement("div");
-      arrow.innerHTML = GPS_ARROW;
+      arrow.innerHTML = gpsArrow();
       // The arrow is a picture, not a handle: a finger that lands on it (the
       // car sits at the screen's centre while guiding) drags the map like
       // anywhere else, instead of holding a dead spot.
