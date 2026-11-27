@@ -1,3 +1,12 @@
+## 0.62.8 — Vue de jonction : autoradio, ou GPS du téléphone seul
+
+- La vue de jonction (sorties, ronds-points…) n'apparaît plus sur le téléphone posé en écran déporté de l'autoradio (`display_only`) : elle est alors sur l'autoradio seulement. Sur le téléphone, elle n'apparaît qu'en mode GPS à part entière.
+
+## 0.62.7 — Panneau des radars de feu, cartes qui ne tombent plus en « Erreur de configuration »
+
+- **Radar de feu rouge / de passage à niveau** (autoradio) : le vrai panneau de danger français — triangle « feux tricolores » (A17) ou « passage à niveau » (A8) — au lieu d'un rond de vitesse avec le mot « feu » ; le message dit quoi faire : « arrêtez-vous au rouge », « ne vous engagez pas si ça sonne ».
+- **Cartes Igor** : une erreur pendant une mise à jour ne remplace plus la carte par « Erreur de configuration » ; la carte reste affichée, l'erreur va dans la console du navigateur (et `window.__igorFaults`), la mise à jour suivante la redessine.
+
 ## 0.62.6 — Un seul écran guide la voiture
 
 - **Un seul guide** : chaque écran qui ouvrait la carte « Téléphone · Carte » (un deuxième onglet, l'appli et un navigateur, une tablette ou un ordinateur resté sur la page) écrivait le guidage de l'autoradio depuis SA position et SON itinéraire, chacun par-dessus l'autre — d'où des virages qui n'existent pas. Désormais l'écran qui guide signe son signe de vie (le téléphone, avec son GPS en direct, l'emporte sur un écran sans GPS) ; les autres n'écrivent rien (guidage, jonction, itinéraires, voix, signe de vie) tant qu'il est en vie, et le disent. Une page cachée n'écrit jamais.
