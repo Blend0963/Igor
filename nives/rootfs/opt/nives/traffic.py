@@ -44,6 +44,14 @@ CATEGORIES: dict[int, tuple[str, str]] = {
 }
 
 
+def _num(v):
+    """A number, or None."""
+    try:
+        return round(float(v), 1)
+    except (TypeError, ValueError):
+        return None
+
+
 def bbox(lat: float, lon: float, radius_km: float) -> tuple[float, float, float, float]:
     """minLon, minLat, maxLon, maxLat around a point (TomTom's order)."""
     dlat = radius_km / 111.32
@@ -236,6 +244,9 @@ def _parse_one(r: dict) -> dict[str, Any] | None:
                 "refs": [str(x) for x in ins.get("roadNumbers") or [] if x][:3],
                 "exit": str(ins.get("exitNumber") or ins.get("roundaboutExitNumber") or ""),
                 "to": str(ins.get("signpostText") or "")[:80],
+                # The junction view: the turn's angle (right positive) and its kind.
+                "angle": _num(ins.get("turnAngleInDecimalDegrees")),
+                "junction": str(ins.get("junctionType") or ""),
             }
         )
     jams, limits, lanes = [], [], []

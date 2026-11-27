@@ -1,3 +1,56 @@
+## 0.61.2 — Lueur des monuments la nuit
+
+- **Lueur des monuments** (Réglages de la carte → Bâtiments) : la nuit, les bâtiments que la carte marque comme monuments (Notre-Dame, cathédrales…) ont leurs murs éclaircis comme sous des projecteurs, et une lueur douce au sol tout autour. Tiré des bâtiments de la carte elle-même : rien à télécharger, fonctionne aussi bâtiments 3D coupés.
+
+## 0.61.1 — Monuments 3D, teinte de nuit TomTom
+
+- **Monuments 3D** (Réglages de la carte → Bâtiments) : les modèles détaillés des bâtiments connus de TomTom (Orbis 3D Landmarks), seuls, sans les autres bâtiments. TomTom les garde en accès restreint : la clé doit avoir l'accès « Orbis 3D Landmarks » ; sinon la carte le signale une fois.
+- **Teinte de la nuit « TomTom »** : les couleurs relevées sur la navigation de nuit de TomTom — sol bleu-gris, rues un ton plus clair, eau bleu ardoise, murs des bâtiments 3D #425f69.
+
+## 0.61.0 — Vue de jonction, flèche et flèches au sol façon TomTom, teinte et éclairage de nuit
+
+- **Vue de jonction sur l'autoradio** (`junction:` sur igor-drive-card, `publish_junction:` sur la carte du téléphone) : à l'approche d'une sortie, d'une bifurcation, d'un échangeur, d'un rond-point ou d'un carrefour, toute la colonne du centre montre la route telle qu'on la voit, tracé cyan avec son halo, sans flèche. Elle disparaît dès que la voiture est dans le carrefour (à la sortie pour un rond-point).
+  - 15 modèles (sorties, bifurcation, échangeur, insertion, fin de voie, péage, carrefours, rond-point, demi-tour, présélection), choisis et réglés par l'itinéraire TomTom (angle du virage, voies, n° de sortie, panneau).
+  - **Forme réelle** : les routes qui se rejoignent au carrefour sont lues sur la carte du téléphone (nombre et angles) — un rond-point à 5 branches est dessiné avec ses 5 branches.
+  - **Panneaux** : celui de la sortie (n°, routes, villes) et celui de la route qui continue (son numéro et la ville suivante, cherchée 4 km plus loin).
+  - Pendant la vue, le guidage de gauche montre l'instruction suivante.
+- **Téléphone** : la même vue s'ouvre en haut de la carte, seulement en guidage et carte qui suit la voiture, pour les sorties, bifurcations, ronds-points et présélections (`junction_inset: false` pour la couper).
+- **Flèche de la voiture** façon TomTom : épaisse, bords arrondis, liseré blanc, épaisseur visible.
+- **Flèches au sol** : le tronçon du virage devient blanc et se fond dans le tracé aux deux bouts, sans pointe.
+- **Bulles des itinéraires de rechange** avec pictogrammes : chrono, €, feuille (sans ZFE).
+- **Réglages de la carte** : « Éclairage des bâtiments la nuit » (fenêtres et façades éclairées) et « Teinte de la nuit » (gris ou bleu nuit).
+- Serveur : la ville est rendue par `nives.car_limit` ; les instructions TomTom gardent l'angle du virage et le type de jonction.
+
+## 0.60.1 — Cyan Igor sur l'autoradio, tracé et flèche façon TomTom sur le téléphone
+
+- **Autoradio, une seule couleur** : la barre d'itinéraire, la flèche du guidage, le téléphone (« sur le socle ») et les messages (« lecture auto », liseré, boutons) prennent tous le cyan Igor.
+- **Barre d'itinéraire** : cyan uni, sans reflet ni lueur ; au début, un point blanc cerclé « vous êtes ici » à la place de la flèche (il se détache du cyan). Les bouchons et les tirets qui défilent restent.
+- **Carte du téléphone, comme la navigation TomTom** : nouvelle couleur de route « TomTom » (bleu clair, cœur plus lumineux, halo doux), par défaut dans tous les préréglages (une couleur déjà choisie dans les réglages est gardée) ; nouvelle flèche (face gauche blanche, face droite bleu clair, liseré clair).
+- **Trajet déjà parcouru « pâle »** : la même couleur estompée, sans halo.
+- **Guidage** : le panneau de ville vide n'apparaît plus quand la ville est inconnue.
+
+## 0.60.0 — Voies et sorties, trajet effacé en direct, autoradio peaufiné
+
+- **Voies et sorties** : à l'approche d'une sortie ou d'un échangeur (1,5 km avant, 800 m en ville), la page centrale de l'autoradio montre, comme pour les radars, le panneau (bleu autoroute, vert nationale, blanc sinon) avec le numéro de sortie, les numéros de route et les villes, et les voies en perspective, celles à prendre dans la couleur du tracé avec son halo. Le téléphone envoie ces données avec le guidage (`publish_turn`, champs ajoutés à la fin : compatible). Sur la carte, les voies sont dessinées au lieu des flèches texte.
+- **Trajet déjà parcouru** : « effacé » efface la route sous la flèche en direct (plus par blocs) ; « pâle » garde la route derrière dans sa propre couleur estompée, halo compris ; « laissé » laisse la route telle quelle. Les couleurs des bouchons suivent la route raccourcie.
+- **Halo** fondu sur toute sa largeur ; le fil blanc au centre devient un reflet léger.
+- **Préchargement des tuiles** : avant un virage, les tuiles autour du virage et sur les 2 km suivants sont demandées à l'avance (`prefetch: false` pour couper).
+- **Sens de circulation** : la flèche ne part plus à contresens dans un virage ; le demi-tour n'est retenu qu'après 6 s dans l'autre sens.
+- **Plein écran** (`edge_to_edge: true`) : la carte du téléphone occupe tout l'écran, encoche comprise, en portrait comme en paysage. Les liens d'erreur de la carte ne s'affichent plus qu'en débogage.
+- **Autoradio** :
+  - vignette direction : les panneaux de rue et de ville vont jusqu'au bord ; un texte trop long passe en police plus petite, puis défile ;
+  - moteur : les libellés gris « max » retirés (les repères rouges restent) ; le 0-100 dans une pastille sous le compte-tours ;
+  - rapport engagé : il ne change qu'une fois stable (1,2 s, 2,5 s pour un saut de deux rapports), jamais pendant la chute ou la montée de régime d'un changement de vitesse ;
+  - barre d'itinéraire : la flèche du GPS tout au début, la route avec ses couleurs et son halo ;
+  - vignettes : sur une ligne, avec pictogrammes ; un texte long défile ;
+  - télémétrie : la dernière minute est gardée entre les onglets.
+
+## 0.59.3 — Itinéraires de rechange : seulement à la bifurcation, seulement s'ils valent la peine
+
+- Un itinéraire de rechange n'est plus dessiné par-dessus le trajet : seulement sa partie à lui, de la bifurcation au point où il rejoint la route ; un itinéraire qui ne quitte jamais le trajet n'apparaît pas.
+- Il n'apparaît que s'il vaut la peine : plus rapide (une minute au moins), moins cher (un euro au moins : sans péage, moins de gazole) ou sans la ZFE que le trajet traverse ; un itinéraire qui entre dans une ZFE que le trajet évite n'est jamais proposé. La bulle dit pourquoi : « −3 min », « −6 € · +4 min », « sans ZFE ».
+- La comparaison se fait avec ce qu'il reste du trajet (les itinéraires de rechange partent de la voiture), plus avec sa durée totale. Les choix laissés de côté au départ suivent la même règle.
+
 ## 0.59.2 — La conversion Tasker reconnaît telegram_bot.send_message
 
 - `nives.tasker_convert` reconnaît aussi la forme qu'écrit l'éditeur de Home Assistant : `telegram_bot.send_message` avec `entity_id: notify.ha_command` sous `data:` (et `parse_mode`, `metadata`) ; elle devient `script.tasker_envoyer` avec le même message. Les envois vers une autre conversation (photos d'intrusion…) ne sont pas touchés.

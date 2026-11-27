@@ -1923,7 +1923,9 @@ def _async_register_car(hass: HomeAssistant) -> None:
             limit = await car.speed_limit(lat, lon, heading, key)
         except Exception:  # noqa: BLE001
             return {"enabled": True, "ok": False}
-        out = {"enabled": True, "ok": True, "limit": limit}
+        # The town there too: the head unit's junction view names the town
+        # the road the car leaves goes on to.
+        out = {"enabled": True, "ok": True, "limit": limit, "town": getattr(car, "last_town", "") or ""}
         if len(limit_cache) > 500:
             limit_cache.clear()
         limit_cache[where] = (now, out)

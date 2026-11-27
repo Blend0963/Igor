@@ -400,6 +400,16 @@ def parse_speed_limit(body: Any) -> int | None:
     return None
 
 
+def parse_town(body: Any) -> str:
+    """TomTom's reverse geocoding → the town (« Corbeil-Essonnes »), or ""."""
+    for a in (body or {}).get("addresses") or []:
+        ad = a.get("address") or {}
+        town = ad.get("municipality") or ad.get("municipalitySubdivision") or ""
+        if town:
+            return str(town).split(",")[0].strip()[:40]
+    return ""
+
+
 def parse_nominatim(rows: Any) -> list[dict]:
     out = []
     for r in rows if isinstance(rows, list) else []:
@@ -788,7 +798,9 @@ class Car:
         params = {"key": key, "returnSpeedLimit": "true", "radius": "40"}
         if heading is not None:
             params["heading"] = str(int(heading) % 360)
-        return parse_speed_limit(await self.fetch("GET", TOMTOM_REVERSE.format(lat=lat, lon=lon), params, None))
+        body = await self.fetch("GET", TOMTOM_REVERSE.format(lat=lat, lon=lon), params, None)
+        self.last_town = parse_town(body)
+        return parse_speed_limit(body)
 
     async def geocode(self, query: str, near: Sequence[float] | None, limit: int = 6) -> list[dict]:
         """Places for a query, the ones near the car first. TomTom's search

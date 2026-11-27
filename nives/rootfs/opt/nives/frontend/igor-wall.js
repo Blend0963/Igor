@@ -5076,6 +5076,25 @@
     }
     // The road's limit: the phone map's sign (fresh), the `limit` sensor, or
     // asked by position (nives.car_limit, TomTom) — the last answer kept.
+    // The gear shown, guarded: while the clutch is down the revs fall (or
+    // rise) faster than any engine pulls, and the speed/revs ratio reads a
+    // gear too high — the figure holds then. A new gear shows once it has
+    // stayed 1.2 s (2.5 s for a jump of two or more), the revs steady.
+    gearGuard(g, rpm) {
+      var t = Date.now(), h = this.rpmHist || (this.rpmHist = []);
+      if (rpm != null) { h.push([t, rpm]); while (h.length > 2 && t - h[0][0] > 900) h.shift(); }
+      var fast = h.length >= 2 && t - h[0][0] > 150 && Math.abs(h[h.length - 1][1] - h[0][1]) / ((t - h[0][0]) / 1000) > 400;
+      if (!g) { this.gShown = ""; this.gCand = null; return ""; }
+      if (this.gShown == null || this.gShown === "") { this.gShown = g; return g; }
+      if (g === this.gShown) { this.gCand = null; return g; }
+      if (fast) { this.gCand = null; this.gearRetry(); return this.gShown; }
+      if (!this.gCand || this.gCand.g !== g) this.gCand = { g: g, at: t };
+      var jump = this.gShown !== "N" && g !== "N" && Math.abs(Number(g) - Number(this.gShown)) >= 2;
+      if (t - this.gCand.at >= (jump ? 2500 : 1200)) { this.gShown = g; this.gCand = null; return g; }
+      this.gearRetry();
+      return this.gShown;
+    }
+    gearRetry() { if (this.gearT) return; this.gearT = setTimeout(() => { this.gearT = null; if (this._hass) this.update(this._hass, null); }, 450); }
     limitNow(hass) {
       var c = this.config, a = c.ahead && hass.states[c.ahead], p = a ? String(a.state || "").split("|") : [];
       if (p.length >= 6 && Date.now() - Number(p[0]) < 20000 && Number(p[5]) > 0) return Number(p[5]);
@@ -5112,7 +5131,7 @@
       // (green at or under, amber up to 5 km/h over, red beyond).
       var lim = this.limitNow(hass);
       // The gear, and the advice: « Passez la 5e » → ▲5, « Rétrogradez en 3e » → ▼3.
-      var gs = on && c.gear && S(c.gear) ? String(S(c.gear).state) : "", gear = /^[1-6N]$/.test(gs) ? gs : "";
+      var gs = on && c.gear && S(c.gear) ? String(S(c.gear).state) : "", gear = this.gearGuard(/^[1-6N]$/.test(gs) ? gs : "", on && c.rpm ? num(S(c.rpm)) : null);
       var ad = on && c.advice && S(c.advice) ? String(S(c.advice).state) : "", am = /(\d)/.exec(ad);
       var dir = am && /passez|monte/i.test(ad) ? "up" : am && /r[ée]trograd/i.test(ad) ? "dn" : "";
       var vt2 = vt + "|" + lim;
@@ -5427,6 +5446,7 @@
   //   street_names: true                    # the road where the car is, at the bottom (false: off)
   //   fps: 20                               # the map drawn that many times a second while moving (lower: lighter)
   //   fullscreen_button: false              # no fullscreen button (a dashboard that is the map already)
+  //   edge_to_edge: true                    # the map over the whole screen, the notch's band included (a phone's GPS dashboard)
   //   display_only: true                    # a second screen: the map only (no button, banner or sign); a tap on the map still picks a place or a route
   //   base_pois: true                       # with basemap: tomtom-3d, TomTom's own places (Igor adds only cameras and stations with prices)
   //   debug: true                           # says in the message band how the relief was made (TomTom's 3D layers, or Igor's)
@@ -5447,6 +5467,8 @@
   //   publish_ahead: input_text.car_ahead   # the radar within reach and what lies ahead on the route, for igor-drive-card
   //   publish_routes: input_text.car_routes  # the routes offered, for the head unit to choose (route_choice: input_text.car_choice brings the answer)
   //   publish_turn: input_text.car_turn     # the whole guidance for igor-guide-card `entity` (« icon|dist|text|then|eta|left|min|jam|dest »)
+  //   publish_junction: input_text.car_junction  # the next junction (model, real arms, signs, next town) for the head unit's junction view
+  //   junction_inset: false                 # no junction view over this map (by default: shown while guided, map following the car)
   //   publish_guide: input_text.car_guide   # the guidance written for the other screens (« eta|km|min|destination »)
   //   announce: input_text.car_announce     # the house's announcements, said with the guidance's voice
   //                                         # (written « time|message » by a script; see script.voiture_dire)
@@ -5518,14 +5540,17 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.59.1";
+  var GPS_CARD_VERSION = "0.61.2";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
   // The route, TomTom's way: a soft halo, a deep blue edge, a bright body
   // and a light line down its middle.
   var GPS_GLOW_W = ["interpolate", ["linear"], ["zoom"], 10, 12, 13, 18, 16, 28, 18, 38];
-  var GPS_CORE_W = ["interpolate", ["linear"], ["zoom"], 10, 0.8, 13, 1.4, 16, 2.4, 18, 3.4];
+  // The sheen down the middle: wide, blurred, faint — light on the line, never a white thread.
+  var GPS_CORE_W = ["interpolate", ["linear"], ["zoom"], 10, 1.2, 13, 2.2, 16, 3.6, 18, 5];
+  // The halo feathered over its whole width: no edge, no band.
+  var GPS_GLOW_BLUR = ["interpolate", ["linear"], ["zoom"], 10, 11, 13, 17, 16, 26, 18, 36];
   // Speeds (m/s, from the car itself when it says, else the GPS):
   // above GPS_FWD (15 km/h) a car only drives forward, so where it goes is
   // where it faces; under GPS_SLOW (9 km/h) it may be manoeuvring or reversing,
@@ -5623,6 +5648,15 @@
     return window.__igorTT;
   }
   var gpsRad = function (d) { return (d * Math.PI) / 180; }, gpsDeg = function (r) { return (r * 180) / Math.PI; };
+  // The point at a distance along a line (metres), or null past its end.
+  function gpsPointAt(coords, cum, d) {
+    var n = coords ? coords.length : 0;
+    if (n < 2 || d < 0 || d > cum[n - 1]) return null;
+    var lo = 1, hi = n - 1;
+    while (lo < hi) { var m = (lo + hi) >> 1; if (cum[m] < d) lo = m + 1; else hi = m; }
+    var len = cum[lo] - cum[lo - 1] || 1, f = (d - cum[lo - 1]) / len;
+    return [coords[lo - 1][0] + (coords[lo][0] - coords[lo - 1][0]) * f, coords[lo - 1][1] + (coords[lo][1] - coords[lo - 1][1]) * f];
+  }
   // The route's line between two distances along it (metres), the ends cut
   // where they fall inside a segment.
   function gpsSlice(coords, cum, a, b) {
@@ -5871,13 +5905,18 @@
   window.__igorGpsMath = { roadPath: gpsRoadPath, nearest: gpsNearest, along: gpsAlong, alongLine: gpsAlongLine, project: gpsProject, dist: gpsDist };
   // The car: a chevron lying on the road (it tilts with the map), lit from
   // the left, a soft light on the ground under it — as TomTom draws it.
+  // The car, as TomTom's navigation draws it: a thick chevron with rounded
+  // corners, blue (lighter on its left facet), a broad white rim, its
+  // thickness showing underneath, a soft light on the ground.
   var GPS_ARROW = '<svg viewBox="0 0 60 60" width="62" height="62"><defs>' +
-    '<radialGradient id="igglow"><stop offset="0" stop-color="#5fd0ff" stop-opacity=".55"/><stop offset="1" stop-color="#5fd0ff" stop-opacity="0"/></radialGradient>' +
-    '<linearGradient id="igl" x1="0" x2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#cfefff"/></linearGradient>' +
-    '<linearGradient id="igr" x1="0" x2="1"><stop offset="0" stop-color="#7fd3ff"/><stop offset="1" stop-color="#2f9be6"/></linearGradient></defs>' +
-    '<circle cx="30" cy="32" r="27" fill="url(#igglow)"/>' +
-    '<path d="M30 8 L30 38 L12 47 Z" fill="url(#igl)"/><path d="M30 8 L48 47 L30 38 Z" fill="url(#igr)"/>' +
-    '<path d="M30 8 L48 47 L30 38 L12 47 Z" fill="none" stroke="#0b3f86" stroke-width="2" stroke-linejoin="round"/></svg>';
+    '<radialGradient id="igglow"><stop offset="0" stop-color="#4fb3ff" stop-opacity=".45"/><stop offset="1" stop-color="#4fb3ff" stop-opacity="0"/></radialGradient>' +
+    '<linearGradient id="igl" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#8fd3ff"/><stop offset="1" stop-color="#4aa8f0"/></linearGradient>' +
+    '<linearGradient id="igr" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#3d9be8"/><stop offset="1" stop-color="#1f74c9"/></linearGradient></defs>' +
+    '<ellipse cx="30" cy="36" rx="25" ry="22" fill="url(#igglow)"/>' +
+    '<path d="M30 12 L45 45 L30 37 L15 45 Z" transform="translate(0 3.2)" fill="#174f8c" stroke="#174f8c" stroke-width="7" stroke-linejoin="round"/>' +
+    '<path d="M30 12 L45 45 L30 37 L15 45 Z" fill="#ffffff" stroke="#ffffff" stroke-width="7" stroke-linejoin="round"/>' +
+    '<path d="M30 13.5 L30 36.4 L16.6 43.4 Z" fill="url(#igl)" stroke="url(#igl)" stroke-width="1.2" stroke-linejoin="round"/>' +
+    '<path d="M30 13.5 L43.4 43.4 L30 36.4 Z" fill="url(#igr)" stroke="url(#igr)" stroke-width="1.2" stroke-linejoin="round"/></svg>';
   // The French speed limit sign (B14): kept as the real thing, readable at a glance.
   var GPS_SIGN = '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="49.5" fill="#fff" stroke="rgba(0,0,0,0.35)" stroke-width="1"/>' +
     '<circle cx="50" cy="50" r="42.5" fill="none" stroke="#c8102e" stroke-width="11"/>' +
@@ -5949,7 +5988,7 @@
       : /ENTER|ENTRANCE/.test(m) ? "Insérez-vous"
       : m === "STRAIGHT" ? "Continuez tout droit"
       : text;
-    return { text: text, short: short, icon: ic, road: x.road || "", refs: x.refs || [], to: x.to || "", exit: x.exit || "" };
+    return { text: text, short: short, icon: ic, road: x.road || "", refs: x.refs || [], to: x.to || "", exit: x.exit || "", m: m, angle: x.angle, junction: x.junction || "" };
   }
   function gpsMetres(m) {
     if (m >= 1000) return (m >= 10000 ? Math.round(m / 1000) : (Math.round(m / 100) / 10).toString().replace(".", ",")) + " km";
@@ -6569,6 +6608,13 @@
       // (too small for a finger, and the map is a window, not a cockpit), a
       // tap anywhere opens it full.
       this.classList.toggle("compact", config.compact === true);
+      this.classList.toggle("edge", config.edge_to_edge === true);
+      // The page told it may draw under the notch (the cut-out's band is then
+      // the map's, not a grey strip).
+      if (config.edge_to_edge === true) {
+        var vp = document.querySelector('meta[name="viewport"]');
+        if (vp && !/viewport-fit\s*=\s*cover/.test(vp.content)) vp.content += ", viewport-fit=cover";
+      }
     }
     getCardSize() { return 6; }
     getGridOptions() { return { columns: 12, rows: 4, min_rows: 3 }; }
@@ -6635,6 +6681,11 @@
       this.root.innerHTML = scaled(
         '<link rel="stylesheet" href="' + GPS_MAPLIBRE + '.css" data-ml-css><style>' +
         ":host { display: block; height: 100%; }" +
+        // edge_to_edge: the map over the whole screen, the notch's band and the
+        // system bars' places included (a phone in portrait or landscape); the
+        // buttons and panels keep out of the cut-outs (safe-area insets).
+        ":host(.edge) { position: fixed; inset: 0; z-index: 3; height: auto; }" +
+        ":host(.edge) .btns, :host(.edge) .hud, :host(.edge) .panel, :host(.edge) .side { margin-top: env(safe-area-inset-top, 0px); margin-left: env(safe-area-inset-left, 0px); margin-right: env(safe-area-inset-right, 0px); }" +
         "ha-card { display: block; position: relative; height: 100%; min-height: 240px; overflow: hidden; background: #07080a; border-radius: var(--igor-radius, 3px); }" +
         "#map { position: absolute; inset: 0; touch-action: none; } #map .maplibregl-canvas { touch-action: none; }" +
         ".msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; text-align: center; color: #878c95; font-family: " + MONO + "; font-size: 13px; }" +
@@ -6750,7 +6801,7 @@
         ".rpanel .ropt .wxl { display: block; margin-top: 2px; font-size: 12px; color: #6cc4f5; } .rpanel .ropt .wxl.bad { color: #e5a04c; } .rpanel .ropt .wxl:empty { display: none; }" +
         ".rpanel .ropt .cost { display: block; margin-top: 3px; font-size: 12px; color: #c9ccd1; white-space: normal; overflow-wrap: anywhere; } .rpanel .ropt > div:not(.r) { min-width: 0; flex: 1 1 auto; } .rpanel .ropt .cost em { font-style: normal; color: #c792ea; } .rpanel .ropt .cost strong { font-weight: 500; color: #e9e4da; }" +
         ".rpanel .seg { display: flex; gap: 8px; margin-top: auto; } .rpanel .seg button { flex: 1; justify-content: center; font-size: 13px; padding: 10px 6px; } .rpanel .seg button.on { border-color: #59d0e0; color: #59d0e0; }" +
-        ".nav .l { display: flex; gap: 4px; margin-top: 6px; } .nav .l[hidden] { display: none; } .nav .l span { min-width: 26px; height: 30px; padding: 0 3px; display: grid; place-items: center; border: 1px solid #3d454e; border-radius: 2px; color: #5a5f66; font-size: 18px; line-height: 1; }" +
+        ".nav .l { display: flex; margin-top: 6px; height: 40px; } .nav .l[hidden] { display: none; } .nav .l svg { height: 100%; width: auto; max-width: 100%; }" +
         ".nav .l span.go { border-color: #59d0e0; color: #07080a; background: #59d0e0; }" +
         // The stations' panel: the list stays a list (a name, a place, a
         // detour); the prices live behind each row's « Voir prix », in their
@@ -6839,7 +6890,9 @@
         ".trow .del { flex: none; width: 36px; height: 36px; min-height: 0; padding: 0; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #878c95; cursor: pointer; display: grid; place-items: center; --mdc-icon-size: 20px; }" +
         ".trow .tat { flex: none; margin-left: auto; font-family: 'Chakra Petch', " + MONO + "; font-size: 16px; font-weight: 500; color: #e9e4da; }" +
         ".trow .tat.fin { font-family: " + MONO + "; font-size: 11px; font-weight: 400; color: #878c95; text-transform: uppercase; letter-spacing: 0.08em; }" +
-        ".alttag { padding: 3px 9px; border-radius: 12px; background: rgba(7,8,10,0.92); border: 1px solid #3d454e; color: #878c95; font-family: " + MONO + "; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }" +
+        // The junction view over the map, under the guidance panel: only while guided and following the car.
+        ".jinset { position: absolute; z-index: 2; left: 64px; right: 142px; top: 96px; height: 34%; max-height: 300px; border-radius: var(--igor-radius, 3px); overflow: hidden; border: 1px solid #22262c; box-shadow: 0 10px 28px rgba(0,0,0,.55); background: #11161c; transition: opacity .25s; } .jinset svg { display: block; width: 100%; height: 100%; } .portrait .jinset { right: 10px; left: 10px; top: 88px; height: 28%; }" +
+        ".alttag { display: flex; gap: 10px; align-items: center; --mdc-icon-size: 17px; } .alttag span { display: inline-flex; align-items: center; gap: 3px; } .alttag { padding: 4px 11px; border-radius: 14px; background: rgba(7,8,10,0.92); border: 1px solid #3d454e; color: #878c95; font-family: " + MONO + "; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }" +
         ".alttag.win { color: #5cc28f; border-color: #5cc28f; } .alttag.lose { color: #f08c1a; border-color: #f08c1a; }" +
         ".eur { color: #e0a33a; font-weight: 700; margin-right: 6px; }" +
         ".lez { color: #e5323b; border: 1px solid #e5323b; border-radius: 3px; font-size: 11px; font-weight: 700; padding: 0 3px; margin-right: 6px; }" +
@@ -6870,7 +6923,7 @@
         '<button id="overview" data-l="Itinéraires" title="Choisir l’itinéraire" hidden><ha-icon icon="mdi:map-search"></ha-icon></button>' +
         '<button id="layers" data-l="Couches" title="Couches"><ha-icon icon="mdi:layers"></ha-icon></button>' +
         '<button id="full" data-l="Plein écran" title="Plein écran"><ha-icon icon="mdi:fullscreen"></ha-icon></button></div>' +
-        '<div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div style="min-width:0"><div class="d" id="navD"></div><div class="t" id="navT"></div><div class="x" id="navX" hidden></div><div class="l" id="navL" hidden></div></div></div>' +
+        '<div class="jinset" id="jinset" hidden></div><div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div style="min-width:0"><div class="d" id="navD"></div><div class="t" id="navT"></div><div class="x" id="navX" hidden></div><div class="l" id="navL" hidden></div></div></div>' +
         '<div class="glow" id="glow" hidden></div>' +
         '<div class="side"><div class="alert" id="alert" hidden><ha-icon id="alIcon" icon="mdi:cctv"></ha-icon><div id="alS"></div><b id="alT"></b><div class="bar2"><i id="alBar"></i></div></div>' +
         '<div class="tbar" id="tbar" hidden><span class="top" id="tbTop"></span><div class="tk" id="tbTrack"></div><b id="tbMain"></b><span id="tbSub"></span></div></div>' +
@@ -7067,6 +7120,78 @@
     // their footprints with whatever height the tiles carry (else ~3 floors).
     // The SDK's buildings, clean as in TomTom's own navigation: plain walls
     // (no windows), a little see-through so the streets behind them show.
+    // « Teinte de la nuit »: bleu — the ground, water and parks of the night
+    // style moved towards a navy blue (as TomTom's demo); gris — the style's own.
+    // « Monuments 3D »: TomTom's detailed models of known buildings
+    // (cathedrals, towers…), drawn alone — light on the phone, without the
+    // ordinary blocks. TomTom keeps them in private preview: the key needs
+    // its « Orbis 3D Landmarks » access; refused, the map says so once.
+    landmarksLook() {
+      var L = this.look || {}, on = !!Number(L.lm3);
+      if (!this.tt || !this.ttKit || !this.ttKit.lm || !this.ttKit.lm.Landmarks3D) return;
+      if (on && !this.ttLm) {
+        try {
+          this.ttLm = new this.ttKit.lm.Landmarks3D(this.tt, { opacity: 1, texture: "color", minZoom: 14 });
+          var map = this.map, seen = false;
+          var onErr = (e) => { var u = e && (e.url || (e.error && e.error.url) || ""), st = e && e.error && e.error.status; if (!seen && /landmark/i.test(String(u) + String(e && e.error && e.error.message)) && (st === 401 || st === 403 || /40[13]/.test(String(e && e.error && e.error.message)))) { seen = true; this.toast && this.toast("Monuments 3D : votre clé TomTom n'y a pas accès (accès « Orbis 3D Landmarks » à demander à TomTom)", 8000); } };
+          if (map && map.on) map.on("error", onErr);
+        } catch (e) { this.ttLm = null; if (this.config.debug) this.message("monuments : " + (e && e.message)); return; }
+      }
+      if (this.ttLm && this.ttLm.setVisible) { try { this.ttLm.setVisible(on); } catch (e) { /* as it was */ } }
+    }
+    // « Lueur des monuments » (night): the buildings the map marks as
+    // landmarks (has_landmark: Notre-Dame, cathedrals, monuments) lit as
+    // under floodlights — their walls a few shades lighter, and a soft light
+    // pooled on the ground all around them. Drawn from the map's own
+    // buildings: no extra download, the same with the 3D buildings off.
+    monumentGlow(map, L) {
+      var night = this.ttStyle === "streetDarkDriving" || (this.config.sdk_style || "").indexOf("Dark") >= 0;
+      var on = !!(L && Number(L.gw)) && night;
+      var src = null, ext = [];
+      (map.getStyle().layers || []).forEach((l) => {
+        if (l["source-layer"] !== "buildings") return;
+        if (!src) src = l.source;
+        if (l.type === "fill-extrusion") ext.push(l.id);
+      });
+      if (!src) return;
+      var keep = this.glowKept || (this.glowKept = {});
+      var isLm = ["coalesce", ["get", "has_landmark"], false];
+      ext.forEach((id) => {
+        if (!(id in keep)) keep[id] = map.getPaintProperty(id, "fill-extrusion-color");
+        try { map.setPaintProperty(id, "fill-extrusion-color", on && keep[id] != null ? ["case", isLm, "#8fb2bc", keep[id]] : keep[id]); } catch (e) { /* as it was */ }
+      });
+      if (on && !map.getLayer("igor-lm-glow")) {
+        var before = ext[0] && map.getLayer(ext[0]) ? ext[0] : undefined;
+        map.addLayer({ id: "igor-lm-glow", type: "line", source: src, "source-layer": "buildings", minzoom: 13, filter: ["all", isLm, ["!=", ["get", "underground"], true]],
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: { "line-color": "#cfeeff", "line-opacity": 0.42, "line-width": ["interpolate", ["linear"], ["zoom"], 13, 6, 16, 26, 18, 60], "line-blur": ["interpolate", ["linear"], ["zoom"], 13, 6, 16, 24, 18, 56] } }, before);
+        map.addLayer({ id: "igor-lm-glow-fill", type: "fill", source: src, "source-layer": "buildings", minzoom: 13, filter: ["all", isLm, ["!=", ["get", "underground"], true]],
+          paint: { "fill-color": "#cfeeff", "fill-opacity": 0.12 } }, before);
+      }
+      ["igor-lm-glow", "igor-lm-glow-fill"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none"); });
+    }
+    tintLook(map, L) {
+      var night = this.ttStyle === "streetDarkDriving" || (this.config.sdk_style || "").indexOf("Dark") >= 0;
+      // « tomtom »: the colours read off TomTom's own night navigation —
+      // a blue-grey ground, its streets a shade lighter, the water slate blue,
+      // the buildings' walls #425f69.
+      var tt = night && L && L.tn === "tomtom", blue = night && L && (L.tn === "bleu" || tt);
+      var TT = { water: "#3b5871", park: "#2f4f57", urban: "#2f4957", ground: "#213a49" };
+      var keep = this.tintKept || (this.tintKept = {});
+      (map.getStyle().layers || []).forEach((l) => {
+        var prop = l.type === "background" ? "background-color" : l.type === "fill" ? "fill-color" : null;
+        if (l.type === "line" && /road|street|motorway|primary|secondary|tertiary|minor/i.test(l.id) && !/label|shield|casing|outline|route|traffic|rail|path/i.test(l.id)) {
+          var kk = l.id + "#line"; if (!(kk in keep)) keep[kk] = map.getPaintProperty(l.id, "line-color");
+          try { map.setPaintProperty(l.id, "line-color", tt ? "#355362" : keep[kk]); } catch (e) { /* as it was */ }
+          return;
+        }
+        if (!prop || (l.type !== "background" && !/land|earth|water|ocean|sea|river|lake|park|green|wood|forest|grass|urban|built|residential/i.test(l.id))) return;
+        if (!(l.id in keep)) keep[l.id] = map.getPaintProperty(l.id, prop);
+        var c = tt ? (/water|ocean|sea|river|lake/i.test(l.id) ? TT.water : /park|green|wood|forest|grass/i.test(l.id) ? TT.park : /urban|built|residential/i.test(l.id) ? TT.urban : TT.ground)
+          : /water|ocean|sea|river|lake/i.test(l.id) ? "#14324a" : /park|green|wood|forest|grass/i.test(l.id) ? "#1b3440" : /urban|built|residential/i.test(l.id) ? "#22384c" : "#1d2c3c";
+        try { map.setPaintProperty(l.id, prop, blue ? c : keep[l.id]); } catch (e) { /* that layer as it was */ }
+      });
+    }
     buildingsLook() {
       var c = this.config, op = Number(c.buildings_opacity), L = this.look, look;
       if (L) {
@@ -7075,6 +7200,9 @@
           shadows: { visible: Number(L.sh) > 0, intensity: (Number(L.sh) || 0) / 100 }, reflections: { intensity: (Number(L.rf) || 0) / 100 },
           roadLabels: { occluded: !!Number(L.rl) } };
         if (L.wc === "unie") look.walls = { variation: 0 }; else if (L.wc === "variee") look.walls = { variation: 0.6 };
+        // Lit at night (« Éclairage des bâtiments »): many windows on, the façades' pattern shown.
+        if (L.tn === "tomtom" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#425f69" });
+        if (Number(L.eb) && this.ttStyle === "streetDarkDriving") { look.litWindows = { fraction: Math.max(0.55, (Number(L.lw) || 0) / 100) }; look.facade = { pattern: L.fw && L.fw !== "none" ? L.fw : "mixed", intensity: 1 }; }
       } else {
         look = { opacity: isFinite(op) && op > 0 ? Math.min(1, op) : 0.85 };
         if (c.buildings_windows !== true) look.facade = { pattern: "plain", intensity: 0 };
@@ -7157,7 +7285,7 @@
       this.routeTopBusy = true;
       try {
         var order = map.getLayersOrder ? map.getLayersOrder() : ((map.getStyle() && map.getStyle().layers) || []).map((l) => l.id);
-        var mine = ["route-glow", "route-case", "route", "route-core", "routejam", "trail-case", "trail", "man-case", "man", "man-head"];
+        var mine = ["trail-glow", "trail-case", "trail", "route-glow", "route-case", "route", "route-core", "routejam", "man-case", "man", "man-head"];
         var lay = (id) => map.getLayer(id);
         var under = order.filter((id) => { var l = lay(id); return l && l.type === "line" && (/^(alt|incidents)/.test(id) || this.isTrafficLayer(l)); });
         var top = under.concat(mine.filter((id) => lay(id)));
@@ -7170,8 +7298,8 @@
     // The route's colours: [line, halo, edge, core] of the colour chosen.
     routePal(which) {
       var P = { bleu: ["#46b4ff", "#3fa9ff", "#0b3f86", "#d4f0ff"], cyan: ["#59d0e0", "#4fd6e8", "#0b4a55", "#dcfbff"],
-        violet: ["#b48cff", "#a97bff", "#3d1f78", "#efe3ff"], jaune: ["#f4d35e", "#f4c542", "#5e4a0a", "#fff6d0"], gris: ["#aeb6c2", "#c9d1dc", "#2e343c", "#f2f5f8"] };
-      var L = this.look || {}, name = which === "after" ? (L.rc2 || this.config.route_color_after || "cyan") : (L.rc || this.config.route_color || "bleu");
+        violet: ["#b48cff", "#a97bff", "#3d1f78", "#efe3ff"], tomtom: ["#8fd6fa", "#5fb9ff", "#3f9fe6", "#d4f4ff"], jaune: ["#f4d35e", "#f4c542", "#5e4a0a", "#fff6d0"], gris: ["#aeb6c2", "#c9d1dc", "#2e343c", "#f2f5f8"] };
+      var L = this.look || {}, name = which === "after" ? (L.rc2 || this.config.route_color_after || "cyan") : (L.rc || this.config.route_color || "tomtom");
       var p = P[name] || (which === "after" ? P.cyan : P.bleu);
       return { "route": p[0], "route-glow": p[1], "route-case": p[2], "route-core": p[3] };
     }
@@ -7189,6 +7317,9 @@
       };
       tryIt(() => { if (this.tt3d && this.tt3d.applyConfig) this.tt3d.applyConfig(this.buildingsLook()); });
       tryIt(() => this.terrainLook());
+      tryIt(() => this.tintLook(map, L));
+      tryIt(() => this.landmarksLook());
+      tryIt(() => this.monumentGlow(map, L));
       tryIt(() => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ visible: !!Number(L.sf), trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: Number(L.wd) || 0 } }); });
       tryIt(() => {
         var pal = this.routePal(), k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1;
@@ -7197,20 +7328,27 @@
           map.setPaintProperty(x[0], "line-width", scale(x[1], k));
           if (pal[x[0]]) map.setPaintProperty(x[0], "line-color", pal[x[0]]);
         });
-        if (map.getLayer("route-glow")) map.setPaintProperty("route-glow", "line-opacity", Math.max(0, Math.min(1, (Number(L.gl) || 0) / 100)));
-        // The way driven: as wide as the route, over it (it covers the blue
-        // behind the car); « pâle » grey, « visible » the after-stop colour.
-        var tw = L.tr === "cache" ? 0 : 1, after = this.routePal("after");
+        if (map.getLayer("route-glow")) { map.setPaintProperty("route-glow", "line-opacity", Math.max(0, Math.min(1, (Number(L.gl) || 0) / 100))); map.setPaintProperty("route-glow", "line-blur", scale(GPS_GLOW_BLUR, k)); }
+        // The way driven (« pâle »): the route's own colours, faded — the line,
+        // its edge and its halo; « effacé »: nothing (the route is cut at the
+        // car); « laissé »: the route stays whole, no trail drawn.
+        var tw = (L.tr || "pale") === "pale" ? 1 : 0, glow = Math.max(0, Math.min(1, (Number(L.gl) || 0) / 100));
         if (map.getLayer("trail")) {
           map.setPaintProperty("trail", "line-width", scale(GPS_ROUTE_W, k));
-          map.setPaintProperty("trail", "line-color", L.tr === "visible" ? after.route : "#7f8c9c");
-          map.setPaintProperty("trail", "line-opacity", tw);
+          map.setPaintProperty("trail", "line-color", pal.route);
+          map.setPaintProperty("trail", "line-opacity", 0.42 * tw);
         }
         if (map.getLayer("trail-case")) {
           map.setPaintProperty("trail-case", "line-width", scale(GPS_CASE_W, k));
-          map.setPaintProperty("trail-case", "line-color", L.tr === "visible" ? after["route-case"] : "#262d36");
-          map.setPaintProperty("trail-case", "line-opacity", tw);
+          map.setPaintProperty("trail-case", "line-color", pal["route-case"]);
+          map.setPaintProperty("trail-case", "line-opacity", 0.35 * tw);
         }
+        if (map.getLayer("trail-glow")) {
+          map.setPaintProperty("trail-glow", "line-width", scale(GPS_GLOW_W, k));
+          map.setPaintProperty("trail-glow", "line-color", pal["route-glow"]);
+          map.setPaintProperty("trail-glow", "line-opacity", 0);  // the way driven: faded, no halo (as TomTom)
+        }
+        this.cutAt = 0; this.cutD = null; this.trailLive = false;
       });
       tryIt(() => this.maneuverLook());
       this.rrAt = 0;
@@ -7276,6 +7414,7 @@
         if (!this.ttSurf && this.config.sdk_surfaces !== false) {
           try { this.ttSurf = new lm.GLSurfaces(this.tt, Object.assign({ trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: 0 } }, typeof this.config.sdk_surfaces === "object" ? this.config.sdk_surfaces : {})); } catch (e) { why.push("surfaces : " + (e && e.message)); }
         }
+        this.landmarksLook();
         // The ground in relief, only when asked (Sol & nature → Relief).
         this.terrainLook();
         // The route over all of it: never hidden behind a building or the textured ground.
@@ -7536,8 +7675,16 @@
         gpsHeadingStep(this.hstate, { p: p, t: Date.now(), course: course, gpsSpeed: gpsSpeed, speed: this.speedMps(), accuracy: this.accuracy });
         if (this.hstate.heading != null) this.heading = this.hstate.heading;
       }
+      // Where the car really goes (not where the arrow points): the GPS's own
+      // course when it gives one while rolling, else the line between two fixes
+      // far enough apart. The road's way and a U-turn are judged by it.
+      var prevP = this.fix && this.fix.point;
+      if (isFinite(course) && course != null && isFinite(gpsSpeed) && gpsSpeed > 3) { this.moveCourse = course; this.moveAt = Date.now(); }
+      else if (prevP && gpsDist(prevP, p) > 12) { this.moveCourse = gpsBearing(prevP, p); this.moveAt = Date.now(); }
       this.fix = { point: p, time: performance.now(), gpsSpeed: isFinite(gpsSpeed) ? gpsSpeed : 0, updated: updated, at: at };
     }
+    // The way the car goes, if known lately (8 s), else the arrow's heading.
+    goingTo() { return this.moveCourse != null && Date.now() - (this.moveAt || 0) < 8000 ? this.moveCourse : this.heading; }
     // The trail is drawn on the roads only: each point the arrow takes on a
     // road, joined to the last one along that road's own shape; off the road
     // (snap on) nothing is drawn, and a gap that cannot be followed on the
@@ -7645,7 +7792,7 @@
         if (cut >= first.length - 1) { n -= first.length; pieces.shift(); } else { first.splice(0, cut); n -= cut; }
       }
       var src = this.map && this.map.getSource("trail");
-      if (src) src.setData(this.trailData());
+      if (src && !this.trailLive) src.setData(this.trailData());
     }
     // White arrows on the route itself at the next turns (as TomTom draws
     // them): the way in and out of the turn, a head at its end. Gone once
@@ -7715,6 +7862,11 @@
       var pal = this.routePal();
       try {
         map.setPaintProperty("man", "line-width", line);
+        // As TomTom: the turn's stretch turns white and fades back into the
+        // route's colour at both ends — no head, no edge of its own.
+        map.setPaintProperty("man", "line-gradient", ["interpolate", ["linear"], ["line-progress"], 0, "rgba(255,255,255,0)", 0.3, "rgba(255,255,255,0.95)", 0.6, "rgba(255,255,255,0.95)", 1, "rgba(255,255,255,0)"]);
+        map.setPaintProperty("man-case", "line-opacity", 0);
+        map.setLayoutProperty("man-head", "visibility", "none");
         map.setPaintProperty("man-case", "line-width", edge);
         map.setPaintProperty("man-case", "line-color", pal["route-case"]);
         // The head 29 px wide at size 1: a bit more than twice the edge.
@@ -7726,7 +7878,7 @@
       if (!map || map.getSource("maneuvers")) return;
       this.manEdge = this.routePal()["route-case"];
       if (!map.hasImage("igor-man-head")) map.addImage("igor-man-head", this.manHead(this.manEdge), { pixelRatio: 4 });
-      map.addSource("maneuvers", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      map.addSource("maneuvers", { type: "geojson", data: { type: "FeatureCollection", features: [] }, lineMetrics: true });
       var lines = ["==", ["geometry-type"], "LineString"], round = { "line-cap": "round", "line-join": "round" };
       map.addLayer({ id: "man-case", type: "line", source: "maneuvers", minzoom: 12, filter: lines, layout: round,
         paint: { "line-color": "#0b3f86", "line-width": GPS_CASE_W } });
@@ -7740,6 +7892,150 @@
     }
     // Each request of the map: Igor's addresses on the page's own origin (a
     // reverse proxy may write them in http://), with the Home Assistant login.
+    // The tiles ahead, asked before the map needs them: along the next 2 km
+    // of the route and all around the next turn (the map swings there and
+    // shows what lay to the side), at the zoom shown and the one below.
+    // Fetched once each into the browser's cache, so the map finds them
+    // there instead of waiting on the network in the turn. Every 3 s while
+    // guided, 30 tiles at most a time.
+    prefetchTiles(now, along) {
+      var R = this.route, map = this.map;
+      if (!R || !map || !map.getStyle || this.config.prefetch === false) return;
+      if (this.pfAt && now - this.pfAt < 3000) return;
+      this.pfAt = now;
+      var srcs = [];
+      try { Object.keys(map.getStyle().sources || {}).forEach((id) => { var sc = map.getSource(id); if (sc && sc.type === "vector" && Array.isArray(sc.tiles) && sc.tiles.length) srcs.push(sc); }); } catch (e) { return; }
+      if (!srcs.length) return;
+      var z0 = Math.floor(map.getZoom()), want = [], seen = this.pfSeen || (this.pfSeen = {});
+      var tile = (p, z) => { var n = Math.pow(2, z), la = gpsRad(Math.max(-85, Math.min(85, p[1]))); return [z, Math.floor((p[0] + 180) / 360 * n), Math.floor((1 - Math.log(Math.tan(la) + 1 / Math.cos(la)) / Math.PI) / 2 * n)]; };
+      var add = (t) => { var k = t.join("/"); if (!seen[k] && want.every((w) => w.join("/") !== k)) want.push(t); };
+      var next = (R.steps || []).find((st) => st.at > along + 20);
+      [z0, z0 - 1].forEach((z) => {
+        if (z < 10) return;
+        if (next && next.at - along < 2500 && next.loc) { var c = tile(next.loc, z); for (var dx = -1; dx <= 1; dx++) for (var dy = -1; dy <= 1; dy++) add([z, c[1] + dx, c[2] + dy]); }
+        for (var a = along; a < along + 2000; a += 120) { var o = gpsPointAt(R.coords, R.cum, a); if (o) add(tile(o, z)); }
+      });
+      want.slice(0, 30).forEach((t) => {
+        seen[t.join("/")] = 1;
+        srcs.forEach((sc) => {
+          var u = sc.tiles[(t[1] + t[2]) % sc.tiles.length].replace("{z}", t[0]).replace("{x}", t[1]).replace("{y}", sc.scheme === "tms" ? Math.pow(2, t[0]) - 1 - t[2] : t[2]);
+          var rq = this.mapRequest(u) || { url: u };
+          try { fetch(rq.url, { headers: rq.headers || {}, credentials: "same-origin", cache: "force-cache" }).catch(() => {}); } catch (e) { /* next */ }
+        });
+      });
+      var ks = Object.keys(seen); if (ks.length > 3000) this.pfSeen = {};
+    }
+    // The junction view (head unit, and the phone's own inset): which model
+    // the next turn is, set from the route's data (level 1) and from the
+    // map under the phone's eyes (level 2: the real arms of the junction —
+    // how many, at which angles), the town the road left behind goes on to.
+    // publish_junction: input_text.x ← « ms|model|m|side|lanes|exitLanes|branches|exit|angle|arms|lanes code|exit n°|refs|to|road|town|next icon|next text|next m ».
+    junctionModel(R, next) {
+      if (!next) return null;
+      var m = next.m || "", t = next.short || next.text || "", ic = next.icon || "", ang = Number(next.angle);
+      var lanes = this.laneNow ? laneDecode(this.laneNow.code) : [], go = lanes.map((l, i) => l.go ? i : -1).filter((i) => i >= 0);
+      var side = /LEFT/.test(m) || /gauche/.test(t) ? "l" : "r", i = R.steps.indexOf(next), nx = i >= 0 ? R.steps[i + 1] : null;
+      var o = { side: side, lanes: lanes.length || 0, exitLanes: go.length || 1, angle: isFinite(ang) ? ang : /LEFT/.test(m) ? -90 : 90 };
+      var mw = (this.roadName && /^[AE] ?\d/.test((this.roadName.refs || []).join(" "))) || /MOTORWAY|EXIT/.test(m);
+      if (/^ROUNDABOUT/.test(m) || /rotate/.test(ic) || next.junction === "ROUNDABOUT") return Object.assign(o, { model: "rond_point", exit: Number(next.exit) || 1 });
+      if (/UTURN/.test(m)) return Object.assign(o, { model: "demi_tour" });
+      if (/ENTER|ENTRANCE/.test(m)) return Object.assign(o, { model: "insertion" });
+      if (/EXIT/.test(m) || /sortie/i.test(t)) {
+        var fork = nx && /^(KEEP|BEAR)/.test(nx.m || "") && nx.at - next.at < 700;
+        return Object.assign(o, { model: fork ? "echangeur" : side === "l" ? "sortie_gauche" : "sortie_droite", side: fork ? (/LEFT/.test(nx.m) ? "left" : "right") : side, lanes: o.lanes || 3 });
+      }
+      if (/^KEEP/.test(m) || next.junction === "BIFURCATION") return Object.assign(o, mw ? { model: "bifurcation", side: side === "l" ? "left" : "right", lanes: o.lanes || 4 } : { model: "patte_oie", angle: side === "l" ? -30 : 30 });
+      if (/^BEAR/.test(m)) return Object.assign(o, { model: "patte_oie", angle: isFinite(ang) ? Math.max(-60, Math.min(60, ang)) : side === "l" ? -30 : 30 });
+      if (/^(TURN|SHARP)/.test(m)) return Object.assign(o, { model: lanes.length >= 2 && go.length ? "preselection" : "carrefour" });
+      return null;
+    }
+    // Level 2: the roads that meet at the turn, read on the map's own tiles
+    // (those loaded) — their bearings from the junction, relative to the way
+    // the car comes in (0 ahead, 90 right). Once per turn.
+    junctionArms(loc, inB) {
+      var map = this.map;
+      if (!map || !map.getStyle || !map.querySourceFeatures) return null;
+      var seen = {}, srcs = [];
+      (map.getStyle().layers || []).forEach((l) => { if (l.type === "line" && l["source-layer"] && /road|street|motorway|highway|link|ramp|trunk|primary|secondary|tertiary/i.test(l.id + " " + l["source-layer"]) && !/rail|path|foot|cycle|tunnel-?outline/i.test(l.id)) { var k = l.source + "|" + l["source-layer"]; if (!seen[k]) { seen[k] = 1; srcs.push([l.source, l["source-layer"]]); } } });
+      if (!srcs.length) return null;
+      var arms = [], kx = Math.cos(gpsRad(loc[1])) * 111320, ky = 110540, near2 = 22 * 22;
+      var near = (p) => { var dx = (p[0] - loc[0]) * kx, dy = (p[1] - loc[1]) * ky; return dx * dx + dy * dy; };
+      srcs.forEach((sv) => {
+        var fs = []; try { fs = map.querySourceFeatures(sv[0], { sourceLayer: sv[1] }); } catch (e) { return; }
+        fs.forEach((f) => {
+          var g = f.geometry, lines = g.type === "LineString" ? [g.coordinates] : g.type === "MultiLineString" ? g.coordinates : [];
+          lines.forEach((ln) => {
+            var bi = -1, bd = near2;
+            for (var k = 0; k < ln.length; k++) { var d = near(ln[k]); if (d < bd) { bd = d; bi = k; } }
+            if (bi < 0) return;
+            [-1, 1].forEach((dir) => {
+              var k = bi, acc = 0;
+              while (k + dir >= 0 && k + dir < ln.length && acc < 35) { acc += gpsDist(ln[k], ln[k + dir]); k += dir; }
+              if (acc >= 15) { var b = ((gpsBearing(loc, ln[k]) - inB + 540) % 360) - 180; arms.push(b); }
+            });
+          });
+        });
+      });
+      // One arm per direction (roads cut in pieces, both carriageways).
+      var out = [];
+      arms.sort((a, b) => a - b).forEach((b) => { if (!out.some((c) => Math.abs(((b - c + 540) % 360) - 180) < 24)) out.push(Math.round(b / 5) * 5); });
+      return out.length >= 2 && out.length <= 8 ? out : null;
+    }
+    // The junction view on the phone itself: only in GPS mode (guided, the
+    // map following the car), for the junctions where it helps (motorway
+    // exits and forks, roundabouts, turns with lanes to choose) — from
+    // 600 m (1 km fast), gone once in the junction. `junction_inset: false`: never.
+    drawInset(J, next, along) {
+      var box = this.$ && this.$("jinset");
+      if (!box) return;
+      var d = next ? next.at - along : null, fast = (this.speedMps ? this.speedMps() : 0) > 20;
+      var useful = J && /sortie|echangeur|bifurcation|rond_point|preselection|insertion/.test(J.model);
+      var on = !!(useful && this.config.junction_inset !== false && this.follow && d != null && d < (fast ? 1000 : 600) && d > (J.model === "rond_point" ? -40 : -3));
+      if (!on) { if (!box.hidden) { box.hidden = true; box.innerHTML = ""; this.insetKey = null; } return; }
+      box.hidden = false;
+      var W = box.clientWidth || 360, H = box.clientHeight || 220, key = J.model + "|" + (J.arms || []).join(",") + "|" + Math.round(d / 20) + "|" + W + "x" + H + "|" + (J.town || "");
+      if (key === this.insetKey) return;
+      this.insetKey = key;
+      var raw = [0, J.model, Math.round(d), J.side || "", J.lanes || "", J.exitLanes || "", J.branches || "", J.exit || "", J.angle != null ? Math.round(J.angle) : "", (J.arms || []).join(","),
+        this.laneNow ? this.laneNow.code : "", next.exit || "", (next.refs || []).join(" "), next.to || "", this.roadName ? (this.roadName.refs || []).join(" ") : "", J.town || ""].join("|");
+      var Jr = carJunction({ states: { x: { state: raw } } }, "x", 0, 0) || null;
+      if (!Jr) { box.hidden = true; return; }
+      try { box.innerHTML = window.igorJunction2(J.model, Object.assign(carJunctionOpts(Jr, W, H, "tel"), { bar: false })); } catch (e) { box.hidden = true; }
+    }
+    publishJunction(R, along, next) {
+      var e = this.config.publish_junction;
+      var show = !!(next && next.at - along < 2000 && next.at - along > -60);
+      var J = show ? (next.jx || (next.jx = this.junctionModel(R, next) || { none: true })) : null;
+      if (J && J.none) J = null;
+      if (J && !J.arms && !J.armsTried && next.at - along < 900 && next.loc) {
+        J.armsTried = true;
+        var o0 = gpsSlice(R.coords, R.cum, Math.max(0, next.at - 40), next.at), inB = o0.length > 1 ? gpsBearing(o0[0], o0[o0.length - 1]) : 0;
+        J.arms = this.junctionArms(next.loc, inB);
+        // The town the road left behind goes on to: 4 km on, straight ahead.
+        if (/sortie|bifurcation|echangeur/.test(J.model) && this._hass && this._hass.callWS) {
+          var far = gpsProject(next.loc, inB, 4000);
+          this._hass.callWS({ type: "call_service", domain: "nives", service: "car_limit", return_response: true, service_data: { latitude: far[1], longitude: far[0], heading: Math.round(inB) % 360 } })
+            .then((res) => { J.town = (res && res.response && res.response.town) || ""; }).catch(() => {});
+        }
+      }
+      this.junctionNow = J ? { J: J, step: next, d: next.at - along } : null;
+      this.drawInset(J, next, along);
+      if (!e || !this._hass || !this._hass.callService) return;
+      var clean = (x) => String(x == null ? "" : x).replace(/\|/g, "/");
+      var v = "";
+      if (J) {
+        var i = R.steps.indexOf(next), nx = i >= 0 ? R.steps[i + 1] : null, rn = this.roadName;
+        v = [Date.now(), J.model, Math.round(next.at - along), J.side || "", J.lanes || "", J.exitLanes || "", J.branches || "", J.exit || "", J.angle != null ? Math.round(J.angle) : "",
+          (J.arms || []).join(","), this.laneNow ? this.laneNow.code : "", next.exit || "", (next.refs || []).join(" ").slice(0, 16), String(next.to || "").slice(0, 40),
+          rn ? (rn.refs || []).join(" ").slice(0, 14) : "", String(J.town || "").slice(0, 28), nx ? nx.icon : "", nx ? String(nx.short || nx.text || "").slice(0, 40) : "", nx ? Math.round(nx.at - next.at) : ""].map(clean).join("|").slice(0, 255);
+      }
+      var key = v.replace(/^\d+\|/, "").replace(/^([^|]*\|)(\d+)/, (m0, a, d) => a + Math.round(Number(d) / 50));
+      var t = Date.now();
+      if (key === this.jxKey && (!v || t - this.jxAt < 4000)) return;
+      if (v && this.jxAt && t - this.jxAt < 1500 && key.split("|")[0] === (this.jxKey || "").split("|")[0]) return;
+      this.jxKey = key; this.jxAt = t;
+      this._hass.callService("input_text", "set_value", { entity_id: e, value: v }).catch(() => { this.jxKey = null; });
+    }
     mapRequest(url) {
       if (!url) return undefined;
       if (url.indexOf("/api/nives/") >= 0) this.lastNives = url;
@@ -7879,11 +8175,11 @@
           map.addLayer({ id: "route-case", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
             paint: { "line-color": "#0b3f86", "line-width": GPS_CASE_W, "line-opacity": 0.95 } });
           map.addLayer({ id: "route-glow", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#3fa9ff", "line-width": GPS_GLOW_W, "line-blur": ["interpolate", ["linear"], ["zoom"], 10, 6, 16, 14, 18, 20], "line-opacity": 0.32 } }, "route-case");
+            paint: { "line-color": "#3fa9ff", "line-width": GPS_GLOW_W, "line-blur": GPS_GLOW_BLUR, "line-opacity": 0.32 } }, "route-case");
           map.addLayer({ id: "route", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
             paint: { "line-color": "#46b4ff", "line-width": GPS_ROUTE_W } });
           map.addLayer({ id: "route-core", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#d4f0ff", "line-width": GPS_CORE_W, "line-opacity": 0.75, "line-blur": 0.6 } });
+            paint: { "line-color": "#d4f0ff", "line-width": GPS_CORE_W, "line-opacity": 0.22, "line-blur": GPS_CORE_W } });
         }
         // The route's slow stretches (TomTom): orange when it slows, red when it is jammed.
         if (!map.getSource("routejam")) {
@@ -7895,6 +8191,8 @@
         if (this.look) setTimeout(() => this.applyLook(), 0);  // after the trail and the rest of style.load
         if (!map.getSource("trail")) {
           map.addSource("trail", { type: "geojson", data: this.trailData() });
+          map.addLayer({ id: "trail-glow", type: "line", source: "trail", layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": "#3fa9ff", "line-width": GPS_GLOW_W, "line-blur": GPS_GLOW_BLUR, "line-opacity": 0.12 } });
           map.addLayer({ id: "trail-case", type: "line", source: "trail", layout: { "line-cap": "round", "line-join": "round" },
             paint: { "line-color": "#262d36", "line-width": GPS_CASE_W } });
           map.addLayer({ id: "trail", type: "line", source: "trail", layout: { "line-cap": "round", "line-join": "round" },
@@ -7918,6 +8216,9 @@
         var err = e && e.error, m = err && (err.message || (err.status ? "réponse " + err.status : "")) || String((err && err.message) || err || "erreur inconnue");
         if (m.indexOf("/api/") < 0 && this.lastNives) m += " · " + this.lastNives.replace(window.location.origin, "");
         console.warn("igor-gps-card:", err || e);
+        // A tile or an icon refused now and then: the map goes on. Said on the
+        // screen only in debug (the console keeps it), never an address there.
+        if (!this.config.debug) return;
         if (this.msgShown === m) return;
         this.msgShown = m;
         this.message("carte : " + m);
@@ -8060,7 +8361,9 @@
       if (s && gpsDist(s.point, target) <= (s.lock || snapM) * 1.5) {
         target = s.point;
         // On a road and rolling (not manoeuvring): the arrow takes the road's direction.
-        if (speed > GPS_SLOW) { this.heading = gpsLerpAngle(this.heading, gpsAlong(s.bearing, this.heading), ease(0.2)); if (this.hstate) this.hstate.heading = this.heading; }
+        // On the route: always its way (the car is on its way, in its lane).
+        // Elsewhere: the road's way nearest to where the car goes.
+        if (speed > GPS_SLOW) { this.heading = gpsLerpAngle(this.heading, s.onRoute ? s.bearing : gpsAlong(s.bearing, this.goingTo()), ease(0.2)); if (this.hstate) this.hstate.heading = this.heading; }
       }
       // A leap (a late fix): the arrow drives there along the roads, not across.
       var before = this.pos;
@@ -8090,6 +8393,7 @@
       if (forward && jump <= 400 && gpsAhead(before, this.pos, this.heading) < -0.2) this.pos = before;
       this.shown = gpsLerpAngle(this.shown, this.heading, ease(0.1));
       this.marker.setLngLat(this.pos).setRotation(this.shown);
+      try { this.liveCut(now); } catch (e) { /* the route as it was */ }
       if (!this.trailAt || now - this.trailAt > 1000) {
         this.trailAt = now;
         // On the road only once the arrow has reached it (not while gliding across).
@@ -8180,7 +8484,7 @@
         var r = this.road(this.drPos, 40, this.heading, now);
         if (r) {
           this.drPos = r.point;
-          this.heading = gpsLerpAngle(this.heading, gpsAlong(r.bearing, this.heading), 0.3);
+          this.heading = gpsLerpAngle(this.heading, gpsAlong(r.bearing, this.goingTo()), 0.3);
           if (this.hstate) this.hstate.heading = this.heading;
         }
       }
@@ -8202,7 +8506,13 @@
       // Above a walking pace a car does not turn round: the route read
       // backwards is refused until the car really does (under 10 km/h it may
       // be manoeuvring, in a car park, at the pump).
-      if (this.speedMps() > GPS_UTURN && Math.abs(((best.bearing - this.heading + 540) % 360) - 180) > 100) return null;
+      // Judged by where the car goes (its fixes), not by the arrow: in a sharp
+      // turn the arrow still points the old way, and the route was refused —
+      // the arrow then took the road the wrong way round. A real U-turn is the
+      // car going back along the route for a while (6 s), not one fix.
+      var back = Math.abs(((best.bearing - this.goingTo() + 540) % 360) - 180) > 150;
+      this.backSince = back ? this.backSince || Date.now() : 0;
+      if (this.speedMps() > GPS_UTURN && back && Date.now() - this.backSince > 6000) return null;
       best.lock = lock;
       best.onRoute = true;
       return best;
@@ -8372,13 +8682,24 @@
         var cl2 = [], l2 = -1; withVia.forEach((q) => { if (q[0] > l2 && q[0] >= 0 && q[0] <= 1) { cl2.push(q); l2 = q[0]; } });
         stops = cl2; stops.viaP = viaP;
       }
+      // The route cut at the car (liveCut): the progress of the line drawn
+      // starts at the car — every colour stop moved onto it.
+      var off = this.cutLine && this.cutFor === R ? this.cutFrac || 0 : 0;
+      if (stops && off > 0 && off < 1) {
+        var lvl0 = 0; stops.forEach((q) => { if (q[0] <= off) lvl0 = q[1]; });
+        var via2 = stops.viaP != null ? (stops.viaP - off) / (1 - off) : null;
+        var moved = [[0, lvl0]].concat(stops.filter((q) => q[0] > off).map((q) => [(q[0] - off) / (1 - off), q[1]]));
+        moved.viaP = via2 != null && via2 > 0 ? via2 : null;
+        if (via2 != null && via2 <= 0) moved.afterAll = true;
+        stops = moved;
+      }
       try {
         Object.keys(PAL).forEach((id) => {
           if (!map.getLayer(id)) return;
           var expr = null;
           if (stops) {
             expr = ["interpolate-lab", ["linear"], ["line-progress"]];
-            var vp = stops.viaP, col0 = (p) => vp != null && p >= vp ? AFT[id] : PAL[id][0];
+            var vp = stops.viaP, col0 = (p) => stops.afterAll || (vp != null && p >= vp) ? AFT[id] : PAL[id][0];
             if (stops[0][0] > 0) expr.push(0, col0(0));
             stops.forEach((p) => expr.push(p[0], p[1] ? PAL[id][p[1]] : col0(p[0])));
             if (stops[stops.length - 1][0] < 1) expr.push(1, col0(1));
@@ -8403,7 +8724,48 @@
     },
     routeData() {
       var R = this.route;
+      if (R && this.cutLine && this.cutFor === R) return { type: "Feature", geometry: { type: "LineString", coordinates: this.cutLine } };
       return { type: "Feature", geometry: { type: "LineString", coordinates: R ? (R.smooth || (R.smooth = gpsSmoothed(R.coords))) : [] } };
+    },
+    // The way driven, under the arrow, as it goes (« effacé » and « pâle »):
+    // the route drawn from the car on (cut at the arrow, several times a
+    // second, so it shrinks with the car, not by blocks), and in « pâle » the
+    // way behind in a faded version of its own colour, its halo too.
+    // « laissé » keeps the whole route as it was.
+    liveCut(now) {
+      var R = this.route, map = this.map, L = this.look || {}, mode = L.tr || "pale";
+      if (!R || !map || !this.pos || mode === "visible") {
+        if (this.cutLine) { this.cutLine = null; this.cutFrac = 0; var s0 = map && map.getSource && map.getSource("route"); if (s0) s0.setData(this.routeData()); this.jamGradient(); }
+        return;
+      }
+      if (this.cutAt && now - this.cutAt < 110) return;
+      var sm = R.smooth || (R.smooth = gpsSmoothed(R.coords));
+      if (!R.smCum || R.smCum.length !== sm.length) { R.smCum = [0]; for (var i = 1; i < sm.length; i++) R.smCum.push(R.smCum[i - 1] + gpsDist(sm[i - 1], sm[i])); }
+      var cum = R.smCum, total = cum[cum.length - 1];
+      // The arrow's place on the line drawn, searched near the last one.
+      var best = null, h = this.cutFor === R ? this.cutHint || 1 : 1;
+      var scan = (a, b) => { for (var k = Math.max(1, a); k < Math.min(sm.length, b); k++) { var o = gpsOnLine(this.pos, [sm[k - 1], sm[k]]); if (o && (!best || o.dist < best.dist)) { best = o; best.k = k; } } };
+      scan(h - 5, h + 80);
+      if (!best || best.dist > 40) scan(1, sm.length);
+      if (!best || best.dist > 60) return;
+      var d = cum[best.k - 1] + gpsDist(sm[best.k - 1], best.point);
+      if (this.cutFor === R && this.cutD != null && d < this.cutD) return;  // never grows back behind the car
+      if (this.cutFor === R && this.cutD != null && d - this.cutD < 1) return;
+      this.cutAt = now; this.cutHint = best.k; this.cutFor = R; this.cutD = d;
+      this.cutLine = [best.point].concat(sm.slice(best.k));
+      var src = map.getSource("route");
+      if (src) src.setData(this.routeData());
+      // The colours (slow stretches, after the stop) follow the cut line.
+      var frac = total ? d / total : 0;
+      if (Math.abs(frac - (this.cutFrac || 0)) * total > 20 || !this.gradAt || now - this.gradAt > 2000) { this.cutFrac = frac; this.gradAt = now; this.jamGradient(); }
+      // « pâle »: the way behind, joined to the arrow.
+      var ts = map.getSource("trail");
+      if (ts && mode === "pale") {
+        var behind = gpsSlice(sm, cum, Math.max(0, d - 4000), d);
+        var pieces = (this.driven || []).filter((x) => x.length > 1).slice(0, -1).concat(behind.length > 1 ? [behind] : []);
+        ts.setData({ type: "Feature", geometry: { type: "MultiLineString", coordinates: pieces.concat(this.trail.filter((x) => x.length > 1)) } });
+        this.trailLive = true;
+      }
     },
     // The hours of the trip: a stop sits on the route (it was placed there),
     // so its place along the line gives its share of the way, and the way's
@@ -8618,7 +8980,7 @@
       this.tripAvoid = d && d.avoid && d.avoid.length ? d.avoid : null;
       this.routeLimit = null;
       clearTimeout(this.pickTimer);
-      if (this.$) { this.$("rpanel").hidden = true; this.$("overview").hidden = true; this.$("tbar").hidden = true; this.$("navL").hidden = true; }
+      if (this.$) { this.$("rpanel").hidden = true; this.$("overview").hidden = true; this.$("tbar").hidden = true; this.$("navL").hidden = true; } this.laneNow = null; this.laneKey = null;
       this.avoid = [];
       this.closureSeen = {};
       if (this.$ && this.$("ask")) this.$("ask").hidden = true;
@@ -8771,10 +9133,11 @@
       if (key !== this.laneKey) {
         this.laneKey = key;
         box.innerHTML = "";
-        var AR = { STRAIGHT: "↑", LEFT: "←", RIGHT: "→", SLIGHT_LEFT: "↖", SLIGHT_RIGHT: "↗", SHARP_LEFT: "↙", SHARP_RIGHT: "↘", LEFT_U_TURN: "↶", RIGHT_U_TURN: "↷" };
-        if (ln) ln.lanes.forEach((x) => { var sp = document.createElement("span"); sp.className = x.follow ? "go" : ""; sp.textContent = AR[x.follow] || (x.dirs || []).map((d) => AR[d] || "").join("") || "↑"; box.appendChild(sp); });
+        if (ln) box.innerHTML = laneSvg(laneDecode(laneEncode(ln.lanes)), { color: "#59d0e0", glow: "rgba(89,208,224,.7)" });
         box.hidden = !ln;
       }
+      // For the head unit: the lanes and how far their stretch begins.
+      this.laneNow = ln ? { code: laneEncode(ln.lanes), d: Math.max(0, R.cum[Math.min(ln.start, R.cum.length - 1)] - along) } : null;
       // A toll, a ferry within 2 km: a word, once.
       [["tolls", "Péage"], ["ferries", "Ferry"], ["lez", "Zone à faibles émissions"]].forEach((k) => (R[k[0]] || []).forEach((sp) => {
         var a = R.cum[Math.min(sp[0], R.cum.length - 1)] - along, id = k[0] + sp[0];
@@ -8825,13 +9188,38 @@
     },
     // The other routes, greyed on the map, each with its bubble (the minutes
     // it wins or costs); a touch on the line or the bubble changes the trip.
+    // Only the alternates worth taking (altWhy), and of each only its own way:
+    // from where it leaves the route to where it comes back — never drawn
+    // over the route itself.
     altsData() {
       var feats = [];
       (this.alts || []).forEach((a, i) => {
-        var R0 = a.route;
-        if (R0 && R0.coords && R0.coords.length > 1) feats.push({ type: "Feature", geometry: { type: "LineString", coordinates: R0.smooth || (R0.smooth = gpsSmoothed(R0.coords)) }, properties: { idx: i } });
+        var R0 = a.route, why = a.route ? this.altWhy(R0) : null;
+        a.why = why;
+        if (!why) return;
+        var own = R0.coords.slice(Math.max(0, why.band[0] - 2), Math.min(R0.coords.length, why.band[1] + 3));
+        if (own.length > 1) feats.push({ type: "Feature", geometry: { type: "LineString", coordinates: gpsSmoothed(own) }, properties: { idx: i } });
       });
       return { type: "FeatureCollection", features: feats };
+    },
+    // Why an alternate deserves to be shown: it leaves the route (a fork),
+    // and it is faster (a minute at least), or cheaper (a euro at least: no
+    // toll, less fuel), or it keeps out of a low-emission zone the route
+    // crosses. null otherwise — then nothing is drawn, no bubble. The route
+    // compared is what is left of it (the alternates start from the car).
+    altWhy(R0) {
+      var R = this.route;
+      if (!R || !R0 || !R0.coords || R0.coords.length < 2) return null;
+      var band = this.altBand(R0);
+      if (!band) return null;
+      if ((R0.lez || []).length && !(R.lez || []).length) return null;  // into a ZFE the route avoids
+      var left = Math.max(0, (R.total || 0) - (this.along || 0)), share = R.total ? left / R.total : 1;
+      var leftDur = (R.duration || 0) * share;
+      var dsec = leftDur - (R0.duration || 0);
+      var C0 = this.routeCost(R0), Cr = this.routeCost({ distance: left, tolls: R.tolls, toll_eur: R.toll_eur != null ? R.toll_eur * share : null, coords: R.coords });
+      var saving = C0 && Cr && C0.total != null && Cr.total != null ? Cr.total - C0.total : (R.tolls || []).length && !(R0.tolls || []).length ? 1 : 0;
+      var why = { band: band, dsec: dsec, saving: saving, noZfe: (R.lez || []).length > 0 && !(R0.lez || []).length };
+      return dsec >= 60 || saving >= 1 || why.noZfe ? why : null;
     },
     drawAlts() {
       var map = this.map;
@@ -8858,15 +9246,20 @@
       this.altMarkers = [];
       var R = this.route;
       (this.alts || []).forEach((a) => {
-        var R0 = a.route;
-        if (!R0 || !R0.coords || R0.coords.length < 2) return;
-        var dmin = Math.round((R0.duration - (R ? R.duration : R0.duration)) / 60);
+        var R0 = a.route, why = a.why;
+        if (!R0 || !R0.coords || R0.coords.length < 2 || !why) return;
+        // What it brings: minutes won, euros saved, the ZFE kept out of
+        // (and what it costs, when it brings something else).
+        // Pictograms: a stopwatch for the minutes, € for the money, a leaf without the ZFE.
+        var dmin = Math.round(-why.dsec / 60), parts = [];
+        if (dmin <= -1) parts.push(["mdi:timer-outline", Math.abs(dmin) + " min"]);
+        if (why.saving >= 1) parts.push(["mdi:currency-eur", String(Math.round(why.saving))]);
+        if (why.noZfe) parts.push(["mdi:leaf", ""]);
+        if (dmin >= 1) parts.push(["mdi:timer-plus-outline", "+" + dmin + " min"]);
         var el = document.createElement("div");
-        el.className = "alttag" + (dmin < 0 ? " win" : dmin > 0 ? " lose" : "");
-        if (R0.lez && R0.lez.length) { var z = document.createElement("span"); z.className = "lez"; z.textContent = "ZFE"; el.appendChild(z); }
-        if (R0.tolls && R0.tolls.length) { var e = document.createElement("span"); e.className = "eur"; e.textContent = "€"; el.appendChild(e); }
-        el.appendChild(document.createTextNode(dmin === 0 ? "≈ 0 min" : (dmin > 0 ? "+" : "−") + Math.abs(dmin) + " min"));
-        var band = this.altBand(R0);
+        el.className = "alttag" + (dmin <= -1 || why.saving >= 1 || why.noZfe ? " win" : "");
+        parts.forEach((q) => { var sp = document.createElement("span"); var ic = document.createElement("ha-icon"); ic.setAttribute("icon", q[0]); sp.appendChild(ic); if (q[1]) sp.appendChild(document.createTextNode(q[1])); el.appendChild(sp); });
+        var band = why.band;
         var mk = new window.maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(R0.coords[band ? (band[0] + band[1]) >> 1 : Math.floor(R0.coords.length / 2)]).addTo(map);
         mk._igorAlt = a;
         mk._igorBand = band;
@@ -9403,14 +9796,9 @@
       if (!this.alts.length) return;
       var got = await Promise.all(this.alts.map((a) => this.askRoute(d, from, a.types || [], a.routeType)));
       if (this.dest !== d) return;
-      // Only the better deserve the map: an alternate longer than the way
-      // already held is noise, and a noise drawn is a driver tempted. Better
-      // means plainly faster (half a minute at least), or as fast and
-      // plainly shorter (two per cent at least).
-      var ref = this.route;
-      var better = (r) => !!ref && (r.duration < ref.duration - 30 ||
-        (Math.abs(r.duration - ref.duration) <= 30 && r.distance < ref.distance * 0.98));
-      got.forEach((r, i) => { if (r && r.ok && r.route && this.alts[i]) this.alts[i].route = better(r.route) ? r.route : null; });
+      // Kept, all of them: altWhy decides what the map shows — a fork that is
+      // faster, cheaper (no toll) or keeps out of a ZFE; the rest stays unseen.
+      got.forEach((r, i) => { if (this.alts[i]) this.alts[i].route = r && r.ok && r.route ? r.route : null; });
       this.drawAlts();
     },
     useTomTom(R0) {
@@ -9691,7 +10079,7 @@
       if (want === this.ttStyle) return;
       // The other style: the SDK carries its modules over; the route, the
       // trail and the trees come back with Igor's own style.load.
-      this.ttStyle = want; this.themeBusy = true;
+      this.ttStyle = want; this.themeBusy = true; this.tintKept = null; this.glowKept = null;
       Promise.resolve().then(() => this.tt.setStyle(want)).catch(() => {}).then(() => { this.themeBusy = false; });
     },
     // The woods' trees (TomTom's SDK): thousands of 3D shapes, heavy on a
@@ -9980,6 +10368,8 @@
       for (var k = 0; k < R.steps.length; k++) { if (R.steps[k].at > along + 8) { next = R.steps[k]; break; } }
       this.nextDist = next ? next.at - along : null;
       this.routeExtras(R, along, now);
+      try { this.prefetchTiles(Date.now(), along); } catch (e) { /* the map loads them itself */ }
+      try { this.publishJunction(R, along, next); } catch (e) { /* no junction view this time */ }
       if (next) {
         var dn = next.at - along;
         // What to do and how far, always; the road's name and the sign's
@@ -10035,7 +10425,10 @@
       if (this.roadName && this.config.street_names !== false) { var stn = document.createElement("div"); stn.className = "st"; this.fillRoad(stn); e.appendChild(stn); }
       this.publishGuide({ icon: next ? next.icon : "mdi:flag-checkered", dist: next ? gpsMetres(next.at - along) : gpsMetres(left),
         text: next ? (next.short || next.text) : (d && d.name) || "destination", then: this.thenText ? this.thenText(R, along, next) : "",
-        eta: hhmm(eta), left: gpsMetres(left), min: Math.max(1, Math.round(secs / 60)), jam: jamMin, dest: d && d.name !== "destination" ? d.name : "" });
+        eta: hhmm(eta), left: gpsMetres(left), min: Math.max(1, Math.round(secs / 60)), jam: jamMin, dest: d && d.name !== "destination" ? d.name : "",
+        // The junction: the lanes (and how far), the exit's number, the sign's places and road numbers.
+        lanes: this.laneNow ? this.laneNow.code : "", laneD: this.laneNow ? Math.round(this.laneNow.d) : "", turnD: next ? Math.round(next.at - along) : "",
+        exit: next && next.exit || "", to: next && next.to || "", refs: next && next.refs ? [].concat(next.refs).join(" ") : "" });
     },
     // What the guidance column shows: kept on window (a card drawn later
     // reads it at once) and announced, once a second while guiding.
@@ -10057,7 +10450,12 @@
       var pt = this.config.publish_turn;
       if (pt && this._hass && this._hass.callService) {
         var clean = (x) => String(x == null ? "" : x).replace(/\|/g, "/");
-        var tv = g ? [g.icon, g.dist, g.text, g.then, g.eta, g.left, g.min, g.jam || "", g.dest].map(clean).join("|").slice(0, 250) : "";
+        // « icon|dist|text|then|eta|left|min|jam|dest|lanes|lanes_m|turn_m|exit|to|refs »: the junction
+        // last, the sign's places shortened first when it all runs past 250.
+        var head9 = [g ? g.icon : "", g && g.dist, g && g.text, g && g.then, g && g.eta, g && g.left, g && g.min, g && g.jam || "", g && String(g.dest || "").slice(0, 40)].map(clean).join("|");
+        var junc = g ? [g.lanes, g.laneD, g.turnD, g.exit, String(g.refs || "").slice(0, 24)].map(clean) : [];
+        var room = g ? 250 - head9.length - junc.join("|").length - 2 : 0;
+        var tv = g ? (head9 + "|" + junc.slice(0, 4).join("|") + "|" + clean(String(g.to || "").slice(0, Math.max(0, room))) + "|" + junc[4]).slice(0, 250) : "";
         var tk = g ? g.icon + "|" + g.text : "", tn = Date.now();
         if (tv !== this.turnSent && (!tv || tk !== this.turnKey || !this.turnAt || tn - this.turnAt > 2000)) {
           this.turnSent = tv; this.turnKey = tk; this.turnAt = tn;
@@ -11683,6 +12081,35 @@
   // A short entrance for a block that changes (opacity and a few pixels:
   // the head unit's GPU does it alone, no layout). `motion: false` on a card:
   // none at all.
+  // A line too long for its box: first a smaller font (down to `min` px),
+  // then, still cut, it scrolls to its end and back every `every` ms (the
+  // driver reads it whole at a glance). One line, never wrapped.
+  function carFit(node, max, min) {
+    if (!node) return;
+    node.style.fontSize = max + "px";
+    var sz = max;
+    while (sz > min && node.scrollWidth > node.clientWidth + 1) { sz -= 1; node.style.fontSize = sz + "px"; }
+  }
+  function carMarquee(node, every) {
+    if (!node) return;
+    var span = node.__mq;
+    if (!span || span.parentNode !== node || node.childNodes.length !== 1) {
+      var txt = node.textContent; node.textContent = "";
+      span = node.__mq = document.createElement("span"); span.textContent = txt; span.style.display = "inline-block"; node.appendChild(span);
+    }
+    if (node.__mqAnim) { node.__mqAnim.cancel(); node.__mqAnim = null; }
+    clearTimeout(node.__mqT);
+    node.style.textOverflow = "clip";
+    var over = span.offsetWidth - node.clientWidth;
+    if (over <= 2 || !span.animate) { node.style.textOverflow = ""; return; }
+    var run = () => {
+      if (!node.isConnected) return;
+      var ms = Math.max(1600, over * 28);
+      node.__mqAnim = span.animate([{ transform: "translateX(0)" }, { transform: "translateX(0)", offset: 0.15 }, { transform: "translateX(" + -over + "px)", offset: 0.55 }, { transform: "translateX(" + -over + "px)", offset: 0.8 }, { transform: "translateX(0)" }], { duration: ms * 2.2, easing: "ease-in-out" });
+      node.__mqT = setTimeout(run, ms * 2.2 + (every || 5000));
+    };
+    node.__mqT = setTimeout(run, 1500);
+  }
   function carIn(node, card, dy, ms) {
     if (!node || !node.animate || (card && card.config && card.config.motion === false)) return;
     try { node.animate([{ opacity: 0, transform: "translateY(" + (dy || 0) + "px)" }, { opacity: 1, transform: "none" }], { duration: ms || 250, easing: "ease-out" }); } catch (e) { /* no animation */ }
@@ -11880,7 +12307,9 @@
       if (key === this.plateKey) return;
       this.plateKey = key;
       this.gPlateN.textContent = street; this.gPlateT.textContent = town;
+      this.gPlateT.hidden = !town;
       pl.hidden = !street;
+      if (street) requestAnimationFrame(() => { carMarquee(this.gPlateN, 6000); carMarquee(this.gPlateT, 6000); });
       // No room (the block already full): it goes.
       if (street) requestAnimationFrame(() => { if (this.guide && this.guide.scrollHeight > this.guide.clientHeight + 1) pl.hidden = true; });
     }
@@ -11900,8 +12329,9 @@
         "button.stop { flex: none !important; padding: 6px 12px; }",
         // The street plate: French blue, a thin white border inside.
         ".plate { display: flex; align-items: center; gap: 10px; margin-top: 10px; min-width: 0; flex: none; } .plate[hidden] { display: none; }",
-        ".plate .pn { background: #1d4b9b; color: #fff; padding: 5px 12px; border-radius: 4px; box-shadow: inset 0 0 0 2px #1d4b9b, inset 0 0 0 3px #fff; font-size: 16px; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 75%; }",
-        ".plate .pt { font-size: 13px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }",
+        ".plate { flex-wrap: wrap; row-gap: 6px; } .plate .pn { background: #1d4b9b; color: #fff; padding: 5px 12px; border-radius: 4px; box-shadow: inset 0 0 0 2px #1d4b9b, inset 0 0 0 3px #fff; font-size: 16px; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; max-width: 100%; box-sizing: border-box; }",
+        // The town as its own entry sign: white, a red edge, across the width left.
+        ".plate .pt { font-size: 14px; color: #111; background: #fff; padding: 4px 10px; border-radius: 4px; box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 4px #c8102e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; max-width: 100%; box-sizing: border-box; text-align: center; } .plate .pt:empty { display: none; }",
         // big: the head unit's guidance column (remote), the turn in large
         ":host([big]) ha-card { overflow: hidden; } :host([big]) .turn { grid-template-columns: 70px minmax(0, 1fr); gap: 8px; --mdc-icon-size: 66px; } :host([big]) .dist { font-size: 40px; } :host([big]) .tx { font-size: 17px; } :host([big]) .then { font-size: 12px; margin-top: 3px; }",
         ":host([big].short) .turn { grid-template-columns: 52px minmax(0, 1fr); --mdc-icon-size: 48px; } :host([big].short) .dist { font-size: 32px; } :host([big].short) .then { display: none; } :host([big].short) .grid > div:nth-child(n+3) { display: none; } :host([big].short) .grid b { font-size: 20px; }",
@@ -12413,14 +12843,23 @@
       if (this.stateKey && sk !== this.stateKey) carIn(sk === "relay" || sk === "guide" ? this.guide : sk === "cut" ? this.cut : sk === "away" ? this.noPhone : this.idle, this, 0, 280);
       this.stateKey = sk;
       if (!g) return;
+      // The junction view on (the middle of the head unit shows this turn):
+      // the column tells what comes after it, until the car is through.
+      var Jx = this.config.junction ? carJunction(this._hass, this.config.junction, this.config.speed ? parseFloat((this._hass.states[this.config.speed] || {}).state) : 0) : null;
+      if (Jx && Jx.nextText) g = Object.assign({}, g, { icon: Jx.nextIcon || g.icon, dist: Jx.nextM != null ? gpsMetres(Math.max(0, Jx.d) + Jx.nextM) : "", text: "ensuite · " + Jx.nextText, then: "" });
       this.gIcon.setAttribute("icon", g.icon || "mdi:arrow-up");
       // « ≈ » (mode dégradé) small before the figure: the distance stays on one line.
       var gd = String(g.dist || ""), approx = gd.indexOf("≈ ") === 0;
       this.gDist.textContent = approx ? gd.slice(2) : gd;
       if (approx) { var ap = document.createElement("span"); ap.textContent = "≈"; ap.style.cssText = "font-size:.5em;color:" + CAR_WARN + ";margin-right:6px;vertical-align:.35em"; this.gDist.insertBefore(ap, this.gDist.firstChild); }
       this.gDist.style.whiteSpace = "nowrap";
-      this.gText.textContent = g.text || "";
-      this.gThen.textContent = g.then || "";
+      // The instruction whole: a smaller font first, then it scrolls.
+      if (this.gText.__txt !== (g.text || "")) {
+        this.gText.__txt = g.text || ""; this.gText.textContent = g.text || "";
+        var big = !!this.config.big, short = this.classList.contains("short");
+        carFit(this.gText, big ? 17 : 13, big ? 12 : 10); carMarquee(this.gText, 5000);
+      }
+      if (this.gThen.__txt !== (g.then || "")) { this.gThen.__txt = g.then || ""; this.gThen.textContent = g.then || ""; carMarquee(this.gThen, 7000); }
       this.gEta.textContent = g.eta || "";
       if (this.config.big) {
         this.gLeft.textContent = [g.left, g.min ? g.min + " min" : ""].filter(Boolean).join(" · ");
@@ -12429,6 +12868,269 @@
         this.gDest.textContent = g.dest || "—";
       } else this.gLeft.textContent = [g.left, g.min ? g.min + " min" : "", g.jam ? "dont " + g.jam + " min de bouchons" : (g.dest || "")].filter(Boolean).join(" · ");
     }
+  }
+
+  // ----- the junction view: the road as the driver sees it at a junction -----
+  // (window.igorJunction2(model, options) → an SVG string; models and themes inside.)
+  // Igor — vue de jonction : la route vue depuis la voiture (caméra haute,
+  // inclinée), dessinée à partir d'un modèle d'intersection et de ses
+  // paramètres (angle, voies, sortie). Tout est vectoriel, rien à télécharger.
+  (function (root) {
+    var THEMES = {
+      nuit:    { noChev: true, bg0: "#0d0f12", bg1: "#0d0f12", ground: "#0d0f12", road: "#1d2229", edge: "#3a414b", dash: "#59606a", island: "#11161b", route: "#59d0e0", glow: "rgba(89,208,224,.55)", head: "#e8f9fc", text: "#e8e4dc", dim: "#8a9099", grid: null },
+      filaire: { bg0: "#0a0c10", bg1: "#050607", ground: "#07080a", road: "rgba(255,255,255,.015)", edge: "#4b525c", dash: "#3a414b", island: "#07080a", route: "#59d0e0", glow: "rgba(89,208,224,.5)", head: "#e8f9fc", text: "#e8e4dc", dim: "#6b717a", grid: "#14181d" },
+      // As TomTom's own navigation: pale blue line, lighter heart, soft halo,
+      // nothing left behind the arrow; the ground is the head unit's own black.
+      orbis:   { bg0: "#0d0f12", bg1: "#0d0f12", ground: "#0d0f12", road: "#1b2027", edge: "#2a313a", dash: "#48525c", island: "#12161b", route: "#8fd6fa", routeEdge: "#3f9fe6", core: "#d4f4ff", glow: "rgba(95,185,255,.45)", head: "#e8f9fc", text: "#e8e4dc", dim: "#8a9099", grid: null, noChev: true, car: true },
+      tel:     { bg0: "#11161c", bg1: "#11161c", ground: "#11161c", road: "#222a33", edge: "#323b46", dash: "#56616c", island: "#171d24", route: "#8fd6fa", routeEdge: "#3f9fe6", core: "#d4f4ff", glow: "rgba(95,185,255,.45)", head: "#e8f9fc", text: "#e8e4dc", dim: "#8a9099", grid: null, noChev: true },
+      jour:    { bg0: "#c9ced3", bg1: "#dfe3e6", ground: "#d4d8d2", road: "#8d939b", edge: "#f4f5f6", dash: "#f4f5f6", island: "#b9c3ad", route: "#2f8fe0", glow: "rgba(47,143,224,.45)", head: "#ffffff", text: "#14171b", dim: "#5a6069", grid: null }
+    };
+    var LW = 3.5;
+    function rad(d) { return d * Math.PI / 180; }
+    function dir(b) { return [Math.sin(rad(b)), Math.cos(rad(b))]; }      // bearing: 0 ahead, 90 right
+    function add(a, b, k) { return [a[0] + b[0] * (k == null ? 1 : k), a[1] + b[1] * (k == null ? 1 : k)]; }
+    function bez(p0, p1, p2, n) { var o = []; for (var i = 0; i <= n; i++) { var t = i / n, u = 1 - t; o.push([u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0], u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1]]); } return o; }
+    function dens(pts, step) { var o = [pts[0]]; for (var i = 1; i < pts.length; i++) { var a = pts[i - 1], b = pts[i], d = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(d / step)); for (var k = 1; k <= n; k++) o.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]); } return o; }
+    function offset(pts, d) {
+      return pts.map(function (p, i) {
+        var a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz) || 1;
+        return [p[0] + dz / L * d, p[1] - dx / L * d];
+      });
+    }
+    function arcPts(c, r, a0, a1, n) { var o = []; for (var i = 0; i <= n; i++) { var a = a0 + (a1 - a0) * i / n; o.push([c[0] + r * Math.cos(a), c[1] + r * Math.sin(a)]); } return o; }
+
+    // ---------- the catalogue: each model gives roads and the route ----------
+    // road: { pts, n (lanes), kind: "mw" | "rd" }   route: { pts, w (m) }
+    var J = 46;
+    function arm(b, len, n, from) { var c = from || [0, J], d = dir(b); return { pts: dens([add(c, d, 0), add(c, d, len)], 4), n: n }; }
+    var MODELS = {
+      // ----- autoroute -----
+      sortie_droite: function (o) {
+        var n = o.lanes || 3, xr = (n / 2 - 0.5) * LW, br = dens([[xr, -10], [xr, J - 34]], 5).concat(bez([xr, J - 34], [xr + 2, J - 4], [xr + 34, J + 30], 24).slice(1)).concat(dens([[xr + 34, J + 30], [xr + 110, J + 110]], 6));
+        return { kind: "mw", roads: [{ pts: dens([[0, -10], [0, 260]], 6), n: n }, { pts: br, n: o.exitLanes || 1 }],
+          route: { pts: br, w: LW * (o.exitLanes || 1) }, gore: { at: [xr + 4, J + 8], side: 1 }, camX: 0 };
+      },
+      sortie_gauche: function (o) { var m = MODELS.sortie_droite(o); return mirror(m); },
+      bifurcation: function (o) {
+        var n = o.lanes || 4, br = function (sd) { return dens([[sd * LW, -10], [sd * LW, J - 20]], 5).concat(bez([sd * LW, J - 20], [sd * LW, J + 6], [sd * 20, J + 40], 20).slice(1)).concat(dens([[sd * 20, J + 40], [sd * 52, J + 160]], 6).slice(1)); }, L = br(-1), R = br(1);
+        var go = o.side === "left" ? L : R;
+        return { kind: "mw", roads: [{ pts: dens([[0, -10], [0, J - 20]], 6), n: n, ghost: true }, { pts: L, n: n / 2 }, { pts: R, n: n / 2 }],
+          route: { pts: go, w: LW * n / 2 }, gore: { at: [0, J + 22], side: 0 }, camX: 0 };
+      },
+      echangeur: function (o) {
+        var m = MODELS.sortie_droite({ lanes: o.lanes || 3, exitLanes: 2 }), b = m.roads[1].pts, cut = b.findIndex(function (q) { return q[1] > J + 30; }), end = b[cut], A = bez(end, [end[0] + 14, end[1] + 16], [end[0] + 22, end[1] + 60], 18).concat(dens([[end[0] + 22, end[1] + 60], [end[0] + 30, end[1] + 140]], 6).slice(1)), B = bez(end, [end[0] + 16, end[1] + 16], [end[0] + 60, end[1] + 40], 16);
+        m.roads[1] = { pts: b.slice(0, cut + 1), n: 2 }; m.roads.push({ pts: A, n: 1 }, { pts: B, n: 1 });
+        var go = o.side === "right" ? B : A;
+        m.route = { pts: b.slice(0, cut + 1).concat(go.slice(1)), w: LW };
+        return m;
+      },
+      insertion: function (o) {
+        var n = o.lanes || 3, xr = (n / 2 - 0.5) * LW, xo = xr + LW + 3, ramp = dens([[xo, -10], [xo, J - 20]], 5).concat(bez([xo, J - 20], [xo, J + 4], [xr + LW, J + 18], 14));
+        var join = bez([xr + LW, J + 18], [xr + LW * 0.6, J + 32], [xr, J + 44], 12);
+        return { kind: "mw", roads: [{ pts: dens([[0, -10], [0, 260]], 6), n: n }, { pts: ramp.concat(dens([[xr + LW, J + 18], [xr + LW, J + 50]], 5)), n: 1 }],
+          route: { pts: ramp.concat(join.slice(1)).concat(dens([[xr, J + 44], [xr, 220]], 6)), w: LW }, camX: xr };
+      },
+      fin_de_voie: function (o) {
+        var n = o.lanes || 3, xr = (n / 2 - 0.5) * LW;
+        return { kind: "mw", roads: [{ pts: dens([[-LW / 2, -10], [-LW / 2, 260]], 6), n: n - 1 }, { pts: dens([[xr, -10], [xr, J + 10]], 6), n: 1, taper: true }],
+          route: { pts: dens([[xr, -10], [xr, J - 24]], 4).concat(bez([xr, J - 24], [xr, J - 6], [xr - LW, J + 14], 12)).concat(dens([[xr - LW, J + 14], [xr - LW, 220]], 6)), w: LW } };
+      },
+      peage: function (o) {
+        var k = o.booths || 8, rs = [{ pts: dens([[0, -10], [0, J - 30]], 6), n: 3 }];
+        var plaza = { pts: dens([[0, J - 30], [0, J + 20]], 4), n: k, plaza: true };
+        rs.push(plaza, { pts: dens([[0, J + 20], [0, 260]], 6), n: 3 });
+        var lane = (o.lane != null ? o.lane : 2) - (k - 1) / 2;
+        return { kind: "mw", roads: rs, booths: { z: J, n: k, w: LW * k }, route: { pts: dens([[0, -10], [0, J - 34]], 4).concat(bez([0, J - 34], [0, J - 20], [lane * LW, J - 8], 10)).concat(dens([[lane * LW, J - 8], [lane * LW, J + 8]], 4)).concat(bez([lane * LW, J + 8], [lane * LW, J + 20], [0, J + 32], 10)).concat(dens([[0, J + 32], [0, 220]], 6)), w: LW } };
+      },
+      // ----- route / ville -----
+      carrefour: function (o) {
+        var arms0 = (o.arms && o.arms.length ? o.arms : [0, 90, -90]).filter(function (b) { return Math.abs(Math.abs(b) - 180) > 25; }), a = o.angle || 90;
+        // The way out: the real arm nearest the turn's angle.
+        if (o.arms && o.arms.length) arms0.forEach(function (b) { if (Math.abs(b - (o.angle || 90)) < Math.abs(a - (o.angle || 90)) || a === (o.angle || 90) && arms0.indexOf(a) < 0) a = b; });
+        if (arms0.indexOf(a) < 0) arms0.push(a);
+        var arms = arms0.concat([180]);
+        var roads = arms.map(function (b) { return arm(b, b === 180 ? J + 10 : 160, 2); });
+        var din = dir(a), out = add([0, J], din, 7), turn = bez([LW / 2, J - 9], [LW / 2 + (a > 0 ? 0 : 0), J + (Math.abs(a) > 100 ? 2 : -1)], add(out, [din[1] * LW / 2 * -1 * -1, -din[0] * LW / 2], 0), 16);
+        var exitP = add(add([0, J], din, 10), [din[1] * LW / 2, -din[0] * LW / 2]);
+        var route = dens([[LW / 2, -10], [LW / 2, J - 9]], 4).concat(bez([LW / 2, J - 9], [LW / 2 + (a < 0 ? 0 : 1), J + (a < 0 ? 2 : -LW / 2)], exitP, 18)).concat(dens([exitP, add(exitP, din, 140)], 6));
+        return { kind: "rd", roads: roads, route: { pts: route, w: LW }, stop: o.stop };
+      },
+      t: function (o) { return MODELS.carrefour({ angle: o.angle || -90, arms: [90, -90] }); },
+      patte_oie: function (o) {
+        var a = o.angle || 30, s = a > 0 ? 1 : -1;
+        return { kind: "rd", roads: [arm(180, J + 10, 2), arm(0, 160, 2), arm(a, 160, 2)], route: { pts: dens([[LW / 2, -10], [LW / 2, J - 6]], 4).concat(bez([LW / 2, J - 6], [LW / 2, J + 6], add(add([0, J], dir(a), 22), [dir(a)[1] * LW / 2, -dir(a)[0] * LW / 2]), 14)).concat(dens([add(add([0, J], dir(a), 22), [dir(a)[1] * LW / 2, -dir(a)[0] * LW / 2]), add(add([0, J], dir(a), 160), [dir(a)[1] * LW / 2, -dir(a)[0] * LW / 2])], 6)), w: LW } };
+      },
+      rond_point: function (o) {
+        var nb = o.branches || 4, ex = Math.max(1, o.exit || 2), R = 14, C = [0, J + R], roads = [], ring = arcPts(C, R, 0, Math.PI * 2, 72);
+        roads.push({ pts: ring, n: 2, ring: true });
+        var bear = [180]; for (var i = 1; i < nb; i++) bear.push(180 - i * 360 / nb);
+        // The real arms (read on the phone's map), in the order the car meets them going round.
+        if (o.arms && o.arms.length) bear = [180].concat(o.arms.filter(function (b) { return Math.abs(Math.abs(b) - 180) > 20; }).sort(function (a, b) { return ((180 - a) % 360 + 360) % 360 - ((180 - b) % 360 + 360) % 360; }));
+        if (ex >= bear.length) ex = bear.length - 1;
+        bear.forEach(function (b) { roads.push(arm(b, b === 180 ? J + 10 : 140, 2, add(C, dir(b), R))); });
+        // In France: round the island to the right (anticlockwise seen from above).
+        var th0 = -Math.PI / 2, thx = th0 + rad(180 - bear[ex]) + 0.0001, rr = R + LW * 0.5;
+        var b2 = bear[ex], ep = add(C, dir(b2), R + 4), side = [dir(b2)[1] * LW / 2, -dir(b2)[0] * LW / 2];
+        // Smooth all along: into the ring and out of it on curves, no corner.
+        var ta = th0 + 0.5, tb = thx - 0.5, S0 = [C[0] + rr * Math.cos(ta), C[1] + rr * Math.sin(ta)], E0 = [C[0] + rr * Math.cos(tb), C[1] + rr * Math.sin(tb)];
+        var tE = [-Math.sin(tb), Math.cos(tb)], X0 = add(ep, side, 1), X1 = add(X0, dir(b2), 6);
+        var route = dens([[LW / 2, -10], [LW / 2, J - 9]], 4).concat(bez([LW / 2, J - 9], [LW / 2, S0[1] - 2], S0, 14).slice(1)).concat(arcPts(C, rr, ta, tb, 48).slice(1))
+          .concat(bez(E0, add(E0, tE, 5), X1, 14).slice(1)).concat(dens([X1, add(add(C, dir(b2), R + 140), side)], 6).slice(1));
+        return { kind: "rd", roads: roads, island: { c: C, r: R - LW }, route: { pts: route, w: LW }, camZ: 24, camX: 0 };
+      },
+      demi_tour: function (o) {
+        var g = 5;  // median
+        return { kind: "rd", roads: [{ pts: dens([[g / 2 + LW, -10], [g / 2 + LW, 260]], 6), n: 2 }, { pts: dens([[-g / 2 - LW, -10], [-g / 2 - LW, 260]], 6), n: 2 }, { pts: dens([[-g / 2, J], [g / 2, J]], 1), n: 2, gap: true }],
+          route: { pts: dens([[g / 2 + LW / 2, -10], [g / 2 + LW / 2, J - 4]], 4).concat(arcPts([0, J + 2], g / 2 + LW / 2, 0, Math.PI, 24)).concat(dens([[-g / 2 - LW / 2, J - 4], [-g / 2 - LW / 2, -10]], 4)), w: LW } };
+      },
+      preselection: function (o) {
+        // 3 lanes before a crossroads: left-turn, straight, right-turn; the car takes `lane`.
+        var a = o.angle != null ? o.angle : -90, m = MODELS.carrefour({ angle: a, arms: [0, 90, -90] });
+        m.roads[3] = { pts: dens([[LW / 2, -10], [LW / 2, J - 9]], 4), n: 3, arrows: o.lanes || ["l", "s", "r"], go: o.go != null ? o.go : 0 };
+        m.roads.push({ pts: dens([[-LW, -10], [-LW, J - 9]], 4), n: 1 });
+        var lx = (o.go != null ? o.go : 0) - 1;
+        var rest = m.route.pts.filter(function (p) { return p[1] >= J - 9 || p[0] < 0 && p[1] > J - 9; }); m.route.pts = dens([[lx * LW + LW / 2, -10], [lx * LW + LW / 2, J - 10]], 4).concat(bez([lx * LW + LW / 2, J - 10], [lx * LW + LW / 2, J + 4], rest[Math.min(rest.length - 1, 14)], 12)).concat(rest.slice(15));
+        return m;
+      }
+    };
+    function mirror(m) {
+      var f = function (pts) { return pts.map(function (p) { return [-p[0], p[1]]; }); };
+      m.roads.forEach(function (r) { r.pts = f(r.pts); }); m.route.pts = f(m.route.pts); if (m.gore) m.gore.at = [-m.gore.at[0], m.gore.at[1]];
+      return m;
+    }
+
+    // ---------- the drawing ----------
+    function render(model, opt) {
+      var W = opt.W || 800, H = opt.H || 450, T = THEMES[opt.theme || "nuit"], m = MODELS[model](opt.p || {});
+      var hc = m.cam || opt.camH || (m.kind === "mw" ? 34 : 40), pitch = rad(opt.pitch || (m.kind === "mw" ? 32 : 42)), f = W * 0.55, cx = W / 2, cy = H * (opt.cy || (m.kind === "mw" ? 0.3 : 0.22));
+      var zn = 2, sp = Math.sin(pitch), cp = Math.cos(pitch), camX = opt.camX != null ? opt.camX : m.camX != null ? m.camX : (m.route.pts[0][0] * 0.6);
+      var camZ = opt.camZ != null ? opt.camZ : m.camZ != null ? m.camZ : (m.kind === "mw" ? 0 : 8), P = function (q) { var x = q[0] - camX, z = q[1] - camZ, zc = hc * sp + z * cp, yc = -hc * cp + z * sp; return [cx + f * x / zc, cy - f * yc / zc]; };
+      var zMin = (zn - hc * sp) / cp + camZ;
+      var clip = function (poly) { var out = []; for (var i = 0; i < poly.length; i++) { var a = poly[i], b = poly[(i + 1) % poly.length], ia = a[1] >= zMin, ib = b[1] >= zMin; if (ia) out.push(a); if (ia !== ib) { var t = (zMin - a[1]) / (b[1] - a[1]); out.push([a[0] + (b[0] - a[0]) * t, zMin]); } } return out; };
+      var path = function (poly, closed) { var c = clip(poly); if (c.length < 2) return ""; return "M" + c.map(function (q) { var p = P(q); return p[0].toFixed(1) + " " + p[1].toFixed(1); }).join(" L") + (closed ? " Z" : ""); };
+      var lineD = function (pts) { var o = [], cur = []; pts.forEach(function (q) { if (q[1] >= zMin) cur.push(q); else if (cur.length) { o.push(cur); cur = []; } }); if (cur.length) o.push(cur); return o.map(function (c) { return c.length > 1 ? "M" + c.map(function (q) { var p = P(q); return p[0].toFixed(1) + " " + p[1].toFixed(1); }).join(" L") : ""; }).join(" "); };
+      var capped = function (pts, w) { var a = offset(pts, -w / 2), b = offset(pts, w / 2), p0 = pts[0], p1 = pts[1], d = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) || 1, fx = (p1[0] - p0[0]) / d, fz = (p1[1] - p0[1]) / d, cap = []; for (var k = 1; k < 12; k++) { var t = Math.PI * k / 12, c = Math.cos(t), sn = Math.sin(t); cap.push([p0[0] + (fz * c - fx * sn) * -w / 2 * -1 * 1, p0[1] + (-fx * c - fz * sn) * w / 2]); } return path(a.concat(b.reverse()).concat(cap), true); };
+      var ribbon = function (pts, w) { var a = offset(pts, -w / 2), b = offset(pts, w / 2); return path(a.concat(b.reverse()), true); };
+      var id = "i" + Math.random().toString(36).slice(2, 7);
+      var s = '<svg viewBox="0 0 ' + W + " " + H + '" xmlns="http://www.w3.org/2000/svg" font-family="Barlow, Roboto, sans-serif"><defs>' +
+        '<linearGradient id="' + id + 'f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + T.bg1 + '"/><stop offset=".22" stop-color="' + T.bg1 + '" stop-opacity="0"/></linearGradient>' +
+        '<filter id="' + id + 'g" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="' + (W / 110).toFixed(1) + '"/></filter><filter id="' + id + 'c" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="' + (W / 600).toFixed(1) + '"/></filter>' +
+        '<linearGradient id="' + id + 'al" x1="0" x2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dff3ff"/></linearGradient><linearGradient id="' + id + 'ar" x1="0" x2="1"><stop offset="0" stop-color="#a9dcfa"/><stop offset="1" stop-color="#6fbdf0"/></linearGradient>' +
+        '<radialGradient id="' + id + 'ag"><stop offset="0" stop-color="#6fc4ff" stop-opacity=".55"/><stop offset="1" stop-color="#6fc4ff" stop-opacity="0"/></radialGradient></defs>' +
+        '<rect width="' + W + '" height="' + H + '" fill="' + T.ground + '"/>';
+      if (T.grid) for (var gz = 0; gz < 400; gz += 12) s += '<path d="' + lineD(dens([[-300, gz], [300, gz]], 20)) + '" stroke="' + T.grid + '" stroke-width="1" fill="none"/>';
+      if (T.grid) for (var gx = -300; gx <= 300; gx += 12) s += '<path d="' + lineD(dens([[gx, zMin], [gx, 400]], 10)) + '" stroke="' + T.grid + '" stroke-width="1" fill="none"/>';
+      // Asphalt with its edge, then the lane lines.
+      m.roads.forEach(function (r) { if (r.ghost) return; var w = r.n * LW + (m.kind === "mw" && !r.plaza ? 1.2 : 0.4); s += '<path d="' + ribbon(r.pts, w + 0.5) + '" fill="' + T.edge + '"/>'; });
+      m.roads.forEach(function (r) { if (r.ghost) return; var w = r.n * LW + (m.kind === "mw" && !r.plaza ? 1.2 : 0.4); s += '<path d="' + ribbon(r.pts, w) + '" fill="' + (T.road) + '"/>'; if (T.grid) s += '<path d="' + ribbon(r.pts, w) + '" fill="#07080a"/>'; });
+      if (m.island) s += '<path d="' + path(arcPts(m.island.c, m.island.r, 0, Math.PI * 2, 60), true) + '" fill="' + T.island + '" stroke="' + T.edge + '" stroke-width="1.5"/>';
+      m.roads.forEach(function (r) {
+        if (r.ring || r.gap) return;
+        for (var j = 1; j < r.n; j++) { var d = (j - r.n / 2) * LW; s += '<path d="' + lineD(offset(r.pts, d)) + '" stroke="' + T.dash + '" stroke-width="' + (W / 600).toFixed(1) + '" stroke-dasharray="' + (W / 90).toFixed(0) + " " + (W / 45).toFixed(0) + '" fill="none" opacity=".8"/>'; }
+      });
+      if (m.booths) for (var k = 0; k <= m.booths.n; k++) { var bx = (k - m.booths.n / 2) * LW; s += '<path d="' + ribbon(dens([[bx, m.booths.z - 2], [bx, m.booths.z + 2]], 1), 0.8) + '" fill="' + T.edge + '"/>'; }
+      if (m.booths) s += '<path d="' + ribbon(dens([[-m.booths.w / 2 - 1, m.booths.z + 3], [m.booths.w / 2 + 1, m.booths.z + 3]], 2), 1.2) + '" fill="' + T.dim + '" opacity=".6"/>';
+      // The route: halo, line, and its head — as on Igor's map.
+      var R = m.route, rw = R.w * 0.86;
+      // The car's place: the route is drawn from it on (nothing behind).
+      // Just above the bar: the arrow is never hidden under it.
+      var carZ = opt.carZ;
+      if (carZ == null) { var yT = H - Math.max(46, Math.min(62, H * 0.15)) - 8 - H * 0.07, lo = zMin + 0.5, hi = 300; for (var it = 0; it < 40; it++) { var mid = (lo + hi) / 2; if (P([0, mid])[1] > yT) lo = mid; else hi = mid; } carZ = lo; }
+      if (T.car) { var k0 = R.pts.findIndex(function (q) { return q[1] >= carZ; }); if (k0 > 0) { var a0 = R.pts[k0 - 1], b0 = R.pts[k0], t0 = (carZ - a0[1]) / ((b0[1] - a0[1]) || 1); var c0p = [a0[0] + (b0[0] - a0[0]) * t0, carZ], rest = R.pts.slice(k0).filter(function (q) { return Math.hypot(q[0] - c0p[0], q[1] - c0p[1]) > 1.5; }); R = { pts: [c0p].concat(rest), w: R.w }; } }
+      if (T.routeEdge) {
+        s += '<path d="' + capped(R.pts, rw * 2.6) + '" fill="' + T.glow + '" filter="url(#' + id + 'g)"/>';
+        s += '<path d="' + capped(R.pts, rw * 0.95) + '" fill="' + T.routeEdge + '"/>';
+        s += '<path d="' + capped(R.pts, rw * 0.74) + '" fill="' + T.route + '"/>';
+        s += '<path d="' + capped(R.pts, rw * 0.3) + '" fill="' + T.core + '" opacity=".55" filter="url(#' + id + 'c)"/>';
+      } else {
+        s += '<path d="' + ribbon(R.pts, rw * 1.9) + '" fill="' + T.glow + '" filter="url(#' + id + 'g)"/>';
+        s += '<path d="' + ribbon(R.pts, rw) + '" fill="' + T.route + '" opacity=".92"/>';
+      }
+      // Chevrons along it, near the junction only: which way, at a glance.
+      var cum = [0]; for (var i = 1; i < R.pts.length; i++) cum.push(cum[i - 1] + Math.hypot(R.pts[i][0] - R.pts[i - 1][0], R.pts[i][1] - R.pts[i - 1][1]));
+      var at = function (d) { var i = 1; while (i < cum.length - 1 && cum[i] < d) i++; var t = (d - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1); var a = R.pts[i - 1], b = R.pts[i]; var dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz) || 1; return { p: [a[0] + dx * t, a[1] + dz * t], d: [dx / L, dz / L] }; };
+      var startD = cum.findIndex ? cum[R.pts.findIndex(function (q) { return q[1] > J - 30; })] || 10 : 10;
+      for (var dd = startD; !T.noChev && dd < Math.min(cum[cum.length - 1] - 10, startD + 90); dd += 11) {
+        var A = at(dd), n2 = [A.d[1], -A.d[0]], tip = add(A.p, A.d, 2.2), l = add(add(A.p, A.d, -1.2), n2, rw * 0.32), r2 = add(add(A.p, A.d, -1.2), n2, -rw * 0.32), mid = add(A.p, A.d, 0.2);
+        s += '<path d="' + path([l, tip, r2, mid], true) + '" fill="' + T.head + '" opacity=".9"/>';
+      }
+      // The car: TomTom's chevron, lying on the road (white facet lit, the
+      // other pale blue), a soft light under it.
+      if (T.car) {
+        var c0 = R.pts[0], c1 = R.pts[Math.min(3, R.pts.length - 1)], dl = Math.hypot(c1[0] - c0[0], c1[1] - c0[1]) || 1, fw = [(c1[0] - c0[0]) / dl, (c1[1] - c0[1]) / dl], sd2 = [fw[1], -fw[0]], A0 = 2.1;
+        var wp = function (f, l) { return P([c0[0] + fw[0] * f * A0 + sd2[0] * l * A0, c0[1] + fw[1] * f * A0 + sd2[1] * l * A0]); };
+        var g0 = wp(0, 0), g1 = wp(0, 2.2), g2 = wp(2.2, 0), pt = function (q) { return q[0].toFixed(1) + " " + q[1].toFixed(1); };
+        s += '<ellipse cx="' + g0[0].toFixed(1) + '" cy="' + g0[1].toFixed(1) + '" rx="' + Math.abs(g1[0] - g0[0]).toFixed(1) + '" ry="' + Math.abs(g2[1] - g0[1]).toFixed(1) + '" fill="url(#' + id + 'ag)"/>';
+        var tip = wp(1.25, 0), lb = wp(-0.85, -0.9), rb = wp(-0.85, 0.9), nt = wp(-0.35, 0);
+        s += '<path d="M' + pt(tip) + " L" + pt(nt) + " L" + pt(lb) + ' Z" fill="url(#' + id + 'al)"/><path d="M' + pt(tip) + " L" + pt(rb) + " L" + pt(nt) + ' Z" fill="url(#' + id + 'ar)"/>';
+        s += '<path d="M' + pt(tip) + " L" + pt(rb) + " L" + pt(nt) + " L" + pt(lb) + ' Z" fill="none" stroke="#f2fbff" stroke-width="' + (W / 700).toFixed(1) + '" stroke-linejoin="round" opacity=".9"/>';
+      }
+      // Fade far away (no horizon line: Igor's dark ground just goes).
+      s += '<rect width="' + W + '" height="' + H + '" fill="url(#' + id + 'f)"/>';
+      // Signs: motorway models only, flat and small, as Igor's plates.
+      var sg = opt.signs || [];
+      if (sg.length) {
+        var fs = Math.max(12, Math.min(17, H * 0.042)), sw = Math.min(W * 0.36, fs * 17), gap = 10, tot = sg.length * sw + (sg.length - 1) * gap, x0 = (W - tot) / 2, y0 = Math.min(H * 0.04, 22);
+        sg.forEach(function (g, n) {
+          var x = x0 + n * (sw + gap), hh = fs * 1.5 + fs * 1.25 * (g.text || []).length + 12, col = g.color || "#1d4b9b", on = g.on;
+          s += '<rect x="' + x + '" y="' + y0 + '" width="' + sw + '" height="' + hh + '" rx="5" fill="' + col + '" stroke="' + (on ? T.route : "rgba(255,255,255,.85)") + '" stroke-width="' + (on ? 3 : 1.5) + '" opacity="' + (on ? 1 : 0.55) + '"/>';
+          var rx = x + 10, ry = y0 + 8;
+          if (g.num) { s += '<rect x="' + rx + '" y="' + ry + '" width="' + fs * 2.3 + '" height="' + fs * 1.15 + '" rx="2" fill="#fff"/><text x="' + (rx + fs * 1.15) + '" y="' + (ry + fs * 0.93) + '" text-anchor="middle" font-size="' + fs * 0.9 + '" font-weight="700" fill="#111" dx="' + fs * 0.3 + '">' + g.num + '</text><path d="M' + (rx + fs * 0.3) + " " + (ry + fs * 0.9) + " l" + fs * 0.5 + " " + -fs * 0.55 + " m" + -fs * 0.3 + " 0 h" + fs * 0.3 + " v" + fs * 0.3 + '" stroke="#111" stroke-width="2" fill="none"/>'; rx += fs * 2.5; }
+          (g.refs || []).forEach(function (rf) { var c = /^E/.test(rf) ? "#0f6b3a" : /^D/.test(rf) ? "#f4c542" : "#c8102e", w = fs * (0.6 + 0.55 * rf.length); s += '<rect x="' + rx + '" y="' + ry + '" width="' + w + '" height="' + fs * 1.15 + '" rx="2" fill="' + c + '"/><text x="' + (rx + w / 2) + '" y="' + (ry + fs * 0.93) + '" text-anchor="middle" font-size="' + fs * 0.9 + '" font-weight="700" fill="' + (/^D/.test(rf) ? "#111" : "#fff") + '">' + rf + "</text>"; rx += w + 5; });
+          (g.text || []).forEach(function (t, k) { s += '<text x="' + (x + 10) + '" y="' + (y0 + 8 + fs * 1.15 + fs * 1.2 * (k + 1)) + '" font-size="' + fs * 1.05 + '" fill="#fff" opacity="' + (on ? 1 : 0.8) + '">' + t + "</text>"; });
+          var ax = x + sw - 18, ay = y0 + hh - 12, sd = g.arrow || 0;
+          s += sd ? '<path d="M' + (ax - 5 * sd) + " " + ay + " l" + 10 * sd + " -12 m" + -6 * sd + " 0 h" + 6 * sd + ' v6" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/>' : '<path d="M' + ax + " " + (ay - 13) + ' v12 m-5 -5 l5 5 l5 -5" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/>';
+        });
+      }
+      // The bar: lanes (when known), the distance, one line of words.
+      if (opt.bar !== false) {
+        var bh = Math.max(46, Math.min(62, H * 0.15)), by = H - bh - 8, bw = Math.min(W - 16, W * 0.74), bx0 = (W - bw) / 2, dark = opt.theme !== "jour";
+        s += '<rect x="' + bx0 + '" y="' + by + '" width="' + bw + '" height="' + bh + '" rx="6" fill="' + (dark ? "rgba(8,9,11,.9)" : "rgba(255,255,255,.92)") + '" stroke="' + (dark ? "#2c323a" : "#c9ced3") + '"/>';
+        var lx = bx0 + 14, lanes = opt.lanes || [], ah = bh * 0.56, ay2 = by + (bh - ah) / 2;
+        lanes.forEach(function (ln, i) {
+          var c = ln.go ? T.route : T.dim, x = lx + i * ah * 0.55 + ah * 0.2, bend = (ln.d || 0) * ah * 0.24;
+          s += '<path d="M' + x + " " + (ay2 + ah) + " V" + (ay2 + ah * 0.45) + " Q" + x + " " + (ay2 + ah * 0.18) + " " + (x + bend) + " " + (ay2 + ah * 0.14) + '" stroke="' + c + '" stroke-width="' + (ah * 0.11).toFixed(1) + '" fill="none" stroke-linecap="round"/><path d="M' + (x + bend - ah * 0.14) + " " + (ay2 + ah * 0.2) + " L" + (x + bend) + " " + ay2 + " L" + (x + bend + ah * 0.14) + " " + (ay2 + ah * 0.2) + 'Z" fill="' + c + '"/>';
+        });
+        var tx = lanes.length ? lx + lanes.length * ah * 0.55 + 22 : bx0 + 16, dist = String(opt.dist || "").split(" ");
+        s += '<text x="' + tx + '" y="' + (by + bh * 0.68) + '" font-size="' + bh * 0.55 + '" fill="' + T.text + '" font-family="JetBrains Mono, ui-monospace, monospace">' + dist[0] + '<tspan font-size="' + bh * 0.24 + '" fill="' + T.dim + '"> ' + (dist[1] || "") + "</tspan></text>";
+        if (opt.say) s += '<text x="' + (bx0 + bw - 14) + '" y="' + (by + bh * 0.6) + '" text-anchor="end" font-size="' + bh * 0.22 + '" letter-spacing="2" fill="' + T.dim + '">' + String(opt.say).toUpperCase() + "</text>";
+      }
+      return s + "</svg>";
+    }
+    root.igorJunction2 = render; root.IGOR_JUNCTIONS = Object.keys(MODELS); root.IGOR_JTHEMES = Object.keys(THEMES);
+  })(typeof window !== "undefined" ? window : globalThis);
+
+  // The phone map's publish_junction, read: the junction ahead, its
+  // distance carried on with the car's speed since it was written, or null
+  // (too far, passed — in the junction, out of the roundabout —, or stale).
+  function carJunction(hass, ent, v, t) {
+    var st = ent && hass && hass.states[ent], raw = st ? String(st.state || "") : "", a = raw.split("|");
+    if (a.length < 10 || !a[1]) return null;
+    t = t || Date.now();
+    var at = Number(a[0]) || t; if (!isFinite(at) || t - at > 15000) return null;
+    var gone = Math.max(0, (t - at) / 1000) * Math.max(0, v || 0) / 3.6, d = Number(a[2]) - gone, model = a[1];
+    var reach = (v || 0) > 70 ? 1500 : 800, after = model === "rond_point" ? -45 : -3;
+    if (d > reach || d < after) return null;
+    return { raw: raw, model: model, d: d, side: a[3], lanes: Number(a[4]) || 0, exitLanes: Number(a[5]) || 1, branches: Number(a[6]) || 0, exit: Number(a[7]) || 0,
+      angle: a[8] === "" ? null : Number(a[8]), arms: a[9] ? a[9].split(",").map(Number) : null, laneCode: a[10] || "", exitNo: a[11] || "", refs: a[12] || "", to: a[13] || "",
+      road: a[14] || "", town: a[15] || "", nextIcon: a[16] || "", nextText: a[17] || "", nextM: a[18] === "" || a[18] == null ? null : Number(a[18]) };
+  }
+  // Its drawing options: the model's settings, the signs (the exit's, and
+  // the road going on with its number and the next town), the lanes bar.
+  function carJunctionOpts(J, W, H, theme) {
+    var p = { lanes: J.lanes || undefined, exitLanes: J.exitLanes, side: J.side === "l" ? "left" : J.side === "r" ? "right" : J.side, angle: J.angle, arms: J.arms, exit: J.exit, branches: J.branches || undefined };
+    if (/^sortie/.test(J.model)) p.side = undefined;
+    var lanes = String(J.laneCode || "").split(",").filter(Boolean).map((q) => { var p2 = q.split("*"); return { dirs: p2[0].split(""), go: p2[1] || "" }; }).map((l) => ({ go: !!l.go, d: /[rbd]/.test(l.go || l.dirs[0]) ? 1 : /[lac]/.test(l.go || l.dirs[0]) ? -1 : 0 }));
+    if (J.model === "preselection") { p.go = lanes.findIndex((l) => l.go); p.lanes = undefined; }
+    var signs = [], left = J.side === "l" || J.side === "left";
+    var towns = String(J.to || "").split(/,\s*|\s*\/\s*/).filter(Boolean).slice(0, 2).join(" · ");
+    if (/^(sortie|echangeur|bifurcation)/.test(J.model)) {
+      var ex = { num: J.model === "bifurcation" ? "" : J.exitNo, refs: J.refs ? J.refs.split(" ").slice(0, 2) : [], text: [towns || "sortie"], arrow: left ? -1 : 1, on: 1 };
+      var main = { refs: J.road ? J.road.split(" ").slice(0, 2) : [], text: [J.town || "toutes directions"], arrow: J.model === "bifurcation" ? (left ? 1 : -1) : 0 };
+      signs = left ? [ex, main] : [main, ex];
+    }
+    var say = /^(sortie|echangeur)/.test(J.model) && J.exitNo ? "sortie " + J.exitNo + (towns ? " · " + towns.split(" · ")[0] : "") : J.model === "rond_point" && J.exit ? J.exit + (J.exit === 1 ? "re" : "e") + " sortie" : J.model === "bifurcation" ? (left ? "restez à gauche" : "restez à droite") : "";
+    return { W: W, H: H, theme: theme, p: p, signs: signs, lanes: lanes, dist: gpsMetres(Math.max(0, J.d)), say: say };
   }
 
   // ----- igor-drive-card: the middle of the head unit, as the road goes -----
@@ -12440,6 +13142,7 @@
   //   type: custom:igor-drive-card
   //   ahead: input_text.car_ahead          # the phone map's publish_ahead (radar, what lies ahead, heartbeat)
   //   turn: input_text.car_turn            # its publish_turn (guided or not)
+  //   junction: input_text.car_junction    # its publish_junction: the junction view, the middle whole while it lasts
   //   speed: sensor.car_speed              # km/h
   //   limit: sensor.speed_limit            # the road's limit, when the radar does not say it
   //   rpm, load, boost, coolant, intake, advice: sensor.…   # the engine (OBD)
@@ -12472,8 +13175,8 @@
         // A point's vignette over the frieze: one at a time, gone after 6 s.
         ".fpop { position: absolute; z-index: 8; width: min(380px, calc(100% - 16px)); box-sizing: border-box; background: #0d0f12; border: 1px solid var(--pc, #59d0e0); box-shadow: 0 14px 36px rgba(0,0,0,.7); padding: 11px 14px 0; font-size: 14px; color: #e9e4da; --dim: #8a9099; }",
         ".fpop .pt { display: flex; gap: 10px; align-items: center; } .fpop .pt > i { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-weight: 700; color: #08090b; flex: none; }",
-        ".fpop .pt b { display: block; font-weight: 400; font-size: 17px; } .fpop .pt small { display: block; color: var(--dim); font-size: 12px; } .fpop .pt .r { margin-left: auto; text-align: right; white-space: nowrap; }",
-        ".fpop .kv { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px 10px; align-items: center; margin: 10px 0 9px; } .fpop .kv span { color: var(--dim); } .fpop .kv b { font-weight: 400; text-align: right; font-variant-numeric: tabular-nums; }",
+        ".fpop .pt > div:not(.r) { min-width: 0; flex: 1; } .fpop .pt b { display: block; font-weight: 400; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .fpop .pt small { display: block; color: var(--dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .fpop .pt .r { margin-left: auto; text-align: right; white-space: nowrap; flex: none; }",
+        ".fpop .kv { display: grid; grid-template-columns: minmax(22px, auto) auto minmax(0, 1fr); gap: 6px 10px; align-items: center; margin: 10px 0 9px; } .fpop .kv span { color: var(--dim); white-space: nowrap; } .fpop .kv .ki { --mdc-icon-size: 20px; color: var(--pc, #59d0e0); display: grid; place-items: center; } .fpop .kv b { font-weight: 400; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }",
         ".fpop .kv .fico { height: 22px; width: auto; } .fpop .tm { height: 3px; margin: 0 -14px; background: #22272e; } .fpop .tm i { display: block; height: 3px; background: var(--pc, #59d0e0); }",
         ".pin i { cursor: pointer; } .pin.sel i { outline: 3px solid #e8e4dc; outline-offset: 2px; }",
         // Weather on the way: a band under the road where it troubles the driving.
@@ -12490,6 +13193,16 @@
         ".rk { font-size: 14px; letter-spacing: .3em; text-transform: uppercase; } .rd { font-size: 52px; line-height: 1; font-variant-numeric: tabular-nums; }",
         ".rb { width: 70%; height: 10px; border-radius: 5px; overflow: hidden; background: rgba(255,255,255,.08); } .rb i { display: block; height: 100%; }",
         ".rs { font-size: 19px; } .rn { font-size: 11px; color: var(--dim); } .none { height: 100%; display: grid; place-items: center; color: var(--dim); }",
+        // Junction: the sign on the left, the lanes in perspective on the right.
+        ".jn { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 10px 16px; } .jn.nol { grid-template-columns: minmax(0, 1fr); }",
+        ".sgn { align-self: center; border-radius: 8px; padding: 10px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; box-shadow: inset 0 0 0 3px currentColor, inset 0 0 0 6px var(--sb); --sb: #1d4b9b; background: var(--sb); color: #fff; }",
+        ".sgn.nat { --sb: #0f6b3a; } .sgn.loc { --sb: #f4f4f0; color: #111; }",
+        ".sgn .st { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; } .sgn .ex { display: inline-flex; align-items: center; gap: 4px; background: #fff; color: #111; border: 2px solid #111; border-radius: 4px; padding: 1px 7px; --mdc-icon-size: 20px; } .sgn .ex b { font-size: 22px; font-weight: 700; }",
+        ".sgn .rf { font-size: 16px; font-weight: 700; padding: 1px 7px; border-radius: 3px; } .sgn .ra, .sgn .rn { background: #c8102e; color: #fff; } .sgn .rd { background: #f4c542; color: #111; } .sgn .re { background: #0f6b3a; color: #fff; border: 1px solid #fff; }",
+        ".sgn .pl { font-size: 24px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".lns { perspective: 260px; display: flex; align-items: flex-end; justify-content: center; min-height: 0; } .lns svg { height: 100%; max-height: 210px; width: auto; max-width: 100%; transform: rotateX(32deg); transform-origin: 50% 100%; }",
+        ".jf { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; } .jf .jt { font-size: 15px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .jf .rb { width: 100%; }",
+        ":host(.short) .sgn .pl { font-size: 18px; } :host(.short) .lns svg { max-height: 130px; } :host(.short) .jf .jt { display: none; }",
         // Engine
         ".eng { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 16px; align-items: center; }",
         ".dial { display: flex; flex-direction: column; align-items: center; min-height: 0; height: 100%; justify-content: center; } .dial svg { width: 100%; max-height: 230px; flex: 1; min-height: 0; } .adv { font-size: 19px; letter-spacing: .14em; text-transform: uppercase; color: " + CAR_WARN + "; margin-top: -4px; min-height: 1.2em; text-align: center; }",
@@ -12497,7 +13210,8 @@
         ".bars .g { position: relative; height: 8px; border-radius: 3px; background: rgba(255,255,255,.08); margin-top: 5px; } .bars .g i { display: block; height: 100%; border-radius: 3px; transition: width .4s; }",
         // The peak: a red line that stays a few seconds, then sinks (a VU meter).
         ".bars .g u { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1px; background: #e5323b; box-shadow: 0 0 6px #e5323b; transition: left .4s; } .bars b small.pkt { font-size: 11px; color: var(--dim); margin-left: 6px; }",
-        ".ef { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; } .ef span { display: block; font-size: 12px; color: var(--dim); } .ef b { font-weight: 400; font-size: 20px; white-space: nowrap; }",
+        ".t100 { display: flex; gap: 8px; align-items: baseline; white-space: nowrap; margin-top: -2px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 12px; font-size: 12px; color: var(--dim); } .t100 b { font-weight: 400; font-size: 17px; color: var(--fg); font-variant-numeric: tabular-nums; } .t100.live { border-color: " + CAR_OK + "; } .t100.live b { color: " + CAR_OK + "; } .adv:empty { display: none; }",
+        ".ef { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; } .ef span { display: block; font-size: 12px; color: var(--dim); } .ef b { font-weight: 400; font-size: 20px; white-space: nowrap; }",
         // Trip and consumption
         ".trip { height: 100%; display: flex; flex-direction: column; } .kpi { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; flex: none; } .kpi > div { min-width: 0; overflow: hidden; } .kpi span { display: block; font-size: 12px; color: var(--dim); } .kpi b { font-weight: 400; font-size: 32px; font-variant-numeric: tabular-nums; white-space: nowrap; } .kpi small { font-size: 12px; color: var(--dim); }",
         ".gh { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; flex: none; } .gh .h { margin: 0; } .gh .aside b { font-weight: 400; color: " + CAR_OK + "; }",
@@ -12516,11 +13230,14 @@
         ".rt.first { border-color: #59d0e0; box-shadow: inset 3px 0 #59d0e0; } .rt b { font-weight: 400; font-size: 26px; font-variant-numeric: tabular-nums; white-space: nowrap; } .rt .l { min-width: 0; } .rt .l div { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .rt .l small { display: block; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .rt .j { font-size: 14px; white-space: nowrap; }",
         ".rts .note { font-size: 12px; color: var(--dim); flex: none; } :host(.short) .rt b { font-size: 20px; } :host(.short) .rt { padding: 4px 10px; }",
         ".trk { position: relative; flex: 1; }",
-        ".road { position: absolute; left: 6%; right: 3%; top: 28%; height: 10px; margin-top: -5px; border-radius: 5px; overflow: hidden; background: #3b8cff; }",
-        ".flow { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, rgba(255,255,255,0) 0 18px, rgba(255,255,255,.35) 18px 26px, rgba(255,255,255,0) 26px 44px); animation: igfl 1s linear infinite; }",
+        // The road drawn as the map draws the route: its colour, a dark edge, a soft halo.
+        // Igor's cyan, flat: the same colour as the guidance arrow, the phone and the messages.
+        ".road { position: absolute; left: 2.5%; right: 3%; top: 28%; height: 8px; margin-top: -4px; border-radius: 4px; overflow: hidden; background: #59d0e0; }",
+        ".flow { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, rgba(255,255,255,0) 0 18px, rgba(255,255,255,.28) 18px 26px, rgba(255,255,255,0) 26px 44px); animation: igfl 1s linear infinite; }",
         "@keyframes igfl { from { background-position: 0 0; } to { background-position: -44px 0; } }",
-        ".done { position: absolute; left: 0; width: 6%; top: 28%; height: 4px; margin-top: -2px; background: #2a2f36; border-radius: 2px; }",
-        ".you { position: absolute; left: 6%; top: 28%; transform: translate(-50%, -50%) rotate(90deg); color: #59d0e0; font-size: 24px; text-shadow: 0 0 12px #59d0e0; line-height: 1; }",
+        ".done { display: none; }",
+        // The car: « vous êtes ici », a white dot ringed (it stands out from the cyan road).
+        ".you { position: absolute; left: 2.5%; top: 28%; width: 18px; height: 18px; transform: translate(-50%, -50%); z-index: 2; pointer-events: none; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px #121418, 0 0 0 6px rgba(255,255,255,.22); }",
         ".pin { position: absolute; top: 0; bottom: 0; width: 0; transition: left 1s linear, opacity .4s; }",
         ".pin i { position: absolute; left: -14px; top: 28%; margin-top: -14px; width: 28px; height: 28px; border-radius: 50%; color: #08090b; display: grid; place-items: center; font-size: 13px; font-weight: 700; font-style: normal; box-shadow: 0 0 0 3px var(--card, #121418); }",
         ".pin.near i { animation: igpu 1s ease-in-out infinite; } @keyframes igpu { 50% { box-shadow: 0 0 0 3px var(--card, #121418), 0 0 0 9px rgba(229,160,76,.4); } }",
@@ -12554,7 +13271,7 @@
       var fh = el("div", "hr2", fz); el("div", "h", fh, "devant vous"); this.fzAside = el("div", "aside", fh);
       var trk = this.trk = el("div", "trk", fz);
       this.road = el("div", "road", trk); this.flow = el("div", "flow", this.road);
-      el("div", "done", trk); el("div", "you", trk, "▲");
+      el("div", "done", trk); el("div", "you", trk);
       this.pins = {}; this.bands = {};
       this.pop = el("div", "fpop", wrap); this.pop.hidden = true;
       this.pop.addEventListener("click", (ev) => { ev.stopPropagation(); this.popTimer(6000); });
@@ -12720,10 +13437,11 @@
       // Above, what the moment asks (radar > engine > the trip and its
       // consumption, or the parked car); below, the route, whenever guided.
       var offer = this.routesOffer(t);
-      var want = offer ? "routes" : rad && rad.d != null ? "radar" : this.sport ? "moteur" : !on && (v == null || v < 1) ? "arret" : "conso";
+      var junc = this.junction(t, v); this.junc = junc;
+      var want = offer ? "routes" : rad && rad.d != null ? "radar" : junc ? "voies" : this.sport ? "moteur" : !on && (v == null || v < 1) ? "arret" : "conso";
       if (this.manual && t < this.manual.until && want !== "radar") want = this.manual.view; else if (this.manual && t >= this.manual.until) this.manual = null;
       // A calm view stays at least min_view_s; the radar and the engine come at once.
-      if (want !== this.view && this.view && want !== "radar" && want !== "moteur" && want !== "routes" && this.view !== "radar" && this.view !== "routes" && !force && t - this.viewAt < this.tune("min_view_s", 8) * 1000) want = this.view;
+      if (want !== this.view && this.view && want !== "radar" && want !== "moteur" && want !== "routes" && want !== "voies" && this.view !== "radar" && this.view !== "routes" && this.view !== "voies" && !force && t - this.viewAt < this.tune("min_view_s", 8) * 1000) want = this.view;
       if (want !== this.view) { this.view = want; this.viewAt = t; this.fadeTo(); }
       Object.keys(this.tabBtns).forEach((k) => { this.tabBtns[k].className = k === this.view ? (this.manual ? "lock" : "on") : ""; });
       // The views change by themselves (radar, a pull, the trip): no buttons unless `tabs: true`.
@@ -12814,12 +13532,35 @@
     draw(rad, v) {
       var k = this.view, card = this.cardEl;
       card.style.background = ""; card.style.borderColor = "transparent"; card.style.borderLeft = "";
+      if (k !== "voies") { this.head.parentNode.style.display = ""; card.style.padding = ""; if (this.frz) this.frz.style.display = ""; }
       this.aside.textContent = "";
       if (k === "routes") return this.drawRoutes();
       if (k === "radar") return this.drawRadar(rad, v);
+      if (k === "voies") return this.drawJunction(this.junc, v);
       if (k === "moteur") return this.drawEngine();
       if (k === "arret") return this.drawStopped();
       return this.drawTrip();
+    }
+    // A junction ahead (the phone map's publish_turn, fields 10 to 15): the
+    // lanes to take and the sign — exit number, road numbers, places — from
+    // 1.5 km (800 m in town), as a car's GPS shows it; gone 50 m after.
+    // A junction ahead: the phone map's publish_junction (`junction:`), read
+    // with the distance carried on at the car's speed. Shown from 1.5 km
+    // (800 m in town); gone once the car is in the junction — out of the
+    // roundabout for a roundabout. Without `junction:`, the lanes view of
+    // publish_turn as before.
+    junction(t, v) { return carJunction(this._hass, this.config.junction, v, t); }
+    drawJunction(J, v) {
+      if (!J) return;
+      var card = this.cardEl;
+      // Mode B: the whole middle — no title, no frieze while it lasts.
+      this.head.parentNode.style.display = "none"; card.style.padding = "0"; card.style.borderLeft = "3px solid #59d0e0";
+      if (this.frz) this.frz.style.display = "none";
+      var key = "jx" + J.raw.replace(/^\d+\|[^|]*\|\d+/, "") + "|" + Math.round(J.d / 10) + "|" + this.body.clientWidth + "x" + this.body.clientHeight;
+      if (key === this.drawn) return; this.drawn = key;
+      var r = this.body.getBoundingClientRect(), W = Math.max(200, Math.round(r.width)), H = Math.max(150, Math.round(r.height));
+      try { this.body.innerHTML = window.igorJunction2(J.model, carJunctionOpts(J, W, H, "nuit")); var sv = this.body.querySelector("svg"); if (sv) sv.style.cssText = "display:block;width:100%;height:100%"; }
+      catch (e) { this.body.innerHTML = ""; if (this.config.debug || window.__igorDebug) console.warn("junction view:", e); }
     }
     drawRadar(rad, v) {
       this.head.textContent = "radar";
@@ -12853,25 +13594,27 @@
         '<path d="' + carArc(100, 100, 80, f(warn), f(bad)) + '" stroke="' + CAR_WARN + '" stroke-opacity=".25" stroke-width="16" fill="none"/><path d="' + carArc(100, 100, 80, f(bad), a1) + '" stroke="#e5323b" stroke-opacity=".25" stroke-width="16" fill="none"/>' +
         (rpm ? '<path d="' + carArc(100, 100, 80, a0, f(rpm)) + '" stroke="' + col + '" stroke-width="16" fill="none"/>' : "") +
         (pk.rpm ? '<line x1="' + (100 + 68 * Math.cos(f(pk.rpm.v))).toFixed(1) + '" y1="' + (100 + 68 * Math.sin(f(pk.rpm.v))).toFixed(1) + '" x2="' + (100 + 93 * Math.cos(f(pk.rpm.v))).toFixed(1) + '" y2="' + (100 + 93 * Math.sin(f(pk.rpm.v))).toFixed(1) + '" stroke="#e5323b" stroke-width="4"/>' : "") +
-        '<text x="100" y="104" text-anchor="middle" fill="#e8e4dc" font-size="40" font-family="inherit">' + (rpm == null ? "—" : Math.round(rpm)) + '</text><text x="100" y="128" text-anchor="middle" fill="#8a9099" font-size="13">tr/min' + (pk.rpm ? " · max " + Math.round(pk.rpm.v) : "") + '</text></svg>';
+        '<text x="100" y="104" text-anchor="middle" fill="#e8e4dc" font-size="40" font-family="inherit">' + (rpm == null ? "—" : Math.round(rpm)) + '</text><text x="100" y="128" text-anchor="middle" fill="#8a9099" font-size="13">tr/min</text></svg>';
       var adv = this.st(c.advice), advTxt = adv && !/^(aucun|unknown|unavailable)$/i.test(adv.state) ? "▲ " + adv.state : "";
       var g = Math.max(0, (this.accel || 0) / 9.81), boost = this.boostNow(), load = this.n(c.load), d = this.tripData() || {};
       if (boost != null) boost = Math.max(0, boost);
       var bm = Number(c.boost_max) || 2;
-      var bars = [["turbo", boost != null ? fr(boost, 1) + " bar" : "—", boost != null ? boost / bm : 0, pk.boost ? pk.boost.v / bm : null, pk.boost ? "max " + fr(pk.boost.v, 2) : ""],
-        ["charge", load != null ? Math.round(load) + " %" : "—", load != null ? load / 100 : 0, pk.load ? pk.load.v / 100 : null, pk.load ? "max " + Math.round(pk.load.v) : ""],
-        ["accélération", g > 0.02 ? fr(g, 2) + " g" : "—", g / 0.6, pk.g ? pk.g.v / 0.6 : null, pk.g && pk.g.v > 0.02 ? "max " + fr(pk.g.v, 2) : ""]];
-      var ln = this.lanceNow(this.n(c.speed));
-      var foot = [["moteur", this.n(c.coolant) != null ? Math.round(this.n(c.coolant)) + " °C" : "—", CAR_OK], ["admission", this.n(c.intake) != null ? Math.round(this.n(c.intake)) + " °C" : "—", CAR_BLUE],
-        ln ? [ln.label, ln.val, ln.live ? CAR_OK : "var(--fg)"] : ["0 → 100", d.t0_100 ? fr(Number(d.t0_100), 1) + " s" : "—", "var(--fg)"]];
-      var key = "e" + Math.round((rpm || 0) / 25) + advTxt + bars.map((r) => r[1] + r[4]).join() + foot.map((r) => r[0] + r[1]).join() + (pk.rpm ? Math.round(pk.rpm.v / 25) : "");
+      // The peaks: the red marks on the bars only (their figures were noise).
+      var bars = [["turbo", boost != null ? fr(boost, 1) + " bar" : "—", boost != null ? boost / bm : 0, pk.boost ? pk.boost.v / bm : null],
+        ["charge", load != null ? Math.round(load) + " %" : "—", load != null ? load / 100 : 0, pk.load ? pk.load.v / 100 : null],
+        ["accélération", g > 0.02 ? fr(g, 2) + " g" : "—", g / 0.6, pk.g ? pk.g.v / 0.6 : null]];
+      // 0 → 100 (or the launch running): a chip under the dial, on one line.
+      var ln = this.lanceNow(this.n(c.speed)), t100 = ln ? ln : d.t0_100 ? { label: "0 → 100", val: fr(Number(d.t0_100), 1) + " s", live: false } : null;
+      if (t100) t100.label = t100.label.replace(" · dernier", "");
+      var foot = [["moteur", this.n(c.coolant) != null ? Math.round(this.n(c.coolant)) + " °C" : "—", CAR_OK], ["admission", this.n(c.intake) != null ? Math.round(this.n(c.intake)) + " °C" : "—", CAR_BLUE]];
+      var key = "e" + Math.round((rpm || 0) / 25) + advTxt + bars.map((r) => r[1] + Math.round((r[3] || 0) * 50)).join() + foot.map((r) => r[0] + r[1]).join() + (t100 ? t100.label + t100.val : "") + (pk.rpm ? Math.round(pk.rpm.v / 25) : "");
       if (key === this.drawn) return; this.drawn = key;
       var b = this.body; b.innerHTML = "";
       var w = el("div", "eng", b), dl = el("div", "dial", w); dl.innerHTML = svg; el("div", "adv", dl, advTxt);
+      if (t100 && !advTxt) { var ch = el("div", "t100" + (t100.live ? " live" : ""), dl); el("span", "", ch, t100.label); el("b", "", ch, t100.val); }
       var right = el("div", "", w), bs = el("div", "bars", right);
       bars.forEach((r) => {
         var x = el("div", "", bs), l = el("div", "l", x); el("span", "", l, r[0]); var bb = el("b", "", l, r[1]); bb.style.color = CAR_WARN;
-        if (r[4]) el("small", "pkt", bb, r[4]);
         var gg = el("div", "g", x), i = el("i", "", gg); i.style.width = Math.round(Math.max(0, Math.min(1, r[2])) * 100) + "%"; i.style.background = CAR_WARN;
         if (r[3] != null) { var pm = el("u", "", gg); pm.style.left = (Math.max(0, Math.min(1, r[3])) * 100).toFixed(1) + "%"; }
       });
@@ -12929,7 +13672,7 @@
       if (!guided) { this.flowSpeed = null; return; }
       var at = Number(p[0]), gone = Math.max(0, Math.min(12, (t - at) / 1000)) * Math.max(0, v || 0) / 3.6;
       var left = Math.max(0, (Number(p[2]) || 0) - gone), span = Math.max(500, Math.min(left, 30000));
-      var YOU = 6, END = 97, X = (d) => YOU + Math.max(0, Math.min(1, d / span)) * (END - YOU), R = (d) => Math.max(0, Math.min(100, d / span * 100));
+      var YOU = 2.5, END = 97, X = (d) => YOU + Math.max(0, Math.min(1, d / span)) * (END - YOU), R = (d) => Math.max(0, Math.min(100, d / span * 100));
       // The header: what is left, when the end is in the frieze.
       var tn = this.st(this.config.turn), g = tn ? String(tn.state || "").split("|") : [];
       if (this.relayed) this.fzAside.textContent = "radars : liste officielle · sans stations";
@@ -12943,9 +13686,10 @@
       var ev = (p[4] || "").split(";").filter(Boolean).map((e) => { var q = e.split("~"); return { t: q[0], d: Number(q[1]) - gone, l: q[2] || "", len: Number(q[3]) || 0, lvl: Number(q[4]) || 2, q3: q[3] || "", q4: q[4] || "" }; });
       this.arrWx = p[7] ? p[7].split("~") : null;
       // The road's colours: blue, orange where it slows, red where it jams.
-      var stops = [], bg = "#3b8cff";
-      ev.filter((e) => e.t === "j" && e.d + e.len > 0 && e.d < span).forEach((e) => { var a = R(e.d), z = R(e.d + Math.max(e.len, span / 60)), c = e.lvl === 2 ? "#e5323b" : "#e5823b"; stops.push("#3b8cff " + a.toFixed(1) + "%", c + " " + a.toFixed(1) + "%", c + " " + z.toFixed(1) + "%", "#3b8cff " + z.toFixed(1) + "%"); });
-      bg = stops.length ? "linear-gradient(90deg, #3b8cff 0%, " + stops.join(", ") + ", #3b8cff 100%)" : "#3b8cff";
+      // Faded in and out as on the map (the route turns orange, red, and back).
+      var stops = [], bg = "#59d0e0", B = "#59d0e0";
+      ev.filter((e) => e.t === "j" && e.d + e.len > 0 && e.d < span).forEach((e) => { var a = R(e.d), z = R(e.d + Math.max(e.len, span / 60)), c = e.lvl === 2 ? "#e5323b" : "#f08c1a", f = Math.min(2, (z - a) / 3); stops.push(B + " " + Math.max(0, a - f).toFixed(1) + "%", c + " " + a.toFixed(1) + "%", c + " " + z.toFixed(1) + "%", B + " " + Math.min(100, z + f).toFixed(1) + "%"); });
+      bg = stops.length ? "linear-gradient(90deg, " + B + " 0%, " + stops.join(", ") + ", " + B + " 100%)" : B;
       if (bg !== this.roadBg) { this.roadBg = bg; this.road.style.background = bg; }
       // The points: kept from one second to the next (by kind and label), so they glide.
       var LOOK = { c: ["📷", CAR_WARN], f: ["⛽", CAR_OK], j: ["!", "#e5823b"], p: ["€", "#c792ea"], w: ["☂", "#6cc4f5"] };
@@ -13022,7 +13766,8 @@
         var m = el("div", "", t); el("b", "", m, title); if (sub) el("small", "", m, sub);
         var r = el("div", "r", t, right || ""); if (rsub) el("small", "", r, rsub);
       };
-      var kv = el("div", "kv"), row = (k, val, cls, badge) => { var a = badge || el("span", "", null, ""); kv.appendChild(a); el("span", "", kv, k); var b = el("b", cls || "", kv, val); if (cls) b.style.color = cls; };
+      // Each line on one line: its pictogram, its name, its value (a long one scrolls).
+      var long = [], kv = el("div", "kv"), row = (k, val, cls, ic) => { var a = el("span", "ki", kv); if (ic) icon(a, ic); el("span", "", kv, k); var b = el("b", "", kv, val); if (cls) b.style.color = cls; long.push(b); };
       var dist = q.d > 0 ? gpsMetres(q.d) : "ici";
       if (q.t === "f") {
         var nm = e.l.replace(/\s*\d+,\d+\s*$/, "") || "Station";
@@ -13050,28 +13795,30 @@
       } else if (q.t === "c") {
         head(e.l || "Radar", "", dist, q.d > 0 ? mins(q.d) : "");
         var lim = (e.l.match(/\d{2,3}/) || [])[0];
-        if (lim) row("Vitesse limite", lim + " km/h");
-        row("Votre vitesse", Math.round(v) + " km/h", lim && v > Number(lim) ? CAR_WARN : "");
+        if (lim) row("Limite", lim + " km/h", "", "mdi:speedometer");
+        row("Vous", Math.round(v) + " km/h", lim && v > Number(lim) ? CAR_WARN : "", "mdi:car");
       } else if (q.t === "j") {
         head(e.lvl === 2 ? "Bouchon" : "Ralentissement", e.l, dist, q.d > 0 ? mins(q.d) : "");
-        if (e.len) row("Longueur", gpsMetres(e.len));
-        if (/\+\d+/.test(e.l)) row("Retard", e.l, CAR_BAD);
+        if (e.len) row("Longueur", gpsMetres(e.len), "", "mdi:arrow-expand-horizontal");
+        if (/\+\d+/.test(e.l)) row("Retard", e.l, CAR_BAD, "mdi:clock-alert-outline");
       } else if (q.t === "p") {
         head("Péage", "gare de péage", dist, q.d > 0 ? mins(q.d) : "");
       } else if (q.t === "w") {
         var wk = GPS_WX[e.q4] || GPS_WX.rain;
         head(e.l, "à l'heure où vous y passerez", dist, q.d > 0 ? mins(q.d) : "");
-        if (e.len) row("Sur", gpsMetres(e.len));
-        row("Conseil", wk[3], CAR_WARN);
+        if (e.len) row("Sur", gpsMetres(e.len), "", "mdi:map-marker-distance");
+        row("Conseil", wk[3], CAR_WARN, "mdi:lightbulb-on-outline");
       } else if (q.t === "dest") {
         var tn = this.st(this.config.turn), g = tn ? String(tn.state || "").split("|") : [];
         head("Arrivée", g[4] ? "à " + g[4] : "", dist, g[6] ? g[6] + " min" : "");
         var aw = this.arrWx;
-        if (aw && (aw[0] || aw[1])) row("Météo à l'arrivée", [aw[0] ? aw[0] + " °C" : "", aw[1] || ""].filter(Boolean).join(" · "));
+        var WXI = { sunny: "mdi:weather-sunny", "clear-night": "mdi:weather-night", partlycloudy: "mdi:weather-partly-cloudy", cloudy: "mdi:weather-cloudy", rainy: "mdi:weather-rainy", pouring: "mdi:weather-pouring", snowy: "mdi:weather-snowy", "snowy-rainy": "mdi:weather-snowy-rainy", fog: "mdi:weather-fog", lightning: "mdi:weather-lightning", "lightning-rainy": "mdi:weather-lightning-rainy", windy: "mdi:weather-windy", hail: "mdi:weather-hail" };
+        if (aw && (aw[0] || aw[1])) row("Météo", [aw[0] ? aw[0] + " °C" : "", aw[1] || ""].filter(Boolean).join(" · "), "", WXI[aw[2]] || "mdi:weather-partly-cloudy");
       } else { this.closePop(); return; }
       if (kv.children.length) P.appendChild(kv);
       var tm = el("div", "tm", P); el("i", "", tm);
       P.hidden = false;
+      long.concat([].slice.call(P.querySelectorAll(".pt b, .pt small"))).forEach((n) => carMarquee(n, 4000));
       // Over its point, kept inside the card.
       var wr = P.parentNode.getBoundingClientRect(), pr0 = pin.getBoundingClientRect(), w = P.offsetWidth;
       var left = Math.max(8, Math.min(wr.width - w - 8, pr0.left - wr.left - w / 2));
@@ -13107,7 +13854,13 @@
   // the temperatures, the turbo, the battery and the mixture. Filled from
   // Home Assistant's history when it opens, then live.
   class IgorTelemetryCard extends IgorCard {
-    setConfig(config) { this.config = config || {}; this.series = {}; this.gears = []; }
+    // The last minute is kept on the page (window), not on the card: back on
+    // its tab, the curves are all there, sampled meanwhile.
+    setConfig(config) {
+      this.config = config || {};
+      var all = window.__igorTele || (window.__igorTele = {}), key = [this.config.rpm, this.config.speed, this.config.load].join("|");
+      this.T = all[key] || (all[key] = { series: {}, gears: [], lastGear: null, filled: false, owner: null });
+    }
     getCardSize() { return 10; }
     keys() { return ["rpm", "speed", "load", "boost", "map", "maf", "lambda"]; }
     build() {
@@ -13151,8 +13904,10 @@
         { k: "load", n: "charge", c: "#e5a04c", max: 100, w: 2, o: 0.85 }, { k: "boost", n: "turbo", c: "#59d0e0", max: this.cfg("boost_max", 2), w: 2.5 },
         { k: "power", n: "puissance", c: "#5cc28f", max: this.cfg("power_max", 170) * 1.15, w: 2.5 }];
     }
-    disconnectedCallback() { clearInterval(this.timer); this.timer = null; }
-    connectedCallback() { super.connectedCallback(); if (this._built && !this.timer) { this.timer = setInterval(() => this.tick(), 500); } }
+    // Off screen (another tab): it goes on sampling, not drawing; a newer
+    // card for the same car takes the sampling over.
+    disconnectedCallback() { }
+    connectedCallback() { super.connectedCallback(); if (this.T) this.T.owner = this; if (this._built && !this.timer) { this.timer = setInterval(() => this.tick(), 500); } }
     num(id) { var s = id && this._hass && this._hass.states[id]; var v = s ? parseFloat(s.state) : NaN; return isFinite(v) ? v : null; }
     // Turbo: the boost sensor, else the manifold's absolute pressure (kPa) less the air outside.
     boostOf(b, m) { return b != null ? b : m != null && m > 20 ? (m - 101.3) / 100 : null; }
@@ -13166,8 +13921,8 @@
     // The last minute from Home Assistant's history, so the curves are there at once.
     backfill() {
       var h = this._hass, c = this.config;
-      if (!h || !h.callWS || this.filled) return;
-      this.filled = true;
+      if (!h || !h.callWS || this.T.filled) return;
+      this.T.filled = true;
       var ids = this.keys().map((k) => c[k]).filter(Boolean), W = this.cfg("window_s", 60) * 1000;
       if (c.gear) ids.push(c.gear);
       h.callWS({ type: "history/history_during_period", start_time: new Date(Date.now() - W).toISOString(), entity_ids: ids, minimal_response: true, no_attributes: true, significant_changes_only: false })
@@ -13175,15 +13930,17 @@
           this.keys().forEach((k) => {
             var rows = res && c[k] && res[c[k]]; if (!rows) return;
             var pts = rows.map((r) => ({ t: (r.lu || r.lc || 0) * 1000, v: parseFloat(r.s) })).filter((p) => isFinite(p.v));
-            this.series[k] = pts.concat(this.series[k] || []).sort((a, b) => a.t - b.t);
+            this.T.series[k] = pts.concat(this.T.series[k] || []).sort((a, b) => a.t - b.t);
           });
           var gr = res && c.gear && res[c.gear];
-          if (gr) { var last = null; gr.forEach((r) => { if (r.s !== last && /^[1-6]$/.test(r.s)) this.gears.push({ t: (r.lu || r.lc || 0) * 1000, g: r.s }); last = r.s; }); }
+          if (gr) { var last = null; gr.forEach((r) => { if (r.s !== last && /^[1-6]$/.test(r.s)) this.T.gears.push({ t: (r.lu || r.lc || 0) * 1000, g: r.s }); last = r.s; }); }
           this.draw();
         }).catch(() => {});
     }
-    update(hass) { if (!this.filled) this.backfill(); }
+    update(hass) { if (!this.T.filled) this.backfill(); }
     tick() {
+      if (this.T.owner && this.T.owner !== this) { clearInterval(this.timer); this.timer = null; return; }
+      this.T.owner = this;
       if (!this._hass) return;
       var c = this.config, t = Date.now(), W = this.cfg("window_s", 60) * 1000;
       var v = {}; this.keys().forEach((k) => { v[k] = this.num(c[k]); });
@@ -13191,12 +13948,12 @@
       v.power = this.powerOf(v.maf, v.lambda, v.load);
       ["rpm", "speed", "load", "boost", "power"].forEach((k) => {
         if (v[k] == null) return;
-        var s = this.series[k] || (this.series[k] = []); s.push({ t: t, v: v[k] });
+        var s = this.T.series[k] || (this.T.series[k] = []); s.push({ t: t, v: v[k] });
         while (s.length && t - s[0].t > W + 2000) s.shift();
       });
       var gs = c.gear && this._hass.states[c.gear], g = gs ? String(gs.state) : "";
-      if (/^[1-6]$/.test(g) && g !== this.lastGear) { if (this.lastGear) this.gears.push({ t: t, g: g }); this.lastGear = g; }
-      this.gears = this.gears.filter((x) => t - x.t <= W);
+      if (/^[1-6]$/.test(g) && g !== this.T.lastGear) { if (this.T.lastGear) this.T.gears.push({ t: t, g: g }); this.T.lastGear = g; }
+      this.T.gears = this.T.gears.filter((x) => t - x.t <= W);
       // The engine's curve: full load (≥ 85 %), steady revs, fresh air flow — best power per 100 tr/min.
       if (v.rpm != null && v.rpm > 1100 && v.load != null && v.load >= 85 && v.power != null) {
         var bin = Math.round(v.rpm / 100) * 100;
@@ -13204,7 +13961,7 @@
       }
       if (this.dynoDirty && (!this.dynoSaved || t - this.dynoSaved > 10000)) { this.dynoSaved = t; this.dynoDirty = false; try { window.localStorage.setItem("igor-dyno", JSON.stringify(this.dyno)); } catch (e) { /* no storage */ } }
       this.now = v;
-      this.draw();
+      if (this.isConnected) this.draw();
     }
     // The maker's curve: torque rising to its plateau, flat, then falling to
     // the power peak (170 ch at 4 000 tr/min, 370 N·m from 1 500).
@@ -13232,9 +13989,9 @@
       var X = (tt) => ((tt - (t - W)) / W * 900).toFixed(1), Y = (val, max) => (296 - Math.max(0, Math.min(1, val / max)) * 284).toFixed(1);
       var h = "";
       for (var k = 1; k < 4; k++) h += '<line x1="0" x2="900" y1="' + k * 75 + '" y2="' + k * 75 + '" stroke="#1d2127"/>';
-      this.gears.forEach((x) => { var xx = X(x.t); h += '<line x1="' + xx + '" x2="' + xx + '" y1="0" y2="300" stroke="#4b5159" stroke-dasharray="4,4"/><text x="' + (Number(xx) + 4) + '" y="14" fill="#8a9099" font-size="12">' + x.g + 'e</text>'; });
+      this.T.gears.forEach((x) => { var xx = X(x.t); h += '<line x1="' + xx + '" x2="' + xx + '" y1="0" y2="300" stroke="#4b5159" stroke-dasharray="4,4"/><text x="' + (Number(xx) + 4) + '" y="14" fill="#8a9099" font-size="12">' + x.g + 'e</text>'; });
       this.LINES().slice().reverse().forEach((L) => {
-        var pts = (this.series[L.k] || []).filter((p) => p.t >= t - W - 1000);
+        var pts = (this.T.series[L.k] || []).filter((p) => p.t >= t - W - 1000);
         if (pts.length < 2) return;
         h += '<path d="' + pts.map((p, i) => (i ? "L" : "M") + X(Math.max(p.t, t - W)) + "," + Y(L.k === "boost" ? Math.max(0, p.v) : p.v, L.max)).join("") + '" stroke="' + L.c + '" stroke-width="' + L.w + '" fill="none" stroke-linejoin="round"' + (L.o ? ' opacity="' + L.o + '"' : "") + '/>';
       });
@@ -13304,10 +14061,10 @@
   // then only what differs from it. The phone's map (igor-gps-card
   // `settings:`) applies it live; igor-settings-card `map3d:` edits it.
   var MAP3D_PRESETS = {
-    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, tf: "aucun", aa: "auto", bz: 15, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 0, wd: 0, fl: 1, px: "max", ips: 45, cpt: 0 } },
-    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { tf: "tout", aa: "auto", b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, wd: 0.5, fl: 1, px: "max", ips: 60, cpt: 0 } },
-    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { tf: "aucun", aa: "auto", b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, wd: 0, fl: 1, px: "max", ips: 45, cpt: 0 } },
-    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { tf: "aucun", aa: "non", b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, wd: 0, fl: 1, px: "eco", ips: 30, cpt: 0 } }
+    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, tf: "aucun", aa: "auto", bz: 15, rw: "normale", rc: "tomtom", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 0, wd: 0, fl: 1, px: "max", ips: 45, cpt: 0 } },
+    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { tf: "tout", aa: "auto", b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rw: "normale", rc: "tomtom", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, wd: 0.5, fl: 1, px: "max", ips: 60, cpt: 0 } },
+    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { tf: "aucun", aa: "auto", b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rw: "large", rc: "tomtom", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, wd: 0, fl: 1, px: "max", ips: 45, cpt: 0 } },
+    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { tf: "aucun", aa: "non", b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rw: "normale", rc: "tomtom", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, wd: 0, fl: 1, px: "eco", ips: 30, cpt: 0 } }
   };
   // Each setting: key, tab, label, hint, kind (seg | sw | sl), choices or range.
   var MAP3D_ROWS = [
@@ -13315,17 +14072,20 @@
     ["bo", "Bâtiments", "Opacité", "plus bas : la route se voit au travers", "sl", 30, 100, 5, "%"],
     ["fw", "Bâtiments", "Fenêtres", "", "seg", [["none", "aucune"], ["mixed", "mixtes"], ["residential", "logements"], ["office", "bureaux"], ["glass", "verre"]]],
     ["lw", "Bâtiments", "Fenêtres allumées la nuit", "", "sl", 0, 100, 10, "%"],
+    ["gw", "Bâtiments", "Lueur des monuments la nuit", "les monuments (Notre-Dame, cathédrales…) éclairés comme par des projecteurs, une lueur au sol autour", "seg", [[0, "non"], [1, "oui"]]],
+    ["lm3", "Bâtiments", "Monuments 3D", "les bâtiments connus en 3D détaillée, même sans les autres (clé TomTom avec l'accès « 3D Landmarks »)", "seg", [[0, "non"], [1, "oui"]]],
+    ["eb", "Bâtiments", "Éclairage des bâtiments la nuit", "fenêtres et façades éclairées, comme la navigation TomTom", "seg", [[0, "non"], [1, "oui"]]],
     ["wc", "Bâtiments", "Couleur des murs", "", "seg", [["style", "du style"], ["unie", "unie"], ["variee", "variée"]]],
     ["sh", "Bâtiments", "Ombres portées", "0 : aucune", "sl", 0, 100, 10, "%"],
     ["rf", "Bâtiments", "Reflets du ciel", "", "sl", 0, 100, 10, "%"],
     ["bz", "Bâtiments", "Bâtiments dès le zoom", "plus haut : moins de calcul", "seg", [[14, "14"], [15, "15"], [16, "16"], [17, "17"]]],
     ["rw", "Route & noms", "Épaisseur", "", "seg", [["fine", "petite"], ["normale", "moyenne"], ["large", "large"]]],
-    ["rc", "Route & noms", "Couleur", "", "seg", [["bleu", "bleu"], ["cyan", "cyan"], ["violet", "violet"], ["jaune", "jaune"]]],
+    ["rc", "Route & noms", "Couleur", "", "seg", [["tomtom", "TomTom"], ["bleu", "bleu"], ["cyan", "cyan"], ["violet", "violet"], ["jaune", "jaune"]]],
     ["md", "Route & noms", "Repère d'arrivée", "nom et heure d'arrivée au-dessus", "seg", [["epingle", "épingle"], ["balise", "balise"], ["anneau", "anneau au sol"], ["damier", "damier"], ["drapeau", "drapeau"]]],
     ["ms", "Route & noms", "Repère des étapes", "numérotées, couleur « après l'étape »", "seg", [["epingle", "épingle"], ["balise", "balise"], ["anneau", "anneau au sol"], ["damier", "damier"], ["drapeau", "drapeau"]]],
     ["rc2", "Route & noms", "Couleur après l'étape", "la suite du trajet, comme Waze", "seg", [["cyan", "cyan"], ["bleu", "bleu"], ["violet", "violet"], ["gris", "gris"]]],
     ["gl", "Route & noms", "Halo lumineux", "", "sl", 0, 100, 5, "%"],
-    ["tr", "Route & noms", "Trajet déjà parcouru", "", "seg", [["cache", "caché"], ["pale", "pâle"], ["visible", "visible"]]],
+    ["tr", "Route & noms", "Trajet déjà parcouru", "effacé sous la flèche, pâle (sa couleur estompée) ou laissé tel quel", "seg", [["cache", "effacé"], ["pale", "pâle"], ["visible", "laissé"]]],
     ["tf", "Route & noms", "Trafic sur toute la carte", "« aucun » : seulement sur votre itinéraire", "seg", [["aucun", "aucun"], ["tout", "traits TomTom"]]],
     ["jm", "Route & noms", "Bouchons", "", "seg", [["degrade", "en dégradé"], ["traits", "en traits"], ["aucun", "aucun"]]],
     ["rl", "Route & noms", "Noms cachés par les bâtiments", "comme dans la réalité", "sw"],
@@ -13336,6 +14096,7 @@
     ["te", "Sol & nature", "Relief", "collines, vallées et leur ombrage · coupé pendant le guidage (sinon les bâtiments cachent la route)", "sw"],
     ["wd", "Sol & nature", "Vent", "feuilles et eau", "seg", [[0, "calme"], [0.5, "léger"], [1, "fort"]]],
     ["dn", "Lumière", "Jour et nuit", "", "seg", [["auto", "selon le soleil"], ["day", "toujours jour"], ["night", "toujours nuit"]]],
+    ["tn", "Lumière", "Teinte de la nuit", "celle du style, bleu nuit, ou les couleurs de la navigation TomTom", "seg", [["gris", "gris"], ["bleu", "bleu nuit"], ["tomtom", "TomTom"]]],
     ["ne", "Lumière", "Nuit quand le soleil passe sous", "en degrés au-dessus de l'horizon", "seg", [[0, "0°"], [3, "3°"], [6, "6°"], [10, "10°"]]],
     ["pi", "Caméra", "Inclinaison", "", "sl", 0, 75, 5, "°"],
     ["zm", "Caméra", "Zoom", "", "sl", 15, 18.5, 0.5, ""],
@@ -13658,23 +14419,23 @@
     build() {
       this.style(CAR_HEAD + "\n" + [
         "ha-card { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 12px 16px; overflow: hidden; }",
-        ".top { display: flex; align-items: center; justify-content: space-between; } .rd { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); cursor: pointer; } .rd.on { color: " + CAR_BLUE + "; }",
+        ".top { display: flex; align-items: center; justify-content: space-between; } .rd { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); cursor: pointer; } .rd.on { color: " + "#59d0e0" + "; }",
         // All the messages, scrolled inside the box only (the page does not move).
         ".list { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y; }",
         ".m { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; padding: 10px 6px; border-bottom: 1px solid var(--line); align-items: start; }",
-        ".m.new { background: rgba(108,196,245,.07); box-shadow: inset 3px 0 " + CAR_BLUE + "; }",
+        ".m.new { background: rgba(89,208,224,.07); box-shadow: inset 3px 0 " + "#59d0e0" + "; }",
         ".a { width: 32px; height: 32px; border-radius: 7px; display: grid; place-items: center; color: #08090b; font-weight: 700; font-size: 15px; }",
         ".w { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .w span { font-size: 12px; color: var(--dim); }",
         ".t { font-size: 14px; color: #c2c6cc; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
         ".hr { font-size: 12px; color: var(--dim); white-space: nowrap; } .empty { color: var(--dim); padding: 14px 4px; }",
         // CarPlay: who and which app, Lire / Répondre — never the text.
         ".cp { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 9px 6px; border-bottom: 1px solid var(--line); }",
-        ".cp.new { background: rgba(108,196,245,.07); box-shadow: inset 3px 0 " + CAR_BLUE + "; }",
+        ".cp.new { background: rgba(89,208,224,.07); box-shadow: inset 3px 0 " + "#59d0e0" + "; }",
         ".cp .a { width: 42px; height: 42px; border-radius: 10px; font-size: 19px; }",
         ".cp .w { font-size: 19px; } .cp .w small { display: block; font-size: 12px; color: var(--dim); letter-spacing: .06em; margin-top: 2px; }",
         ".cnt { display: inline-block; min-width: 20px; padding: 0 5px; border-radius: 10px; background: #e5323b; color: #fff !important; font-weight: 700; line-height: 20px; font-size: 12px; text-align: center; margin-left: 8px; vertical-align: 3px; }",
         ".cp button.b { flex-direction: row; gap: 6px; min-height: 46px; padding: 0 14px; --mdc-icon-size: 18px; }",
-        ".cp .l { border-color: " + CAR_BLUE + "; color: " + CAR_BLUE + "; } .cp .l ha-icon { color: " + CAR_BLUE + "; } .cp .r { border-color: " + CAR_OK + "; color: " + CAR_OK + "; } .cp .r ha-icon { color: " + CAR_OK + "; }",
+        ".cp .l { border-color: " + "#59d0e0" + "; color: " + "#59d0e0" + "; } .cp .l ha-icon { color: " + "#59d0e0" + "; } .cp .r { border-color: " + CAR_OK + "; color: " + CAR_OK + "; } .cp .r ha-icon { color: " + CAR_OK + "; }",
         // Narrow (a folded phone, big text): the buttons keep their icon only, the name gets the room.
         ":host(.narrow) .cp { grid-template-columns: 38px minmax(0, 1fr) auto auto; gap: 8px; } :host(.narrow) .cp .a { width: 36px; height: 36px; font-size: 16px; }",
         ":host(.narrow) .cp button.b { padding: 0 12px; min-width: 52px; justify-content: center; } :host(.narrow) .cp button.b span { display: none; } :host(.narrow) .cp button.b { --mdc-icon-size: 22px; }",
@@ -13682,7 +14443,7 @@
         ".rep { position: fixed; inset: 0; z-index: 2147482000; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }",
         ".rep .dl { width: min(760px, 90vw); background: #0d0f12; border: 1px solid var(--line); padding: 16px 18px; color: var(--fg); }",
         ".rep .q { display: flex; align-items: center; gap: 12px; padding: 15px 14px; border: 1px solid var(--line); margin-top: 10px; font-size: 19px; cursor: pointer; } .rep .q small { margin-left: auto; font-size: 12px; color: var(--dim); letter-spacing: .08em; }",
-        ".rep .q.v { border-color: " + CAR_BLUE + "; color: " + CAR_BLUE + "; } .rep .x { cursor: pointer; color: var(--dim); }",
+        ".rep .q.v { border-color: " + "#59d0e0" + "; color: " + "#59d0e0" + "; } .rep .x { cursor: pointer; color: var(--dim); }",
         ".call { display: grid; grid-template-columns: minmax(0, 1fr) 46%; gap: 14px; border: 1px solid var(--line); border-left: 3px solid " + CAR_OK + "; padding: 12px 14px; margin-bottom: 10px; }",
         ".call .who { display: flex; align-items: center; gap: 14px; } .av { width: 62px; height: 62px; border-radius: 50%; border: 3px solid " + CAR_OK + "; color: " + CAR_OK + "; display: grid; place-items: center; font-size: 28px; flex: none; }",
         ".call .n { font-size: 30px; line-height: 1.1; } .call .st { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: " + CAR_OK + "; margin-bottom: 6px; }",
