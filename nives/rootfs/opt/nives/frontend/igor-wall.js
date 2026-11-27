@@ -5540,7 +5540,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.61.1";
+  var GPS_CARD_VERSION = "0.61.2";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7139,6 +7139,37 @@
       }
       if (this.ttLm && this.ttLm.setVisible) { try { this.ttLm.setVisible(on); } catch (e) { /* as it was */ } }
     }
+    // « Lueur des monuments » (night): the buildings the map marks as
+    // landmarks (has_landmark: Notre-Dame, cathedrals, monuments) lit as
+    // under floodlights — their walls a few shades lighter, and a soft light
+    // pooled on the ground all around them. Drawn from the map's own
+    // buildings: no extra download, the same with the 3D buildings off.
+    monumentGlow(map, L) {
+      var night = this.ttStyle === "streetDarkDriving" || (this.config.sdk_style || "").indexOf("Dark") >= 0;
+      var on = !!(L && Number(L.gw)) && night;
+      var src = null, ext = [];
+      (map.getStyle().layers || []).forEach((l) => {
+        if (l["source-layer"] !== "buildings") return;
+        if (!src) src = l.source;
+        if (l.type === "fill-extrusion") ext.push(l.id);
+      });
+      if (!src) return;
+      var keep = this.glowKept || (this.glowKept = {});
+      var isLm = ["coalesce", ["get", "has_landmark"], false];
+      ext.forEach((id) => {
+        if (!(id in keep)) keep[id] = map.getPaintProperty(id, "fill-extrusion-color");
+        try { map.setPaintProperty(id, "fill-extrusion-color", on && keep[id] != null ? ["case", isLm, "#8fb2bc", keep[id]] : keep[id]); } catch (e) { /* as it was */ }
+      });
+      if (on && !map.getLayer("igor-lm-glow")) {
+        var before = ext[0] && map.getLayer(ext[0]) ? ext[0] : undefined;
+        map.addLayer({ id: "igor-lm-glow", type: "line", source: src, "source-layer": "buildings", minzoom: 13, filter: ["all", isLm, ["!=", ["get", "underground"], true]],
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: { "line-color": "#cfeeff", "line-opacity": 0.42, "line-width": ["interpolate", ["linear"], ["zoom"], 13, 6, 16, 26, 18, 60], "line-blur": ["interpolate", ["linear"], ["zoom"], 13, 6, 16, 24, 18, 56] } }, before);
+        map.addLayer({ id: "igor-lm-glow-fill", type: "fill", source: src, "source-layer": "buildings", minzoom: 13, filter: ["all", isLm, ["!=", ["get", "underground"], true]],
+          paint: { "fill-color": "#cfeeff", "fill-opacity": 0.12 } }, before);
+      }
+      ["igor-lm-glow", "igor-lm-glow-fill"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none"); });
+    }
     tintLook(map, L) {
       var night = this.ttStyle === "streetDarkDriving" || (this.config.sdk_style || "").indexOf("Dark") >= 0;
       // « tomtom »: the colours read off TomTom's own night navigation —
@@ -7288,6 +7319,7 @@
       tryIt(() => this.terrainLook());
       tryIt(() => this.tintLook(map, L));
       tryIt(() => this.landmarksLook());
+      tryIt(() => this.monumentGlow(map, L));
       tryIt(() => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ visible: !!Number(L.sf), trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: Number(L.wd) || 0 } }); });
       tryIt(() => {
         var pal = this.routePal(), k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1;
@@ -10047,7 +10079,7 @@
       if (want === this.ttStyle) return;
       // The other style: the SDK carries its modules over; the route, the
       // trail and the trees come back with Igor's own style.load.
-      this.ttStyle = want; this.themeBusy = true; this.tintKept = null;
+      this.ttStyle = want; this.themeBusy = true; this.tintKept = null; this.glowKept = null;
       Promise.resolve().then(() => this.tt.setStyle(want)).catch(() => {}).then(() => { this.themeBusy = false; });
     },
     // The woods' trees (TomTom's SDK): thousands of 3D shapes, heavy on a
@@ -14040,6 +14072,7 @@
     ["bo", "Bâtiments", "Opacité", "plus bas : la route se voit au travers", "sl", 30, 100, 5, "%"],
     ["fw", "Bâtiments", "Fenêtres", "", "seg", [["none", "aucune"], ["mixed", "mixtes"], ["residential", "logements"], ["office", "bureaux"], ["glass", "verre"]]],
     ["lw", "Bâtiments", "Fenêtres allumées la nuit", "", "sl", 0, 100, 10, "%"],
+    ["gw", "Bâtiments", "Lueur des monuments la nuit", "les monuments (Notre-Dame, cathédrales…) éclairés comme par des projecteurs, une lueur au sol autour", "seg", [[0, "non"], [1, "oui"]]],
     ["lm3", "Bâtiments", "Monuments 3D", "les bâtiments connus en 3D détaillée, même sans les autres (clé TomTom avec l'accès « 3D Landmarks »)", "seg", [[0, "non"], [1, "oui"]]],
     ["eb", "Bâtiments", "Éclairage des bâtiments la nuit", "fenêtres et façades éclairées, comme la navigation TomTom", "seg", [[0, "non"], [1, "oui"]]],
     ["wc", "Bâtiments", "Couleur des murs", "", "seg", [["style", "du style"], ["unie", "unie"], ["variee", "variée"]]],

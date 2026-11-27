@@ -1,3 +1,7 @@
+## 0.61.2 — Lueur des monuments la nuit
+
+- **Lueur des monuments** (Réglages de la carte → Bâtiments) : la nuit, les bâtiments que la carte marque comme monuments (Notre-Dame, cathédrales…) ont leurs murs éclaircis comme sous des projecteurs, et une lueur douce au sol tout autour. Tiré des bâtiments de la carte elle-même : rien à télécharger, fonctionne aussi bâtiments 3D coupés.
+
 ## 0.61.1 — Monuments 3D, teinte de nuit TomTom
 
 - **Monuments 3D** (Réglages de la carte → Bâtiments) : les modèles détaillés des bâtiments connus de TomTom (Orbis 3D Landmarks), seuls, sans les autres bâtiments. TomTom les garde en accès restreint : la clé doit avoir l'accès « Orbis 3D Landmarks » ; sinon la carte le signale une fois.
