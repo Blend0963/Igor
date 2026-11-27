@@ -49,7 +49,8 @@
           "car_users": "The car's screen (not administrators)",
           "lock_threads": "Lock the chat threads with the key too",
           "here_key": "HERE key (tolls, backup)",
-          "here_daily": "HERE requests per day (cap)"
+          "here_daily": "HERE requests per day (cap)",
+          "cesium_token": "Cesium ion token (3D city)"
         },
         "data_description": {
           "shared_memory": "On (recommended): everyone shares one memory, so something you tell a voice satellite is also known in the app and on the dashboard, and the other way round. Off: each Home Assistant user gets a memory of their own, and voice satellites and automations use the memory named below.",
@@ -66,7 +67,8 @@
           "car_users": "Users who may use the car's services without being administrators: live traffic, routes, the GPS guidance Igor drives. Pick the head unit's account. Everything else stays for administrators.",
           "lock_threads": "Off (default): the thread panel always answers, whether the key is there or not; the key only locks Assist, the voice and the screens. On: the threads also refuse while the key is away, except for the users still answered.",
           "here_key": "Optional. A HERE key (platform.here.com): the tolls' price of each route, the weather where the car is (weather.igor_voiture) and along the route, the car parks at the destination, and a backup when TomTom does not answer (route, traffic incidents). Kept in Home Assistant only. Leave empty to keep the current key; a single dash (-) removes it.",
-          "here_daily": "At most this many HERE requests a day (all services together), so the free allowance is never passed unseen. 300 by default; 0: HERE never asked."
+          "here_daily": "At most this many HERE requests a day (all services together), so the free allowance is never passed unseen. 300 by default; 0: HERE never asked.",
+          "cesium_token": "Optional. A Cesium ion token (ion.cesium.com, free personal plan): the GPS map can draw the city's buildings from Cesium OSM Buildings instead of TomTom's (map settings → Buildings → Source). Kept in Home Assistant only: the phone gets a short-lived access to that dataset alone. Leave empty to keep the current token; a single dash (-) removes it."
         }
       }
     },

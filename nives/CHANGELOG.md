@@ -1,3 +1,9 @@
+## 0.62.0 — Bâtiments Cesium et monuments détaillés
+
+- **Source des bâtiments 3D** (Réglages de la carte → Bâtiments) : TomTom, ou **Cesium** — les bâtiments d'OpenStreetMap en 3D (Cesium OSM Buildings), dessinés par Igor, la nuit dans le bleu-gris de la teinte choisie ; ceux de TomTom sont masqués pendant ce temps.
+  - Nouveau champ « Jeton Cesium ion » dans les options d'Igor. Le jeton reste dans Home Assistant : le téléphone ne reçoit que l'adresse du jeu de données et l'accès temporaire que Cesium donne pour lui seul (`/api/nives/cesium/endpoint`).
+- **Monuments détaillés** : la Tour Eiffel construite par Igor (ses quatre piliers, ses arches, ses deux étages, sa flèche, son treillis), dorée la nuit — plus lumineuse au pied —, et vos propres modèles glTF (`landmarks:` sur la carte, par ex. dans /config/www), éclairés par en dessous la nuit.
+
 ## 0.61.3 — Teinte TomTom sur toute la carte, monuments éclairés, Monuments 3D retiré
 
 - **Teinte de la nuit « TomTom » / « bleu nuit »** : toutes les couleurs du fond de carte (sol, parcs, eau, bâtiments, rues) sont maintenant tournées vers la teinte choisie, plus seulement quelques couches reconnues par leur nom ; le sol texturé de TomTom est redessiné avec ces couleurs.
