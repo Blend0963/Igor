@@ -5469,6 +5469,8 @@
   //   publish_turn: input_text.car_turn     # the whole guidance for igor-guide-card `entity` (« icon|dist|text|then|eta|left|min|jam|dest »)
   //   publish_junction: input_text.car_junction  # the next junction (model, real arms, signs, next town) for the head unit's junction view
   //   junction_inset: false                 # no junction view over this map (by default: shown while guided, map following the car)
+  //   landmarks:                            # detailed monuments of your own (glTF, e.g. in /config/www → /local/…), with « Monuments détaillés »
+  //     - { name: Notre-Dame, url: /local/notre-dame.glb, lat: 48.85297, lon: 2.34989, heading: 0, scale: 1 }
   //   publish_guide: input_text.car_guide   # the guidance written for the other screens (« eta|km|min|destination »)
   //   announce: input_text.car_announce     # the house's announcements, said with the guidance's voice
   //                                         # (written « time|message » by a script; see script.voiture_dire)
@@ -5540,7 +5542,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.61.2";
+  var GPS_CARD_VERSION = "0.62.0";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -5648,6 +5650,214 @@
     return window.__igorTT;
   }
   var gpsRad = function (d) { return (d * Math.PI) / 180; }, gpsDeg = function (r) { return (r * 180) / Math.PI; };
+  // ----- The 3D city drawn by Igor itself (three.js, in the map) -----
+  // Cesium OSM Buildings (Cesium ion, the token in Igor's options; the phone
+  // gets the dataset's address and a short-lived token for it alone), and
+  // the detailed monuments: the Eiffel Tower built here (its four legs, its
+  // platforms, its spire — golden at night, as it is lit), and any glTF
+  // model given in the card's `landmarks:`. One custom layer under the route.
+  var IG3D_V = { three: "0.186.1", tiles: "0.5.4" };
+  function igThreeKit(config) {
+    if (window.__igor3D) return window.__igor3D;
+    var imp; try { imp = new Function("u", "return import(u)"); } catch (e) { return Promise.reject(e); }
+    var cdn = String(config.sdk_cdn || "https://esm.sh/").replace(/\/?$/, "/"), d = "?deps=three@" + IG3D_V.three;
+    window.__igor3D = Promise.all([imp(cdn + "three@" + IG3D_V.three), imp(cdn + "3d-tiles-renderer@" + IG3D_V.tiles + "/three" + d), imp(cdn + "three@" + IG3D_V.three + "/examples/jsm/loaders/GLTFLoader.js")])
+      .then(function (a) { return { THREE: a[0], tiles: a[1], GLTFLoader: a[2].GLTFLoader }; })
+      .catch(function (e) { window.__igor3D = null; throw e; });
+    return window.__igor3D;
+  }
+  // ECEF (WGS84) of a point, and the east-north-up frame there.
+  function igEcef(lon, lat, h) {
+    var a = 6378137, e2 = 6.69437999014e-3, f = gpsRad(lat), l = gpsRad(lon), N = a / Math.sqrt(1 - e2 * Math.sin(f) * Math.sin(f));
+    return [(N + h) * Math.cos(f) * Math.cos(l), (N + h) * Math.cos(f) * Math.sin(l), (N * (1 - e2) + h) * Math.sin(f)];
+  }
+  // The Eiffel Tower, built from its proportions (324 m, base 125 m): an
+  // original model, not a copy of anyone's. Local frame: x east, y north, z up, metres.
+  function igEiffel(THREE, night) {
+    var g = new THREE.Group();
+    // Faces: day, the tower's brown; night, lit gold — brighter at its foot,
+    // where the floodlights are, deeper towards the top; half see-through (a lattice).
+    var dayM = new THREE.MeshLambertMaterial({ color: 0x7a6a58, transparent: true, opacity: 0.9 });
+    var nightM = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.5, depthWrite: false });
+    var dayE = new THREE.LineBasicMaterial({ color: 0xb3a28b, transparent: true, opacity: 0.55 });
+    var nightE = new THREE.LineBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0.95 });
+    var pos = [], idx = [], colr = [], ln = [], base = 0;
+    var gold = function (z) { var t = Math.min(1, z / 300); return [1.0 - 0.25 * t, 0.80 - 0.38 * t, 0.42 - 0.32 * t]; };
+    var frustum = function (c0, w0, z0, c1, w1, z1, braces) {
+      var q = [[-1, -1], [1, -1], [1, 1], [-1, 1]], pt = function (t, k) { var w = w0 + (w1 - w0) * t; return [c0[0] + (c1[0] - c0[0]) * t + k[0] * w, c0[1] + (c1[1] - c0[1]) * t + k[1] * w, z0 + (z1 - z0) * t]; };
+      q.forEach(function (k) { var p = pt(0, k); pos.push(p[0], p[1], p[2]); colr.push.apply(colr, gold(p[2])); });
+      q.forEach(function (k) { var p = pt(1, k); pos.push(p[0], p[1], p[2]); colr.push.apply(colr, gold(p[2])); });
+      [0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7, 4, 5, 6, 4, 6, 7, 0, 2, 1, 0, 3, 2].forEach(function (i) { idx.push(base + i); });
+      base += 8;
+      // The lattice: the corner girders, rings, and an X on every face of every bay.
+      var n = braces || 4;
+      q.forEach(function (k, i) {
+        var k2 = q[(i + 1) % 4];
+        ln.push.apply(ln, pt(0, k).concat(pt(1, k)));
+        for (var j = 0; j <= n; j++) ln.push.apply(ln, pt(j / n, k).concat(pt(j / n, k2)));
+        for (var j2 = 0; j2 < n; j2++) { ln.push.apply(ln, pt(j2 / n, k).concat(pt((j2 + 1) / n, k2))); ln.push.apply(ln, pt(j2 / n, k2).concat(pt((j2 + 1) / n, k))); }
+      });
+    };
+    var legs = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+    legs.forEach(function (k) { frustum([k[0] * 50, k[1] * 50], 13, 0, [k[0] * 27, k[1] * 27], 8, 57, 5); });
+    frustum([0, 0], 36, 57, [0, 0], 34, 63, 1);
+    legs.forEach(function (k) { frustum([k[0] * 22, k[1] * 22], 8, 63, [k[0] * 12, k[1] * 12], 5, 115, 5); });
+    frustum([0, 0], 20, 115, [0, 0], 18, 119, 1);
+    frustum([0, 0], 13, 119, [0, 0], 3.2, 270, 14);
+    frustum([0, 0], 5, 270, [0, 0], 4.5, 280, 1);
+    frustum([0, 0], 1.2, 280, [0, 0], 0.4, 324, 3);
+    // The great arches under the first floor.
+    legs.forEach(function (k, i) {
+      var k2 = legs[[2, 0, 3, 1][i]]; if (!k2) return;
+    });
+    [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (s0) {
+      var prev = null;
+      for (var a = 0; a <= 16; a++) {
+        var t = a / 16, x = -1 + 2 * t, z = 39 + 12 * Math.sqrt(Math.max(0, 1 - x * x)) * 0 - 22 * x * x + 22 - 0;
+        var along = x * 40, p = s0[0] ? [s0[0] * 40, along, 34 + 16 * (1 - x * x)] : [along, s0[1] * 40, 34 + 16 * (1 - x * x)];
+        if (prev) ln.push.apply(ln, prev.concat(p));
+        prev = p;
+      }
+    });
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("color", new THREE.Float32BufferAttribute(colr, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+    var mesh = new THREE.Mesh(geo, night ? nightM : dayM); g.add(mesh);
+    var lg = new THREE.BufferGeometry(); lg.setAttribute("position", new THREE.Float32BufferAttribute(ln, 3));
+    var lines = new THREE.LineSegments(lg, night ? nightE : dayE); g.add(lines);
+    g.userData = { mesh: mesh, lines: lines, dayM: dayM, nightM: nightM, dayE: dayE, nightE: nightE };
+    return g;
+  }
+  class IgorCity3D {
+    constructor(card) { this.card = card; this.id = "igor-city3d"; this.type = "custom"; this.renderingMode = "3d"; this.models = []; this.mats = new Set(); this.bases = []; }
+    get map() { return this.card.map; }
+    night() { var c = this.card; return c.ttStyle === "streetDarkDriving" || (c.config.sdk_style || "").indexOf("Dark") >= 0 || (c.look && c.look.dn === "night"); }
+    async start(opts) {
+      this.opts = opts;
+      var k = this.kit = await igThreeKit(this.card.config), THREE = k.THREE, map = this.map;
+      if (!map || this.dead) return;
+      var p = this.card.pos || [map.getCenter().lng, map.getCenter().lat];
+      this.anchor(p);
+      this.scene = new THREE.Scene();
+      this.amb = new THREE.AmbientLight(0xffffff, 0.6); this.sun = new THREE.DirectionalLight(0xffffff, 0.9); this.sun.position.set(-0.4, -0.6, 1);
+      this.scene.add(this.amb, this.sun);
+      this.world = new THREE.Group(); this.world.matrixAutoUpdate = false; this.scene.add(this.world);
+      this.camR = new THREE.Camera(); this.camL = new THREE.PerspectiveCamera(); this.tmp = new THREE.Matrix4();
+      if (opts.cesium) await this.startCesium();
+      if (opts.monuments) this.startMonuments();
+      this.lightLook();
+      var below = (map.getStyle().layers || []).find(function (l) { return l.type === "symbol"; });
+      if (!map.getLayer(this.id)) map.addLayer(this, below && below.id);
+      try { this.card.routeOnTop(map); } catch (e) { /* as it was */ }
+    }
+    anchor(p) {
+      var k = this.kit, THREE = k.THREE, ml = window.maplibregl || (this.card.ttKit && this.card.ttKit.ml);
+      this.origin = p; this.bases = [];
+      var lon = gpsRad(p[0]), lat = gpsRad(p[1]), O = igEcef(p[0], p[1], 0);
+      var e = [-Math.sin(lon), Math.cos(lon), 0], n = [-Math.sin(lat) * Math.cos(lon), -Math.sin(lat) * Math.sin(lon), Math.cos(lat)], u = [Math.cos(lat) * Math.cos(lon), Math.cos(lat) * Math.sin(lon), Math.sin(lat)];
+      var dot = function (a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; };
+      this.ecef2enu = new THREE.Matrix4().set(e[0], e[1], e[2], -dot(e, O), n[0], n[1], n[2], -dot(n, O), u[0], u[1], u[2], -dot(u, O), 0, 0, 0, 1);
+      var mc = ml.MercatorCoordinate.fromLngLat({ lng: p[0], lat: p[1] }, 0), sc = mc.meterInMercatorCoordinateUnits();
+      this.enu2merc = new THREE.Matrix4().makeTranslation(mc.x, mc.y, mc.z).multiply(new THREE.Matrix4().makeScale(sc, -sc, sc));
+      this.ground = 0;
+      if (this.tiles) this.tiles.group.matrix.copy(this.ecef2enu);
+      this.models.forEach((m) => this.place(m));
+    }
+    async startCesium() {
+      var c = this.card, h = c._hass, tok = h && h.auth && h.auth.data && h.auth.data.access_token, k = this.kit;
+      var r = await fetch(window.location.origin + "/api/nives/cesium/endpoint", { headers: tok ? { Authorization: "Bearer " + tok } : {} });
+      var ep = r.ok ? await r.json() : null;
+      if (!ep || !ep.ok || !ep.url) { c.toast && c.toast(r.status === 404 ? "Bâtiments Cesium : jeton absent des options d'Igor" : "Bâtiments Cesium : Cesium a refusé l'accès (jeton ?)", 8000); return; }
+      var t = this.tiles = new k.tiles.TilesRenderer(ep.url);
+      t.fetchOptions = { headers: { Authorization: "Bearer " + ep.accessToken } };
+      t.errorTarget = 12; t.lruCache.maxSize = 900; t.lruCache.minSize = 300;
+      t.group.matrixAutoUpdate = false; t.group.matrix.copy(this.ecef2enu);
+      this.world.add(t.group);
+      t.addEventListener("load-model", (ev) => {
+        var sc = ev.scene; if (!sc) return;
+        sc.traverse((o) => { if (o.isMesh) { var m = this.cityMat(); o.material = m; } });
+        // The ground: where the buildings stand, near the anchor (their
+        // heights are over the ellipsoid; the map's ground is at 0).
+        t.group.updateMatrixWorld(true);
+        var box = new k.THREE.Box3().setFromObject(sc), c2 = box.getCenter(new k.THREE.Vector3());
+        if (Math.hypot(c2.x, c2.y) < 3000 && isFinite(box.min.z)) { this.bases.push(box.min.z); if (this.bases.length > 60) this.bases.shift(); var sb = this.bases.slice().sort(function (a, b) { return a - b; }); this.ground = sb[Math.floor(sb.length * 0.2)]; }
+        this.map && this.map.triggerRepaint();
+      });
+      this.attrib = (ep.attributions || []).join(" ");
+    }
+    cityMat() {
+      if (!this.cityM) { var THREE = this.kit.THREE; this.cityM = new THREE.MeshLambertMaterial({ color: 0x425f69 }); this.mats.add(this.cityM); }
+      return this.cityM;
+    }
+    startMonuments() {
+      var k = this.kit, THREE = k.THREE, own = this.card.config.landmarks || [], list = (own.some(function (x) { return x && x.builtin === "eiffel"; }) ? [] : [{ name: "Tour Eiffel", builtin: "eiffel", lon: 2.294481, lat: 48.858370, heading: 0 }]).concat(own);
+      list.forEach((d) => {
+        var m = { d: d, group: new THREE.Group() };
+        m.group.matrixAutoUpdate = false;
+        if (d.builtin === "eiffel") { m.obj = igEiffel(THREE, this.night()); m.group.add(m.obj); }
+        else if (d.url) new k.GLTFLoader().load(d.url, (gl) => { var o = gl.scene; o.rotation.x = Math.PI / 2; o.scale.setScalar(Number(d.scale) || 1); m.obj = o; m.group.add(o); o.traverse((x) => { if (x.isMesh) this.mats.add(x.material); }); this.lightLook(); this.map && this.map.triggerRepaint(); });
+        // Floodlights at its foot, pointing up (lit from below at night).
+        m.spot = new THREE.SpotLight(0xffd9a0, 0, 500, 0.9, 0.6, 1); m.spot.position.set(0, 0, 2); m.spot.target.position.set(0, 0, 200); m.group.add(m.spot, m.spot.target);
+        this.models.push(m); this.world.add(m.group); this.place(m);
+      });
+    }
+    place(m) {
+      var THREE = this.kit.THREE, d = m.d, O = this.origin;
+      var dx = (d.lon - O[0]) * 111320 * Math.cos(gpsRad(O[1])), dy = (d.lat - O[1]) * 110540;
+      m.group.matrix.makeTranslation(dx, dy, Number(d.alt) || 0).multiply(new THREE.Matrix4().makeRotationZ(-gpsRad(Number(d.heading) || 0)));
+      m.far = Math.hypot(dx, dy) > 25000;
+      m.group.visible = !m.far;
+    }
+    // Day: a plain light; night: dim blue ambient, the city in TomTom's
+    // blue-grey, the monuments lit (golden Eiffel Tower, floodlights).
+    lightLook() {
+      if (!this.kit) return;
+      var n = this.night(), L = this.card.look || {};
+      this.amb.intensity = n ? 0.55 : 0.75; this.amb.color.set(n ? 0x8fa6c0 : 0xffffff);
+      this.sun.intensity = n ? 0.25 : 0.9;
+      if (this.cityM) this.cityM.color.set(n ? (L.tn === "bleu" ? 0x2f425a : 0x425f69) : 0xc9cdd2);
+      this.models.forEach((m) => {
+        if (m.spot) m.spot.intensity = n ? 3 : 0;
+        if (m.d.builtin === "eiffel" && m.obj) { var u = m.obj.userData; u.mesh.material = n ? u.nightM : u.dayM; u.lines.material = n ? u.nightE : u.dayE; }
+      });
+      this.map && this.map.triggerRepaint();
+    }
+    onAdd(map, gl) {
+      var THREE = this.kit.THREE;
+      this.renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl, antialias: true });
+      this.renderer.autoClear = false;
+    }
+    render(gl, args) {
+      var THREE = this.kit.THREE, map = this.map; if (!map || !this.renderer) return;
+      var raw = args && args.defaultProjectionData ? args.defaultProjectionData.mainMatrix : args;
+      // Re-anchored when the car has gone 4 km from the frame's origin.
+      var p = this.card.pos; if (p && gpsDist(p, this.origin) > 4000) this.anchor(p);
+      var main = new THREE.Matrix4().fromArray(raw);
+      this.world.matrix.makeTranslation(0, 0, -this.ground);
+      var PM = main.multiply(this.enu2merc);
+      // Drawn with the map's own matrix…
+      this.camR.projectionMatrix.copy(PM); this.camR.projectionMatrixInverse.copy(PM).invert();
+      // …and a true perspective camera at the same eye, for the tiles' level of detail.
+      if (this.tiles) {
+        var cv = map.getCanvas(), fov = (map.transform && map.transform.fov) || 36.87, P0 = new THREE.Matrix4().makePerspective(-1, 1, 1, -1, 1, 1e7);
+        var cam = this.camL; cam.fov = fov; cam.aspect = cv.width / cv.height; cam.near = 1; cam.far = 1e7; cam.updateProjectionMatrix();
+        var Vinv = PM.clone().invert().multiply(cam.projectionMatrix);
+        var w = Vinv.elements[15]; if (w) Vinv.multiplyScalar(1 / w);
+        cam.matrixWorld.copy(Vinv); cam.matrixWorldInverse.copy(Vinv).invert();
+        this.tiles.setCamera(cam); this.tiles.setResolution(cam, cv.width, cv.height);
+        this.world.updateMatrixWorld(true); this.tiles.update();
+      } else this.world.updateMatrixWorld(true);
+      this.renderer.resetState();
+      this.renderer.render(this.scene, this.camR);
+      if (this.tiles && (this.tiles.stats.downloading || this.tiles.stats.parsing)) map.triggerRepaint();
+    }
+    stop() {
+      this.dead = true;
+      try { if (this.map && this.map.getLayer(this.id)) this.map.removeLayer(this.id); } catch (e) { /* gone */ }
+      try { if (this.tiles) this.tiles.dispose(); } catch (e) { /* gone */ }
+    }
+  }
+
+
   // The point at a distance along a line (metres), or null past its end.
   function gpsPointAt(coords, cum, d) {
     var n = coords ? coords.length : 0;
@@ -7127,8 +7337,11 @@
     // ordinary blocks. TomTom keeps them in private preview: the key needs
     // its « Orbis 3D Landmarks » access; refused, the map says so once.
     landmarksLook() {
-      var L = this.look || {}, on = !!Number(L.lm3);
+      // Off for now: without TomTom's private access no landmark comes, and the
+      // plugin hides the map's own landmark buildings meanwhile (and costs a lot).
+      var L = this.look || {}, on = false && !!Number(L.lm3);
       if (!this.tt || !this.ttKit || !this.ttKit.lm || !this.ttKit.lm.Landmarks3D) return;
+      if (!on && !this.ttLm) return;
       if (on && !this.ttLm) {
         try {
           this.ttLm = new this.ttKit.lm.Landmarks3D(this.tt, { opacity: 1, texture: "color", minZoom: 14 });
@@ -7144,53 +7357,80 @@
     // under floodlights — their walls a few shades lighter, and a soft light
     // pooled on the ground all around them. Drawn from the map's own
     // buildings: no extra download, the same with the 3D buildings off.
+    // « Monuments éclairés » (night): the buildings the map marks as
+    // landmarks (has_landmark) in a warm floodlit stone colour, as TomTom's
+    // night demos light them — on the map's own buildings, nothing to download.
+    // A landmark the map draws no building for (the Eiffel Tower) stays as it is.
+    // « Bâtiments 3D · source »: TomTom (its buildings, as before) or Cesium
+    // (Cesium OSM Buildings, drawn by Igor; TomTom's hidden); « Monuments
+    // détaillés »: the Eiffel Tower and the card's `landmarks:` models.
+    city3dLook(map, L) {
+      var src = (L && L.b3s) || "tomtom", mon = !!(L && Number(L.mon)), want = (src === "cesium" ? "c" : "") + (mon ? "m" : "");
+      // TomTom's buildings off while Cesium draws the city.
+      var tomOff = src === "cesium";
+      (map.getStyle().layers || []).forEach((l) => { if (l["source-layer"] === "buildings" && l.type === "fill-extrusion") { try { map.setLayoutProperty(l.id, "visibility", tomOff ? "none" : "visible"); } catch (e) { /* as it was */ } } });
+      if (this.tt3d && this.tt3d.applyConfig && tomOff) { try { this.tt3d.applyConfig(Object.assign({}, this.buildingsLook(), { visible: false })); } catch (e) { /* as it was */ } }
+      if (want === (this.city3dKey || "") && (this.city3d || !want)) { if (this.city3d) this.city3d.lightLook(); return; }
+      this.city3dKey = want;
+      if (this.city3d) { this.city3d.stop(); this.city3d = null; }
+      if (!want) return;
+      var c3 = this.city3d = new IgorCity3D(this);
+      c3.start({ cesium: src === "cesium", monuments: mon }).catch((e) => { if (this.city3d === c3) this.city3d = null; this.toast && this.toast("3D : " + ((e && e.message) || "indisponible"), 6000); });
+    }
     monumentGlow(map, L) {
       var night = this.ttStyle === "streetDarkDriving" || (this.config.sdk_style || "").indexOf("Dark") >= 0;
       var on = !!(L && Number(L.gw)) && night;
-      var src = null, ext = [];
+      ["igor-lm-glow", "igor-lm-glow-fill"].forEach((id) => { try { if (map.getLayer(id)) map.removeLayer(id); } catch (e) { /* gone */ } });
+      var keep = this.glowKept || (this.glowKept = {}), isLm = ["coalesce", ["get", "has_landmark"], false];
       (map.getStyle().layers || []).forEach((l) => {
-        if (l["source-layer"] !== "buildings") return;
-        if (!src) src = l.source;
-        if (l.type === "fill-extrusion") ext.push(l.id);
+        if (l["source-layer"] !== "buildings" || l.type !== "fill-extrusion") return;
+        if (!(l.id in keep)) keep[l.id] = map.getPaintProperty(l.id, "fill-extrusion-color");
+        try { map.setPaintProperty(l.id, "fill-extrusion-color", on && keep[l.id] != null ? ["case", isLm, "#e6dcc8", keep[l.id]] : keep[l.id]); } catch (e) { /* as it was */ }
       });
-      if (!src) return;
-      var keep = this.glowKept || (this.glowKept = {});
-      var isLm = ["coalesce", ["get", "has_landmark"], false];
-      ext.forEach((id) => {
-        if (!(id in keep)) keep[id] = map.getPaintProperty(id, "fill-extrusion-color");
-        try { map.setPaintProperty(id, "fill-extrusion-color", on && keep[id] != null ? ["case", isLm, "#8fb2bc", keep[id]] : keep[id]); } catch (e) { /* as it was */ }
-      });
-      if (on && !map.getLayer("igor-lm-glow")) {
-        var before = ext[0] && map.getLayer(ext[0]) ? ext[0] : undefined;
-        map.addLayer({ id: "igor-lm-glow", type: "line", source: src, "source-layer": "buildings", minzoom: 13, filter: ["all", isLm, ["!=", ["get", "underground"], true]],
-          layout: { "line-join": "round", "line-cap": "round" },
-          paint: { "line-color": "#cfeeff", "line-opacity": 0.42, "line-width": ["interpolate", ["linear"], ["zoom"], 13, 6, 16, 26, 18, 60], "line-blur": ["interpolate", ["linear"], ["zoom"], 13, 6, 16, 24, 18, 56] } }, before);
-        map.addLayer({ id: "igor-lm-glow-fill", type: "fill", source: src, "source-layer": "buildings", minzoom: 13, filter: ["all", isLm, ["!=", ["get", "underground"], true]],
-          paint: { "fill-color": "#cfeeff", "fill-opacity": 0.12 } }, before);
-      }
-      ["igor-lm-glow", "igor-lm-glow-fill"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none"); });
+      if (this.tt3d && this.tt3d.setBuildingColors) { /* the SDK's own buildings keep their look */ }
     }
+    // « Teinte de la nuit »: every colour of the night base map (ground,
+    // parks, water, buildings, roads — not Igor's own layers, not the
+    // labels nor the traffic) turned towards a hue: « tomtom » the blue-grey
+    // of TomTom's night navigation (ground #213a49, buildings #425f69),
+    // « bleu » a deeper navy. Each colour keeps its lightness order, a step
+    // lighter. TomTom's textured ground (its surfaces) is redrawn after it,
+    // since it reads the map's colours when it starts.
     tintLook(map, L) {
       var night = this.ttStyle === "streetDarkDriving" || (this.config.sdk_style || "").indexOf("Dark") >= 0;
-      // « tomtom »: the colours read off TomTom's own night navigation —
-      // a blue-grey ground, its streets a shade lighter, the water slate blue,
-      // the buildings' walls #425f69.
-      var tt = night && L && L.tn === "tomtom", blue = night && L && (L.tn === "bleu" || tt);
-      var TT = { water: "#3b5871", park: "#2f4f57", urban: "#2f4957", ground: "#213a49" };
-      var keep = this.tintKept || (this.tintKept = {});
+      var mode = night && L && (L.tn === "tomtom" || L.tn === "bleu") ? L.tn : "";
+      if ((this.tintMode || "") === mode && this.tintStyle === this.ttStyle) return;
+      this.tintMode = mode; this.tintStyle = this.ttStyle;
+      var HUE = { tomtom: [203, 0.36, 1.25, 0.03], bleu: [215, 0.45, 1.1, 0.02] }[mode];
+      var parse = (c) => {
+        var m, s0 = String(c).trim();
+        if ((m = /^#([0-9a-f]{3,8})$/i.exec(s0))) { var h = m[1]; if (h.length <= 4) h = h.split("").map((x) => x + x).join(""); return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1]; }
+        if ((m = /^rgba?\(([^)]+)\)$/i.exec(s0))) { var p = m[1].split(/[ ,\/]+/).filter(Boolean).map(parseFloat); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; }
+        if ((m = /^hsla?\(([^)]+)\)$/i.exec(s0))) { var q = m[1].split(/[ ,\/]+/).filter(Boolean).map(parseFloat), hh = q[0] / 360, ss = q[1] / 100, ll = q[2] / 100, f = (n) => { var k = (n + hh * 12) % 12, a2 = ss * Math.min(ll, 1 - ll); return 255 * (ll - a2 * Math.max(-1, Math.min(k - 3, 9 - k, 1))); }; return [f(0), f(8), f(4), q.length > 3 ? q[3] : 1]; }
+        return null;
+      };
+      var shift = (c) => {
+        var v = parse(c); if (!v) return c;
+        var r = v[0] / 255, g = v[1] / 255, b2 = v[2] / 255, mx = Math.max(r, g, b2), mn = Math.min(r, g, b2), l = (mx + mn) / 2;
+        if (l > 0.62) return c;  // light marks (lines, details): as they are
+        var L2 = Math.min(0.6, l * HUE[2] + HUE[3]), S2 = HUE[1];
+        return "hsla(" + HUE[0] + ", " + Math.round(S2 * 100) + "%, " + Math.round(L2 * 100) + "%, " + v[3] + ")";
+      };
+      var walk = (x) => typeof x === "string" ? shift(x) : Array.isArray(x) ? x.map((y, i) => i === 0 && typeof y === "string" && !parse(y) ? y : walk(y)) : x;
+      var keep = this.tintKept || (this.tintKept = {}), mine = /^(route|trail|man|alts|routejam|igor|incidents|pois|maneuvers|rd|traffic)/i;
       (map.getStyle().layers || []).forEach((l) => {
-        var prop = l.type === "background" ? "background-color" : l.type === "fill" ? "fill-color" : null;
-        if (l.type === "line" && /road|street|motorway|primary|secondary|tertiary|minor/i.test(l.id) && !/label|shield|casing|outline|route|traffic|rail|path/i.test(l.id)) {
-          var kk = l.id + "#line"; if (!(kk in keep)) keep[kk] = map.getPaintProperty(l.id, "line-color");
-          try { map.setPaintProperty(l.id, "line-color", tt ? "#355362" : keep[kk]); } catch (e) { /* as it was */ }
-          return;
-        }
-        if (!prop || (l.type !== "background" && !/land|earth|water|ocean|sea|river|lake|park|green|wood|forest|grass|urban|built|residential/i.test(l.id))) return;
-        if (!(l.id in keep)) keep[l.id] = map.getPaintProperty(l.id, prop);
-        var c = tt ? (/water|ocean|sea|river|lake/i.test(l.id) ? TT.water : /park|green|wood|forest|grass/i.test(l.id) ? TT.park : /urban|built|residential/i.test(l.id) ? TT.urban : TT.ground)
-          : /water|ocean|sea|river|lake/i.test(l.id) ? "#14324a" : /park|green|wood|forest|grass/i.test(l.id) ? "#1b3440" : /urban|built|residential/i.test(l.id) ? "#22384c" : "#1d2c3c";
-        try { map.setPaintProperty(l.id, prop, blue ? c : keep[l.id]); } catch (e) { /* that layer as it was */ }
+        if (mine.test(l.id) || /label|shield|traffic|incident|poi|text|symbol/i.test(l.id)) return;
+        var prop = l.type === "background" ? "background-color" : l.type === "fill" ? "fill-color" : l.type === "fill-extrusion" ? "fill-extrusion-color" : l.type === "line" ? "line-color" : null;
+        if (!prop) return;
+        var k = l.id + "|" + prop;
+        if (!(k in keep)) keep[k] = map.getPaintProperty(l.id, prop);
+        if (keep[k] == null) return;
+        try { map.setPaintProperty(l.id, prop, HUE ? walk(keep[k]) : keep[k]); } catch (e) { /* that layer as it was */ }
       });
+      // TomTom's textured ground takes the new colours: drawn again.
+      if (this.ttSurf && this.ttKit && this.ttKit.lm && this.ttKit.lm.GLSurfaces) {
+        try { if (this.ttSurf.remove) this.ttSurf.remove(); this.ttSurf = new this.ttKit.lm.GLSurfaces(this.tt, Object.assign({ trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: 0 } }, typeof this.config.sdk_surfaces === "object" ? this.config.sdk_surfaces : {})); this.routeOnTop(map); } catch (e) { /* as it was */ }
+      }
     }
     buildingsLook() {
       var c = this.config, op = Number(c.buildings_opacity), L = this.look, look;
@@ -7202,6 +7442,7 @@
         if (L.wc === "unie") look.walls = { variation: 0 }; else if (L.wc === "variee") look.walls = { variation: 0.6 };
         // Lit at night (« Éclairage des bâtiments »): many windows on, the façades' pattern shown.
         if (L.tn === "tomtom" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#425f69" });
+        else if (L.tn === "bleu" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#2f425a" });
         if (Number(L.eb) && this.ttStyle === "streetDarkDriving") { look.litWindows = { fraction: Math.max(0.55, (Number(L.lw) || 0) / 100) }; look.facade = { pattern: L.fw && L.fw !== "none" ? L.fw : "mixed", intensity: 1 }; }
       } else {
         look = { opacity: isFinite(op) && op > 0 ? Math.min(1, op) : 0.85 };
@@ -7320,6 +7561,7 @@
       tryIt(() => this.tintLook(map, L));
       tryIt(() => this.landmarksLook());
       tryIt(() => this.monumentGlow(map, L));
+      tryIt(() => this.city3dLook(map, L));
       tryIt(() => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ visible: !!Number(L.sf), trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: Number(L.wd) || 0 } }); });
       tryIt(() => {
         var pal = this.routePal(), k = { fine: 0.7, normale: 1, large: 1.4 }[L.rw] || 1;
@@ -10079,7 +10321,7 @@
       if (want === this.ttStyle) return;
       // The other style: the SDK carries its modules over; the route, the
       // trail and the trees come back with Igor's own style.load.
-      this.ttStyle = want; this.themeBusy = true; this.tintKept = null; this.glowKept = null;
+      this.ttStyle = want; this.themeBusy = true; this.tintKept = null; this.glowKept = null; this.tintMode = null; this.city3dKey = null; if (this.city3d) { this.city3d.stop(); this.city3d = null; }
       Promise.resolve().then(() => this.tt.setStyle(want)).catch(() => {}).then(() => { this.themeBusy = false; });
     },
     // The woods' trees (TomTom's SDK): thousands of 3D shapes, heavy on a
@@ -14072,8 +14314,9 @@
     ["bo", "Bâtiments", "Opacité", "plus bas : la route se voit au travers", "sl", 30, 100, 5, "%"],
     ["fw", "Bâtiments", "Fenêtres", "", "seg", [["none", "aucune"], ["mixed", "mixtes"], ["residential", "logements"], ["office", "bureaux"], ["glass", "verre"]]],
     ["lw", "Bâtiments", "Fenêtres allumées la nuit", "", "sl", 0, 100, 10, "%"],
-    ["gw", "Bâtiments", "Lueur des monuments la nuit", "les monuments (Notre-Dame, cathédrales…) éclairés comme par des projecteurs, une lueur au sol autour", "seg", [[0, "non"], [1, "oui"]]],
-    ["lm3", "Bâtiments", "Monuments 3D", "les bâtiments connus en 3D détaillée, même sans les autres (clé TomTom avec l'accès « 3D Landmarks »)", "seg", [[0, "non"], [1, "oui"]]],
+    ["b3s", "Bâtiments", "Source des bâtiments 3D", "TomTom, ou Cesium OSM Buildings (jeton Cesium dans les options d'Igor)", "seg", [["tomtom", "TomTom"], ["cesium", "Cesium"]]],
+    ["mon", "Bâtiments", "Monuments détaillés", "la Tour Eiffel (dorée la nuit) et les modèles de la carte (landmarks:)", "seg", [[0, "non"], [1, "oui"]]],
+    ["gw", "Bâtiments", "Monuments éclairés la nuit", "les bâtiments que la carte marque comme monuments, couleur pierre éclairée", "seg", [[0, "non"], [1, "oui"]]],
     ["eb", "Bâtiments", "Éclairage des bâtiments la nuit", "fenêtres et façades éclairées, comme la navigation TomTom", "seg", [[0, "non"], [1, "oui"]]],
     ["wc", "Bâtiments", "Couleur des murs", "", "seg", [["style", "du style"], ["unie", "unie"], ["variee", "variée"]]],
     ["sh", "Bâtiments", "Ombres portées", "0 : aucune", "sl", 0, 100, 10, "%"],
