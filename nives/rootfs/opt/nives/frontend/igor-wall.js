@@ -5540,7 +5540,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.61.2";
+  var GPS_CARD_VERSION = "0.61.3";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7127,8 +7127,11 @@
     // ordinary blocks. TomTom keeps them in private preview: the key needs
     // its « Orbis 3D Landmarks » access; refused, the map says so once.
     landmarksLook() {
-      var L = this.look || {}, on = !!Number(L.lm3);
+      // Off for now: without TomTom's private access no landmark comes, and the
+      // plugin hides the map's own landmark buildings meanwhile (and costs a lot).
+      var L = this.look || {}, on = false && !!Number(L.lm3);
       if (!this.tt || !this.ttKit || !this.ttKit.lm || !this.ttKit.lm.Landmarks3D) return;
+      if (!on && !this.ttLm) return;
       if (on && !this.ttLm) {
         try {
           this.ttLm = new this.ttKit.lm.Landmarks3D(this.tt, { opacity: 1, texture: "color", minZoom: 14 });
@@ -7144,53 +7147,64 @@
     // under floodlights — their walls a few shades lighter, and a soft light
     // pooled on the ground all around them. Drawn from the map's own
     // buildings: no extra download, the same with the 3D buildings off.
+    // « Monuments éclairés » (night): the buildings the map marks as
+    // landmarks (has_landmark) in a warm floodlit stone colour, as TomTom's
+    // night demos light them — on the map's own buildings, nothing to download.
+    // A landmark the map draws no building for (the Eiffel Tower) stays as it is.
     monumentGlow(map, L) {
       var night = this.ttStyle === "streetDarkDriving" || (this.config.sdk_style || "").indexOf("Dark") >= 0;
       var on = !!(L && Number(L.gw)) && night;
-      var src = null, ext = [];
+      ["igor-lm-glow", "igor-lm-glow-fill"].forEach((id) => { try { if (map.getLayer(id)) map.removeLayer(id); } catch (e) { /* gone */ } });
+      var keep = this.glowKept || (this.glowKept = {}), isLm = ["coalesce", ["get", "has_landmark"], false];
       (map.getStyle().layers || []).forEach((l) => {
-        if (l["source-layer"] !== "buildings") return;
-        if (!src) src = l.source;
-        if (l.type === "fill-extrusion") ext.push(l.id);
+        if (l["source-layer"] !== "buildings" || l.type !== "fill-extrusion") return;
+        if (!(l.id in keep)) keep[l.id] = map.getPaintProperty(l.id, "fill-extrusion-color");
+        try { map.setPaintProperty(l.id, "fill-extrusion-color", on && keep[l.id] != null ? ["case", isLm, "#e6dcc8", keep[l.id]] : keep[l.id]); } catch (e) { /* as it was */ }
       });
-      if (!src) return;
-      var keep = this.glowKept || (this.glowKept = {});
-      var isLm = ["coalesce", ["get", "has_landmark"], false];
-      ext.forEach((id) => {
-        if (!(id in keep)) keep[id] = map.getPaintProperty(id, "fill-extrusion-color");
-        try { map.setPaintProperty(id, "fill-extrusion-color", on && keep[id] != null ? ["case", isLm, "#8fb2bc", keep[id]] : keep[id]); } catch (e) { /* as it was */ }
-      });
-      if (on && !map.getLayer("igor-lm-glow")) {
-        var before = ext[0] && map.getLayer(ext[0]) ? ext[0] : undefined;
-        map.addLayer({ id: "igor-lm-glow", type: "line", source: src, "source-layer": "buildings", minzoom: 13, filter: ["all", isLm, ["!=", ["get", "underground"], true]],
-          layout: { "line-join": "round", "line-cap": "round" },
-          paint: { "line-color": "#cfeeff", "line-opacity": 0.42, "line-width": ["interpolate", ["linear"], ["zoom"], 13, 6, 16, 26, 18, 60], "line-blur": ["interpolate", ["linear"], ["zoom"], 13, 6, 16, 24, 18, 56] } }, before);
-        map.addLayer({ id: "igor-lm-glow-fill", type: "fill", source: src, "source-layer": "buildings", minzoom: 13, filter: ["all", isLm, ["!=", ["get", "underground"], true]],
-          paint: { "fill-color": "#cfeeff", "fill-opacity": 0.12 } }, before);
-      }
-      ["igor-lm-glow", "igor-lm-glow-fill"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none"); });
+      if (this.tt3d && this.tt3d.setBuildingColors) { /* the SDK's own buildings keep their look */ }
     }
+    // « Teinte de la nuit »: every colour of the night base map (ground,
+    // parks, water, buildings, roads — not Igor's own layers, not the
+    // labels nor the traffic) turned towards a hue: « tomtom » the blue-grey
+    // of TomTom's night navigation (ground #213a49, buildings #425f69),
+    // « bleu » a deeper navy. Each colour keeps its lightness order, a step
+    // lighter. TomTom's textured ground (its surfaces) is redrawn after it,
+    // since it reads the map's colours when it starts.
     tintLook(map, L) {
       var night = this.ttStyle === "streetDarkDriving" || (this.config.sdk_style || "").indexOf("Dark") >= 0;
-      // « tomtom »: the colours read off TomTom's own night navigation —
-      // a blue-grey ground, its streets a shade lighter, the water slate blue,
-      // the buildings' walls #425f69.
-      var tt = night && L && L.tn === "tomtom", blue = night && L && (L.tn === "bleu" || tt);
-      var TT = { water: "#3b5871", park: "#2f4f57", urban: "#2f4957", ground: "#213a49" };
-      var keep = this.tintKept || (this.tintKept = {});
+      var mode = night && L && (L.tn === "tomtom" || L.tn === "bleu") ? L.tn : "";
+      if ((this.tintMode || "") === mode && this.tintStyle === this.ttStyle) return;
+      this.tintMode = mode; this.tintStyle = this.ttStyle;
+      var HUE = { tomtom: [203, 0.36, 1.25, 0.03], bleu: [215, 0.45, 1.1, 0.02] }[mode];
+      var parse = (c) => {
+        var m, s0 = String(c).trim();
+        if ((m = /^#([0-9a-f]{3,8})$/i.exec(s0))) { var h = m[1]; if (h.length <= 4) h = h.split("").map((x) => x + x).join(""); return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1]; }
+        if ((m = /^rgba?\(([^)]+)\)$/i.exec(s0))) { var p = m[1].split(/[ ,\/]+/).filter(Boolean).map(parseFloat); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; }
+        if ((m = /^hsla?\(([^)]+)\)$/i.exec(s0))) { var q = m[1].split(/[ ,\/]+/).filter(Boolean).map(parseFloat), hh = q[0] / 360, ss = q[1] / 100, ll = q[2] / 100, f = (n) => { var k = (n + hh * 12) % 12, a2 = ss * Math.min(ll, 1 - ll); return 255 * (ll - a2 * Math.max(-1, Math.min(k - 3, 9 - k, 1))); }; return [f(0), f(8), f(4), q.length > 3 ? q[3] : 1]; }
+        return null;
+      };
+      var shift = (c) => {
+        var v = parse(c); if (!v) return c;
+        var r = v[0] / 255, g = v[1] / 255, b2 = v[2] / 255, mx = Math.max(r, g, b2), mn = Math.min(r, g, b2), l = (mx + mn) / 2;
+        if (l > 0.62) return c;  // light marks (lines, details): as they are
+        var L2 = Math.min(0.6, l * HUE[2] + HUE[3]), S2 = HUE[1];
+        return "hsla(" + HUE[0] + ", " + Math.round(S2 * 100) + "%, " + Math.round(L2 * 100) + "%, " + v[3] + ")";
+      };
+      var walk = (x) => typeof x === "string" ? shift(x) : Array.isArray(x) ? x.map((y, i) => i === 0 && typeof y === "string" && !parse(y) ? y : walk(y)) : x;
+      var keep = this.tintKept || (this.tintKept = {}), mine = /^(route|trail|man|alts|routejam|igor|incidents|pois|maneuvers|rd|traffic)/i;
       (map.getStyle().layers || []).forEach((l) => {
-        var prop = l.type === "background" ? "background-color" : l.type === "fill" ? "fill-color" : null;
-        if (l.type === "line" && /road|street|motorway|primary|secondary|tertiary|minor/i.test(l.id) && !/label|shield|casing|outline|route|traffic|rail|path/i.test(l.id)) {
-          var kk = l.id + "#line"; if (!(kk in keep)) keep[kk] = map.getPaintProperty(l.id, "line-color");
-          try { map.setPaintProperty(l.id, "line-color", tt ? "#355362" : keep[kk]); } catch (e) { /* as it was */ }
-          return;
-        }
-        if (!prop || (l.type !== "background" && !/land|earth|water|ocean|sea|river|lake|park|green|wood|forest|grass|urban|built|residential/i.test(l.id))) return;
-        if (!(l.id in keep)) keep[l.id] = map.getPaintProperty(l.id, prop);
-        var c = tt ? (/water|ocean|sea|river|lake/i.test(l.id) ? TT.water : /park|green|wood|forest|grass/i.test(l.id) ? TT.park : /urban|built|residential/i.test(l.id) ? TT.urban : TT.ground)
-          : /water|ocean|sea|river|lake/i.test(l.id) ? "#14324a" : /park|green|wood|forest|grass/i.test(l.id) ? "#1b3440" : /urban|built|residential/i.test(l.id) ? "#22384c" : "#1d2c3c";
-        try { map.setPaintProperty(l.id, prop, blue ? c : keep[l.id]); } catch (e) { /* that layer as it was */ }
+        if (mine.test(l.id) || /label|shield|traffic|incident|poi|text|symbol/i.test(l.id)) return;
+        var prop = l.type === "background" ? "background-color" : l.type === "fill" ? "fill-color" : l.type === "fill-extrusion" ? "fill-extrusion-color" : l.type === "line" ? "line-color" : null;
+        if (!prop) return;
+        var k = l.id + "|" + prop;
+        if (!(k in keep)) keep[k] = map.getPaintProperty(l.id, prop);
+        if (keep[k] == null) return;
+        try { map.setPaintProperty(l.id, prop, HUE ? walk(keep[k]) : keep[k]); } catch (e) { /* that layer as it was */ }
       });
+      // TomTom's textured ground takes the new colours: drawn again.
+      if (this.ttSurf && this.ttKit && this.ttKit.lm && this.ttKit.lm.GLSurfaces) {
+        try { if (this.ttSurf.remove) this.ttSurf.remove(); this.ttSurf = new this.ttKit.lm.GLSurfaces(this.tt, Object.assign({ trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: 0 } }, typeof this.config.sdk_surfaces === "object" ? this.config.sdk_surfaces : {})); this.routeOnTop(map); } catch (e) { /* as it was */ }
+      }
     }
     buildingsLook() {
       var c = this.config, op = Number(c.buildings_opacity), L = this.look, look;
@@ -7202,6 +7216,7 @@
         if (L.wc === "unie") look.walls = { variation: 0 }; else if (L.wc === "variee") look.walls = { variation: 0.6 };
         // Lit at night (« Éclairage des bâtiments »): many windows on, the façades' pattern shown.
         if (L.tn === "tomtom" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#425f69" });
+        else if (L.tn === "bleu" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#2f425a" });
         if (Number(L.eb) && this.ttStyle === "streetDarkDriving") { look.litWindows = { fraction: Math.max(0.55, (Number(L.lw) || 0) / 100) }; look.facade = { pattern: L.fw && L.fw !== "none" ? L.fw : "mixed", intensity: 1 }; }
       } else {
         look = { opacity: isFinite(op) && op > 0 ? Math.min(1, op) : 0.85 };
@@ -10079,7 +10094,7 @@
       if (want === this.ttStyle) return;
       // The other style: the SDK carries its modules over; the route, the
       // trail and the trees come back with Igor's own style.load.
-      this.ttStyle = want; this.themeBusy = true; this.tintKept = null; this.glowKept = null;
+      this.ttStyle = want; this.themeBusy = true; this.tintKept = null; this.glowKept = null; this.tintMode = null;
       Promise.resolve().then(() => this.tt.setStyle(want)).catch(() => {}).then(() => { this.themeBusy = false; });
     },
     // The woods' trees (TomTom's SDK): thousands of 3D shapes, heavy on a
@@ -14072,8 +14087,7 @@
     ["bo", "Bâtiments", "Opacité", "plus bas : la route se voit au travers", "sl", 30, 100, 5, "%"],
     ["fw", "Bâtiments", "Fenêtres", "", "seg", [["none", "aucune"], ["mixed", "mixtes"], ["residential", "logements"], ["office", "bureaux"], ["glass", "verre"]]],
     ["lw", "Bâtiments", "Fenêtres allumées la nuit", "", "sl", 0, 100, 10, "%"],
-    ["gw", "Bâtiments", "Lueur des monuments la nuit", "les monuments (Notre-Dame, cathédrales…) éclairés comme par des projecteurs, une lueur au sol autour", "seg", [[0, "non"], [1, "oui"]]],
-    ["lm3", "Bâtiments", "Monuments 3D", "les bâtiments connus en 3D détaillée, même sans les autres (clé TomTom avec l'accès « 3D Landmarks »)", "seg", [[0, "non"], [1, "oui"]]],
+    ["gw", "Bâtiments", "Monuments éclairés la nuit", "les bâtiments que la carte marque comme monuments, couleur pierre éclairée", "seg", [[0, "non"], [1, "oui"]]],
     ["eb", "Bâtiments", "Éclairage des bâtiments la nuit", "fenêtres et façades éclairées, comme la navigation TomTom", "seg", [[0, "non"], [1, "oui"]]],
     ["wc", "Bâtiments", "Couleur des murs", "", "seg", [["style", "du style"], ["unie", "unie"], ["variee", "variée"]]],
     ["sh", "Bâtiments", "Ombres portées", "0 : aucune", "sl", 0, 100, 10, "%"],
