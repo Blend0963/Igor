@@ -1,3 +1,7 @@
+## 0.62.5 — Réglages de la carte à la taille de l'autoradio
+
+- **Fenêtre des réglages de la carte** (1024 × 600, 1280 × 720) : chaque ligne prend la hauteur de son contenu (les lignes étaient toutes forcées à la même hauteur sur un écran bas, et leurs choix débordaient sur les suivantes) ; les choix ne se replient plus en colonne : ceux qui en ont beaucoup passent sous le nom du réglage, sur toute la largeur. Vérifié sur tous les onglets, à 1024 × 600, 1280 × 720 et sur téléphone.
+
 ## 0.62.4 — Verrouillage de l'autoradio par son compte
 
 - **Verrouillage sans téléphone** : quand les options d'Igor désignent le compte de l'autoradio (« écran de la voiture »), c'est ce compte, vérifié par Home Assistant à chaque demande (`/api/nives/screen`), qui fait de l'écran l'autoradio — plus un repère dans le navigateur. Vider le cache, `?igor_autoradio=0` ou l'appui long sur le cadenas (« Écran libre ») ne le déverrouillent plus : seul votre téléphone le fait. Sans compte désigné, l'ancien fonctionnement reste.

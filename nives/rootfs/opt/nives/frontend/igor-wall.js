@@ -5549,7 +5549,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.4";
+  var GPS_CARD_VERSION = "0.62.5";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -14490,10 +14490,11 @@
         ".m3p { display: flex; gap: 8px; padding: 10px 14px; flex: none; } .m3pp { flex: 1; min-width: 0; text-align: left; padding: 8px 12px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; cursor: pointer; }",
         ".m3pp b { display: block; font-weight: 400; font-size: 15px; } .m3pp small { display: block; font-size: 11px; color: var(--dim); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .m3pp.on { border-color: var(--acc, #59d0e0); } .m3pp.on b { color: var(--acc, #59d0e0); }",
         ".m3t { display: flex; gap: 6px; padding: 0 14px; flex: none; border-bottom: 1px solid var(--acc, #59d0e0); overflow-x: auto; } .m3tt { padding: 10px 14px; border: 1px solid var(--line); border-bottom: none; background: none; color: var(--dim); font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; } .m3tt.on { color: var(--acc, #59d0e0); border-color: var(--acc, #59d0e0); background: #111418; }",
-        ".m3b { flex: 1; min-height: 0; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; align-content: start; padding: 4px 16px 10px; }",
+        ".m3b { flex: 1; min-height: 0; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: max-content; gap: 0 28px; align-content: start; padding: 4px 16px 10px; }",
         "@media (max-width: 900px) { .m3b { grid-template-columns: 1fr; } }",
         ".m3r { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #1a1e24; font-size: 15px; min-height: 52px; } .m3r small { display: block; color: var(--dim); font-size: 11px; margin-top: 3px; }",
-        ".m3g { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; } .m3g button { min-height: 40px; padding: 0 11px; border: 1px solid var(--line); background: none; color: var(--dim); font: inherit; font-size: 13px; cursor: pointer; } .m3g button.on { background: #123c44; color: var(--acc, #59d0e0); border-color: var(--acc, #59d0e0); }",
+        ".m3r > div:first-child { min-width: 0; flex: 1 1 auto; } .m3r.wide { flex-direction: column; align-items: stretch; gap: 8px; } .m3r.wide .m3g { justify-content: flex-start; flex-wrap: wrap; } .m3r.wide .m3g button { flex: 1 1 auto; }",
+        ".m3g { display: flex; flex-wrap: nowrap; flex: none; justify-content: flex-end; gap: 4px; } .m3g button { min-height: 40px; padding: 0 11px; border: 1px solid var(--line); background: none; color: var(--dim); font: inherit; font-size: 13px; cursor: pointer; } .m3g button.on { background: #123c44; color: var(--acc, #59d0e0); border-color: var(--acc, #59d0e0); }",
         ".m3l { display: grid; grid-template-columns: 40px 62px 40px; grid-template-rows: auto 18px; align-items: center; gap: 2px 6px; width: 170px; flex: none; } .m3l button { height: 40px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; font-size: 20px; cursor: pointer; } .m3l span { text-align: center; font-size: 14px; }",
         ".m3l i { grid-column: 1 / 4; height: 18px; position: relative; cursor: pointer; } .m3l i::before { content: ''; position: absolute; left: 0; right: 0; top: 7px; height: 4px; background: #22272e; } .m3l i b { position: absolute; left: 0; top: 7px; height: 4px; background: var(--acc, #59d0e0); }",
         ".m3f { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-top: 1px solid var(--line); flex: none; font-size: 13px; } .m3f .ok { color: " + CAR_OK + "; } .m3f .ko { color: " + CAR_BAD + "; } .m3f button { margin-left: auto; min-height: 42px; padding: 0 14px; flex-direction: row; }",
@@ -14635,6 +14636,10 @@
             var b = el("button", "sw" + (Number(v) ? " on" : ""), row, Number(v) ? "oui" : "non"); b.type = "button";
             b.addEventListener("click", () => { st.o[k] = Number(v) ? 0 : 1; save(); });
           } else if (r[4] === "seg") {
+            // Many choices (or long ones): under the name, across the row —
+            // never folded into a column that runs over the next settings.
+            var chars = r[5].reduce((n, o) => n + String(o[1]).length + 3, 0);
+            if (r[5].length > 3 || chars > 22) row.classList.add("wide");
             var sg = el("div", "m3g", row);
             r[5].forEach((o) => { var b2 = el("button", String(o[0]) === String(v) ? "on" : "", sg, o[1]); b2.type = "button"; b2.addEventListener("click", () => { st.o[k] = o[0]; save(); }); });
           } else {
