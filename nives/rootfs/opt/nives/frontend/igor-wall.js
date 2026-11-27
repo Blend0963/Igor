@@ -5538,7 +5538,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.60.0";
+  var GPS_CARD_VERSION = "0.60.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -5903,65 +5903,10 @@
   window.__igorGpsMath = { roadPath: gpsRoadPath, nearest: gpsNearest, along: gpsAlong, alongLine: gpsAlongLine, project: gpsProject, dist: gpsDist };
   // The car: a chevron lying on the road (it tilts with the map), lit from
   // the left, a soft light on the ground under it — as TomTom draws it.
-  var GPS_ARROW = '<svg viewBox="0 0 60 60" width="62" height="62"><defs>' +
-    '<radialGradient id="igglow"><stop offset="0" stop-color="#5fd0ff" stop-opacity=".55"/><stop offset="1" stop-color="#5fd0ff" stop-opacity="0"/></radialGradient>' +
-    '<linearGradient id="igl" x1="0" x2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#cfefff"/></linearGradient>' +
-    '<linearGradient id="igr" x1="0" x2="1"><stop offset="0" stop-color="#7fd3ff"/><stop offset="1" stop-color="#2f9be6"/></linearGradient></defs>' +
-    '<circle cx="30" cy="32" r="27" fill="url(#igglow)"/>' +
-    '<path d="M30 8 L30 38 L12 47 Z" fill="url(#igl)"/><path d="M30 8 L48 47 L30 38 Z" fill="url(#igr)"/>' +
-    '<path d="M30 8 L48 47 L30 38 L12 47 Z" fill="none" stroke="#0b3f86" stroke-width="2" stroke-linejoin="round"/></svg>';
-  // Lanes, as a car's GPS draws them: one box per lane, its arrows (several
-  // when it goes more than one way), the lanes to take lit in the route's
-  // colour with its halo, the others grey. Code (publish_turn, field 10):
-  // one letter per way — s straight, l/r left/right, a/b slight left/right,
-  // c/d sharp left/right, u U-turn — a « * » then the way to follow on a
-  // lane to take; lanes « , »-separated, left to right: « s,s,s*s,b*b ».
-  var LANE_CODE = { STRAIGHT: "s", LEFT: "l", RIGHT: "r", SLIGHT_LEFT: "a", SLIGHT_RIGHT: "b", SHARP_LEFT: "c", SHARP_RIGHT: "d", LEFT_U_TURN: "u", RIGHT_U_TURN: "u" };
-  function laneEncode(lanes) {
-    return (lanes || []).slice(0, 8).map(function (x) {
-      var d = (x.dirs || []).map(function (k) { return LANE_CODE[k] || ""; }).join("") || "s";
-      return d + (x.follow ? "*" + (LANE_CODE[x.follow] || d[0]) : "");
-    }).join(",");
-  }
-  function laneDecode(code) {
-    return String(code || "").split(",").filter(Boolean).map(function (q) { var p = q.split("*"); return { dirs: p[0].split(""), go: p[1] || "" }; });
-  }
-  // One arrow in a 100 × 140 box: the shaft from the foot, its head.
-  function laneArrow(k) {
-    var A = { s: ["M50 132 L50 40", 50, 26, -90], b: ["M50 132 L50 80 Q50 58 72 44", 80, 36, -40], a: ["M50 132 L50 80 Q50 58 28 44", 20, 36, -140],
-      r: ["M50 132 L50 74 Q50 56 72 56", 86, 56, 0], l: ["M50 132 L50 74 Q50 56 28 56", 14, 56, 180],
-      d: ["M50 132 L50 66 Q50 56 64 70 L72 80", 82, 92, 50], c: ["M50 132 L50 66 Q50 56 36 70 L28 80", 18, 92, 130],
-      u: ["M58 132 L58 62 Q58 36 40 36 Q24 36 24 62 L24 84", 24, 98, 90] }[k] || ["M50 132 L50 40", 50, 26, -90];
-    var r = A[3] * Math.PI / 180, x = A[1], y = A[2], h = 16, w = 12;
-    var p1 = [x - Math.cos(r) * h - Math.sin(r) * w, y - Math.sin(r) * h + Math.cos(r) * w], p2 = [x - Math.cos(r) * h + Math.sin(r) * w, y - Math.sin(r) * h - Math.cos(r) * w];
-    return { d: A[0], head: "M" + x.toFixed(1) + " " + y.toFixed(1) + " L" + p1[0].toFixed(1) + " " + p1[1].toFixed(1) + " L" + p2[0].toFixed(1) + " " + p2[1].toFixed(1) + " Z" };
-  }
-  // The lanes in one SVG (`opt.road`: drawn on a road surface, dashed
-  // lines between the lanes; else boxes, as on the map's panel).
-  function laneSvg(lanes, opt) {
-    opt = opt || {};
-    var n = lanes.length, W = 100 * n, col = opt.color || "#46b4ff", glow = opt.glow || "rgba(63,169,255,.75)", off = opt.off || "#59606a", gid = "lg" + Math.random().toString(36).slice(2, 7);
-    var h = '<svg viewBox="-6 -6 ' + (W + 12) + ' 152" preserveAspectRatio="xMidYMid meet"><defs><filter id="' + gid + '" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5"/></filter></defs>';
-    if (opt.road) {
-      h += '<rect x="-6" y="-6" width="' + (W + 12) + '" height="152" rx="6" fill="#2a2f36"/><line x1="-2" x2="-2" y1="-6" y2="146" stroke="#e8e4dc" stroke-width="4"/><line x1="' + (W + 2) + '" x2="' + (W + 2) + '" y1="-6" y2="146" stroke="#e8e4dc" stroke-width="4"/>';
-      for (var i = 1; i < n; i++) h += '<line x1="' + i * 100 + '" x2="' + i * 100 + '" y1="-6" y2="146" stroke="#e8e4dc" stroke-width="3" stroke-dasharray="16 14" opacity=".75"/>';
-    }
-    lanes.forEach(function (L, i) {
-      var on = !!L.go, ox = i * 100;
-      if (!opt.road) h += '<rect x="' + (ox + 4) + '" y="0" width="92" height="140" rx="6" fill="' + (on ? "rgba(70,180,255,.14)" : "none") + '" stroke="' + (on ? col : "#3d454e") + '" stroke-width="3"/>';
-      // The ways this lane does not take for us first, under; ours last, lit.
-      var ks = L.dirs.slice().sort(function (a, b) { return (a === L.go) - (b === L.go); });
-      ks.forEach(function (k) {
-        var A = laneArrow(k), lit = on && k === L.go, c = lit ? col : off, g = '<g transform="translate(' + ox + ' 0)">';
-        if (lit) g += '<path d="' + A.d + '" stroke="' + glow + '" stroke-width="22" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#' + gid + ')"/>';
-        g += '<path d="' + A.d + '" stroke="' + (lit ? "#0b3f86" : "#1b1f24") + '" stroke-width="' + (lit ? 17 : 15) + '" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';
-        g += '<path d="' + A.d + '" stroke="' + c + '" stroke-width="' + (lit ? 11 : 9) + '" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';
-        g += '<path d="' + A.head + '" fill="' + c + '" stroke="' + (lit ? "#0b3f86" : "#1b1f24") + '" stroke-width="3" stroke-linejoin="round"/></g>';
-        h += g;
-      });
-    });
-    return h + "</svg>";
-  }
+  var GPS_ARROW = '<svg viewBox="0 0 60 60" width="62" height="62"><defs><radialGradient id="igglow"><stop offset="0" stop-color="#6fc4ff" stop-opacity=".55"/><stop offset="1" stop-color="#6fc4ff" stop-opacity="0"/></radialGradient>' +
+    '<linearGradient id="igl" x1="0" x2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dff3ff"/></linearGradient><linearGradient id="igr" x1="0" x2="1"><stop offset="0" stop-color="#a9dcfa"/><stop offset="1" stop-color="#6fbdf0"/></linearGradient></defs>' +
+    '<circle cx="30" cy="33" r="27" fill="url(#igglow)"/><path d="M30 9 L30 37 L13 47 Z" fill="url(#igl)"/><path d="M30 9 L47 47 L30 37 Z" fill="url(#igr)"/>' +
+    '<path d="M30 9 L47 47 L30 37 L13 47 Z" fill="none" stroke="#f2fbff" stroke-width="2" stroke-linejoin="round"/></svg>';
   // The French speed limit sign (B14): kept as the real thing, readable at a glance.
   var GPS_SIGN = '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="49.5" fill="#fff" stroke="rgba(0,0,0,0.35)" stroke-width="1"/>' +
     '<circle cx="50" cy="50" r="42.5" fill="none" stroke="#c8102e" stroke-width="11"/>' +
@@ -7266,8 +7211,8 @@
     // The route's colours: [line, halo, edge, core] of the colour chosen.
     routePal(which) {
       var P = { bleu: ["#46b4ff", "#3fa9ff", "#0b3f86", "#d4f0ff"], cyan: ["#59d0e0", "#4fd6e8", "#0b4a55", "#dcfbff"],
-        violet: ["#b48cff", "#a97bff", "#3d1f78", "#efe3ff"], jaune: ["#f4d35e", "#f4c542", "#5e4a0a", "#fff6d0"], gris: ["#aeb6c2", "#c9d1dc", "#2e343c", "#f2f5f8"] };
-      var L = this.look || {}, name = which === "after" ? (L.rc2 || this.config.route_color_after || "cyan") : (L.rc || this.config.route_color || "bleu");
+        violet: ["#b48cff", "#a97bff", "#3d1f78", "#efe3ff"], tomtom: ["#8fd6fa", "#5fb9ff", "#3f9fe6", "#d4f4ff"], jaune: ["#f4d35e", "#f4c542", "#5e4a0a", "#fff6d0"], gris: ["#aeb6c2", "#c9d1dc", "#2e343c", "#f2f5f8"] };
+      var L = this.look || {}, name = which === "after" ? (L.rc2 || this.config.route_color_after || "cyan") : (L.rc || this.config.route_color || "tomtom");
       var p = P[name] || (which === "after" ? P.cyan : P.bleu);
       return { "route": p[0], "route-glow": p[1], "route-case": p[2], "route-core": p[3] };
     }
@@ -7311,7 +7256,7 @@
         if (map.getLayer("trail-glow")) {
           map.setPaintProperty("trail-glow", "line-width", scale(GPS_GLOW_W, k));
           map.setPaintProperty("trail-glow", "line-color", pal["route-glow"]);
-          map.setPaintProperty("trail-glow", "line-opacity", glow * 0.4 * tw);
+          map.setPaintProperty("trail-glow", "line-opacity", 0);  // the way driven: faded, no halo (as TomTom)
         }
         this.cutAt = 0; this.cutD = null; this.trailLive = false;
       });
@@ -12153,6 +12098,7 @@
       if (key === this.plateKey) return;
       this.plateKey = key;
       this.gPlateN.textContent = street; this.gPlateT.textContent = town;
+      this.gPlateT.hidden = !town;
       pl.hidden = !street;
       if (street) requestAnimationFrame(() => { carMarquee(this.gPlateN, 6000); carMarquee(this.gPlateT, 6000); });
       // No room (the block already full): it goes.
@@ -12808,12 +12754,13 @@
         ".rts .note { font-size: 12px; color: var(--dim); flex: none; } :host(.short) .rt b { font-size: 20px; } :host(.short) .rt { padding: 4px 10px; }",
         ".trk { position: relative; flex: 1; }",
         // The road drawn as the map draws the route: its colour, a dark edge, a soft halo.
-        ".road { position: absolute; left: 2.5%; right: 3%; top: 28%; height: 10px; margin-top: -7px; border-radius: 7px; overflow: hidden; background: #46b4ff; border: 2px solid #0b3f86; box-shadow: 0 0 9px 3px rgba(63,169,255,.45); }",
-        ".flow { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, rgba(255,255,255,0) 0 18px, rgba(255,255,255,.35) 18px 26px, rgba(255,255,255,0) 26px 44px); animation: igfl 1s linear infinite; }",
+        // Igor's cyan, flat: the same colour as the guidance arrow, the phone and the messages.
+        ".road { position: absolute; left: 2.5%; right: 3%; top: 28%; height: 8px; margin-top: -4px; border-radius: 4px; overflow: hidden; background: #59d0e0; }",
+        ".flow { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, rgba(255,255,255,0) 0 18px, rgba(255,255,255,.28) 18px 26px, rgba(255,255,255,0) 26px 44px); animation: igfl 1s linear infinite; }",
         "@keyframes igfl { from { background-position: 0 0; } to { background-position: -44px 0; } }",
-        ".done { position: absolute; left: 0; width: 2.5%; top: 28%; height: 10px; margin-top: -5px; background: #46b4ff; opacity: .3; border-radius: 5px 0 0 5px; }",
-        // The car: the map's own arrow, lying along the road.
-        ".you { position: absolute; left: 2.5%; top: 28%; width: 34px; height: 34px; transform: translate(-50%, -50%) rotate(90deg); z-index: 2; pointer-events: none; } .you svg { width: 100%; height: 100%; display: block; }",
+        ".done { display: none; }",
+        // The car: « vous êtes ici », a white dot ringed (it stands out from the cyan road).
+        ".you { position: absolute; left: 2.5%; top: 28%; width: 18px; height: 18px; transform: translate(-50%, -50%); z-index: 2; pointer-events: none; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px #121418, 0 0 0 6px rgba(255,255,255,.22); }",
         ".pin { position: absolute; top: 0; bottom: 0; width: 0; transition: left 1s linear, opacity .4s; }",
         ".pin i { position: absolute; left: -14px; top: 28%; margin-top: -14px; width: 28px; height: 28px; border-radius: 50%; color: #08090b; display: grid; place-items: center; font-size: 13px; font-weight: 700; font-style: normal; box-shadow: 0 0 0 3px var(--card, #121418); }",
         ".pin.near i { animation: igpu 1s ease-in-out infinite; } @keyframes igpu { 50% { box-shadow: 0 0 0 3px var(--card, #121418), 0 0 0 9px rgba(229,160,76,.4); } }",
@@ -12847,7 +12794,7 @@
       var fh = el("div", "hr2", fz); el("div", "h", fh, "devant vous"); this.fzAside = el("div", "aside", fh);
       var trk = this.trk = el("div", "trk", fz);
       this.road = el("div", "road", trk); this.flow = el("div", "flow", this.road);
-      el("div", "done", trk); el("div", "you", trk).innerHTML = GPS_ARROW;
+      el("div", "done", trk); el("div", "you", trk);
       this.pins = {}; this.bands = {};
       this.pop = el("div", "fpop", wrap); this.pop.hidden = true;
       this.pop.addEventListener("click", (ev) => { ev.stopPropagation(); this.popTimer(6000); });
@@ -13283,7 +13230,7 @@
       this.arrWx = p[7] ? p[7].split("~") : null;
       // The road's colours: blue, orange where it slows, red where it jams.
       // Faded in and out as on the map (the route turns orange, red, and back).
-      var stops = [], bg = "#46b4ff", B = "#46b4ff";
+      var stops = [], bg = "#59d0e0", B = "#59d0e0";
       ev.filter((e) => e.t === "j" && e.d + e.len > 0 && e.d < span).forEach((e) => { var a = R(e.d), z = R(e.d + Math.max(e.len, span / 60)), c = e.lvl === 2 ? "#e5323b" : "#f08c1a", f = Math.min(2, (z - a) / 3); stops.push(B + " " + Math.max(0, a - f).toFixed(1) + "%", c + " " + a.toFixed(1) + "%", c + " " + z.toFixed(1) + "%", B + " " + Math.min(100, z + f).toFixed(1) + "%"); });
       bg = stops.length ? "linear-gradient(90deg, " + B + " 0%, " + stops.join(", ") + ", " + B + " 100%)" : B;
       if (bg !== this.roadBg) { this.roadBg = bg; this.road.style.background = bg; }
@@ -13657,10 +13604,10 @@
   // then only what differs from it. The phone's map (igor-gps-card
   // `settings:`) applies it live; igor-settings-card `map3d:` edits it.
   var MAP3D_PRESETS = {
-    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, tf: "aucun", aa: "auto", bz: 15, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 0, wd: 0, fl: 1, px: "max", ips: 45, cpt: 0 } },
-    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { tf: "tout", aa: "auto", b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, wd: 0.5, fl: 1, px: "max", ips: 60, cpt: 0 } },
-    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { tf: "aucun", aa: "auto", b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rw: "large", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, wd: 0, fl: 1, px: "max", ips: 45, cpt: 0 } },
-    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { tf: "aucun", aa: "non", b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rw: "normale", rc: "bleu", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, wd: 0, fl: 1, px: "eco", ips: 30, cpt: 0 } }
+    epure: { name: "Épuré", sub: "comme la navigation TomTom", v: { b3: 1, bo: 85, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, tf: "aucun", aa: "auto", bz: 15, rw: "normale", rc: "tomtom", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 1, ts: 0, wd: 0, fl: 1, px: "max", ips: 45, cpt: 0 } },
+    realiste: { name: "Réaliste", sub: "fenêtres, ombres, arbres", v: { tf: "tout", aa: "auto", b3: 1, bo: 100, fw: "mixed", lw: 60, wc: "variee", sh: 70, rf: 40, bz: 15, rw: "normale", rc: "tomtom", rc2: "cyan", md: "balise", ms: "epingle", gl: 35, tr: "pale", rl: 1, ns: "normale", poi: "tous", jm: "degrade", sf: 1, ts: 1, wd: 0.5, fl: 1, px: "max", ips: 60, cpt: 0 } },
+    lisible: { name: "Lisible", sub: "route et noms avant tout", v: { tf: "aucun", aa: "auto", b3: 1, bo: 60, fw: "none", lw: 0, wc: "unie", sh: 0, rf: 0, bz: 15, rw: "large", rc: "tomtom", rc2: "cyan", md: "balise", ms: "epingle", gl: 50, tr: "pale", rl: 0, ns: "grande", poi: "aucun", jm: "degrade", sf: 1, ts: 0, wd: 0, fl: 1, px: "max", ips: 45, cpt: 0 } },
+    economie: { name: "Économie", sub: "téléphone chaud ou lent", v: { tf: "aucun", aa: "non", b3: 1, bo: 100, fw: "none", lw: 0, wc: "style", sh: 0, rf: 0, bz: 16, rw: "normale", rc: "tomtom", rc2: "cyan", md: "balise", ms: "epingle", gl: 20, tr: "cache", rl: 0, ns: "normale", poi: "aucun", jm: "degrade", sf: 0, ts: 0, wd: 0, fl: 1, px: "eco", ips: 30, cpt: 0 } }
   };
   // Each setting: key, tab, label, hint, kind (seg | sw | sl), choices or range.
   var MAP3D_ROWS = [
@@ -13673,7 +13620,7 @@
     ["rf", "Bâtiments", "Reflets du ciel", "", "sl", 0, 100, 10, "%"],
     ["bz", "Bâtiments", "Bâtiments dès le zoom", "plus haut : moins de calcul", "seg", [[14, "14"], [15, "15"], [16, "16"], [17, "17"]]],
     ["rw", "Route & noms", "Épaisseur", "", "seg", [["fine", "petite"], ["normale", "moyenne"], ["large", "large"]]],
-    ["rc", "Route & noms", "Couleur", "", "seg", [["bleu", "bleu"], ["cyan", "cyan"], ["violet", "violet"], ["jaune", "jaune"]]],
+    ["rc", "Route & noms", "Couleur", "", "seg", [["tomtom", "TomTom"], ["bleu", "bleu"], ["cyan", "cyan"], ["violet", "violet"], ["jaune", "jaune"]]],
     ["md", "Route & noms", "Repère d'arrivée", "nom et heure d'arrivée au-dessus", "seg", [["epingle", "épingle"], ["balise", "balise"], ["anneau", "anneau au sol"], ["damier", "damier"], ["drapeau", "drapeau"]]],
     ["ms", "Route & noms", "Repère des étapes", "numérotées, couleur « après l'étape »", "seg", [["epingle", "épingle"], ["balise", "balise"], ["anneau", "anneau au sol"], ["damier", "damier"], ["drapeau", "drapeau"]]],
     ["rc2", "Route & noms", "Couleur après l'étape", "la suite du trajet, comme Waze", "seg", [["cyan", "cyan"], ["bleu", "bleu"], ["violet", "violet"], ["gris", "gris"]]],
@@ -14011,23 +13958,23 @@
     build() {
       this.style(CAR_HEAD + "\n" + [
         "ha-card { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 12px 16px; overflow: hidden; }",
-        ".top { display: flex; align-items: center; justify-content: space-between; } .rd { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); cursor: pointer; } .rd.on { color: " + CAR_BLUE + "; }",
+        ".top { display: flex; align-items: center; justify-content: space-between; } .rd { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); cursor: pointer; } .rd.on { color: " + "#59d0e0" + "; }",
         // All the messages, scrolled inside the box only (the page does not move).
         ".list { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y; }",
         ".m { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; padding: 10px 6px; border-bottom: 1px solid var(--line); align-items: start; }",
-        ".m.new { background: rgba(108,196,245,.07); box-shadow: inset 3px 0 " + CAR_BLUE + "; }",
+        ".m.new { background: rgba(89,208,224,.07); box-shadow: inset 3px 0 " + "#59d0e0" + "; }",
         ".a { width: 32px; height: 32px; border-radius: 7px; display: grid; place-items: center; color: #08090b; font-weight: 700; font-size: 15px; }",
         ".w { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .w span { font-size: 12px; color: var(--dim); }",
         ".t { font-size: 14px; color: #c2c6cc; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
         ".hr { font-size: 12px; color: var(--dim); white-space: nowrap; } .empty { color: var(--dim); padding: 14px 4px; }",
         // CarPlay: who and which app, Lire / Répondre — never the text.
         ".cp { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 9px 6px; border-bottom: 1px solid var(--line); }",
-        ".cp.new { background: rgba(108,196,245,.07); box-shadow: inset 3px 0 " + CAR_BLUE + "; }",
+        ".cp.new { background: rgba(89,208,224,.07); box-shadow: inset 3px 0 " + "#59d0e0" + "; }",
         ".cp .a { width: 42px; height: 42px; border-radius: 10px; font-size: 19px; }",
         ".cp .w { font-size: 19px; } .cp .w small { display: block; font-size: 12px; color: var(--dim); letter-spacing: .06em; margin-top: 2px; }",
         ".cnt { display: inline-block; min-width: 20px; padding: 0 5px; border-radius: 10px; background: #e5323b; color: #fff !important; font-weight: 700; line-height: 20px; font-size: 12px; text-align: center; margin-left: 8px; vertical-align: 3px; }",
         ".cp button.b { flex-direction: row; gap: 6px; min-height: 46px; padding: 0 14px; --mdc-icon-size: 18px; }",
-        ".cp .l { border-color: " + CAR_BLUE + "; color: " + CAR_BLUE + "; } .cp .l ha-icon { color: " + CAR_BLUE + "; } .cp .r { border-color: " + CAR_OK + "; color: " + CAR_OK + "; } .cp .r ha-icon { color: " + CAR_OK + "; }",
+        ".cp .l { border-color: " + "#59d0e0" + "; color: " + "#59d0e0" + "; } .cp .l ha-icon { color: " + "#59d0e0" + "; } .cp .r { border-color: " + CAR_OK + "; color: " + CAR_OK + "; } .cp .r ha-icon { color: " + CAR_OK + "; }",
         // Narrow (a folded phone, big text): the buttons keep their icon only, the name gets the room.
         ":host(.narrow) .cp { grid-template-columns: 38px minmax(0, 1fr) auto auto; gap: 8px; } :host(.narrow) .cp .a { width: 36px; height: 36px; font-size: 16px; }",
         ":host(.narrow) .cp button.b { padding: 0 12px; min-width: 52px; justify-content: center; } :host(.narrow) .cp button.b span { display: none; } :host(.narrow) .cp button.b { --mdc-icon-size: 22px; }",
@@ -14035,7 +13982,7 @@
         ".rep { position: fixed; inset: 0; z-index: 2147482000; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }",
         ".rep .dl { width: min(760px, 90vw); background: #0d0f12; border: 1px solid var(--line); padding: 16px 18px; color: var(--fg); }",
         ".rep .q { display: flex; align-items: center; gap: 12px; padding: 15px 14px; border: 1px solid var(--line); margin-top: 10px; font-size: 19px; cursor: pointer; } .rep .q small { margin-left: auto; font-size: 12px; color: var(--dim); letter-spacing: .08em; }",
-        ".rep .q.v { border-color: " + CAR_BLUE + "; color: " + CAR_BLUE + "; } .rep .x { cursor: pointer; color: var(--dim); }",
+        ".rep .q.v { border-color: " + "#59d0e0" + "; color: " + "#59d0e0" + "; } .rep .x { cursor: pointer; color: var(--dim); }",
         ".call { display: grid; grid-template-columns: minmax(0, 1fr) 46%; gap: 14px; border: 1px solid var(--line); border-left: 3px solid " + CAR_OK + "; padding: 12px 14px; margin-bottom: 10px; }",
         ".call .who { display: flex; align-items: center; gap: 14px; } .av { width: 62px; height: 62px; border-radius: 50%; border: 3px solid " + CAR_OK + "; color: " + CAR_OK + "; display: grid; place-items: center; font-size: 28px; flex: none; }",
         ".call .n { font-size: 30px; line-height: 1.1; } .call .st { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: " + CAR_OK + "; margin-bottom: 6px; }",

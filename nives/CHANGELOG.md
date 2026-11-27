@@ -1,3 +1,11 @@
+## 0.60.1 — Cyan Igor sur l'autoradio, tracé et flèche façon TomTom sur le téléphone
+
+- **Autoradio, une seule couleur** : la barre d'itinéraire, la flèche du guidage, le téléphone (« sur le socle ») et les messages (« lecture auto », liseré, boutons) prennent tous le cyan Igor.
+- **Barre d'itinéraire** : cyan uni, sans reflet ni lueur ; au début, un point blanc cerclé « vous êtes ici » à la place de la flèche (il se détache du cyan). Les bouchons et les tirets qui défilent restent.
+- **Carte du téléphone, comme la navigation TomTom** : nouvelle couleur de route « TomTom » (bleu clair, cœur plus lumineux, halo doux), par défaut dans tous les préréglages (une couleur déjà choisie dans les réglages est gardée) ; nouvelle flèche (face gauche blanche, face droite bleu clair, liseré clair).
+- **Trajet déjà parcouru « pâle »** : la même couleur estompée, sans halo.
+- **Guidage** : le panneau de ville vide n'apparaît plus quand la ville est inconnue.
+
 ## 0.60.0 — Voies et sorties, trajet effacé en direct, autoradio peaufiné
 
 - **Voies et sorties** : à l'approche d'une sortie ou d'un échangeur (1,5 km avant, 800 m en ville), la page centrale de l'autoradio montre, comme pour les radars, le panneau (bleu autoroute, vert nationale, blanc sinon) avec le numéro de sortie, les numéros de route et les villes, et les voies en perspective, celles à prendre dans la couleur du tracé avec son halo. Le téléphone envoie ces données avec le guidage (`publish_turn`, champs ajoutés à la fin : compatible). Sur la carte, les voies sont dessinées au lieu des flèches texte.
