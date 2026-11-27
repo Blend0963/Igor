@@ -5549,7 +5549,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.3";
+  var GPS_CARD_VERSION = "0.62.4";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -14541,7 +14541,7 @@
       }
       tiles.style.setProperty("--n", String(Math.max(1, tiles.children.length)));
     }
-    isCar() { try { return window.localStorage.getItem("igor-autoradio") === "1"; } catch (e) { return false; } }
+    isCar() { if (window.__igorIsCarScreen) return window.__igorIsCarScreen(); try { return window.localStorage.getItem("igor-autoradio") === "1"; } catch (e) { return false; } }
     drawScreen() {
       if (!this.screenTile) return;
       var car = this.isCar();
@@ -14556,6 +14556,12 @@
       var dh = el("div", "dh", dl); el("div", "h", dh, "cet écran");
       var x = el("button", "b close", dh); x.type = "button"; el("span", "", x, "fermer"); x.addEventListener("click", () => this.close());
       var ch = el("div", "ch", dl);
+      var sv = window.__igorScreenServer;
+      if (sv && sv.configured) {
+        el("p", "", ch, sv.car ? "Cet écran est l'autoradio : il est connecté avec le compte « écran de la voiture » des options d'Igor. Il se verrouille sans votre téléphone, quoi qu'on fasse dans le navigateur." : "Cet écran est libre : il n'est pas connecté avec le compte « écran de la voiture » des options d'Igor.");
+        el("p", "", ch, "Pour changer : Paramètres → Appareils et services → Igor → Configurer → écran de la voiture (administrateur).");
+        return;
+      }
       el("p", "", ch, "Ce choix ne vaut que pour l'appareil que vous tenez : les autres écrans gardent le leur.");
       var car = this.isCar();
       [[true, "mdi:car-key", "C'est l'autoradio", "verrouillé tant que votre téléphone n'est pas connecté"],
@@ -15928,10 +15934,25 @@
     function flagFromUrl() {
       var m = /[?&]igor_autoradio(?:=([^&]*))?/.exec(window.location.search);
       if (!m) return;
-      if (m[1] === "0") { ls("igor-autoradio", null); hide(); } else ls("igor-autoradio", "1");
+      if (m[1] === "0") { if (window.__igorScreenServer && window.__igorScreenServer.configured) return; ls("igor-autoradio", null); hide(); } else ls("igor-autoradio", "1");
     }
     flagFromUrl();
-    window.__igorScreenIsCar = function (on) { ls("igor-autoradio", on ? "1" : null); if (!on) { hide(); open = false; } };
+    // The server's word (the account this browser is signed in with): when
+    // Igor's options name the car's account, it alone decides — the flag in
+    // the browser, a « ?igor_autoradio=0 » or a cleared cache change nothing.
+    var srv = { configured: false, car: false, admin: false, at: 0 };
+    function askServer() {
+      var h = hassNow(), tok = h && h.auth && h.auth.data && h.auth.data.access_token;
+      if (!tok) return;
+      srv.at = Date.now();
+      fetch(window.location.origin + "/api/nives/screen", { headers: { Authorization: "Bearer " + tok }, cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) { if (j) { srv.configured = !!j.configured; srv.car = !!j.car; srv.admin = !!j.admin; window.__igorScreenServer = srv; } })
+        .catch(function () { /* as it was */ });
+    }
+    function isCar() { return srv.configured ? srv.car : ls("igor-autoradio") === "1"; }
+    window.__igorIsCarScreen = isCar;
+    window.__igorScreenIsCar = function (on) { if (srv.configured) return; ls("igor-autoradio", on ? "1" : null); if (!on) { hide(); open = false; } };
     window.addEventListener("location-changed", flagFromUrl);
     window.addEventListener("popstate", flagFromUrl);
     function conf() { try { return JSON.parse(ls("igor-phone-lock") || "null"); } catch (e) { return null; } }
@@ -15970,6 +15991,7 @@
       var ring = root.querySelector(".ring"), lkS = root.querySelector(".lk .s"), hold = null;
       var stop = function () { if (hold) { clearTimeout(hold); hold = null; } ring.style.opacity = ""; };
       ring.addEventListener("pointerdown", function () {
+        if (srv.configured) return;  // the car's account: no way out but the phone
         ring.style.opacity = ".5";
         hold = setTimeout(function () {
           hold = null; ring.style.opacity = "";
@@ -16013,7 +16035,8 @@
       root.querySelector(".big").textContent = wait ? "Connexion du téléphone…" : "Aucun téléphone connecté";
     }
     setInterval(function () {
-      var c = ls("igor-autoradio") === "1" ? conf() : null;
+      if (!srv.at || Date.now() - srv.at > 60000) askServer();
+      var c = isCar() ? conf() : null;
       if (!c || !c.present) { hide(); open = false; return; }
       var h = hassNow(), st = h && h.states && h.states[c.present];
       // The key entity missing from a running Home Assistant (a package not loaded): no lock

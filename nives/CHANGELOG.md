@@ -1,3 +1,7 @@
+## 0.62.4 — Verrouillage de l'autoradio par son compte
+
+- **Verrouillage sans téléphone** : quand les options d'Igor désignent le compte de l'autoradio (« écran de la voiture »), c'est ce compte, vérifié par Home Assistant à chaque demande (`/api/nives/screen`), qui fait de l'écran l'autoradio — plus un repère dans le navigateur. Vider le cache, `?igor_autoradio=0` ou l'appui long sur le cadenas (« Écran libre ») ne le déverrouillent plus : seul votre téléphone le fait. Sans compte désigné, l'ancien fonctionnement reste.
+
 ## 0.62.3 — Le téléphone guide, l'autoradio affiche
 
 - **Guidage de l'autoradio** : tant que le téléphone envoie son guidage (`publish_turn`) ou son signe de vie, l'autoradio affiche exactement ce qu'il donne — position, virages, distances, tout vient du GPS du téléphone. L'autoradio ne reprend la main avec son propre GPS (mode dégradé) qu'après 45 s sans aucune nouvelle du téléphone (20 s avant, et sur le seul signe de vie).
