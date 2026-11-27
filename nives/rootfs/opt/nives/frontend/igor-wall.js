@@ -116,6 +116,11 @@
     return best;
   }
 
+  function igorFault(card, e) {
+    var n = (card && card.localName) || "igor";
+    try { console.error(n + " :", e); } catch (x) { /* no console */ }
+    window.__igorFaults = (window.__igorFaults || []).concat([{ card: n, at: new Date().toISOString(), msg: String(e && e.message || e), stack: String(e && e.stack || "").split("\n").slice(0, 4).join(" | ") }]).slice(-20);
+  }
   class IgorCard extends HTMLElement {
     constructor() {
       super();
@@ -124,18 +129,23 @@
     }
     getCardSize() { return 4; }
     getGridOptions() { return { columns: 12, rows: 4 }; }
+    // A fault in one update never replaces the card by Home Assistant's
+    // « Erreur de configuration »: it stays as it was, the fault in the
+    // browser's console (with the card's name), and the next change redraws it.
     set hass(hass) {
       var prev = this._hass;
       this._hass = hass;
-      if (!this._built) { this._built = true; this.build(); }
-      this.update(hass, prev);
+      try {
+        if (!this._built) { this._built = true; this.build(); }
+        this.update(hass, prev);
+      } catch (e) { igorFault(this, e); }
     }
     get hass() { return this._hass; }
     // Back on the page (another tab, then this one again): a card that emptied
     // itself when it left is drawn again at once, not at the next change in
     // the house (an empty « Commandes » page until a light moved).
     connectedCallback() {
-      if (!this._built && this._hass) { this._built = true; this.build(); this.update(this._hass, null); }
+      if (!this._built && this._hass) { try { this._built = true; this.build(); this.update(this._hass, null); } catch (e) { igorFault(this, e); } }
     }
     build() {}
     update() {}
@@ -5549,7 +5559,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.6";
+  var GPS_CARD_VERSION = "0.62.7";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6836,6 +6846,9 @@
     getCardSize() { return 6; }
     getGridOptions() { return { columns: 12, rows: 4, min_rows: 3 }; }
     set hass(hass) {
+      try { this.setHass(hass); } catch (e) { igorFault(this, e); }
+    }
+    setHass(hass) {
       var prev = this._hass, c = this.config;
       this._hass = hass;
       if (!this.root) this.build();
@@ -13515,6 +13528,7 @@
         // Radar
         ".rad { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }",
         ".sign { width: 108px; height: 108px; border-radius: 50%; border: 10px solid #e5323b; background: #fff; color: #111; display: grid; place-items: center; font-size: 46px; font-weight: 700; flex: none; } .sign.nos { font-size: 22px; }",
+        ".tri { width: 124px; flex: none; } .tri svg { display: block; width: 100%; height: auto; } :host(.short) .tri { width: 96px; }",
         ".rk { font-size: 14px; letter-spacing: .3em; text-transform: uppercase; } .rd { font-size: 52px; line-height: 1; font-variant-numeric: tabular-nums; }",
         ".rb { width: 70%; height: 10px; border-radius: 5px; overflow: hidden; background: rgba(255,255,255,.08); } .rb i { display: block; height: 100%; }",
         ".rs { font-size: 19px; } .rn { font-size: 11px; color: var(--dim); } .none { height: 100%; display: grid; place-items: center; color: var(--dim); }",
@@ -13915,11 +13929,18 @@
       if (key === this.drawn) return; this.drawn = key;
       var b = this.body; b.innerHTML = "";
       var w = el("div", "rad", b);
-      el("div", "sign" + (rad.noSpeed || !lim ? " nos" : ""), w, rad.noSpeed ? "feu" : lim ? String(lim) : "?");
+      // A red light or a level crossing: the French danger sign itself (A17
+      // « feux tricolores », A8 « passage à niveau »), not a speed sign with a word in it.
+      if (rad.noSpeed) {
+        var pn = /passage|niveau/i.test(rad.what || ""), tri = el("div", "tri", w);
+        tri.innerHTML = '<svg viewBox="0 0 120 106"><path d="M60 6 L114 100 L6 100 Z" fill="#fff" stroke="#c8102e" stroke-width="10" stroke-linejoin="round"/>' + (pn
+          ? '<g transform="translate(36 52)" fill="#111"><rect x="6" y="6" width="34" height="22" rx="3"/><rect x="0" y="12" width="10" height="16" rx="2"/><rect x="38" y="14" width="10" height="14"/><circle cx="12" cy="32" r="5"/><circle cx="34" cy="32" r="5"/><rect x="-2" y="36" width="52" height="3"/></g>'
+          : '<g transform="translate(51 38)"><rect width="18" height="48" rx="5" fill="#111"/><circle cx="9" cy="10" r="5" fill="#e5323b"/><circle cx="9" cy="24" r="5" fill="#f4c542"/><circle cx="9" cy="38" r="5" fill="#2fbf71"/></g>') + "</svg>";
+      } else el("div", "sign" + (!lim ? " nos" : ""), w, lim ? String(lim) : "?");
       el("div", "rk", w, (rad.what || "radar") + (rad.approx ? " · environ" : "")).style.color = col;
       el("div", "rd", w, (rad.approx ? "≈ " : "") + gpsMetres(d));
       var bar = el("div", "rb", w), fill = el("i", "", bar); fill.style.width = Math.round(Math.max(0, Math.min(1, 1 - d / reach)) * 100) + "%"; fill.style.background = col;
-      var msg = rad.noSpeed ? "feu ou passage à niveau surveillé" : over == null ? (v != null ? Math.round(v) + " km/h" : "") : over <= 0 ? Math.round(v) + " km/h · tout va bien" : over <= 5 ? Math.round(v) + " km/h · levez le pied" : Math.round(v) + " km/h · ralentissez de " + Math.round(over) + " km/h";
+      var msg = rad.noSpeed ? (/passage|niveau/i.test(rad.what || "") ? "ne vous engagez pas si ça sonne" : "arrêtez-vous au rouge") : over == null ? (v != null ? Math.round(v) + " km/h" : "") : over <= 0 ? Math.round(v) + " km/h · tout va bien" : over <= 5 ? Math.round(v) + " km/h · levez le pied" : Math.round(v) + " km/h · ralentissez de " + Math.round(over) + " km/h";
       el("div", "rs", w, msg).style.color = col;
       if (rad.approx) el("div", "rn", w, "sans téléphone : position de l'autoradio, moins précise");
     }
