@@ -1204,6 +1204,23 @@ def _async_register_basemap(hass: HomeAssistant) -> None:
     hass.http.register_view(BasemapTileView())
     hass.http.register_view(TomTomRelayView())
     hass.http.register_view(CesiumEndpointView())
+
+    # Which screen is this? The car's screen is the head unit's Home
+    # Assistant ACCOUNT (Igor's options, « écran de la voiture »), checked
+    # here on each request — not a flag in the browser, which anyone can
+    # clear: on that account the screen locks without the owner's phone.
+    class ScreenView(HomeAssistantView):
+        url = "/api/nives/screen"
+        name = "api:nives:screen"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            user = request.get("hass_user")
+            cars = _car_users(hass)
+            return web.json_response({"configured": bool(cars), "car": bool(user and user.id in cars),
+                                      "admin": bool(user and user.is_admin)})
+
+    hass.http.register_view(ScreenView())
     store["basemap_view_registered"] = True
 
 

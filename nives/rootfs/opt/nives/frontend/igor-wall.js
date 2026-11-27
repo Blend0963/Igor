@@ -5549,7 +5549,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.3";
+  var GPS_CARD_VERSION = "0.62.6";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -8277,7 +8277,7 @@
       try { box.innerHTML = window.igorJunction2(J.model, Object.assign(carJunctionOpts(Jr, W, H, "tel"), { bar: false })); } catch (e) { box.hidden = true; }
     }
     publishJunction(R, along, next) {
-      var e = this.config.publish_junction;
+      var e = this.publishing === false ? null : this.config.publish_junction;
       var show = !!(next && next.at - along < 2000 && next.at - along > -60);
       var J = show ? (next.jx || (next.jx = this.junctionModel(R, next) || { none: true })) : null;
       if (J && J.none) J = null;
@@ -10363,10 +10363,31 @@
       if (this.config.sdk_trees === false) return false;
       return this.config.settings ? !!(this.look && Number(this.look.ts)) : this.config.sdk_trees === true;
     },
+    // One guide only. Every screen that opens this card (the phone, a second
+    // tab, a tablet or computer left on this page) would otherwise write the
+    // car's guidance from ITS OWN position and route, each over the other.
+    // The writer signs its heartbeat (last field of publish_ahead: « g » with
+    // the phone's live GPS, « t » with a tracker only, then its id). Another
+    // screen writes nothing while that writer is alive (20 s), unless it has
+    // live GPS and the writer has not. A hidden page never writes.
+    mayPublish() {
+      if (document.hidden) return false;
+      var e = this.config.publish_ahead, h = this._hass;
+      this.pubId = this.pubId || Math.random().toString(36).slice(2, 8);
+      if (!e || !h) return true;
+      var st = h.states[e], p = st ? String(st.state || "").split("|") : [], sig = p.length >= 9 ? p[p.length - 1] : "";
+      var other = sig && sig.slice(1) !== this.pubId, alive = other && Date.now() - carSeen(st) < 20000;
+      if (!alive) return true;
+      return sig[0] === "t" && this.localLive && this.localLive();
+    },
+    pubSig() { return (this.localLive && this.localLive() ? "g" : "t") + (this.pubId || ""); },
     publishAhead(now) {
       if (this.destLabel && (!this.labelAt || Date.now() - this.labelAt > 15000)) { this.labelAt = Date.now(); this.markerLabels(); }
       var e = this.config.publish_ahead;
       if (!e || !this._hass || !this._hass.callService || !this.pos) return;
+      var may = this.mayPublish();
+      if (!may && this.publishing !== false && !document.hidden && this.toast) this.toast("Un autre écran guide déjà la voiture : celui-ci n'envoie rien à l'autoradio", 8000);
+      if (!(this.publishing = may)) return;
       var R = this.route, guided = !!(R && this.seg), here = 0, left = 0;
       if (guided) {
         var o0 = gpsOnLine(this.pos, [R.coords[this.seg - 1], R.coords[Math.min(this.seg, R.coords.length - 1)]]);
@@ -10411,7 +10432,7 @@
       var rn = this.roadName, street = rn ? String(rn.name || rn.refs.join(" ")).replace(/[~;|]/g, " ").slice(0, 40) : "";
       // The arrival's weather: « température~mots~condition ».
       var aw = guided && this.wx && this.wxR === R && this.wx.arrival, awx = aw ? [aw.temp == null ? "" : Math.round(aw.temp), String(aw.text || "").replace(/[~;|]/g, " ").slice(0, 24), aw.condition || ""].join("~") : "";
-      var tail = "|" + lim + "|" + street + "|" + awx, head0 = [guided ? 1 : 0, Math.round(left), cam].join("|") + "|";
+      var tail = "|" + lim + "|" + street + "|" + awx + "|" + this.pubSig(), head0 = [guided ? 1 : 0, Math.round(left), cam].join("|") + "|";
       while (evl.length && (String(Date.now()) + "|" + head0 + evl.join(";") + tail).length > 250) evl.pop();
       var body = head0 + evl.join(";") + tail;
       // Not guiding: an arrow left by an earlier trip is wiped once, so the head unit shows none.
@@ -10426,6 +10447,7 @@
     },
     publishRoutes(v) {
       var e = this.config.publish_routes;
+      if (this.publishing === false) return;
       if (!e || !this._hass || !this._hass.callService || v === this.routesSent) return;
       this.routesSent = v;
       this._hass.callService("input_text", "set_value", { entity_id: e, value: String(v).slice(0, 250) }).catch(() => { this.routesSent = null; });
@@ -10512,7 +10534,7 @@
       // head unit's igor-guide-card), not out of this one: « ms|kind|text ».
       // Home Assistant out of reach: said here instead — the phone is on the
       // head unit's Bluetooth, the voice still comes out of the car.
-      var vt = this.config.voice_to;
+      var vt = this.publishing === false ? null : this.config.voice_to;
       if (vt && text && !here && this._hass && this._hass.callService && this._hass.connected !== false) {
         var sent = false, msg = (Date.now() + "|" + (kind || "nav") + "|" + String(text)).slice(0, 250);
         this._hass.callService("input_text", "set_value", { entity_id: vt, value: msg }).then(() => { sent = true; }, () => { if (!sent) { sent = true; this.say(text, kind, true); } });
@@ -10721,7 +10743,7 @@
       // publish_turn: input_text.x — the whole guidance for the head unit
       // (igor-guide-card `entity`): « icon|dist|text|then|eta|left|min|jam|dest »,
       // at once when the turn changes, else at most every 2 s; "" at the end.
-      var pt = this.config.publish_turn;
+      var pt = this.publishing === false ? null : this.config.publish_turn;
       if (pt && this._hass && this._hass.callService) {
         var clean = (x) => String(x == null ? "" : x).replace(/\|/g, "/");
         // « icon|dist|text|then|eta|left|min|jam|dest|lanes|lanes_m|turn_m|exit|to|refs »: the junction
@@ -10736,7 +10758,7 @@
           this._hass.callService("input_text", "set_value", { entity_id: pt, value: tv }).catch(() => { this.turnSent = null; });
         }
       }
-      var pg = this.config.publish_guide;
+      var pg = this.publishing === false ? null : this.config.publish_guide;
       if (pg && this._hass && this._hass.callService) {
         var left = g ? (/ km$/.test(g.left || "") ? Math.round(parseFloat(String(g.left).replace(",", "."))) + " km" : "< 1 km") : "";
         var v = g ? [g.eta, left, g.min + " min", g.dest || ""].join("|") : "";
@@ -14490,10 +14512,11 @@
         ".m3p { display: flex; gap: 8px; padding: 10px 14px; flex: none; } .m3pp { flex: 1; min-width: 0; text-align: left; padding: 8px 12px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; cursor: pointer; }",
         ".m3pp b { display: block; font-weight: 400; font-size: 15px; } .m3pp small { display: block; font-size: 11px; color: var(--dim); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .m3pp.on { border-color: var(--acc, #59d0e0); } .m3pp.on b { color: var(--acc, #59d0e0); }",
         ".m3t { display: flex; gap: 6px; padding: 0 14px; flex: none; border-bottom: 1px solid var(--acc, #59d0e0); overflow-x: auto; } .m3tt { padding: 10px 14px; border: 1px solid var(--line); border-bottom: none; background: none; color: var(--dim); font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; } .m3tt.on { color: var(--acc, #59d0e0); border-color: var(--acc, #59d0e0); background: #111418; }",
-        ".m3b { flex: 1; min-height: 0; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; align-content: start; padding: 4px 16px 10px; }",
+        ".m3b { flex: 1; min-height: 0; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: max-content; gap: 0 28px; align-content: start; padding: 4px 16px 10px; }",
         "@media (max-width: 900px) { .m3b { grid-template-columns: 1fr; } }",
         ".m3r { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #1a1e24; font-size: 15px; min-height: 52px; } .m3r small { display: block; color: var(--dim); font-size: 11px; margin-top: 3px; }",
-        ".m3g { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; } .m3g button { min-height: 40px; padding: 0 11px; border: 1px solid var(--line); background: none; color: var(--dim); font: inherit; font-size: 13px; cursor: pointer; } .m3g button.on { background: #123c44; color: var(--acc, #59d0e0); border-color: var(--acc, #59d0e0); }",
+        ".m3r > div:first-child { min-width: 0; flex: 1 1 auto; } .m3r.wide { flex-direction: column; align-items: stretch; gap: 8px; } .m3r.wide .m3g { justify-content: flex-start; flex-wrap: wrap; } .m3r.wide .m3g button { flex: 1 1 auto; }",
+        ".m3g { display: flex; flex-wrap: nowrap; flex: none; justify-content: flex-end; gap: 4px; } .m3g button { min-height: 40px; padding: 0 11px; border: 1px solid var(--line); background: none; color: var(--dim); font: inherit; font-size: 13px; cursor: pointer; } .m3g button.on { background: #123c44; color: var(--acc, #59d0e0); border-color: var(--acc, #59d0e0); }",
         ".m3l { display: grid; grid-template-columns: 40px 62px 40px; grid-template-rows: auto 18px; align-items: center; gap: 2px 6px; width: 170px; flex: none; } .m3l button { height: 40px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; font-size: 20px; cursor: pointer; } .m3l span { text-align: center; font-size: 14px; }",
         ".m3l i { grid-column: 1 / 4; height: 18px; position: relative; cursor: pointer; } .m3l i::before { content: ''; position: absolute; left: 0; right: 0; top: 7px; height: 4px; background: #22272e; } .m3l i b { position: absolute; left: 0; top: 7px; height: 4px; background: var(--acc, #59d0e0); }",
         ".m3f { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-top: 1px solid var(--line); flex: none; font-size: 13px; } .m3f .ok { color: " + CAR_OK + "; } .m3f .ko { color: " + CAR_BAD + "; } .m3f button { margin-left: auto; min-height: 42px; padding: 0 14px; flex-direction: row; }",
@@ -14541,7 +14564,7 @@
       }
       tiles.style.setProperty("--n", String(Math.max(1, tiles.children.length)));
     }
-    isCar() { try { return window.localStorage.getItem("igor-autoradio") === "1"; } catch (e) { return false; } }
+    isCar() { if (window.__igorIsCarScreen) return window.__igorIsCarScreen(); try { return window.localStorage.getItem("igor-autoradio") === "1"; } catch (e) { return false; } }
     drawScreen() {
       if (!this.screenTile) return;
       var car = this.isCar();
@@ -14556,6 +14579,12 @@
       var dh = el("div", "dh", dl); el("div", "h", dh, "cet écran");
       var x = el("button", "b close", dh); x.type = "button"; el("span", "", x, "fermer"); x.addEventListener("click", () => this.close());
       var ch = el("div", "ch", dl);
+      var sv = window.__igorScreenServer;
+      if (sv && sv.configured) {
+        el("p", "", ch, sv.car ? "Cet écran est l'autoradio : il est connecté avec le compte « écran de la voiture » des options d'Igor. Il se verrouille sans votre téléphone, quoi qu'on fasse dans le navigateur." : "Cet écran est libre : il n'est pas connecté avec le compte « écran de la voiture » des options d'Igor.");
+        el("p", "", ch, "Pour changer : Paramètres → Appareils et services → Igor → Configurer → écran de la voiture (administrateur).");
+        return;
+      }
       el("p", "", ch, "Ce choix ne vaut que pour l'appareil que vous tenez : les autres écrans gardent le leur.");
       var car = this.isCar();
       [[true, "mdi:car-key", "C'est l'autoradio", "verrouillé tant que votre téléphone n'est pas connecté"],
@@ -14629,6 +14658,10 @@
             var b = el("button", "sw" + (Number(v) ? " on" : ""), row, Number(v) ? "oui" : "non"); b.type = "button";
             b.addEventListener("click", () => { st.o[k] = Number(v) ? 0 : 1; save(); });
           } else if (r[4] === "seg") {
+            // Many choices (or long ones): under the name, across the row —
+            // never folded into a column that runs over the next settings.
+            var chars = r[5].reduce((n, o) => n + String(o[1]).length + 3, 0);
+            if (r[5].length > 3 || chars > 22) row.classList.add("wide");
             var sg = el("div", "m3g", row);
             r[5].forEach((o) => { var b2 = el("button", String(o[0]) === String(v) ? "on" : "", sg, o[1]); b2.type = "button"; b2.addEventListener("click", () => { st.o[k] = o[0]; save(); }); });
           } else {
@@ -15928,10 +15961,25 @@
     function flagFromUrl() {
       var m = /[?&]igor_autoradio(?:=([^&]*))?/.exec(window.location.search);
       if (!m) return;
-      if (m[1] === "0") { ls("igor-autoradio", null); hide(); } else ls("igor-autoradio", "1");
+      if (m[1] === "0") { if (window.__igorScreenServer && window.__igorScreenServer.configured) return; ls("igor-autoradio", null); hide(); } else ls("igor-autoradio", "1");
     }
     flagFromUrl();
-    window.__igorScreenIsCar = function (on) { ls("igor-autoradio", on ? "1" : null); if (!on) { hide(); open = false; } };
+    // The server's word (the account this browser is signed in with): when
+    // Igor's options name the car's account, it alone decides — the flag in
+    // the browser, a « ?igor_autoradio=0 » or a cleared cache change nothing.
+    var srv = { configured: false, car: false, admin: false, at: 0 };
+    function askServer() {
+      var h = hassNow(), tok = h && h.auth && h.auth.data && h.auth.data.access_token;
+      if (!tok) return;
+      srv.at = Date.now();
+      fetch(window.location.origin + "/api/nives/screen", { headers: { Authorization: "Bearer " + tok }, cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) { if (j) { srv.configured = !!j.configured; srv.car = !!j.car; srv.admin = !!j.admin; window.__igorScreenServer = srv; } })
+        .catch(function () { /* as it was */ });
+    }
+    function isCar() { return srv.configured ? srv.car : ls("igor-autoradio") === "1"; }
+    window.__igorIsCarScreen = isCar;
+    window.__igorScreenIsCar = function (on) { if (srv.configured) return; ls("igor-autoradio", on ? "1" : null); if (!on) { hide(); open = false; } };
     window.addEventListener("location-changed", flagFromUrl);
     window.addEventListener("popstate", flagFromUrl);
     function conf() { try { return JSON.parse(ls("igor-phone-lock") || "null"); } catch (e) { return null; } }
@@ -15970,6 +16018,7 @@
       var ring = root.querySelector(".ring"), lkS = root.querySelector(".lk .s"), hold = null;
       var stop = function () { if (hold) { clearTimeout(hold); hold = null; } ring.style.opacity = ""; };
       ring.addEventListener("pointerdown", function () {
+        if (srv.configured) return;  // the car's account: no way out but the phone
         ring.style.opacity = ".5";
         hold = setTimeout(function () {
           hold = null; ring.style.opacity = "";
@@ -16013,7 +16062,8 @@
       root.querySelector(".big").textContent = wait ? "Connexion du téléphone…" : "Aucun téléphone connecté";
     }
     setInterval(function () {
-      var c = ls("igor-autoradio") === "1" ? conf() : null;
+      if (!srv.at || Date.now() - srv.at > 60000) askServer();
+      var c = isCar() ? conf() : null;
       if (!c || !c.present) { hide(); open = false; return; }
       var h = hassNow(), st = h && h.states && h.states[c.present];
       // The key entity missing from a running Home Assistant (a package not loaded): no lock

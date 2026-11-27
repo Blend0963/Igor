@@ -1,3 +1,15 @@
+## 0.62.6 — Un seul écran guide la voiture
+
+- **Un seul guide** : chaque écran qui ouvrait la carte « Téléphone · Carte » (un deuxième onglet, l'appli et un navigateur, une tablette ou un ordinateur resté sur la page) écrivait le guidage de l'autoradio depuis SA position et SON itinéraire, chacun par-dessus l'autre — d'où des virages qui n'existent pas. Désormais l'écran qui guide signe son signe de vie (le téléphone, avec son GPS en direct, l'emporte sur un écran sans GPS) ; les autres n'écrivent rien (guidage, jonction, itinéraires, voix, signe de vie) tant qu'il est en vie, et le disent. Une page cachée n'écrit jamais.
+
+## 0.62.5 — Réglages de la carte à la taille de l'autoradio
+
+- **Fenêtre des réglages de la carte** (1024 × 600, 1280 × 720) : chaque ligne prend la hauteur de son contenu (les lignes étaient toutes forcées à la même hauteur sur un écran bas, et leurs choix débordaient sur les suivantes) ; les choix ne se replient plus en colonne : ceux qui en ont beaucoup passent sous le nom du réglage, sur toute la largeur. Vérifié sur tous les onglets, à 1024 × 600, 1280 × 720 et sur téléphone.
+
+## 0.62.4 — Verrouillage de l'autoradio par son compte
+
+- **Verrouillage sans téléphone** : quand les options d'Igor désignent le compte de l'autoradio (« écran de la voiture »), c'est ce compte, vérifié par Home Assistant à chaque demande (`/api/nives/screen`), qui fait de l'écran l'autoradio — plus un repère dans le navigateur. Vider le cache, `?igor_autoradio=0` ou l'appui long sur le cadenas (« Écran libre ») ne le déverrouillent plus : seul votre téléphone le fait. Sans compte désigné, l'ancien fonctionnement reste.
+
 ## 0.62.3 — Le téléphone guide, l'autoradio affiche
 
 - **Guidage de l'autoradio** : tant que le téléphone envoie son guidage (`publish_turn`) ou son signe de vie, l'autoradio affiche exactement ce qu'il donne — position, virages, distances, tout vient du GPS du téléphone. L'autoradio ne reprend la main avec son propre GPS (mode dégradé) qu'après 45 s sans aucune nouvelle du téléphone (20 s avant, et sur le seul signe de vie).
