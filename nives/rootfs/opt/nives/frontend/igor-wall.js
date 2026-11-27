@@ -5559,7 +5559,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.14";
+  var GPS_CARD_VERSION = "0.62.15";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -14017,7 +14017,7 @@
       el("div", "rk", w, (rad.what || "radar") + (rad.approx ? " · environ" : "")).style.color = col;
       el("div", "rd", w, (rad.approx ? "≈ " : "") + gpsMetres(d));
       var bar = el("div", "rb", w), fill = el("i", "", bar); fill.style.width = Math.round(Math.max(0, Math.min(1, 1 - d / reach)) * 100) + "%"; fill.style.background = col;
-      var msg = rad.noSpeed ? (/passage|niveau/i.test(rad.what || "") ? "ne vous engagez pas si ça sonne" : "arrêtez-vous au rouge") : over == null ? (v != null ? Math.round(v) + " km/h" : "") : over <= 0 ? Math.round(v) + " km/h · tout va bien" : over <= 5 ? Math.round(v) + " km/h · levez le pied" : Math.round(v) + " km/h · ralentissez de " + Math.round(over) + " km/h";
+      var msg = rad.noSpeed ? (/passage|niveau/i.test(rad.what || "") ? "ne vous engagez pas si ça sonne" : "arrêtez-vous au rouge") : over == null ? (v != null ? Math.round(v) + " km/h" : "") : over <= 0 ? Math.round(v) + " km/h · vitesse conforme" : Math.round(v) + " km/h · ralentissez de " + Math.round(over) + " km/h";
       el("div", "rs", w, msg).style.color = col;
       if (rad.approx) el("div", "rn", w, "sans téléphone : position de l'autoradio, moins précise");
     }

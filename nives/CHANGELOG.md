@@ -1,3 +1,7 @@
+## 0.62.15 — Message du radar
+
+- **Vue radar** : « vitesse conforme » à la limite ou en dessous, « ralentissez de N km/h » au-dessus (plus de « tout va bien » ni de « levez le pied »).
+
 ## 0.62.14 — Couleur du radar selon la vitesse
 
 - **Vue radar (autoradio)** : orange tant que la vitesse est à la limite ou en dessous, rouge au-dessus (cadre, fond, barre, message).
