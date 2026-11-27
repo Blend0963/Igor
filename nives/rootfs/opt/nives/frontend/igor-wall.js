@@ -5549,7 +5549,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.2";
+  var GPS_CARD_VERSION = "0.62.3";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -13045,11 +13045,16 @@
     // The phone map alive? Its heartbeat (publish_ahead, every 2 to 8 s).
     // Unknown without `ahead`; not judged while Home Assistant is out of
     // reach (then nothing comes, from anyone: the bar says so).
+    // The phone is the guide: its position, its route, its turns. The head
+    // unit takes over only when the phone has said nothing at all for 45 s —
+    // neither its heartbeat nor its guidance — or has left the car.
     mapSilent() {
       var c = this.config, h = this._hass, a = c.ahead && h && h.states[c.ahead];
       if (!a || window.__igorLost || (h && h.connected === false)) return false;
+      var tn = c.entity && h.states[c.entity], now = Date.now();
+      if (tn && tn.state && !/^(unknown|unavailable)$/.test(tn.state) && now - carSeen(tn) < 45000) return false;
       var t = Number(String(a.state || "").split("|")[0]);
-      return !(t > 0) || Date.now() - carSeen(a) > 20000;
+      return !(t > 0) || now - carSeen(a) > 45000;
     }
     // Mode dégradé: the trip under way taken over by the head unit (`relay`),
     // only when there was one (the phone's map guided) and the map fell

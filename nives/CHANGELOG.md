@@ -1,3 +1,7 @@
+## 0.62.3 — Le téléphone guide, l'autoradio affiche
+
+- **Guidage de l'autoradio** : tant que le téléphone envoie son guidage (`publish_turn`) ou son signe de vie, l'autoradio affiche exactement ce qu'il donne — position, virages, distances, tout vient du GPS du téléphone. L'autoradio ne reprend la main avec son propre GPS (mode dégradé) qu'après 45 s sans aucune nouvelle du téléphone (20 s avant, et sur le seul signe de vie).
+
 ## 0.62.2 — Couleurs de toute la carte, plaque de rue, musique
 
 - **Couleurs de la carte la nuit** (« par défaut », « bleu nuit », « TomTom ») : passent maintenant par le thème officiel du kit TomTom, qui recolore toute la carte — sol, eau, bois, parcs, zones bâties, chaque classe de route et ses bords, les noms et leurs halos — et garde la teinte d'un changement de style à l'autre. « par défaut » remet les couleurs d'origine.
