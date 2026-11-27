@@ -187,8 +187,6 @@ SERVICE_TRIP_MAP = "trip_map"
 # never in a dashboard. Without one, the card simply shows no traffic.
 CONF_TRAFFIC_KEY = "traffic_key"
 CONF_HERE_KEY = "here_key"
-CONF_CESIUM_TOKEN = "cesium_token"
-CESIUM_OSM_BUILDINGS = 96188
 CONF_HERE_DAILY = "here_daily"
 SERVICE_TRAFFIC = "traffic"
 SERVICE_ROUTE = "route"
