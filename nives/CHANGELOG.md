@@ -1,3 +1,10 @@
+## 0.62.1 — Autoradio : horloge décalée, vue de jonction stable, textes qui défilent
+
+- **Horloge de l'autoradio** : la fraîcheur des messages du téléphone (guidage, radar, jonction, panneau de rue, limitation) se mesure maintenant à leur réception, sur l'horloge de l'autoradio, et non plus en comparant l'heure du téléphone à la sienne. Une horloge décalée faisait croire le téléphone muet : l'autoradio reprenait le guidage avec son propre GPS (en retard, « radars : liste officielle · sans stations ») et la vue de jonction ne s'affichait pas.
+- **Vue de jonction** : une fois affichée, elle reste jusqu'au passage du carrefour (la sortie du rond-point), même si un message du téléphone tarde ; la distance continue avec la vitesse de la voiture.
+- **Colonne guidage** : pendant la vue, « après le rond-point · … » (ou « après la sortie »), et seulement quand la vue est bien à l'écran.
+- **Textes trop longs** (guidage, en-tête « devant vous ») : ils défilent au lieu d'être réduits ou coupés.
+
 ## 0.62.0 — Bâtiments Cesium et monuments détaillés
 
 - **Source des bâtiments 3D** (Réglages de la carte → Bâtiments) : TomTom, ou **Cesium** — les bâtiments d'OpenStreetMap en 3D (Cesium OSM Buildings), dessinés par Igor, la nuit dans le bleu-gris de la teinte choisie ; ceux de TomTom sont masqués pendant ce temps.
