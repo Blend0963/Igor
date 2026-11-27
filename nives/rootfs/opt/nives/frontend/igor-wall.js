@@ -5559,7 +5559,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.7";
+  var GPS_CARD_VERSION = "0.62.8";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -8277,7 +8277,9 @@
       if (!box) return;
       var d = next ? next.at - along : null, fast = (this.speedMps ? this.speedMps() : 0) > 20;
       var useful = J && /sortie|echangeur|bifurcation|rond_point|preselection|insertion/.test(J.model);
-      var on = !!(useful && this.config.junction_inset !== false && this.follow && d != null && d < (fast ? 1000 : 600) && d > (J.model === "rond_point" ? -40 : -3));
+      // Never on the phone used as the head unit's second screen (display_only):
+      // there the junction view is the head unit's. Only in the phone's own GPS mode.
+      var on = !!(useful && !this.config.display_only && this.config.junction_inset !== false && this.follow && d != null && d < (fast ? 1000 : 600) && d > (J.model === "rond_point" ? -40 : -3));
       if (!on) { if (!box.hidden) { box.hidden = true; box.innerHTML = ""; this.insetKey = null; } return; }
       box.hidden = false;
       var W = box.clientWidth || 360, H = box.clientHeight || 220, key = J.model + "|" + (J.arms || []).join(",") + "|" + Math.round(d / 20) + "|" + W + "x" + H + "|" + (J.town || "");

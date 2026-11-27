@@ -1,3 +1,7 @@
+## 0.62.8 — Vue de jonction : autoradio, ou GPS du téléphone seul
+
+- La vue de jonction (sorties, ronds-points…) n'apparaît plus sur le téléphone posé en écran déporté de l'autoradio (`display_only`) : elle est alors sur l'autoradio seulement. Sur le téléphone, elle n'apparaît qu'en mode GPS à part entière.
+
 ## 0.62.7 — Panneau des radars de feu, cartes qui ne tombent plus en « Erreur de configuration »
 
 - **Radar de feu rouge / de passage à niveau** (autoradio) : le vrai panneau de danger français — triangle « feux tricolores » (A17) ou « passage à niveau » (A8) — au lieu d'un rond de vitesse avec le mot « feu » ; le message dit quoi faire : « arrêtez-vous au rouge », « ne vous engagez pas si ça sonne ».
