@@ -1,3 +1,17 @@
+## 0.61.0 — Vue de jonction, flèche et flèches au sol façon TomTom, teinte et éclairage de nuit
+
+- **Vue de jonction sur l'autoradio** (`junction:` sur igor-drive-card, `publish_junction:` sur la carte du téléphone) : à l'approche d'une sortie, d'une bifurcation, d'un échangeur, d'un rond-point ou d'un carrefour, toute la colonne du centre montre la route telle qu'on la voit, tracé cyan avec son halo, sans flèche. Elle disparaît dès que la voiture est dans le carrefour (à la sortie pour un rond-point).
+  - 15 modèles (sorties, bifurcation, échangeur, insertion, fin de voie, péage, carrefours, rond-point, demi-tour, présélection), choisis et réglés par l'itinéraire TomTom (angle du virage, voies, n° de sortie, panneau).
+  - **Forme réelle** : les routes qui se rejoignent au carrefour sont lues sur la carte du téléphone (nombre et angles) — un rond-point à 5 branches est dessiné avec ses 5 branches.
+  - **Panneaux** : celui de la sortie (n°, routes, villes) et celui de la route qui continue (son numéro et la ville suivante, cherchée 4 km plus loin).
+  - Pendant la vue, le guidage de gauche montre l'instruction suivante.
+- **Téléphone** : la même vue s'ouvre en haut de la carte, seulement en guidage et carte qui suit la voiture, pour les sorties, bifurcations, ronds-points et présélections (`junction_inset: false` pour la couper).
+- **Flèche de la voiture** façon TomTom : épaisse, bords arrondis, liseré blanc, épaisseur visible.
+- **Flèches au sol** : le tronçon du virage devient blanc et se fond dans le tracé aux deux bouts, sans pointe.
+- **Bulles des itinéraires de rechange** avec pictogrammes : chrono, €, feuille (sans ZFE).
+- **Réglages de la carte** : « Éclairage des bâtiments la nuit » (fenêtres et façades éclairées) et « Teinte de la nuit » (gris ou bleu nuit).
+- Serveur : la ville est rendue par `nives.car_limit` ; les instructions TomTom gardent l'angle du virage et le type de jonction.
+
 ## 0.60.1 — Cyan Igor sur l'autoradio, tracé et flèche façon TomTom sur le téléphone
 
 - **Autoradio, une seule couleur** : la barre d'itinéraire, la flèche du guidage, le téléphone (« sur le socle ») et les messages (« lecture auto », liseré, boutons) prennent tous le cyan Igor.
