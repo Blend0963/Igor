@@ -5097,7 +5097,7 @@
     gearRetry() { if (this.gearT) return; this.gearT = setTimeout(() => { this.gearT = null; if (this._hass) this.update(this._hass, null); }, 450); }
     limitNow(hass) {
       var c = this.config, a = c.ahead && hass.states[c.ahead], p = a ? String(a.state || "").split("|") : [];
-      if (p.length >= 6 && Date.now() - Number(p[0]) < 20000 && Number(p[5]) > 0) return Number(p[5]);
+      if (p.length >= 6 && Date.now() - carSeen(a) < 20000 && Number(p[5]) > 0) return Number(p[5]);
       var l = c.limit ? num(hass.states[c.limit]) : null;
       if (l != null && l > 0) return l;
       var tr = c.limit_from && hass.states[c.limit_from], at = tr && tr.attributes;
@@ -5542,7 +5542,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.0";
+  var GPS_CARD_VERSION = "0.62.1";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -12332,6 +12332,21 @@
     var sz = max;
     while (sz > min && node.scrollWidth > node.clientWidth + 1) { sz -= 1; node.style.fontSize = sz + "px"; }
   }
+  // When this screen received an entity's current value (its own clock):
+  // the phone's messages carry the phone's time, and a head unit's clock is
+  // often minutes off — compared with it, a fresh message looked stale.
+  function carSeen(st) {
+    if (!st) return 0;
+    var m = carSeen.m || (carSeen.m = {}), k = st.entity_id || "?", v = String(st.state);
+    var e = m[k];
+    if (!e || e.v !== v) e = m[k] = { v: v, at: Date.now() };
+    return e.at;
+  }
+  // A text set on a line that scrolls when it does not fit (no smaller font).
+  function carSetText(node, txt, every) {
+    if (!node || node.__txt === txt) return;
+    node.__txt = txt; node.textContent = txt; carMarquee(node, every || 5000);
+  }
   function carMarquee(node, every) {
     if (!node) return;
     var span = node.__mq;
@@ -12342,8 +12357,11 @@
     if (node.__mqAnim) { node.__mqAnim.cancel(); node.__mqAnim = null; }
     clearTimeout(node.__mqT);
     node.style.textOverflow = "clip";
+    if (!node.clientWidth) { node.__mqT = setTimeout(() => carMarquee(node, every), 1000); return; }
     var over = span.offsetWidth - node.clientWidth;
-    if (over <= 2 || !span.animate) { node.style.textOverflow = ""; return; }
+    if (over <= 2 || !span.animate) { node.style.textOverflow = ""; node.style.textAlign = ""; return; }
+    // Its start shown first, then it slides to its end and back.
+    node.style.textAlign = "left";
     var run = () => {
       if (!node.isConnected) return;
       var ms = Math.max(1600, over * 28);
@@ -12541,7 +12559,7 @@
       var pl = this.gPlate, c = this.config, h = this._hass;
       if (!pl || !h) return;
       var a = c.ahead && h.states[c.ahead], p = a ? String(a.state || "").split("|") : [];
-      var street = p.length >= 7 && Date.now() - Number(p[0]) < 20000 ? p[6] : "";
+      var street = p.length >= 7 && Date.now() - carSeen(a) < 20000 ? p[6] : "";
       var ad = c.address && h.states[c.address], at = (ad && ad.attributes) || {}, full = ad && !/^(unknown|unavailable)$/.test(ad.state) ? String(ad.state) : "";
       if (!street) street = at.thoroughfare || at.Thoroughfare || (full ? full.split(",")[0].trim() : "");
       var town = at.locality || at.Locality || (full ? (full.split(",")[1] || "").trim().replace(/^\d{5}\s*/, "") : "");
@@ -12997,7 +13015,7 @@
       var c = this.config, h = this._hass, a = c.ahead && h && h.states[c.ahead];
       if (!a || window.__igorLost || (h && h.connected === false)) return false;
       var t = Number(String(a.state || "").split("|")[0]);
-      return !(t > 0) || Date.now() - t > 20000;
+      return !(t > 0) || Date.now() - carSeen(a) > 20000;
     }
     // Mode dégradé: the trip under way taken over by the head unit (`relay`),
     // only when there was one (the phone's map guided) and the map fell
@@ -13055,7 +13073,7 @@
       // The map alive and saying it does not guide (its heartbeat): an old arrow, not a guidance.
       if (this.remote() && g && this.config.ahead && this._hass) {
         var ah = this._hass.states[this.config.ahead], pp = ah ? String(ah.state || "").split("|") : [];
-        if (pp.length >= 2 && Date.now() - Number(pp[0]) < 20000 && pp[1] === "0") g = null;
+        if (pp.length >= 2 && Date.now() - carSeen(ah) < 20000 && pp[1] === "0") g = null;
       }
       // The map gone quiet while guiding (phone off its dock, app closed,
       // battery out): its last arrow would lie — the trip is cut.
@@ -13087,8 +13105,11 @@
       if (!g) return;
       // The junction view on (the middle of the head unit shows this turn):
       // the column tells what comes after it, until the car is through.
-      var Jx = this.config.junction ? carJunction(this._hass, this.config.junction, this.config.speed ? parseFloat((this._hass.states[this.config.speed] || {}).state) : 0) : null;
-      if (Jx && Jx.nextText) g = Object.assign({}, g, { icon: Jx.nextIcon || g.icon, dist: Jx.nextM != null ? gpsMetres(Math.max(0, Jx.d) + Jx.nextM) : "", text: "ensuite · " + Jx.nextText, then: "" });
+      var sh = window.__igorJx, Jx = this.config.junction && sh && Date.now() - sh.at < 3000 ? sh.J : null;
+      if (Jx && Jx.nextText) {
+        var after = Jx.model === "rond_point" ? "après le rond-point" : /^(sortie|echangeur)/.test(Jx.model) ? "après la sortie" : Jx.model === "bifurcation" ? "après la bifurcation" : "ensuite";
+        g = Object.assign({}, g, { icon: Jx.nextIcon || g.icon, dist: Jx.nextM != null ? gpsMetres(Math.max(0, Jx.d) + Jx.nextM) : "", text: after + " · " + Jx.nextText, then: "" });
+      }
       this.gIcon.setAttribute("icon", g.icon || "mdi:arrow-up");
       // « ≈ » (mode dégradé) small before the figure: the distance stays on one line.
       var gd = String(g.dist || ""), approx = gd.indexOf("≈ ") === 0;
@@ -13098,8 +13119,7 @@
       // The instruction whole: a smaller font first, then it scrolls.
       if (this.gText.__txt !== (g.text || "")) {
         this.gText.__txt = g.text || ""; this.gText.textContent = g.text || "";
-        var big = !!this.config.big, short = this.classList.contains("short");
-        carFit(this.gText, big ? 17 : 13, big ? 12 : 10); carMarquee(this.gText, 5000);
+        carMarquee(this.gText, 4000);
       }
       if (this.gThen.__txt !== (g.then || "")) { this.gThen.__txt = g.then || ""; this.gThen.textContent = g.then || ""; carMarquee(this.gThen, 7000); }
       this.gEta.textContent = g.eta || "";
@@ -13349,7 +13369,7 @@
     var st = ent && hass && hass.states[ent], raw = st ? String(st.state || "") : "", a = raw.split("|");
     if (a.length < 10 || !a[1]) return null;
     t = t || Date.now();
-    var at = Number(a[0]) || t; if (!isFinite(at) || t - at > 15000) return null;
+    var at = Number(a[0]) ? carSeen(st) : t; if (!isFinite(at) || t - at > 15000) return null;
     var gone = Math.max(0, (t - at) / 1000) * Math.max(0, v || 0) / 3.6, d = Number(a[2]) - gone, model = a[1];
     var reach = (v || 0) > 70 ? 1500 : 800, after = model === "rond_point" ? -45 : -3;
     if (d > reach || d < after) return null;
@@ -13424,7 +13444,7 @@
         // Weather on the way: a band under the road where it troubles the driving.
         ".wb { position: absolute; top: calc(28% + 8px); height: 5px; border-radius: 3px; transition: left 1s linear, width 1s linear; }",
         "ha-card.view { flex: 1; min-height: 0; display: flex; flex-direction: column; box-sizing: border-box; padding: 12px 18px; overflow: hidden; transition: background .3s, border-color .3s; border: 2px solid transparent; }",
-        ".hr2 { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex: none; } .hr2 .h { margin-bottom: 4px; } .aside { font-size: 13px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".hr2 { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex: none; } .hr2 .h { margin-bottom: 4px; } .aside { font-size: 13px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }",
         ".body { flex: 1; min-height: 0; position: relative; transition: opacity .25s ease-out; will-change: opacity; } .body.fade { opacity: 0; transition-duration: .2s; } .body.fade.fast { transition-duration: .12s; }",
         "ha-card.frz { transition: opacity .35s ease-out, transform .35s ease-out; } ha-card.frz.off { opacity: 0; transform: translateY(16px); }",
         ".tabs { display: flex; gap: 6px; justify-content: center; flex: none; margin-top: 6px; } .tabs span { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; padding: 4px 9px; border: 1px solid var(--line); color: var(--faint); cursor: pointer; }",
@@ -13629,13 +13649,14 @@
     // head unit (rougher: the head unit's position comes a few seconds late).
     radar(t) {
       var c = this.config, a = this.st(c.ahead), parts = a ? String(a.state || "").split("|") : [];
-      var fresh = parts.length >= 4 && t - Number(parts[0]) < 15000;
+      var seen = carSeen(a), fresh = parts.length >= 4 && t - seen < 15000;
+      this.aheadSeen = seen;
       this.mapAlive = fresh;
       // The phone's map silent, the head unit guiding itself (mode dégradé):
       // its own account of the road, rougher.
       var rl = !fresh && window.__igorRelay ? String(window.__igorRelay).split("|") : null;
       this.relayed = !!(rl && rl.length >= 4 && t - Number(rl[0]) < 15000);
-      if (this.relayed) { parts = rl; fresh = true; }
+      if (this.relayed) { parts = rl; fresh = true; this.aheadSeen = Number(rl[0]); }
       this.aheadParts = fresh ? parts : null;
       if (fresh) {
         if (!parts[3]) return null;
@@ -13709,8 +13730,9 @@
     // (the phone map knows it), a start, an overtaking, a relaunch.
     pullWhy(t, v) {
       var p = this.aheadParts || (this.st(this.config.ahead) ? String(this.st(this.config.ahead).state || "").split("|") : null);
-      if (p && p.length >= 5 && t - Number(p[0]) < 15000) {
-        var gone = Math.max(0, (t - Number(p[0])) / 1000) * Math.max(0, v || 0) / 3.6;
+      var pAt = this.aheadParts ? this.aheadSeen : carSeen(this.st(this.config.ahead));
+      if (p && p.length >= 5 && t - pAt < 15000) {
+        var gone = Math.max(0, (t - pAt) / 1000) * Math.max(0, v || 0) / 3.6;
         if ((p[4] || "").split(";").some((e) => { var q = e.split("~"); return q[0] === "p" && Number(q[1]) - gone <= 80 && Number(q[1]) - gone >= -1500; })) return "sortie de péage";
       }
       var back = this.samples.find((x) => t - x.t <= this.tune("gain_s", 4) * 1000 + 1000 && x.v != null), from = back ? back.v : v;
@@ -13791,7 +13813,21 @@
     // (800 m in town); gone once the car is in the junction — out of the
     // roundabout for a roundabout. Without `junction:`, the lanes view of
     // publish_turn as before.
-    junction(t, v) { return carJunction(this._hass, this.config.junction, v, t); }
+    // Held from the moment it shows until the car is through: a message that
+    // comes late or not at all for a few seconds never makes it blink off;
+    // the distance is then carried on with the car's own speed.
+    junction(t, v) {
+      var J = carJunction(this._hass, this.config.junction, v, t), H = this.jxHold;
+      if (J) { this.jxHold = { J: J, t: t }; }
+      else if (H && t - H.t < 25000) {
+        var d = H.J.d - Math.max(0, (t - H.t) / 1000) * Math.max(0, v || 0) / 3.6;
+        if (d > (H.J.model === "rond_point" ? -45 : -3)) J = Object.assign({}, H.J, { d: d }); else this.jxHold = null;
+      } else this.jxHold = null;
+      // Shared with the guidance column of this screen: it shows what comes
+      // after the junction only while the junction is on screen here.
+      window.__igorJx = J ? { J: J, at: t } : null;
+      return J;
+    }
     drawJunction(J, v) {
       if (!J) return;
       var card = this.cardEl;
@@ -13912,15 +13948,16 @@
       else if (guided) { clearTimeout(this.frzT); this.frzT = null; fz.classList.remove("off"); }
       else if (!fz.hidden && !this.frzT) { if (anim) { fz.classList.add("off"); this.frzT = setTimeout(() => { fz.hidden = true; fz.classList.remove("off"); this.frzT = null; }, 350); } else fz.hidden = true; }
       if (!guided) { this.flowSpeed = null; return; }
-      var at = Number(p[0]), gone = Math.max(0, Math.min(12, (t - at) / 1000)) * Math.max(0, v || 0) / 3.6;
+      var at = this.aheadSeen || t, gone = Math.max(0, Math.min(12, (t - at) / 1000)) * Math.max(0, v || 0) / 3.6;
       var left = Math.max(0, (Number(p[2]) || 0) - gone), span = Math.max(500, Math.min(left, 30000));
       var YOU = 2.5, END = 97, X = (d) => YOU + Math.max(0, Math.min(1, d / span)) * (END - YOU), R = (d) => Math.max(0, Math.min(100, d / span * 100));
       // The header: what is left, when the end is in the frieze.
       var tn = this.st(this.config.turn), g = tn ? String(tn.state || "").split("|") : [];
-      if (this.relayed) this.fzAside.textContent = "radars : liste officielle · sans stations";
+      if (this.relayed) carSetText(this.fzAside, "radars : liste officielle · sans stations");
       else {
         var aw0 = p[7] ? p[7].split("~") : null, awt = aw0 && aw0[0] !== "" ? aw0[0] + " °C" + (aw0[1] ? " " + aw0[1].toLowerCase() : "") : "";
-        this.fzAside.textContent = left <= 30000 ? [gpsMetres(left), g[6] ? g[6] + " min" : "", g[4] ? "arrivée " + g[4] : "", awt].filter(Boolean).join(" · ") : ["les 30 prochains km", g[4] ? "arrivée " + g[4] : "", awt].filter(Boolean).join(" · ");
+        // Rounded so it changes rarely (the line scrolls when too long).
+        carSetText(this.fzAside, left <= 30000 ? [gpsMetres(Math.round(left / 100) * 100), g[6] ? g[6] + " min" : "", g[4] ? "arrivée " + g[4] : "", awt].filter(Boolean).join(" · ") : ["les 30 prochains km", g[4] ? "arrivée " + g[4] : "", awt].filter(Boolean).join(" · "), 6000);
       }
       // The dashes run with the car (stopped: still).
       var kmh = Math.max(0, v || 0), sp = kmh < 3 ? 0 : Math.round(kmh / 10);
