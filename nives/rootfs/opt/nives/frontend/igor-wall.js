@@ -5386,6 +5386,7 @@
       // before the car started (the head unit's sensors keep the last title
       // of the previous drive) — a short stop keeps what was playing.
       var acts = [].concat(this.config.active || []).map(function (id) { return hass.states[id]; }).filter(Boolean);
+      var since = 0;
       if (acts.length) {
         var onNow = acts.filter(function (a) { return a.state === "on"; }), nowMs = Date.now();
         if (!onNow.length) {
@@ -5399,13 +5400,19 @@
         } else {
           // Started: the earliest of those on. A music change: the notification's
           // title, the session's title seen changing, or the session updated (play, pause).
-          var since = Math.min.apply(null, onNow.map(function (a) { return Date.parse(a.last_changed) || nowMs; }));
-          var last = Math.max(fOk ? fAt : 0, this.sessChangedAt || 0, s ? Date.parse(s.last_updated) || 0 : 0);
-          if (last < since - 1200000) { title = ""; artist = ""; playing = false; }
+          since = Math.min.apply(null, onNow.map(function (a) { return Date.parse(a.last_changed) || nowMs; }));
         }
       }
-      this.ti.textContent = title || "Rien en lecture";
-      this.ar.textContent = (artist ? artist + " · " : "") + (playing ? "en lecture" : "en pause");
+      // A title is believed only when it is known to have CHANGED lately:
+      // the notification's (its state is the title, its last change is the
+      // track's), or the session's seen changing on this screen. A session
+      // only updated for a play, a pause or the position keeps the title of
+      // days ago (a head unit does) — then the state shows, not that name.
+      var tAt = fOk && title === f.state ? fAt : this.sessChangedAt || 0;
+      var ref = acts.length && since ? since - 1200000 : Date.now() - 6 * 3600000;
+      if (title && tAt < ref) { title = ""; artist = ""; }
+      this.ti.textContent = title || (playing ? "Musique en lecture" : "Musique en pause");
+      this.ar.textContent = title ? (artist ? artist + " · " : "") + (playing ? "en lecture" : "en pause") : "titre inconnu";
       if (this.playIcon) this.playIcon.setAttribute("icon", playing ? "mdi:pause" : "mdi:play");
     }
   }
@@ -5542,7 +5549,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.1";
+  var GPS_CARD_VERSION = "0.62.2";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7397,6 +7404,12 @@
     // lighter. TomTom's textured ground (its surfaces) is redrawn after it,
     // since it reads the map's colours when it starts.
     tintLook(map, L) {
+      // TomTom's map: its own theming (StylingFoundationsModule.setMapColors)
+      // recolours the whole base map — land, water, woods, parks, built-up
+      // areas, every road class and its outlines, the labels and their
+      // halos — re-deriving every shade from them, and keeps it across style
+      // switches. « par défaut »: each colour reset to the style's own.
+      if (this.tt && this.ttKit && this.ttKit.sdk && this.ttKit.sdk.StylingFoundationsModule) return this.tintSdk(L);
       var night = this.ttStyle === "streetDarkDriving" || (this.config.sdk_style || "").indexOf("Dark") >= 0;
       var mode = night && L && (L.tn === "tomtom" || L.tn === "bleu") ? L.tn : "";
       if ((this.tintMode || "") === mode && this.tintStyle === this.ttStyle) return;
@@ -7431,6 +7444,25 @@
       if (this.ttSurf && this.ttKit && this.ttKit.lm && this.ttKit.lm.GLSurfaces) {
         try { if (this.ttSurf.remove) this.ttSurf.remove(); this.ttSurf = new this.ttKit.lm.GLSurfaces(this.tt, Object.assign({ trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: 0 } }, typeof this.config.sdk_surfaces === "object" ? this.config.sdk_surfaces : {})); this.routeOnTop(map); } catch (e) { /* as it was */ }
       }
+    }
+    tintSdk(L) {
+      var sdk = this.ttKit.sdk, dark = this.ttStyle === "streetDarkDriving" || (this.config.sdk_style || "").indexOf("Dark") >= 0;
+      var mode = dark && L && (L.tn === "tomtom" || L.tn === "bleu") ? L.tn : "";
+      var key = mode + "|" + this.ttStyle;
+      if (key === this.tintSdkKey) return;
+      this.tintSdkKey = key;
+      // The colours read off TomTom's own night navigation, and a deeper navy.
+      var PAL = {
+        tomtom: { land: "#213a49", water: "#3b5871", vegetation: "#2a4a4f", park: "#2f5652", artificial: "#2f4957", roadMajor: "#4f6f7d", road: "#3a5866", roadOutline: "#2a4452", label: "#cfdce2", labelHalo: "#18303d" },
+        bleu: { land: "#16243a", water: "#1d3a5c", vegetation: "#1c3340", park: "#1f3a44", artificial: "#1d2d44", roadMajor: "#3a5878", road: "#2c4560", roadOutline: "#1f3047", label: "#c3cfe0", labelHalo: "#111c2c" }
+      };
+      var names = ["land", "water", "vegetation", "park", "artificial", "roadMajor", "road", "roadOutline", "label", "labelHalo"];
+      this.ttStyling = this.ttStyling || sdk.StylingFoundationsModule.get(this.tt);
+      this.ttStyling.then((st) => {
+        if (this.tintSdkKey !== key) return;
+        if (mode) st.setMapColors(PAL[mode]);
+        else if (sdk.resetKnob && sdk.stylingFoundationsKnobCatalogue) names.forEach((n) => { try { sdk.resetKnob(st, sdk.stylingFoundationsKnobCatalogue, "colors." + n); } catch (e) { /* that one as it was */ } });
+      }).catch((e) => { this.ttStyling = null; this.tintSdkKey = null; if (this.config.debug) this.message("teinte : " + (e && e.message)); });
     }
     buildingsLook() {
       var c = this.config, op = Number(c.buildings_opacity), L = this.look, look;
@@ -10321,7 +10353,7 @@
       if (want === this.ttStyle) return;
       // The other style: the SDK carries its modules over; the route, the
       // trail and the trees come back with Igor's own style.load.
-      this.ttStyle = want; this.themeBusy = true; this.tintKept = null; this.glowKept = null; this.tintMode = null; this.city3dKey = null; if (this.city3d) { this.city3d.stop(); this.city3d = null; }
+      this.ttStyle = want; this.themeBusy = true; this.tintSdkKey = null; this.tintKept = null; this.glowKept = null; this.tintMode = null; this.city3dKey = null; if (this.city3d) { this.city3d.stop(); this.city3d = null; }
       Promise.resolve().then(() => this.tt.setStyle(want)).catch(() => {}).then(() => { this.themeBusy = false; });
     },
     // The woods' trees (TomTom's SDK): thousands of 3D shapes, heavy on a
@@ -12567,7 +12599,7 @@
       if (key === this.plateKey) return;
       this.plateKey = key;
       this.gPlateN.textContent = street; this.gPlateT.textContent = town;
-      this.gPlateT.hidden = !town;
+      this.gPlateT.parentNode.hidden = !town;
       pl.hidden = !street;
       if (street) requestAnimationFrame(() => { carMarquee(this.gPlateN, 6000); carMarquee(this.gPlateT, 6000); });
       // No room (the block already full): it goes.
@@ -12592,6 +12624,7 @@
         ".plate { flex-wrap: wrap; row-gap: 6px; } .plate .pn { background: #1d4b9b; color: #fff; padding: 5px 12px; border-radius: 4px; box-shadow: inset 0 0 0 2px #1d4b9b, inset 0 0 0 3px #fff; font-size: 16px; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; max-width: 100%; box-sizing: border-box; }",
         // The town as its own entry sign: white, a red edge, across the width left.
         ".plate .pt { font-size: 14px; color: #111; background: #fff; padding: 4px 10px; border-radius: 4px; box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 4px #c8102e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; max-width: 100%; box-sizing: border-box; text-align: center; } .plate .pt:empty { display: none; }",
+        ".plate .in { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }",
         // big: the head unit's guidance column (remote), the turn in large
         ":host([big]) ha-card { overflow: hidden; } :host([big]) .turn { grid-template-columns: 70px minmax(0, 1fr); gap: 8px; --mdc-icon-size: 66px; } :host([big]) .dist { font-size: 40px; } :host([big]) .tx { font-size: 17px; } :host([big]) .then { font-size: 12px; margin-top: 3px; }",
         ":host([big].short) .turn { grid-template-columns: 52px minmax(0, 1fr); --mdc-icon-size: 48px; } :host([big].short) .dist { font-size: 32px; } :host([big].short) .then { display: none; } :host([big].short) .grid > div:nth-child(n+3) { display: none; } :host([big].short) .grid b { font-size: 20px; }",
@@ -12698,7 +12731,8 @@
         // The street the car is on, as its plate (and the town), when the
         // block has room for it; none, it simply is not shown.
         this.gPlate = el("div", "plate", this.guide); this.gPlate.hidden = true;
-        this.gPlateN = el("span", "pn", this.gPlate); this.gPlateT = el("span", "pt", this.gPlate);
+        // The text inside its own box: it scrolls within the plate's margins, never over its edge.
+        this.gPlateN = el("span", "in", el("span", "pn", this.gPlate)); this.gPlateT = el("span", "in", el("span", "pt", this.gPlate));
       } else {
         var e = el("div", "eta", this.guide);
         this.gEta = el("b", "", e); this.gLeft = el("span", "", e);
@@ -13124,7 +13158,9 @@
       if (this.gThen.__txt !== (g.then || "")) { this.gThen.__txt = g.then || ""; this.gThen.textContent = g.then || ""; carMarquee(this.gThen, 7000); }
       this.gEta.textContent = g.eta || "";
       if (this.config.big) {
-        this.gLeft.textContent = [g.left, g.min ? g.min + " min" : ""].filter(Boolean).join(" · ");
+        // Two lines, nothing cut: the distance, the minutes under it.
+        this.gLeft.textContent = g.left || "—";
+        if (g.min) { var mn = document.createElement("small"); mn.textContent = g.min + " min"; mn.style.cssText = "display:block;font-size:.6em;color:var(--dim);margin-top:2px"; this.gLeft.appendChild(mn); }
         this.gJam.textContent = g.jam ? "+" + g.jam + " min" : "fluide";
         this.gJam.className = "s " + (g.jam ? "warn" : "ok");
         this.gDest.textContent = g.dest || "—";
@@ -14376,7 +14412,7 @@
     ["te", "Sol & nature", "Relief", "collines, vallées et leur ombrage · coupé pendant le guidage (sinon les bâtiments cachent la route)", "sw"],
     ["wd", "Sol & nature", "Vent", "feuilles et eau", "seg", [[0, "calme"], [0.5, "léger"], [1, "fort"]]],
     ["dn", "Lumière", "Jour et nuit", "", "seg", [["auto", "selon le soleil"], ["day", "toujours jour"], ["night", "toujours nuit"]]],
-    ["tn", "Lumière", "Teinte de la nuit", "celle du style, bleu nuit, ou les couleurs de la navigation TomTom", "seg", [["gris", "gris"], ["bleu", "bleu nuit"], ["tomtom", "TomTom"]]],
+    ["tn", "Lumière", "Couleurs de la carte la nuit", "toute la carte (sol, eau, parcs, routes, noms) : par défaut, bleu nuit, ou celles de la navigation TomTom", "seg", [["gris", "par défaut"], ["bleu", "bleu nuit"], ["tomtom", "TomTom"]]],
     ["ne", "Lumière", "Nuit quand le soleil passe sous", "en degrés au-dessus de l'horizon", "seg", [[0, "0°"], [3, "3°"], [6, "6°"], [10, "10°"]]],
     ["pi", "Caméra", "Inclinaison", "", "sl", 0, 75, 5, "°"],
     ["zm", "Caméra", "Zoom", "", "sl", 15, 18.5, 0.5, ""],

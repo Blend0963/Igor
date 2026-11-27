@@ -1,3 +1,10 @@
+## 0.62.2 — Couleurs de toute la carte, plaque de rue, musique
+
+- **Couleurs de la carte la nuit** (« par défaut », « bleu nuit », « TomTom ») : passent maintenant par le thème officiel du kit TomTom, qui recolore toute la carte — sol, eau, bois, parcs, zones bâties, chaque classe de route et ses bords, les noms et leurs halos — et garde la teinte d'un changement de style à l'autre. « par défaut » remet les couleurs d'origine.
+- **Plaque de rue** (autoradio) : le nom défile dans les marges de la plaque, sans jamais toucher son bord.
+- **« reste »** : la distance, et les minutes en dessous — plus rien de coupé.
+- **Musique** : un titre n'est affiché que s'il a vraiment changé récemment (pendant le trajet, ou dans les 6 dernières heures) ; une session seulement mise à jour pour une lecture, une pause ou la position garde le titre d'il y a des jours — dans ce cas « Musique en lecture / en pause · titre inconnu ».
+
 ## 0.62.1 — Autoradio : horloge décalée, vue de jonction stable, textes qui défilent
 
 - **Horloge de l'autoradio** : la fraîcheur des messages du téléphone (guidage, radar, jonction, panneau de rue, limitation) se mesure maintenant à leur réception, sur l'horloge de l'autoradio, et non plus en comparant l'heure du téléphone à la sienne. Une horloge décalée faisait croire le téléphone muet : l'autoradio reprenait le guidage avec son propre GPS (en retard, « radars : liste officielle · sans stations ») et la vue de jonction ne s'affichait pas.
