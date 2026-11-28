@@ -555,8 +555,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
         await _async_push_lock(hass, entry)
 
     entry.async_create_background_task(hass, _push_lock(), "nives_lock_push")
-    # Igor's library of places (all of France), filled in the background.
-    entry.async_create_background_task(hass, _async_places_loop(hass), "igor_places")
+    # Igor's library of places is no longer built (0.62.36): the map shows
+    # Mapbox's places; what was already gathered still serves the vignettes.
     # Igor's spare map (France, OpenStreetMap), for when TomTom does not answer.
     entry.async_create_background_task(hass, _async_spare_loop(hass), "igor_spare_map")
     entry.async_on_unload(async_track_time_interval(hass, _push_lock, LOCK_PUSH_INTERVAL))

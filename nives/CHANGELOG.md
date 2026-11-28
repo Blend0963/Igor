@@ -1,3 +1,12 @@
+## 0.62.37 — La carte Mapbox s'affiche enfin dans Igor Explorer
+
+- **Correctif : le globe Mapbox restait vide** sur Igor Explorer et l'écran déporté. Trouvé grâce aux journaux de Home Assistant (« this.gl is not a constructor ») : depuis 0.62.35, la création des repères (prix des stations, destination, étapes, itinéraires proposés, point touché) échouait. Comme les prix des stations sont redessinés à chaque image, la carte tombait en erreur en boucle. Corrigé et vérifié sur le vrai moteur Mapbox GL JS 3.36.
+- **Une carte vide se dit** : si le style Mapbox des options d'Igor n'affiche rien (vide, non publié, introuvable), Mapbox Standard prend sa place, avec un message. Si Mapbox refuse la clé ou les tuiles, un bandeau le dit au lieu d'un écran vide.
+- **Réglages de la carte sur Igor Explorer** : seulement ce qui compte encore sur Mapbox. Itinéraire (épaisseur, couleurs, repères, trafic, bouchons), caméra, performance, et « Style de la carte » (Mapbox ou Igor Signature). Disparaissent : les préréglages, le choix entre jour et nuit, les couleurs de carte de jour et de nuit, les bâtiments, le sol et la nature de TomTom. La fenêtre prend les couleurs de l'heure (aube, jour, crépuscule, nuit), comme le reste d'Igor Explorer. L'autoradio garde ses réglages.
+- **Lumière toujours automatique sur Mapbox** : aube, jour, crépuscule ou nuit selon le soleil ; « Jour et nuit » n'y force plus rien.
+- **Bouton « Lieux »** : affiche ou masque les lieux de la carte. La bibliothèque de lieux d'Igor n'est plus construite en arrière-plan (ce qui est déjà rassemblé sert encore aux vignettes).
+- Carte des tuiles d'Igor : l'erreur « Cannot add property _ids » (toutes les 2 secondes, avec un réveil) est corrigée.
+
 ## 0.62.36 — Fond Mapbox vide sur Igor Explorer
 
 - **Correctif : le fond de carte Mapbox restait vide** sur Igor Explorer et l'écran déporté (seuls le logo, la flèche et les boutons s'affichaient), alors que la carte de test Mapbox marchait. À la première nouvelle position, la carte remettait le style de TomTom à la place de celui de Mapbox, qui ne peut pas s'y charger. Sur Mapbox, le style n'est plus jamais remplacé.
