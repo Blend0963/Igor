@@ -2317,7 +2317,12 @@ def _async_register_spare_map(hass: HomeAssistant) -> None:
             if not _re.match(r"^https?://[A-Za-z0-9.\-]+(:\d+)?$", origin):
                 origin = str(request.url.origin())
             base = origin + "/api/nives/spare"
-            return self.json(F.style(base + "/{z}/{x}/{y}.mvt", base + "/fonts/{fontstack}/{range}.pbf", request.query.get("t", "nuit")))
+            try:
+                op = float(request.query.get("bo", "0.9"))
+            except ValueError:
+                op = 0.9
+            return self.json(F.style(base + "/{z}/{x}/{y}.mvt", base + "/fonts/{fontstack}/{range}.pbf", request.query.get("t", "nuit"),
+                                     request.query.get("b3", "1") != "0", op))
 
     class SpareFontView(HomeAssistantView):
         url = "/api/nives/spare/fonts/{font}/{rng}.pbf"

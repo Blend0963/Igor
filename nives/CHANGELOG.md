@@ -1,3 +1,8 @@
+## 0.62.28 — Carte de secours : bâtiments en 3D
+
+- Les bâtiments de la carte de secours se dressent en relief dès le zoom 14 (la hauteur d'OpenStreetMap, sinon ses étages × 3 m, sinon environ trois étages), dans les couleurs d'Igor, éclairés en lavande la nuit ; les réglages « Bâtiments en 3D » et « Opacité » s'y appliquent.
+- Correctif : les teintes faites pour la carte TomTom ne s'appliquent plus à la carte de secours (ses bâtiments gardaient la couleur du jour la nuit).
+
 ## 0.62.27 — La carte de secours d'Igor (France, hors TomTom)
 
 - **Une carte de secours sur Home Assistant** : la France métropolitaine et la Corse en tuiles vectorielles OpenStreetMap (le fond de Protomaps, zooms 0 à 14), extraites par Home Assistant de la carte publique quotidienne de Protomaps (seulement les tuiles de la France, lues par plages : la planète n'est jamais téléchargée), en arrière-plan, morceau par morceau (un carré de zoom 8 et tout ce qu'il contient), reprise après un redémarrage, renouvelée tous les 90 jours. Les tuiles identiques (mer, champs) ne sont gardées qu'une fois ; les polices des noms aussi sont gardées. Fichier : `/share/igor/carte.sqlite` (sinon `/config/nives_offline/`), quelques Go.

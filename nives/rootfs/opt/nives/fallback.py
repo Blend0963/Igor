@@ -315,7 +315,7 @@ PAL = {
 }
 
 
-def style(tiles_url: str, glyphs_url: str, theme: str = "nuit") -> dict[str, Any]:
+def style(tiles_url: str, glyphs_url: str, theme: str = "nuit", buildings_3d: bool = True, opacity: float = 0.9) -> dict[str, Any]:
     c = PAL.get(theme, PAL["nuit"])
     w = lambda a, b, d: ["interpolate", ["exponential", 1.6], ["zoom"], a, b, 18, d]  # noqa: E731
     road = lambda kinds: ["in", ["get", "kind"], ["literal", kinds]]  # noqa: E731
@@ -323,6 +323,7 @@ def style(tiles_url: str, glyphs_url: str, theme: str = "nuit") -> dict[str, Any
     src = "spare"
     return {
         "version": 8, "name": "Igor · carte de secours",
+        "light": {"anchor": "viewport", "color": "#ffffff" if theme == "jour" else "#b9bdf0", "intensity": 0.35 if theme == "jour" else 0.28, "position": [1.15, 210, 30]},
         "glyphs": glyphs_url,
         "sources": {src: {"type": "vector", "tiles": [tiles_url], "minzoom": 0, "maxzoom": MAX_ZOOM,
                           "attribution": "© OpenStreetMap · Protomaps"}},
@@ -340,7 +341,16 @@ def style(tiles_url: str, glyphs_url: str, theme: str = "nuit") -> dict[str, Any
              "paint": {"line-color": c["water"], "line-width": w(9, 0.6, 6)}},
             {"id": "boundaries", "type": "line", "source": src, "source-layer": "boundaries", "filter": ["<=", ["coalesce", ["get", "kind_detail"], 2], 4],
              "paint": {"line-color": c["border"], "line-width": 1, "line-dasharray": [3, 2], "line-opacity": 0.6}},
-            {"id": "buildings", "type": "fill", "source": src, "source-layer": "buildings", "minzoom": 14, "paint": {"fill-color": c["bld"], "fill-opacity": 0.9}},
+            # The buildings: raised from their footprint (OpenStreetMap's
+            # height, else its floors × 3 m, else about three floors), rising
+            # as the zoom comes in, lit from the sky; flat when 3D is off.
+            ({"id": "buildings", "type": "fill-extrusion", "source": src, "source-layer": "buildings", "minzoom": 14,
+              "paint": {"fill-extrusion-color": c["bld"], "fill-extrusion-opacity": max(0.3, min(1.0, opacity)), "fill-extrusion-vertical-gradient": True,
+                        "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 14, 0, 15.5,
+                                                  ["coalesce", ["get", "height"], ["*", ["coalesce", ["get", "building:levels"], 0], 3], 9]],
+                        "fill-extrusion-base": ["interpolate", ["linear"], ["zoom"], 14, 0, 15.5, ["coalesce", ["get", "min_height"], 0]]}}
+             if buildings_3d else
+             {"id": "buildings", "type": "fill", "source": src, "source-layer": "buildings", "minzoom": 14, "paint": {"fill-color": c["bld"], "fill-opacity": 0.9}}),
             {"id": "paths", "type": "line", "source": src, "source-layer": "roads", "minzoom": 13, "filter": road(["path", "other"]),
              "paint": {"line-color": c["path"], "line-width": w(13, 0.5, 3), "line-dasharray": [2, 1]}},
             {"id": "rail", "type": "line", "source": src, "source-layer": "roads", "filter": road(["rail"]), "paint": {"line-color": c["rail"], "line-width": w(10, 0.6, 3)}},

@@ -5570,7 +5570,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.27";
+  var GPS_CARD_VERSION = "0.62.28";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7472,7 +7472,7 @@
     styleUrl() {
       // Igor's spare map (OpenStreetMap, France, served by Home Assistant):
       // when TomTom does not answer, or when chosen in the settings.
-      if (this.spareOn) { var o = window.location.origin; this.spareTheme = this.spareTheme || (this.sdkStyleNow().indexOf("Dark") >= 0 ? "nuit" : "jour"); return o + "/api/nives/spare/style.json?t=" + this.spareTheme + "&o=" + encodeURIComponent(o); }
+      if (this.spareOn) { var o = window.location.origin; this.spareTheme = this.spareTheme || (this.sdkStyleNow().indexOf("Dark") >= 0 ? "nuit" : "jour"); var LB = this.look || {}; return o + "/api/nives/spare/style.json?t=" + this.spareTheme + "&b3=" + (LB.b3 == null || Number(LB.b3) ? 1 : 0) + "&bo=" + ((Number(LB.bo) || 90) / 100) + "&o=" + encodeURIComponent(o); }
       if (this.config.style) return this.config.style;
       // The CARTO dark PNG tiles online by default (cached by the browser):
       // the same images the offline basemap would serve, so the same drawing
@@ -7506,6 +7506,7 @@
     // The map's own buildings (those left when Igor's 3D is off) in the
     // colour of the « Couleurs de la carte la nuit » chosen, else the style's.
     baseBuildings(map) {
+      if (this.spareOn) return;  // the spare map carries its own colours
       var keep = this.buildKept || (this.buildKept = {});
       (map.getStyle().layers || []).forEach((l) => {
         if (l["source-layer"] !== "buildings" || l.type !== "fill-extrusion") return;
@@ -7515,6 +7516,7 @@
       });
     }
     tintLook(map, L) {
+      if (this.spareOn) return;  // the spare map is drawn in Igor's colours already
       // TomTom's map: its own theming (StylingFoundationsModule.setMapColors)
       // recolours the whole base map — land, water, woods, parks, built-up
       // areas, every road class and its outlines, the labels and their
@@ -10592,7 +10594,7 @@
         this.spareThemeAt = tn;
         var th = this.sdkStyleNow().indexOf("Dark") >= 0 ? "nuit" : "jour";
         try { this.$("card").classList.toggle("day", th === "jour"); } catch (e) { /* no card */ }
-        if (th !== this.spareTheme) { this.spareTheme = th; this.styleNow = this.styleUrl(); try { this.map.setStyle(this.styleNow, { diff: false }); } catch (e) { /* next time */ } }
+        if (th !== this.spareTheme) { this.spareTheme = th; this.buildKept = null; this.tintKept = null; this.styleNow = this.styleUrl(); try { this.map.setStyle(this.styleNow, { diff: false }); } catch (e) { /* next time */ } }
         return;
       }
       if (!this.tt || !this.map || this.themeBusy) return;
