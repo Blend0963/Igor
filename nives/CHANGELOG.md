@@ -1,3 +1,10 @@
+## 0.62.33 — Mapbox comme fond de carte
+
+- **Mapbox Standard sur Igor Explorer** : bâtiments et monuments en 3D, lumière selon l'heure (aube, jour, crépuscule, nuit, suivant le soleil de Home Assistant, ou tenue par « Jour et nuit »), ses propres noms de lieux. Ses noms de rues et ses commerces sont masqués : ce sont ceux d'Igor (la bibliothèque des lieux, le toucher sur une rue). Guidage, lieux, vignettes, sentiers, GPX, dock et Igor par-dessus ; les tracés d'Igor se rangent dans la 3D (couche « middle »), les épingles au-dessus.
+- Options d'Igor : **clé Mapbox** (jeton public `pk.…`, jamais réaffiché ; un tiret l'efface) et **style Mapbox** facultatif (un style à vous de Mapbox Studio, `mapbox://styles/…` ; vide : Mapbox Standard). Le jeton est donné aux seuls écrans connectés (`/api/nives/mapbox`).
+- Réglages → Carte 3D → Lumière → **Fond de carte** : TomTom, Mapbox ou Igor (ou `basemap: mapbox` dans la carte). Sans clé, ou clé refusée : retour à la carte habituelle, avec un message.
+- Mapbox GL JS 3.36 chargé depuis Mapbox ; le logo et la mention Mapbox restent visibles (sous la barre de recherche), comme Mapbox l'exige.
+
 ## 0.62.32 — La carte d'Igor : noms, couleurs, tous les bâtiments
 
 - **Carte d'Igor (OpenStreetMap sur Home Assistant) jusqu'au zoom 15** : tous les bâtiments, et non plus seulement les grands. La carte déjà téléchargée est complétée d'elle-même (les tuiles en place servent pendant ce temps). Taille : plusieurs dizaines de Go pour la France.

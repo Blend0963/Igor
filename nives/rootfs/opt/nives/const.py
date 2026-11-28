@@ -188,6 +188,10 @@ SERVICE_TRIP_MAP = "trip_map"
 CONF_TRAFFIC_KEY = "traffic_key"
 CONF_HERE_KEY = "here_key"
 CONF_HERE_DAILY = "here_daily"
+# Mapbox (the map's background on Igor Explorer): a public access token and,
+# optionally, a style of one's own from Mapbox Studio (mapbox://styles/…).
+CONF_MAPBOX_TOKEN = "mapbox_token"
+CONF_MAPBOX_STYLE = "mapbox_style"
 SERVICE_TRAFFIC = "traffic"
 SERVICE_ROUTE = "route"
 SERVICE_HERE_WEATHER = "here_weather"

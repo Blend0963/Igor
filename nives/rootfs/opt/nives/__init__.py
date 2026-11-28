@@ -536,6 +536,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     _async_register_spare_map(hass)
     _async_register_map_ask(hass)
     _async_register_trails(hass)
+    _async_register_mapbox(hass)
     # No automatic offline-map download any more (0.39.10): France is a 4.5 GB
     # extract, the image lacks osmium, and the online maps cover the car. The
     # service nives.car_map_update stays, for whoever asks for it by hand.
@@ -2277,6 +2278,33 @@ async def _async_spare_loop(hass: HomeAssistant) -> None:
             await asyncio.sleep(900)
             continue
         await asyncio.sleep(6 * 3600)
+
+
+@callback
+def _async_register_mapbox(hass: HomeAssistant) -> None:
+    """/api/nives/mapbox: the Mapbox public token and style of Igor's
+    options, for a signed-in screen's map (a public token is made to live in
+    a browser; restrict it to your Home Assistant's address on Mapbox)."""
+    store = hass.data.setdefault(DOMAIN, {})
+    if store.get("mapbox_view"):
+        return
+    store["mapbox_view"] = True
+    from .const import CONF_MAPBOX_STYLE, CONF_MAPBOX_TOKEN
+
+    class MapboxView(HomeAssistantView):
+        url = "/api/nives/mapbox"
+        name = "api:nives:mapbox"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            token = style = ""
+            for entry in hass.config_entries.async_entries(DOMAIN):
+                opts = {**entry.data, **entry.options}
+                token = token or str(opts.get(CONF_MAPBOX_TOKEN) or "").strip()
+                style = style or str(opts.get(CONF_MAPBOX_STYLE) or "").strip()
+            return self.json({"ok": bool(token), "token": token, "style": style or "mapbox://styles/mapbox/standard"})
+
+    hass.http.register_view(MapboxView())
 
 
 @callback

@@ -5447,6 +5447,7 @@
   //   hide_attribution: false
   //   style: <a MapLibre style URL>         # another base map (the theme's CARTO one by default)
   //   basemap: tomtom                       # TomTom's dark map (PNG), with the TomTom key of Igor's options, relayed by HA
+  //   basemap: mapbox                       # Mapbox Standard (3D buildings and landmarks, light by the hour): the token of Igor's options
   //   basemap: tomtom-3d                    # TomTom's vector map, buildings in relief (a phone; heavy for a head unit)
   //   tiles: https://…/{z}/{x}/{y}.png?key=…  # your own raster base map (tiles_maxzoom: 20, tiles_attribution)
   //   destination: input_text.car_destination  # « lat,lon;Nom »: guidance there (set it from a phone, or the card's flag)
@@ -5569,7 +5570,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.32";
+  var GPS_CARD_VERSION = "0.62.33";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6308,6 +6309,21 @@
       return gpsFontFiles(w).map(function (f) { return "@font-face{font-family:'Igor Rubik';font-style:normal;font-weight:" + w + ";font-display:swap;src:url(" + f.url + ") format('woff2');unicode-range:" + f.unicodeRange.join(",") + "}"; }).join("");
     }).join("");
     document.head.appendChild(st);
+  }
+  // Mapbox GL JS (the Mapbox background): loaded once from Mapbox, the
+  // engine Mapbox Standard needs (MapLibre cannot read its 3D and lights).
+  var GPS_MAPBOX_VER = "3.36.0", gpsMapboxP = null;
+  function gpsMapbox() {
+    if (window.mapboxgl && window.mapboxgl.Map) return Promise.resolve(window.mapboxgl);
+    if (gpsMapboxP) return gpsMapboxP;
+    gpsMapboxP = new Promise(function (res, rej) {
+      var sc = document.createElement("script");
+      sc.src = "https://api.mapbox.com/mapbox-gl-js/v" + GPS_MAPBOX_VER + "/mapbox-gl.js";
+      sc.onload = function () { if (window.mapboxgl && window.mapboxgl.Map) res(window.mapboxgl); else { gpsMapboxP = null; rej(new Error("Mapbox GL absent")); } };
+      sc.onerror = function () { gpsMapboxP = null; rej(new Error("Mapbox GL injoignable")); };
+      document.head.appendChild(sc);
+    });
+    return gpsMapboxP;
   }
   // A road number's panel (A and N red, D yellow, others white), stretched
   // around its text by MapLibre while its rounded corners stay round.
@@ -7269,6 +7285,8 @@
         ".dock.withspeed .toast { left: calc(var(--gx) + 152px) !important; } .dock.guiding .toast { bottom: calc(180px + var(--sb)) !important; }" +
         ".dock .dside { right: var(--gx); bottom: calc(126px + var(--sb)); } .dock.guiding .dside { bottom: calc(180px + var(--sb)); } .dock .dside button { border-radius: 12px; }" +
         ".dock .snap { top: calc(138px + var(--st)); } .dock .side { top: calc(160px + var(--st)); } .dock .jinset { top: calc(160px + var(--st)); left: var(--gx); right: var(--gx); }" +
+        ".dock .mapboxgl-ctrl-top-left { top: calc(70px + var(--st)); left: var(--gx); } .dock.guiding .mapboxgl-ctrl-top-left { top: calc(160px + var(--st)); }" +
+        ".dock .mapboxgl-ctrl-top-right { top: calc(70px + var(--st)); right: var(--gx); } .dock.guiding .mapboxgl-ctrl-top-right { top: calc(160px + var(--st)); }" +
         ".dock .igans { left: var(--gx); right: var(--gx); top: calc(140px + var(--st)); border-radius: 12px; }" +
         ".modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; } .modes button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px; border: 1px solid #22262c; border-radius: var(--igor-radius, 3px); background: #0f1114; color: #a9adb3; font: inherit; font-size: 11px; cursor: pointer; --mdc-icon-size: 22px; } .modes button.on { border-color: #59d0e0; color: #e9fbff; background: #0e2a30; }" +
         ".panel { position: absolute; inset: 0; z-index: 4; background: rgba(7,8,10,0.96); color: #e9e4da; font-family: " + MONO + "; display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; overflow-y: auto; }" +
@@ -7919,6 +7937,8 @@
       // road): none by default — the route carries its slow stretches itself.
       tryIt(() => this.trafficLook(map, L.tf || "aucun"));
       tryIt(() => this.placesApply());
+      if (L.fb === "mapbox" && !this.mapboxCfg && !this.mapboxOff && this.map) { this.spareOn = false; setTimeout(() => this.restartMap(), 0); return; }
+      if (L.fb !== "mapbox" && this.mapboxCfg && this.map) { setTimeout(() => this.restartMap(), 0); return; }
       if (L.fb === "secours" && !this.spareOn && this.spareStat && this.spareStat.usable) { setTimeout(() => this.goSpare("choisie dans les réglages"), 0); return; }
       if (L.fb !== "secours" && this.spareOn && this.spareWhy === "choisie dans les réglages") { setTimeout(() => this.leaveSpare(), 0); return; }
       tryIt(() => {
@@ -8668,9 +8688,26 @@
       // The spare map: is it there (its tiles on Home Assistant)? Chosen in
       // the settings, it is used at once; otherwise it waits for TomTom to fail.
       try { this.spareStat = await this._hass.callApi("GET", "nives/spare/status"); } catch (e) { this.spareStat = null; }
+      // Mapbox (« Fond de carte : Mapbox », or `basemap: mapbox`): its token
+      // from Igor's options, its engine from Mapbox. Missing or refused: the
+      // map goes on with TomTom (or Igor's), and says why.
+      this.mapboxCfg = null;
+      if (this.wantMapbox() && !this.mapboxOff) {
+        try {
+          var mc = await this._hass.callApi("GET", "nives/mapbox");
+          if (!mc || !mc.ok) throw new Error("clé Mapbox absente (options d'Igor)");
+          await gpsMapbox();
+          this.mapboxCfg = mc;
+          if (!this.mlRef) this.mlRef = window.maplibregl;
+          window.maplibregl = window.mapboxgl;
+          var mbcss = this.root.querySelector("link[data-ml-css]");
+          if (mbcss) mbcss.setAttribute("href", "https://api.mapbox.com/mapbox-gl-js/v" + GPS_MAPBOX_VER + "/mapbox-gl.css");
+          this.spareOn = false;
+        } catch (e) { this.mapboxOff = true; this.toast("Mapbox indisponible · " + ((e && e.message) || ""), 8000); }
+      }
       if (!this.spareOn && this.look && this.look.fb === "secours" && this.spareStat && this.spareStat.usable) { this.spareOn = true; this.spareWhy = "choisie dans les réglages"; }
       try { this.$("card").classList.toggle("spare", !!this.spareOn); } catch (e) { /* no card */ }
-      var style = (this.styleNow = this.styleUrl());
+      var style = this.mapboxCfg ? null : (this.styleNow = this.styleUrl());
       if (typeof style === "string" && style.indexOf(window.location.origin + "/api/nives/") === 0) {
         try {
           var tok = this._hass && this._hass.auth && this._hass.auth.data && this._hass.auth.data.access_token;
@@ -8689,11 +8726,14 @@
         }
       }
       var map;
+      if (this.mapboxCfg) {
+        try { map = this.mapboxMap(p); } catch (e) { map = null; this.mapboxCfg = null; this.mapboxOff = true; this.toast("Mapbox · " + ((e && e.message) || "refusé"), 8000); if (this.mlRef) window.maplibregl = this.mlRef; }
+      }
       // TomTom's SDK (basemap: tomtom-3d, the phone): its map, its 3D. A
       // failure to load it, or a map that never shows, and the card starts
       // again without it.
       var kit = null;
-      if (!this.spareOn && (this.config.basemap === "tomtom-3d" && this.config.sdk !== false && !this.sdkOff && !this.offlineReady && window.location.protocol === "https:" || this.config.sdk_bundle && !this.sdkOff)) {
+      if (!map && !this.spareOn && (this.config.basemap === "tomtom-3d" && this.config.sdk !== false && !this.sdkOff && !this.offlineReady && window.location.protocol === "https:" || this.config.sdk_bundle && !this.sdkOff)) {
         try { kit = await gpsTomTomKit(this.config); } catch (e) { kit = null; this.sdkWhy = (e && e.message) || "SDK indisponible"; }
       }
       if (kit) {
@@ -8738,7 +8778,7 @@
       // car sits at the screen's centre while guiding) drags the map like
       // anywhere else, instead of holding a dead spot.
       arrow.style.pointerEvents = "none";
-      this.marker = new ml.Marker({ element: arrow, rotationAlignment: "map", pitchAlignment: "map" }).setLngLat(p).addTo(map);
+      this.marker = new (this.mapboxCfg ? window.mapboxgl : ml).Marker({ element: arrow, rotationAlignment: "map", pitchAlignment: "map" }).setLngLat(p).addTo(map);
       // Each touch (its start, its moves, its end) holds the map and restarts the wait.
       ["dragstart", "zoomstart", "rotatestart", "pitchstart", "drag", "zoom", "dragend", "zoomend", "rotateend", "pitchend"].forEach((ev) => map.on(ev, (e) => { if (e.originalEvent) this.setFollow(false); }));
       // The screen's moves rebuild the points: what the eye leaves is let
@@ -8819,7 +8859,7 @@
         if (this.config.buildings === false) (map.getStyle().layers || []).forEach((l) => {
           if (/building/i.test(l.id + " " + (l["source-layer"] || ""))) map.setLayoutProperty(l.id, "visibility", "none");
         });
-        if (this.config.basemap === "tomtom-3d" && !this.spareOn) this.tomtom3d(map);
+        if (this.config.basemap === "tomtom-3d" && !this.spareOn && !this.mapboxCfg) this.tomtom3d(map);
         this.styleLayers();
         this.msgShown = null;
         this.message("");
@@ -8833,6 +8873,9 @@
         console.warn("igor-gps-card:", err || e);
         // TomTom failing again and again (no answer, quota, refused): the spare map.
         var eu = String((err && err.url) || "");
+        if (this.mapboxCfg && /api\.mapbox\.com/.test(eu) && err && (err.status === 401 || err.status === 403)) {
+          this.mapboxOff = true; this.toast("Clé Mapbox refusée : retour à la carte habituelle", 9000); setTimeout(() => this.restartMap(), 0); return;
+        }
         if (!this.spareOn && /\/api\/nives\/tomtom\/|api\.tomtom\.com/.test(eu)) {
           var tn = Date.now();
           this.ttFails = (this.ttFails || []).filter((x) => tn - x < 30000).concat([tn]);
@@ -10753,6 +10796,15 @@
       return night ? "streetDarkDriving" : "streetLightDriving";
     },
     themeTick() {
+      if (this.mapboxCfg && this.map) {
+        var tm = Date.now();
+        if (this.mbThemeAt && tm - this.mbThemeAt < 60000) return;
+        this.mbThemeAt = tm;
+        var pr = this.mapboxPreset();
+        try { this.$("card").classList.toggle("day", pr === "day" || pr === "dawn"); } catch (e) { /* no card */ }
+        if (pr !== this.mbPreset) { this.mbPreset = pr; try { this.map.setConfigProperty("basemap", "lightPreset", pr); } catch (e) { /* a style without it */ } }
+        return;
+      }
       if (this.spareOn && this.map) {
         var tn = Date.now();
         if (this.spareThemeAt && tn - this.spareThemeAt < 60000) return;
@@ -10773,6 +10825,38 @@
       this.ttStyle = want; this.themeBusy = true; this.tintSdkKey = null; this.tintKept = null; this.buildKept = null; this.tintMode = null;
       Promise.resolve().then(() => this.tt.setStyle(want)).catch(() => {}).then(() => { this.themeBusy = false; });
     },
+    wantMapbox() { var L = this.look || {}; return L.fb === "mapbox" || (L.fb == null && this.config.basemap === "mapbox"); },
+    // Mapbox's light: dawn, day, dusk or night, from the sun (Home Assistant's
+    // sun.sun), or held by « Jour et nuit ».
+    mapboxPreset() {
+      var L = this.look || {}, sun = this._hass && this._hass.states["sun.sun"], a = (sun && sun.attributes) || {};
+      if (L.dn === "day") return "day";
+      if (L.dn === "night") return "night";
+      var el = Number(a.elevation), rising = a.rising === true || (a.rising == null && new Date().getHours() < 12);
+      if (!isFinite(el)) return sun && sun.state === "below_horizon" ? "night" : "day";
+      return el < -6 ? "night" : el < 6 ? (rising ? "dawn" : "dusk") : "day";
+    },
+    // The Mapbox map: Mapbox Standard (or the style of Igor's options), its
+    // 3D buildings and landmarks, its own place names; no street names nor
+    // shops of its own (Igor's places, and a touch on a street, say them).
+    // Igor's lines go into its « middle » slot (inside the 3D), its pins on top.
+    mapboxMap(p) {
+      var mb = window.mapboxgl, cfg = this.mapboxCfg;
+      var map = new mb.Map({
+        container: this.$("map"), accessToken: cfg.token, style: cfg.style, center: p, zoom: this.config.zoom, pitch: this.config.pitch,
+        bearing: this.headingUp ? this.heading : 0, attributionControl: false, logoPosition: "top-left", antialias: this.antialiasOn(), maxPitch: 80,
+        config: { basemap: { lightPreset: (this.mbPreset = this.mapboxPreset()), show3dObjects: true, showPlaceLabels: true, showRoadLabels: false,
+          showPointOfInterestLabels: false, showTransitLabels: false, showPedestrianRoads: true } },
+        transformRequest: (url) => this.mapRequest(url) || { url: url }
+      });
+      map.addControl(new mb.AttributionControl({ compact: true }), "top-right");
+      var add0 = map.addLayer.bind(map);
+      map.addLayer = (layer, before) => {
+        if (layer && !layer.slot && !before) layer = Object.assign({}, layer, { slot: /^(route|trail|man|alt|incidents|igor-trails|igor-gpx|igor-pick)/.test(layer.id || "") ? "middle" : "top" });
+        return add0(layer, before);
+      };
+      return map;
+    },
     // Over to the spare map (and back): the map started again on the other style.
     goSpare(why, p0) {
       if (this.spareOn || !this.spareStat || !this.spareStat.usable) return false;
@@ -10791,7 +10875,8 @@
       clearTimeout(this.sdkWatch);
       try { if (this.marker) this.marker.remove(); if (this.map) this.map.remove(); } catch (e) { /* gone */ }
       this.map = null; this.tt = null; this.ttKit = null; this.ttStyle = null; this.tintSdkKey = null; this.spareTheme = null; this.loading = false;
-      this.ttStyling = null; this.fontSet = false; this.mwKept = null;
+      this.ttStyling = null; this.fontSet = false; this.mwKept = null; this.mbPreset = null;
+      if (this.mlRef && !this.wantMapbox()) { window.maplibregl = this.mlRef; this.mapboxCfg = null; var mlc = this.root && this.root.querySelector("link[data-ml-css]"); if (mlc) mlc.setAttribute("href", GPS_MAPLIBRE + ".css"); }
       try { this.$("card").classList.toggle("spare", !!this.spareOn); } catch (e) { /* no card */ }
       if (p) this.init(p);
     },
@@ -15649,7 +15734,7 @@
     ["zp", "Caméra", "Inclinaison selon le zoom", "en 3D de près, à plat en dézoomant, comme la carte d'un jeu", "sw"],
     ["az", "Caméra", "Zoom selon la vitesse", "dézoome sur route rapide", "sw"],
     ["cy", "Caméra", "Voiture à l'écran", "plus bas : plus de route devant", "seg", [["haut", "plus haut"], ["milieu", "au milieu"], ["bas", "plus bas"]]],
-    ["fb", "Lumière", "Fond de carte", "TomTom (3D, trafic ; la carte d'Igor s'il ne répond pas) ou la carte d'Igor (OpenStreetMap sur Home Assistant : ses couleurs, ses noms, rapide)", "seg", [["auto", "TomTom"], ["secours", "Igor"]]],
+    ["fb", "Lumière", "Fond de carte", "TomTom (3D, trafic), Mapbox (bâtiments et monuments 3D, lumière selon l'heure ; clé Mapbox dans les options d'Igor) ou la carte d'Igor (OpenStreetMap sur Home Assistant)", "seg", [["auto", "TomTom"], ["mapbox", "Mapbox"], ["secours", "Igor"]]],
     ["fl", "Performance", "Mode fluide", "allège tout seul quand ça rame", "sw"],
     ["px", "Performance", "Netteté", "", "seg", [["eco", "économe"], ["normale", "normale"], ["max", "maximale"]]],
     ["aa", "Performance", "Lissage des bords", "coûteux sur téléphone ; inutile sur un écran très fin · au prochain affichage de la carte", "seg", [["auto", "auto"], ["oui", "oui"], ["non", "non"]]],
