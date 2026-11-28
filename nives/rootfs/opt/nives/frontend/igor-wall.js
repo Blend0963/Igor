@@ -3027,8 +3027,10 @@
     alarmIds(t) {
       var hass = this._hass;
       if (!hass) return {};
-      if (!t._ids || t._reg !== hass.entities) { t._ids = alarmEntities(hass, t.alarm); t._reg = hass.entities; }
-      return t._ids;
+      // Kept beside the tile, not on it: Home Assistant freezes the card's config.
+      var c = (this._alarmC = this._alarmC || new WeakMap()).get(t);
+      if (!c || c.reg !== hass.entities) { c = { ids: alarmEntities(hass, t.alarm), reg: hass.entities }; this._alarmC.set(t, c); }
+      return c.ids;
     }
     update(hass, prev) {
       var ctx = { applied: appliedScene(hass, this.config.tiles) };
@@ -5570,7 +5572,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.36";
+  var GPS_CARD_VERSION = "0.62.37";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6312,7 +6314,7 @@
   }
   // Mapbox GL JS (the Mapbox background): loaded once from Mapbox, the
   // engine Mapbox Standard needs (MapLibre cannot read its 3D and lights).
-  var GPS_MAPBOX_VER = "3.36.0", gpsMapboxP = null;
+  var GPS_MAPBOX_VER = "3.36.0", GPS_MBX_STD = "mapbox://styles/mapbox/standard", gpsMapboxP = null;
   function gpsMapbox() {
     if (window.mapboxgl && window.mapboxgl.Map) return Promise.resolve(window.mapboxgl);
     if (gpsMapboxP) return gpsMapboxP;
@@ -7532,12 +7534,12 @@
         rd.readAsText(f);
       });
       this.hikeRedraw = drawHike;
-      // Every place is always shown: the button says how far Igor's library is.
+      // « Lieux »: the places shown or not (Mapbox's, or Igor's pins).
       $("places").addEventListener("click", () => {
-        var st = this.dbStat;
-        this.dbStatAt = 0; this.dbStatus();
-        this.toast(st && st.cells_total ? "Bibliothèque d'Igor : " + Math.round(st.progress * 100) + " % de la France · " + Number(st.places).toLocaleString("fr-FR") + " lieux" + (st.progress < 1 ? " (construction en cours ; ailleurs, les lieux d'OpenFreeMap en attendant)" : "")
-          : "Bibliothèque d'Igor : pas encore joignable (mise à jour du module et redémarrage de Home Assistant)", 6000);
+        this.poiOff = !this.poiOff;
+        $("places").classList.toggle("on", !this.poiOff);
+        try { this.placesApply(); } catch (e) { /* no map yet */ }
+        this.toast(this.poiOff ? "Lieux masqués" : "Lieux affichés", 2500);
       });
       // The guidance column (igor-guide-card) asks: the destination panel,
       // a favourite, the end of the guidance.
@@ -8749,6 +8751,7 @@
       if (this.wantMapbox() && !this.mapboxOff) {
         try {
           var mc = await this._hass.callApi("GET", "nives/mapbox");
+          if (mc && this.mbStdOnly) mc = Object.assign({}, mc, { style: GPS_MBX_STD });
           if (!mc || !mc.ok) throw new Error("clé Mapbox absente (options d'Igor)");
           await gpsMapbox();
           this.mapboxCfg = mc;
@@ -9753,11 +9756,11 @@
       var after = this.routePal("after").route;
       var dm = this.placeMarker(md, "dest", null, "#f2f4f7");
       this.destLabel = dm.label; this.destName = d.name || "arrivée";
-      this.destMarker = new this.gl().Marker(dm.opts).setLngLat([d.lon, d.lat]).addTo(this.map);
-      if (dm.labelHolder) this.viaMarkers.push(new this.gl().Marker({ element: dm.labelHolder, anchor: "bottom", offset: [0, -24] }).setLngLat([d.lon, d.lat]).addTo(this.map));
+      this.destMarker = new (this.gl().Marker)(dm.opts).setLngLat([d.lon, d.lat]).addTo(this.map);
+      if (dm.labelHolder) this.viaMarkers.push(new (this.gl().Marker)({ element: dm.labelHolder, anchor: "bottom", offset: [0, -24] }).setLngLat([d.lon, d.lat]).addTo(this.map));
       (d.via || []).forEach((v, i) => {
         var vm = this.placeMarker(ms, "stop", i + 1, after);
-        this.viaMarkers.push(new this.gl().Marker(vm.opts).setLngLat([v.lon, v.lat]).addTo(this.map));
+        this.viaMarkers.push(new (this.gl().Marker)(vm.opts).setLngLat([v.lon, v.lat]).addTo(this.map));
       });
       this.markerLabels(true);
     },
@@ -9998,7 +10001,7 @@
         el.className = "alttag" + (dmin <= -1 || why.saving >= 1 || why.noZfe ? " win" : "");
         parts.forEach((q) => { var sp = document.createElement("span"); var ic = document.createElement("ha-icon"); ic.setAttribute("icon", q[0]); sp.appendChild(ic); if (q[1]) sp.appendChild(document.createTextNode(q[1])); el.appendChild(sp); });
         var band = why.band;
-        var mk = new this.gl().Marker({ element: el, anchor: "center" }).setLngLat(R0.coords[band ? (band[0] + band[1]) >> 1 : Math.floor(R0.coords.length / 2)]).addTo(map);
+        var mk = new (this.gl().Marker)({ element: el, anchor: "center" }).setLngLat(R0.coords[band ? (band[0] + band[1]) >> 1 : Math.floor(R0.coords.length / 2)]).addTo(map);
         mk._igorAlt = a;
         mk._igorBand = band;
         this.altMarkers.push(mk);
@@ -10228,7 +10231,7 @@
         el.appendChild(via);
       }
       el.addEventListener("click", (ev) => ev.stopPropagation());
-      var mk = new this.gl().Marker({ element: el, anchor: "bottom", offset: [0, -12] }).setLngLat(e.lngLat).addTo(map);
+      var mk = new (this.gl().Marker)({ element: el, anchor: "bottom", offset: [0, -12] }).setLngLat(e.lngLat).addTo(map);
       this._pick = mk;
       // Never past the screen's edge: slid sideways when the point is near it.
       requestAnimationFrame(() => {
@@ -10871,6 +10874,7 @@
           var cl = this.$("card").classList;
           cl.toggle("day", pr === "day" || pr === "dawn"); cl.add("mbx");
           ["dawn", "day", "dusk", "night"].forEach((x) => cl.toggle("lp-" + x, x === pr));
+          if (this.m3win && this.m3win.isConnected) map3dTint(this.m3win, this);
         } catch (e) { /* no card */ }
         if (pr !== this.mbPreset) { this.mbPreset = pr; try { this.map.setConfigProperty("basemap", "lightPreset", pr); } catch (e) { /* a style without it */ } }
         return;
@@ -10938,14 +10942,43 @@
       // Rubik is one of Mapbox Standard's own fonts; back to its default otherwise.
       if (ig || this.mbFont) { try { map.setConfigProperty("basemap", "font", ig ? "Rubik" : "DIN Pro"); this.mbFont = ig; } catch (e) { /* older style */ } }
     },
+    // Is Mapbox drawing anything? A style of one's own (Igor's options) that
+    // is empty, unpublished or gone leaves the bare globe — Mapbox Standard
+    // then, said once. Mapbox's refusals (key, address, quota) are shown,
+    // never silent: a blank map that says why.
+    mbHealth(map, cfg) {
+      var seen = { ok: 0, bad: 0, last: "" }, done = false;
+      map.on("data", (e) => { if (e && e.tile) seen.ok++; });
+      map.on("error", (e) => {
+        var er = (e && e.error) || {}, u = String(er.url || "");
+        if (!/api\.mapbox\.com/.test(u) && !/style|import|not found/i.test(String(er.message || ""))) return;
+        seen.bad++;
+        seen.last = (er.status ? "réponse " + er.status : String(er.message || "erreur")).slice(0, 90) + (/\/styles\//.test(u) ? " (style)" : /\.pbf|\.mvt|vector/.test(u) ? " (tuiles)" : "");
+      });
+      var check = () => {
+        if (done || this.map !== map) return;
+        done = true;
+        var order = map.style && map.style.order;
+        if (!Array.isArray(order)) return;
+        var IG = /^(igor|route|trail|man|alt|incidents|pois)/;
+        var drawn = order.filter((id) => id.indexOf("\u001f") >= 0).length + ((map.getStyle() || {}).layers || []).filter((l) => !IG.test(l.id)).length;
+        if (!drawn && cfg.style !== GPS_MBX_STD && !this.mbStdOnly) {
+          this.mbStdOnly = true;
+          this.toast("Votre style Mapbox (options d'Igor) n'affiche rien" + (seen.last ? " · " + seen.last : "") + " : Mapbox Standard à la place", 10000);
+          setTimeout(() => this.restartMap(), 0);
+          return;
+        }
+        if (!drawn || (!seen.ok && seen.bad)) this.message("Mapbox n'affiche rien" + (seen.last ? " · " + seen.last : "") + " — vérifiez la clé Mapbox (options d'Igor) et ses adresses autorisées.");
+      };
+      map.once("idle", () => setTimeout(check, 1500));
+      setTimeout(check, 20000);
+    },
     gl() { return this.mapboxCfg && window.mapboxgl ? window.mapboxgl : window.maplibregl; },
     wantMapbox() { return this.config.mapbox !== false; },
     // Mapbox's light: dawn, day, dusk or night, from the sun (Home Assistant's
     // sun.sun), or held by « Jour et nuit ».
     mapboxPreset() {
       var L = this.look || {}, sun = this._hass && this._hass.states["sun.sun"], a = (sun && sun.attributes) || {};
-      if (L.dn === "day") return "day";
-      if (L.dn === "night") return "night";
       var el = Number(a.elevation), rising = a.rising === true || (a.rising == null && new Date().getHours() < 12);
       if (!isFinite(el)) return sun && sun.state === "below_horizon" ? "night" : "day";
       return el < -6 ? "night" : el < 6 ? (rising ? "dawn" : "dusk") : "day";
@@ -10964,6 +10997,7 @@
         transformRequest: (url) => this.mapRequest(url) || { url: url }
       });
       map.addControl(new mb.AttributionControl({ compact: true }), "top-right");
+      this.mbHealth(map, cfg);
       // Mapbox's mark, in its own compact form (the « m » alone, as Mapbox
       // shows it on small maps): its terms want it on the map, never hidden.
       var compact = () => { try { var lg = this.$("map").querySelector(".mapboxgl-ctrl-logo"); if (lg) lg.classList.add("mapboxgl-ctrl-logo--compact"); } catch (e) { /* */ } };
@@ -11490,7 +11524,7 @@
       // The look shared with the head unit (`settings:`): its window, not the old list of places.
       if (this.config.settings && this._hass) {
         if (this.m3win && this.m3win.isConnected) { this.m3win.close(); this.m3win = null; return; }
-        this.m3win = openMap3dWindow(this._hass, this.config.settings, this.root);
+        this.m3win = openMap3dWindow(this._hass, this.config.settings, this.root, this);
         return;
       }
       var p = this.$("lpanel");
@@ -11539,7 +11573,7 @@
     // phone's, the car's second screen and the dashboards alike.
     // Always every place, on every screen (the owner's choice).
     placesMode() { return "igor"; },
-    placesOn() { return true; },
+    placesOn() { return !this.poiOff; },
     // The families the settings keep (« Lieux » tab: every one by default).
     placesFamilies() { return Object.keys(GPS_PLACE_FAM); },
     placesLayer(map, font) {
@@ -11591,6 +11625,7 @@
     // squares still being gathered), OpenFreeMap's places stand in. Without
     // network, the copies kept on the phone are drawn, however old.
     dbStatus() {
+      if (this.mapboxCfg) return;  // Mapbox's own places: no library asked
       var t = Date.now();
       if (this.dbStatAt && t - this.dbStatAt < (this.dbStat ? 300000 : 60000)) return;
       this.dbStatAt = t;
@@ -12741,7 +12776,7 @@
         var m = this.fuelTags[q.id];
         if (!m) {
           var el = document.createElement("div"); el.className = "ftag" + (tt ? " slim" : "");
-          m = new this.gl().Marker({ element: el, anchor: "bottom", offset: [0, tt ? -24 : -44] }).setLngLat(at).addTo(map);
+          m = new (this.gl().Marker)({ element: el, anchor: "bottom", offset: [0, tt ? -24 : -44] }).setLngLat(at).addTo(map);
           this.fuelTags[q.id] = m;
         } else if (tt) m.setLngLat(at);
         var el = m.getElement();
@@ -15856,15 +15891,29 @@
   // full screen (requestFullscreen) shows nothing but itself, and a window
   // hung on the page's body stayed invisible behind it — opened « once in
   // two », only after a back gesture had left the full screen.
-  function openMap3dWindow(hass, id, host) {
+  // `from`: the phone's Mapbox map (Igor Explorer) — its window then keeps
+  // only what Mapbox leaves to choose, in the map's colours of the hour.
+  function openMap3dWindow(hass, id, host, from) {
     var w = document.createElement("igor-settings-card");
-    w.setConfig({ map3d: id, window_only: true });
+    w.setConfig({ map3d: id, window_only: true, map3d_mapbox: !!(from && from.mapboxCfg) });
+    if (from && from.mapboxCfg) { w.classList.add("mbx"); map3dTint(w, from); }
     w.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;z-index:2147482000";
     (host || document.fullscreenElement || document.body).appendChild(w);
     w.hass = hass;
     w.openMap3d();
     return w;
   }
+
+  // The phone's colours of the hour (dawn, day, dusk, night) given to the window.
+  function map3dTint(w, from) {
+    try {
+      var cs = getComputedStyle(from.$("card"));
+      ["ui", "ui2", "bd", "tx", "dim", "acc", "accTx"].forEach((k) => w.style.setProperty("--m-" + k, cs.getPropertyValue("--" + k).trim()));
+    } catch (e) { /* the window's own colours */ }
+  }
+  // On Mapbox: the light follows the hour by itself, the buildings, ground,
+  // colours and names are Mapbox's — none of TomTom's settings apply.
+  var MAP3D_MBX = ["mb", "rw", "rc", "md", "ms", "rc2", "gl", "tr", "tf", "jm", "pi", "zm", "zp", "az", "cy", "fl", "px", "aa", "ips", "cpt"];
 
   // ----- The 3D map's look, set from the head unit's settings -----
   // One input_text holds it, short: « p=epure;bo=80;fw=none » — the preset,
@@ -15974,6 +16023,9 @@
         ".ch button { display: flex; align-items: center; gap: 14px; text-align: left; min-height: 64px; padding: 10px 16px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; font-size: 16px; cursor: pointer; --mdc-icon-size: 26px; }",
         ".ch button small { display: block; color: var(--dim); font-size: 12px; margin-top: 3px; } .ch button.on { border-color: " + CAR_OK + "; }",
         // The 3D map's window: wide, the presets, the tabs, two columns of settings.
+        ":host(.mbx) { --line: var(--m-bd); --card: var(--m-ui2); --fg: var(--m-tx); --dim: var(--m-dim); --acc: var(--m-acc); }" +
+        ":host(.mbx) .dl { background: var(--m-ui); border-radius: 12px; } :host(.mbx) .m3r { border-bottom-color: var(--m-bd); } :host(.mbx) .m3l i::before { background: var(--m-bd); }" +
+        ":host(.mbx) .m3g button.on, :host(.mbx) .sw.on { background: var(--m-acc); color: var(--m-accTx); border-color: var(--m-acc); } :host(.mbx) .m3tt.on { color: var(--m-acc); }",
         ".dl.m3 { width: min(1200px, 97vw); height: 90vh; max-height: 90vh; } .m3s { font-size: 12px; color: var(--dim); margin-right: auto; margin-left: 14px; }",
         ".m3w { padding: 16px; color: " + CAR_WARN + "; font-size: 15px; line-height: 1.5; }",
         ".m3p { display: flex; gap: 8px; padding: 10px 14px; flex: none; } .m3pp { flex: 1; min-width: 0; text-align: left; padding: 8px 12px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; cursor: pointer; }",
@@ -16107,18 +16159,20 @@
         }, 350);
         draw();
       };
+      var ROWS = this.config.map3d_mapbox ? MAP3D_ROWS.filter((r) => MAP3D_MBX.indexOf(r[0]) >= 0) : MAP3D_ROWS;
+      if (this.config.map3d_mapbox) { pre.hidden = true; tab = ROWS[0][1]; }
       var draw = () => {
         pre.innerHTML = ""; tabs.innerHTML = ""; body.innerHTML = "";
-        Object.keys(MAP3D_PRESETS).forEach((k) => {
+        if (!this.config.map3d_mapbox) Object.keys(MAP3D_PRESETS).forEach((k) => {
           var P = MAP3D_PRESETS[k], b = el("button", "m3pp" + (st.p === k && !Object.keys(st.o).some((q) => q in P.v) ? " on" : ""), pre); b.type = "button";
           el("b", "", b, P.name); el("small", "", b, P.sub);
           b.addEventListener("click", () => { st.p = k; Object.keys(st.o).forEach((q) => { if (q in P.v) delete st.o[q]; }); save(); });
         });
         var mine = Object.keys(st.o).some((q) => q in MAP3D_PRESETS[st.p].v);
-        var pb = el("div", "m3pp" + (mine ? " on" : ""), pre); el("b", "", pb, "Personnalisé"); el("small", "", pb, mine ? "d'après « " + MAP3D_PRESETS[st.p].name + " »" : "vos réglages");
-        var names = []; MAP3D_ROWS.forEach((r) => { if (names.indexOf(r[1]) < 0) names.push(r[1]); });
+        if (!this.config.map3d_mapbox) { var pb = el("div", "m3pp" + (mine ? " on" : ""), pre); el("b", "", pb, "Personnalisé"); el("small", "", pb, mine ? "d'après « " + MAP3D_PRESETS[st.p].name + " »" : "vos réglages"); }
+        var names = []; ROWS.forEach((r) => { if (names.indexOf(r[1]) < 0) names.push(r[1]); });
         names.forEach((n) => { var t = el("button", "m3tt" + (n === tab ? " on" : ""), tabs, n); t.type = "button"; t.addEventListener("click", () => { tab = n; draw(); }); });
-        MAP3D_ROWS.filter((r) => r[1] === tab).forEach((r) => {
+        ROWS.filter((r) => r[1] === tab).forEach((r) => {
           var k = r[0], v = val(k), row = el("div", "m3r", body), lab = el("div", "", row);
           el("div", "", lab, r[2]); if (r[3]) el("small", "", lab, r[3]);
           if (r[4] === "sw") {
