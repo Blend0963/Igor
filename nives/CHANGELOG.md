@@ -1,3 +1,11 @@
+## 0.62.24 — La bibliothèque des lieux d'Igor (toute la France)
+
+- **Une base de lieux à Igor, sur Home Assistant** : tous les points d'intérêt d'OpenStreetMap de France métropolitaine et de Corse (restaurants, points de vue, monuments, commerces, santé, parkings, gares, arrêts de bus, toilettes, eau potable, hébergements…), avec leurs horaires, téléphone, site et lien Wikipédia. Elle se remplit seule en arrière-plan, carré de 0,25° par carré (environ 2 400), une demande à Overpass à la fois, avec pause ; un carré refusé (Overpass occupé) est réessayé plus tard ou coupé en quatre ; chaque carré est relu tous les 30 jours. Compter une à deux journées pour la première construction, puis environ 1 Go.
+- Fichier : `/share/igor/lieux.sqlite` (le dossier partagé, que les sauvegardes partielles peuvent laisser de côté), sinon `/config/nives_offline/lieux.sqlite`.
+- **La carte lit ses lieux chez vous** (`/api/nives/places`, réservé aux comptes connectés) : là où la base couvre l'écran, plus aucune dépendance à OpenFreeMap ni à Overpass ; les fiches viennent aussi de la base. Le téléphone garde une copie de chaque zone vue (une semaine, et sans limite quand le réseau manque). Pendant la construction, OpenFreeMap reste le relais des zones pas encore lues.
+- Le bouton Lieux indique l'avancement de la bibliothèque.
+- Seuls les lieux sont gardés : la carte TomTom ne peut pas être stockée (licence et quota).
+
 ## 0.62.23 — Igor Explorer : dock, épingles, vignettes, randonnée
 
 - **Dock** (`controls: dock`, le tableau de bord du téléphone) : « Où allez-vous ? » en haut, boutons carrés étiquetés en bas (Stations, Voix, Itinéraire, Lieux, Rando, Réglages), boussole et recentrage à droite, le tout aux couleurs de la carte (indigo la nuit, clair le jour). L'autoradio garde son rail.

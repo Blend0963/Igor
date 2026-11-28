@@ -5568,7 +5568,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.23";
+  var GPS_CARD_VERSION = "0.62.24";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7350,7 +7350,8 @@
         this.placesHidden = !this.placesHidden;
         $("places").classList.toggle("on", !this.placesHidden);
         try { this.placesApply(); } catch (e) { /* at the next look */ }
-        this.toast(this.placesHidden ? "Lieux masqués" : "Lieux affichés", 2500);
+        var st = this.dbStat, lib = st && st.cells_total ? " · bibliothèque d'Igor : " + Math.round(st.progress * 100) + " % de la France, " + Number(st.places).toLocaleString("fr-FR") + " lieux" : "";
+        this.toast((this.placesHidden ? "Lieux masqués" : "Lieux affichés") + lib, 4000);
       });
       // The guidance column (igor-guide-card) asks: the destination panel,
       // a favourite, the end of the guidance.
@@ -11121,7 +11122,71 @@
           "text-font": font, "text-size": 12, "text-offset": [0, 0.35], "text-anchor": "top", "text-optional": true, "text-max-width": 8
         });
         map.addLayer({ id: "igor-lieux", type: "symbol", source: "igor-osm", "source-layer": "poi", minzoom: 12, filter: this.placesFilter(), layout: layout, paint: this.placesPaint() });
+        // The same drawing, from Igor's own library on Home Assistant.
+        if (!map.getSource("igor-db")) map.addSource("igor-db", { type: "geojson", data: this.dbData || { type: "FeatureCollection", features: [] } });
+        map.addLayer({ id: "igor-lieux-db", type: "symbol", source: "igor-db", minzoom: 12, filter: this.placesFilter(), layout: Object.assign({}, layout, { visibility: "none" }), paint: this.placesPaint() });
+        this.dbMode = null;
+        if (!map._iglDb) { map._iglDb = true; map.on("moveend", () => this.dbTick()); }
+        this.dbTick();
       } catch (e) { if (this.config.debug) this.message("lieux : " + (e && e.message)); }
+    },
+    // Igor's library (/api/nives/places): the map's tiles of places, z14
+    // close up (all of them), z12-13 farther (the ones seen from far); each
+    // kept on this screen (IndexedDB) and read again after a week. Where the
+    // library covers every tile on screen, it alone is drawn; elsewhere (its
+    // squares still being gathered), OpenFreeMap's places stand in. Without
+    // network, the copies kept on the phone are drawn, however old.
+    dbStatus() {
+      var t = Date.now();
+      if (this.dbStatAt && t - this.dbStatAt < (this.dbStat ? 300000 : 60000)) return;
+      this.dbStatAt = t;
+      if (!this._hass || !this._hass.callApi) return;
+      this._hass.callApi("GET", "nives/places/status").then((r) => { this.dbStat = r && r.ok ? r : null; this.dbTick(); }).catch(() => { this.dbStat = this.dbStat || null; });
+    },
+    dbTick() {
+      var map = this.map;
+      this.dbStatus();
+      if (!map || !map.getLayer || !map.getLayer("igor-lieux-db")) return;
+      var z = map.getZoom(), tz = z >= 14 ? 14 : z >= 13 ? 13 : z >= 12 ? 12 : 0;
+      if (!tz || !this.placesOn()) return;
+      var bb = map.getBounds(), n = Math.pow(2, tz);
+      var tx = (lon) => Math.floor((lon + 180) / 360 * n), ty = (lat) => { var r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); };
+      var x0 = tx(bb.getWest()), x1 = tx(bb.getEast()), y0 = ty(bb.getNorth()), y1 = ty(bb.getSouth()), keys = [];
+      for (var x = x0; x <= x1; x++) for (var y = y0; y <= y1; y++) if (keys.length < 36) keys.push(tz + "/" + x + "/" + y);
+      // The same tiles as the last time, all known: nothing to do (the map
+      // moves at every frame while driving).
+      var sig = keys.join(",") + "|" + (this.dbStat ? this.dbStat.places : 0), tnow = Date.now();
+      if (sig === this.dbSig && tnow - (this.dbSigAt || 0) < 60000) return;
+      if (this.dbBusy) return;
+      this.dbSig = sig; this.dbSigAt = tnow;
+      var mem = this.dbTiles || (this.dbTiles = {}), seq = this.dbSeq = (this.dbSeq || 0) + 1, WEEK = 7 * 86400000;
+      var one = (k) => {
+        var m = mem[k];
+        if (m && Date.now() - m.at < (m.complete ? WEEK : 600000)) return Promise.resolve(m);
+        return gpsStoreGet("lieux:" + k).then((kept) => {
+          if (kept && Date.now() - kept.at < WEEK) { mem[k] = kept; return kept; }
+          if (!this.dbStat || !this.dbStat.places) return kept || null;
+          return this._hass.callApi("GET", "nives/places?t=" + k).then((r) => {
+            if (!r || !r.ok) return kept || null;
+            var v = { at: Date.now(), complete: !!r.complete, f: r.f || [] };
+            mem[k] = v; if (v.complete) gpsStorePut("lieux:" + k, v);
+            return v;
+          }).catch(() => kept || null);  // no network: the copy kept, however old
+        });
+      };
+      this.dbBusy = true;
+      Promise.all(keys.map(one)).then((tiles) => {
+        this.dbBusy = false;
+        if (seq !== this.dbSeq || !this.map) return;
+        var ok = tiles.length && tiles.every((t) => t && t.complete), seen = {}, feats = [];
+        if (ok) tiles.forEach((t) => t.f.forEach((r) => {
+          if (seen[r[0]]) return; seen[r[0]] = 1;
+          feats.push({ type: "Feature", geometry: { type: "Point", coordinates: [r[1], r[2]] }, properties: { id: r[0], class: r[3], subclass: r[4], name: r[5], rank: r[6] } });
+        }));
+        if (ok) { this.dbData = { type: "FeatureCollection", features: feats }; var src = map.getSource("igor-db"); if (src) src.setData(this.dbData); }
+        if (ok !== this.dbMode) { this.dbMode = ok; this.placesApply(); }
+        this.dbTick();  // the view moved on while the tiles came: its own turn
+      });
     },
     placesFilter() {
       return ["in", gpsPlaceExprs().fam, ["literal", this.placesFamilies()]];
@@ -11135,18 +11200,20 @@
     placesApply() {
       var map = this.map;
       if (!map || !map.getLayer || !map.getLayer("igor-lieux")) return;
-      map.setLayoutProperty("igor-lieux", "visibility", this.placesOn() ? "visible" : "none");
+      var on = this.placesOn(), db = !!this.dbMode && !!map.getLayer("igor-lieux-db");
+      map.setLayoutProperty("igor-lieux", "visibility", on && !db ? "visible" : "none");
+      if (map.getLayer("igor-lieux-db")) map.setLayoutProperty("igor-lieux-db", "visibility", on && db ? "visible" : "none");
       var sig = this.placesFamilies().join(",");
-      if (sig !== this.placesSig) { this.placesSig = sig; map.setFilter("igor-lieux", this.placesFilter()); }
+      if (sig !== this.placesSig) { this.placesSig = sig; ["igor-lieux", "igor-lieux-db"].forEach((id) => { if (map.getLayer(id)) map.setFilter(id, this.placesFilter()); }); }
       var P = this.placesPaint();
-      Object.keys(P).forEach((k) => map.setPaintProperty("igor-lieux", k, P[k]));
+      ["igor-lieux", "igor-lieux-db"].forEach((id) => { if (map.getLayer(id)) Object.keys(P).forEach((k) => map.setPaintProperty(id, k, P[k])); });
     },
     // The finger on one of them (a little square around it: an icon is small).
     placeAt(point) {
       var map = this.map;
       if (!map || !map.getLayer("igor-lieux") || !point) return null;
       try {
-        var f = (map.queryRenderedFeatures([[point.x - 14, point.y - 14], [point.x + 14, point.y + 14]], { layers: ["igor-lieux"] }) || [])[0];
+        var f = (map.queryRenderedFeatures([[point.x - 14, point.y - 14], [point.x + 14, point.y + 14]], { layers: ["igor-lieux", "igor-lieux-db"].filter((id) => map.getLayer(id)) }) || [])[0];
         return f ? { props: f.properties || {}, ll: f.geometry && f.geometry.coordinates } : null;
       } catch (e) { return null; }
     },
@@ -11157,6 +11224,17 @@
       var p = osm.props || {}, ll = osm.ll || [0, 0], sub = p.subclass || p.class || "";
       var of = GPS_PLACE_OF[p.subclass] || GPS_PLACE_OF[p.class], fam = of ? GPS_PLACE_FAM[of[0]] : null;
       var poi = { name: p["name:fr"] || p.name || "", kindLabel: GPS_PLACE_FR[sub] || (fam && fam.name) || "" };
+      // A place of Igor's library: its sheet is in the house, no Overpass.
+      if (p.id && /^[nwr]\d+$/.test(p.id) && this._hass && this._hass.callApi) {
+        try {
+          var r = await this._hass.callApi("GET", "nives/places/info?id=" + encodeURIComponent(p.id)), t0 = r && r.ok && r.place;
+          if (t0) return Object.assign(poi, {
+            housenumber: t0["addr:housenumber"], street: t0["addr:street"], city: t0["addr:city"], brand: t0.brand,
+            opening_hours: t0.opening_hours, phone: t0.phone || t0["contact:phone"], website: t0.website || t0["contact:website"],
+            wikipedia: t0.wikipedia, wikidata: t0.wikidata
+          });
+        } catch (e) { /* Overpass, then */ }
+      }
       if (!poi.name) return poi;
       var esc = String(poi.name).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
       var q = '[out:json][timeout:10];nwr(around:80,' + ll[1] + ',' + ll[0] + ')["name"="' + esc + '"];out tags center 1;';

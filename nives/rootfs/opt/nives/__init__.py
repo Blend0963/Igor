@@ -531,6 +531,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     _async_register_car(hass)
     _async_register_tasker(hass)
     _async_register_offline_maps(hass)
+    _async_register_places(hass)
     # No automatic offline-map download any more (0.39.10): France is a 4.5 GB
     # extract, the image lacks osmium, and the online maps cover the car. The
     # service nives.car_map_update stays, for whoever asks for it by hand.
@@ -549,6 +550,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
         await _async_push_lock(hass, entry)
 
     entry.async_create_background_task(hass, _push_lock(), "nives_lock_push")
+    # Igor's library of places (all of France), filled in the background.
+    entry.async_create_background_task(hass, _async_places_loop(hass), "igor_places")
     entry.async_on_unload(async_track_time_interval(hass, _push_lock, LOCK_PUSH_INTERVAL))
     return True
 
@@ -2106,6 +2109,121 @@ def _async_register_car(hass: HomeAssistant) -> None:
 
 
 OFFLINE_DIR_NAME = "nives_offline"
+
+
+def _places_db(hass: HomeAssistant):
+    """Igor's library of places (places.py), opened once per Core run."""
+    store = hass.data.setdefault(DOMAIN, {})
+    if "places_db" not in store:
+        from .places import PlacesDB, storage_path
+
+        store["places_db"] = PlacesDB(storage_path(Path(hass.config.path())))
+    return store["places_db"]
+
+
+async def _async_places_loop(hass: HomeAssistant) -> None:
+    """Every square of France asked of Overpass once, one at a time, then
+    again after a month; a busy Overpass only delays it. A square too full
+    for one answer is cut in four (down to MIN_CELL)."""
+    from . import places as P
+
+    await asyncio.sleep(60)  # Home Assistant first, then the places
+    db = await hass.async_add_executor_job(_places_db, hass)
+    await hass.async_add_executor_job(db.seed, P.cells())
+    session = async_get_clientsession(hass)
+    mirror, pause = 0, 5.0
+    while True:
+        cell = await hass.async_add_executor_job(db.next_cell, P.now())
+        if cell is None:
+            await asyncio.sleep(3600)
+            continue
+        url = P.OVERPASS[mirror % len(P.OVERPASS)]
+        err = ""
+        try:
+            async with session.post(url, data={"data": P.query(cell)}, headers={"User-Agent": "Igor-HomeAssistant (places library)"},
+                                    timeout=aiohttp.ClientTimeout(total=300)) as r:
+                if r.status == 200:
+                    body = await r.read()
+                    data = await hass.async_add_executor_job(json.loads, body)
+                    remark = str(data.get("remark") or "")
+                    if "runtime error" in remark or "Query timed out" in remark or "out of memory" in remark:
+                        err = remark[:120]
+                    else:
+                        rows = await hass.async_add_executor_job(P.parse, data.get("elements") or [])
+                        await hass.async_add_executor_job(db.store, cell, rows, P.now())
+                        pause = 5.0
+                else:
+                    err = f"Overpass {r.status}"
+                    if r.status == 429:
+                        pause = 60.0
+        except (aiohttp.ClientError, TimeoutError, ValueError) as e:
+            err = f"Overpass injoignable ({type(e).__name__})"
+        if err:
+            mirror += 1
+            too_big = "timed out" in err or "memory" in err or "runtime" in err or "TimeoutError" in err or "504" in err
+            if too_big and cell[2] - cell[0] > P.MIN_CELL + 1e-9:
+                await hass.async_add_executor_job(db.replace_cell, cell, P.split(cell))
+            else:
+                await hass.async_add_executor_job(db.failed, cell, err, P.now())
+            pause = min(300.0, max(pause * 2, 20.0))
+        await asyncio.sleep(pause)
+
+
+@callback
+def _async_register_places(hass: HomeAssistant) -> None:
+    """/api/nives/places?t=z/x/y (the places of a map tile: z14 all of
+    them, z12 the ones seen from far), /api/nives/places/info?id=n123 (one
+    place's sheet), /api/nives/places/status (how far the library is)."""
+    store = hass.data.setdefault(DOMAIN, {})
+    if store.get("places_views"):
+        return
+    store["places_views"] = True
+    from .places import tile_bbox
+
+    class PlacesView(HomeAssistantView):
+        url = "/api/nives/places"
+        name = "api:nives:places"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            try:
+                z, x, y = (int(v) for v in request.query.get("t", "").split("/"))
+            except ValueError:
+                return self.json({"ok": False, "error": "t=z/x/y"}, status_code=400)
+            if not 10 <= z <= 16:
+                return self.json({"ok": False, "error": "zoom 10 à 16"}, status_code=400)
+            b = tile_bbox(z, x, y)
+            db = await hass.async_add_executor_job(_places_db, hass)
+            max_rank, limit = (5, 5000) if z >= 14 else (3, 800) if z >= 13 else (2, 500)
+
+            def _read():
+                return db.places(b, max_rank, limit), db.complete(b)
+
+            rows, complete = await hass.async_add_executor_job(_read)
+            return self.json({"ok": True, "complete": complete, "f": rows})
+
+    class PlaceInfoView(HomeAssistantView):
+        url = "/api/nives/places/info"
+        name = "api:nives:places_info"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            db = await hass.async_add_executor_job(_places_db, hass)
+            info = await hass.async_add_executor_job(db.info, request.query.get("id", "")[:24])
+            return self.json({"ok": bool(info), "place": info})
+
+    class PlacesStatusView(HomeAssistantView):
+        url = "/api/nives/places/status"
+        name = "api:nives:places_status"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            db = await hass.async_add_executor_job(_places_db, hass)
+            return self.json({"ok": True, **(await hass.async_add_executor_job(db.status))})
+
+    hass.http.register_view(PlacesView())
+    hass.http.register_view(PlaceInfoView())
+    hass.http.register_view(PlacesStatusView())
 
 
 def _offline_maps(hass: HomeAssistant):
