@@ -7280,6 +7280,20 @@
         // The themes' colours (the map's own): indigo by night, light by day.
         "ha-card { --ui: rgba(22,24,52,0.92); --ui2: #262a5a; --bd: #3b4080; --tx: #e6e7ff; --dim: #9a9dd0; --acc: #59d0e0; --accTx: #07222a; --sh: 0 6px 18px rgba(0,0,0,.45); }" +
         "ha-card.day { --ui: rgba(255,255,255,0.95); --ui2: #eef1f7; --bd: #c3cad8; --tx: #1f2833; --dim: #64708a; --acc: #0e9bb0; --accTx: #ffffff; --sh: 0 6px 18px rgba(40,50,80,.25); }" +
+        // On Mapbox: the screen's colours follow its light — dawn, day,
+        // dusk, night — the map's own colours left as Mapbox draws them.
+        "ha-card.mbx.lp-night { --ui: rgba(17,25,46,0.93); --ui2: #1f2c4b; --bd: #33466d; --tx: #e3eaff; --dim: #93a3c9; --acc: #62b6ff; --accTx: #061a30; --sh: 0 6px 18px rgba(0,0,0,.5); }" +
+        "ha-card.mbx.lp-dusk { --ui: rgba(46,31,56,0.93); --ui2: #4a3258; --bd: #6d4c72; --tx: #fbeae2; --dim: #cfaab4; --acc: #ffa35a; --accTx: #2b1404; --sh: 0 6px 18px rgba(20,5,20,.5); }" +
+        "ha-card.mbx.lp-dawn { --ui: rgba(255,247,245,0.95); --ui2: #f7e8e6; --bd: #e2c8c6; --tx: #3b2a35; --dim: #8b6f7b; --acc: #e0697d; --accTx: #ffffff; --sh: 0 6px 18px rgba(90,40,60,.22); }" +
+        "ha-card.mbx.lp-day { --ui: rgba(255,255,255,0.96); --ui2: #eef2f7; --bd: #c8d0dc; --tx: #1d2733; --dim: #637087; --acc: #2f80ed; --accTx: #ffffff; --sh: 0 6px 18px rgba(40,50,80,.22); }" +
+        // Every window in the same light: the routes to choose, the « better
+        // route » question, the search, the stations — not only the dock.
+        "ha-card.mbx .panel, ha-card.mbx .ask { background: var(--ui); color: var(--tx); border-color: var(--bd); }" +
+        "ha-card.mbx .panel .ph, ha-card.mbx .panel .list small, ha-card.mbx .panel .note, ha-card.mbx .rpanel .ropt .cost, ha-card.mbx .ask .q div, ha-card.mbx .nav .x { color: var(--dim); }" +
+        "ha-card.mbx .panel button, ha-card.mbx .panel input, ha-card.mbx .ask button { background: var(--ui2); border-color: var(--bd); color: var(--tx); } ha-card.mbx .panel button.ic ha-icon { color: var(--tx); }" +
+        "ha-card.mbx .panel button.go, ha-card.mbx .ask button.yes { background: var(--acc); border-color: var(--acc); color: var(--accTx); } ha-card.mbx .panel button.igo { background: none; border-color: var(--acc); color: var(--acc); }" +
+        "ha-card.mbx .rpanel .ropt.sel, ha-card.mbx .rpanel .seg button.on { border-color: var(--acc); } ha-card.mbx .rpanel .seg button.on { color: var(--acc); } ha-card.mbx .rpanel .ropt .cost strong { color: var(--tx); }" +
+        "ha-card.mbx .alttag { background: var(--ui); color: var(--tx); border-color: var(--bd); box-shadow: var(--sh); } ha-card.mbx .tbar b { color: var(--tx); }" +
         // Igor's vignette over a place.
         ".pvig { width: min(340px, calc(100vw - 28px)); background: var(--ui); border: 1px solid var(--bd); border-radius: 8px; box-shadow: var(--sh); color: var(--tx); font-family: 'DejaVu Sans', Roboto, sans-serif; overflow: hidden; cursor: default; }" +
         ".pv-h { display: flex; gap: 11px; align-items: center; padding: 11px 12px; } .pv-h > i { width: 44px; height: 44px; flex: none; border-radius: 6px; background: var(--pc); display: grid; place-items: center; }" +
@@ -7938,6 +7952,7 @@
       };
       tryIt(() => { if (this.tt3d && this.tt3d.applyConfig) this.tt3d.applyConfig(this.buildingsLook()); });
       tryIt(() => this.terrainLook());
+      tryIt(() => { this.mbLookApply(); this.placesApply(); });
       tryIt(() => this.tintLook(map, L));
       tryIt(() => this.baseBuildings(map));
       tryIt(() => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ visible: !!Number(L.sf), trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: Number(L.wd) || 0 } }); });
@@ -8814,7 +8829,11 @@
       // car sits at the screen's centre while guiding) drags the map like
       // anywhere else, instead of holding a dead spot.
       arrow.style.pointerEvents = "none";
-      this.marker = new (this.mapboxCfg ? window.mapboxgl : ml).Marker({ element: arrow, rotationAlignment: "map", pitchAlignment: "map" }).setLngLat(p).addTo(map);
+      // Laid on the road up to 42° of tilt, then held there: steeper, a
+      // picture lying flat on the ground was squeezed into a thin sliver.
+      this.arrowEl = arrow.firstElementChild; this.arrowKey = null;
+      if (this.arrowEl) { this.arrowEl.style.transformOrigin = "50% 50%"; this.arrowEl.style.display = "block"; }
+      this.marker = new (this.mapboxCfg ? window.mapboxgl : ml).Marker({ element: arrow, rotationAlignment: "viewport", pitchAlignment: "viewport" }).setLngLat(p).addTo(map);
       // Each touch (its start, its moves, its end) holds the map and restarts the wait.
       ["dragstart", "zoomstart", "rotatestart", "pitchstart", "drag", "zoom", "dragend", "zoomend", "rotateend", "pitchend"].forEach((ev) => map.on(ev, (e) => { if (e.originalEvent) this.setFollow(false); }));
       // The screen's moves rebuild the points: what the eye leaves is let
@@ -9097,7 +9116,11 @@
       // Last guard: driving, not a step back (a big jump, a real relocation, still goes).
       if (forward && jump <= 400 && gpsAhead(before, this.pos, this.heading) < -0.2) this.pos = before;
       this.shown = gpsLerpAngle(this.shown, this.heading, ease(0.1));
-      this.marker.setLngLat(this.pos).setRotation(this.shown);
+      this.marker.setLngLat(this.pos);
+      if (this.arrowEl) {
+        var apt = Math.min(42, this.map.getPitch() || 0), arz = ((this.shown - (this.map.getBearing() || 0)) % 360 + 360) % 360, akey = Math.round(apt * 2) + "|" + Math.round(arz * 4);
+        if (akey !== this.arrowKey) { this.arrowKey = akey; this.arrowEl.style.transform = "perspective(320px) rotateX(" + apt.toFixed(1) + "deg) rotateZ(" + arz.toFixed(2) + "deg)"; }
+      }
       try { this.liveCut(now); } catch (e) { /* the route as it was */ }
       if (!this.trailAt || now - this.trailAt > 1000) {
         this.trailAt = now;
@@ -10068,6 +10091,7 @@
     mapPick(e) {
       var map = this.map;
       if (!map || !e || !e.point || !this.gl()) return;
+      this.pickAt = Date.now();
       // debug_pois: what the base map's tiles say under the finger (to find
       // which property marks TomTom's stations), shown 15 s in the message band.
       if (this.config.debug_pois) {
@@ -10109,6 +10133,7 @@
         return false;
       });
       var osmPlace = this.placeAt(e.point);
+      if (osmPlace && !osmPlace.ll && e.lngLat) osmPlace.ll = [e.lngLat.lng, e.lngLat.lat];
       if (!fuel && osmPlace) { this.placeVignette(osmPlace); return; }
       var trail = !fuel && this.trailAt(e.point);
       if (trail) { this.trailVignette(trail, e.lngLat ? [e.lngLat.lng, e.lngLat.lat] : null); return; }
@@ -10841,7 +10866,11 @@
         if (this.mbThemeAt && tm - this.mbThemeAt < 60000) return;
         this.mbThemeAt = tm;
         var pr = this.mapboxPreset();
-        try { this.$("card").classList.toggle("day", pr === "day" || pr === "dawn"); } catch (e) { /* no card */ }
+        try {
+          var cl = this.$("card").classList;
+          cl.toggle("day", pr === "day" || pr === "dawn"); cl.add("mbx");
+          ["dawn", "day", "dusk", "night"].forEach((x) => cl.toggle("lp-" + x, x === pr));
+        } catch (e) { /* no card */ }
         if (pr !== this.mbPreset) { this.mbPreset = pr; try { this.map.setConfigProperty("basemap", "lightPreset", pr); } catch (e) { /* a style without it */ } }
         return;
       }
@@ -10894,6 +10923,20 @@
         }
       } catch (e) { /* the route's own jams still show */ }
     },
+    // The look on Mapbox: Mapbox's own (its places, street names, font), or
+    // « Igor Signature » (Igor's pins, Rubik, no street names). `map_look`
+    // in the card, or « Style de la carte » in the settings.
+    mbIgor() { var L = this.look || {}, v = L.mb != null ? L.mb : this.config.map_look; return v === "igor"; },
+    mbLookApply() {
+      var map = this.map;
+      if (!this.mapboxCfg || !map || !map.setConfigProperty) return;
+      var ig = this.mbIgor(), poi = !ig && this.placesOn(), key = ig + "|" + poi;
+      if (key === this.mbLookKept) return;
+      this.mbLookKept = key;
+      [["showPointOfInterestLabels", poi], ["showRoadLabels", !ig], ["showTransitLabels", !ig]].forEach((x) => { try { map.setConfigProperty("basemap", x[0], x[1]); } catch (e) { /* a style without it */ } });
+      // Rubik is one of Mapbox Standard's own fonts; back to its default otherwise.
+      if (ig || this.mbFont) { try { map.setConfigProperty("basemap", "font", ig ? "Rubik" : "DIN Pro"); this.mbFont = ig; } catch (e) { /* older style */ } }
+    },
     gl() { return this.mapboxCfg && window.mapboxgl ? window.mapboxgl : window.maplibregl; },
     wantMapbox() { return this.config.mapbox !== false; },
     // Mapbox's light: dawn, day, dusk or night, from the sun (Home Assistant's
@@ -10915,8 +10958,8 @@
       var map = new mb.Map({
         container: this.$("map"), accessToken: cfg.token, style: cfg.style, center: p, zoom: this.config.zoom, pitch: this.config.pitch,
         bearing: this.headingUp ? this.heading : 0, attributionControl: false, logoPosition: "top-left", antialias: this.antialiasOn(), maxPitch: 80,
-        config: { basemap: { lightPreset: (this.mbPreset = this.mapboxPreset()), show3dObjects: true, show3dTrees: true, show3dLandmarks: true, show3dBuildings: true, showPlaceLabels: true, showRoadLabels: false,
-          showPointOfInterestLabels: false, showTransitLabels: false, showPedestrianRoads: true } },
+        config: { basemap: { lightPreset: (this.mbPreset = this.mapboxPreset()), show3dObjects: true, show3dTrees: true, show3dLandmarks: true, show3dBuildings: true, showPlaceLabels: true, showRoadLabels: !this.mbIgor(),
+          showPointOfInterestLabels: !this.mbIgor() && this.placesOn(), showTransitLabels: !this.mbIgor(), showPedestrianRoads: true } },
         transformRequest: (url) => this.mapRequest(url) || { url: url }
       });
       map.addControl(new mb.AttributionControl({ compact: true }), "top-right");
@@ -10924,6 +10967,21 @@
       // shows it on small maps): its terms want it on the map, never hidden.
       var compact = () => { try { var lg = this.$("map").querySelector(".mapboxgl-ctrl-logo"); if (lg) lg.classList.add("mapboxgl-ctrl-logo--compact"); } catch (e) { /* */ } };
       map.on("load", compact); map.on("styledata", compact);
+      map.on("style.load", () => { this.mbLookKept = null; this.mbFont = false; this.mbLookApply(); });
+      // A touch on one of Mapbox's own places: kept for the map's touch (the
+      // vignette); if that touch never comes (Mapbox kept it), the vignette opens here.
+      try {
+        if (map.addInteraction) map.addInteraction("igor-poi", { type: "click", target: { featuresetId: "poi", importId: "basemap" }, handler: (e) => {
+          if (this.mbIgor()) return false;
+          var hit = this.mbxHit = { f: e.feature, ll: e.lngLat ? [e.lngLat.lng, e.lngLat.lat] : null, at: Date.now() };
+          setTimeout(() => {
+            if (this.mbxHit !== hit || (this.pickAt && this.pickAt >= hit.at - 80)) return;
+            var pl = e.point && this.placeAt(e.point);
+            if (pl) { if (!pl.ll) pl.ll = hit.ll; this.placeVignette(pl); }
+          }, 250);
+          return false;
+        } });
+      } catch (e) { /* older Mapbox: the map's touch alone */ }
       var add0 = map.addLayer.bind(map);
       map.addLayer = (layer, before) => {
         if (layer && !layer.slot && !before) layer = Object.assign({}, layer, { slot: /^(route|trail|man|alt|incidents|igor-trails|igor-gpx|igor-pick)/.test(layer.id || "") ? "middle" : "top" });
@@ -10951,7 +11009,8 @@
       this.map = null; this.tt = null; this.ttKit = null; this.ttStyle = null; this.tintSdkKey = null; this.spareTheme = null; this.loading = false;
       this.ttStyling = null; this.fontSet = false; this.mwKept = null; this.mbPreset = null;
       if (this.mapboxCfg && !this.wantMapbox()) { this.mapboxCfg = null; var mlc = this.root && this.root.querySelector("link[data-ml-css]"); if (mlc) mlc.setAttribute("href", GPS_MAPLIBRE + ".css"); }
-      try { this.$("card").classList.toggle("spare", !!this.spareOn); } catch (e) { /* no card */ }
+      this.mbThemeAt = 0; this.mbLookKept = null;
+      try { this.$("card").classList.toggle("spare", !!this.spareOn); this.$("card").classList.remove("mbx"); } catch (e) { /* no card */ }
       if (p) this.init(p);
     },
     // The woods' trees (TomTom's SDK): thousands of 3D shapes, heavy on a
@@ -11514,7 +11573,7 @@
           map.addLayer({ id: "igor-mbx-poi", type: "symbol", source: "igor-mbx", "source-layer": "poi_label", minzoom: 15,
             filter: ["!", ["in", ["get", "maki"], ["literal", ["fuel", "bus", "rail-light", "entrance"]]]],
             layout: { "icon-image": gpsMbxExprs(), "icon-size": layout["icon-size"], "icon-anchor": "bottom", "icon-padding": 2,
-              "symbol-sort-key": ["coalesce", ["get", "filterrank"], 5], visibility: this.placesOn() ? "visible" : "none" } });
+              "symbol-sort-key": ["coalesce", ["get", "filterrank"], 5], visibility: this.placesOn() && this.mbIgor() ? "visible" : "none" } });
         }
         // The same drawing, from Igor's own library on Home Assistant.
         if (!map.getSource("igor-db")) map.addSource("igor-db", { type: "geojson", data: this.dbData || { type: "FeatureCollection", features: [] } });
@@ -11617,7 +11676,8 @@
       var on = this.placesOn(), db = !!this.dbMode && !!map.getLayer("igor-lieux-db"), mbx = !!this.mapboxCfg && !!map.getLayer("igor-mbx-poi");
       map.setLayoutProperty("igor-lieux", "visibility", on && !db && !mbx ? "visible" : "none");
       if (map.getLayer("igor-lieux-db")) map.setLayoutProperty("igor-lieux-db", "visibility", on && db && !mbx ? "visible" : "none");
-      if (mbx) map.setLayoutProperty("igor-mbx-poi", "visibility", on ? "visible" : "none");
+      if (mbx) map.setLayoutProperty("igor-mbx-poi", "visibility", on && this.mbIgor() ? "visible" : "none");
+      this.mbLookApply();
       var sig = this.placesFamilies().join(",");
       if (sig !== this.placesSig) { this.placesSig = sig; ["igor-lieux", "igor-lieux-db"].forEach((id) => { if (map.getLayer(id)) map.setFilter(id, this.placesFilter()); }); }
       var P = this.placesPaint();
@@ -11643,7 +11703,20 @@
     },
     placeAt(point) {
       var map = this.map;
-      if (!map || !map.getLayer("igor-lieux") || !point) return null;
+      if (!map || !point) return null;
+      // Mapbox's own places (style « Mapbox »): its « poi » set, read as Igor's kinds.
+      if (this.mapboxCfg && !this.mbIgor()) {
+        var mf = null, box = [[point.x - 14, point.y - 14], [point.x + 14, point.y + 14]];
+        try { mf = (map.queryRenderedFeatures(box, { target: { featuresetId: "poi", importId: "basemap" } }) || [])[0]; } catch (e) { mf = null; }
+        if (!mf && this.mbxHit && Date.now() - this.mbxHit.at < 600) mf = this.mbxHit.f;
+        if (mf) {
+          var mp = mf.properties || {}, g = mf.geometry || {};
+          var kind = MBX_MAKI[mp.maki] || MBX_CLASS[mp.class] || MBX_CLASS[mp.group] || "";
+          return { props: { name: mp.name || mp.name_fr || "", subclass: kind, class: MBX_CLASS[mp.class] || MBX_CLASS[mp.group] || kind, mbx: 1 },
+            ll: g.type === "Point" ? g.coordinates : (this.mbxHit && this.mbxHit.ll) || null };
+        }
+      }
+      if (!map.getLayer("igor-lieux")) return null;
       try {
         var f = (map.queryRenderedFeatures([[point.x - 14, point.y - 14], [point.x + 14, point.y + 14]], { layers: ["igor-mbx-poi", "igor-lieux", "igor-lieux-db"].filter((id) => map.getLayer(id)) }) || [])[0];
         if (!f) return null;
@@ -15828,6 +15901,7 @@
     ["ts", "Sol & nature", "Arbres des bois", "ceux du SDK de TomTom · très lourd, déconseillé sur téléphone", "sw"],
     ["te", "Sol & nature", "Relief", "collines, vallées et leur ombrage · coupé pendant le guidage (sinon les bâtiments cachent la route)", "sw"],
     ["wd", "Sol & nature", "Vent", "feuilles et eau", "seg", [[0, "calme"], [0.5, "léger"], [1, "fort"]]],
+    ["mb", "Lumière", "Style de la carte", "Mapbox : ses lieux, ses noms de rues, sa police · Igor Signature : les épingles d'Igor, la police Rubik, sans noms de rues · la vignette d'Igor au toucher d'un lieu, dans les deux", "seg", [["mapbox", "Mapbox"], ["igor", "Igor Signature"]]],
     ["dn", "Lumière", "Jour et nuit", "", "seg", [["auto", "selon le soleil"], ["day", "toujours jour"], ["night", "toujours nuit"]]],
     ["tn", "Lumière", "Couleurs de la carte la nuit", "toute la carte (sol, eau, parcs, routes, noms) : indigo d'Igor, bleu nuit, TomTom ou celles du style", "seg", [["indigo", "indigo"], ["bleu", "bleu nuit"], ["tomtom", "TomTom"], ["gris", "du style"]]],
     ["tj", "Lumière", "Couleurs de la carte le jour", "vives : verts francs, eau turquoise, bâtiments gris-bleu · ou celles de TomTom", "seg", [["vive", "vives"], ["tomtom", "TomTom"]]],
@@ -15844,7 +15918,7 @@
     ["cpt", "Performance", "Compteur d'images", "affiche les images par seconde en coin de carte", "sw"]
   ];
   // Not in the presets (left to the dashboard until changed here).
-  var MAP3D_FREE = { dn: "auto", ne: 3, pi: 60, zm: 17, az: 1, cy: "milieu", tn: "indigo", tj: "vive", zp: 1 };
+  var MAP3D_FREE = { mb: "mapbox", dn: "auto", ne: 3, pi: 60, zm: 17, az: 1, cy: "milieu", tn: "indigo", tj: "vive", zp: 1 };
   function map3dParse(str) {
     var out = { p: "epure", o: {} };
     String(str || "").split(";").forEach((kv) => {

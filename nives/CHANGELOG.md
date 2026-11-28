@@ -1,4 +1,4 @@
-## 0.62.35 — Mapbox partout, et la carte qui ne se chargeait plus
+## 0.62.35 — Mapbox partout (ses lieux, l'interface selon sa lumière), et la carte qui ne se chargeait plus
 
 - **Correctif : le fond de carte ne se chargeait plus** après être passé d'une carte à l'autre (Igor Explorer, la carte de test Mapbox), jusqu'à fermer l'application. Deux causes : Igor Explorer remplaçait, pour toute la page, le moteur de carte (MapLibre) par celui de Mapbox, et les cartes quittées restaient vivantes en arrière-plan — un téléphone n'a que quelques « contextes 3D », ils s'épuisaient. Désormais chaque carte garde son propre moteur, et une carte quittée depuis 20 s libère sa 3D ; au retour sur la page, elle se redessine où elle était.
 - **Mapbox est le fond de carte de tous les GPS** (Igor Explorer et l'écran déporté). Le choix « Fond de carte » disparaît : la carte TomTom puis la carte d'Igor ne servent plus que de secours automatiques (sans clé Mapbox, ou clé refusée).
@@ -6,6 +6,10 @@
 - **Itinéraires** : TomTom, puis HERE, puis **Mapbox Directions** en dernier secours (voiture avec trafic, à pied, à vélo ; péages, autoroutes et ferries évités comme demandé).
 - **Trafic** : celui de TomTom par-dessus Mapbox (bouchons et routes fermées) ; si TomTom ne répond plus, le trafic de Mapbox prend le relais. Péages et radars inchangés.
 - Le logo Mapbox est réduit à son symbole (les conditions de Mapbox interdisent de le retirer).
+- **Les lieux et la police de Mapbox** par défaut : ses icônes de commerces et services, ses noms de rues, sa police. **Un toucher sur un lieu ouvre toujours la vignette d'Igor** (Y aller, Wikipédia, Igor).
+- Réglages → Lumière → **Style de la carte** : **Mapbox** (par défaut) ou **Igor Signature** (les épingles d'Igor, la police Rubik, sans noms de rues). `map_look: igor` dans la carte fait de même.
+- **L'interface suit la lumière de Mapbox** — aube, jour, crépuscule, nuit — sur Igor Explorer comme sur l'écran déporté : dock, barre de recherche, vignettes, choix des itinéraires, question « meilleur itinéraire », panneaux. Les couleurs de la carte elle-même restent celles de Mapbox.
+- **La flèche ne s'aplatit plus** quand la vue est très inclinée : couchée sur la route jusqu'à 42°, elle reste ensuite à cet angle au lieu de devenir un trait.
 
 ## 0.62.34 — Mapbox tel quel (carte de test)
 
