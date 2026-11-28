@@ -5466,6 +5466,9 @@
   //   edge_to_edge: true                    # the map over the whole screen, the notch's band included (a phone's GPS dashboard)
   //   display_only: true                    # a second screen: the map only (no button, banner or sign); a tap on the map still picks a place or a route
   //   base_pois: true                       # with basemap: tomtom-3d, TomTom's own places (Igor adds only cameras and stations with prices)
+  //   (the destination panel: Voiture, Transports, À pied, Vélo — kept on each screen; off the car:
+  //    no radars, limits, road snapping, OBD speed nor anything sent to the head unit;
+  //    public transport from HERE, the HERE key of Igor's options)
   //   places: igor                          # the map's places: igor (all of OpenStreetMap's, Igor's own icons, from OpenFreeMap's tiles; default), tous (TomTom's), aucun
   //   places_tiles: https://tiles.openfreemap.org/planet  # where those places come from (an OpenMapTiles TileJSON)
   //   pitch_by_zoom: true                   # the tilt follows the zoom: 3D close up, flat seen from high (false: the tilt stays)
@@ -5562,7 +5565,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.21";
+  var GPS_CARD_VERSION = "0.62.22";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6000,7 +6003,7 @@
   // sentence, an icon from its manoeuvre.
   var GPS_TT_ICON = { TURN_LEFT: "mdi:arrow-left-top", TURN_RIGHT: "mdi:arrow-right-top", KEEP_LEFT: "mdi:arrow-top-left", KEEP_RIGHT: "mdi:arrow-top-right",
     BEAR_LEFT: "mdi:arrow-top-left", BEAR_RIGHT: "mdi:arrow-top-right", SHARP_LEFT: "mdi:arrow-left-bottom", SHARP_RIGHT: "mdi:arrow-right-bottom",
-    MAKE_UTURN: "mdi:arrow-u-left-top", TRY_MAKE_UTURN: "mdi:arrow-u-left-top", STRAIGHT: "mdi:arrow-up", DEPART: "mdi:navigation-variant",
+    MAKE_UTURN: "mdi:arrow-u-left-top", TRY_MAKE_UTURN: "mdi:arrow-u-left-top", STRAIGHT: "mdi:arrow-up", DEPART: "mdi:navigation-variant", TRANSIT: "mdi:bus-clock",
     ARRIVE: "mdi:flag-checkered", ARRIVE_LEFT: "mdi:flag-checkered", ARRIVE_RIGHT: "mdi:flag-checkered", WAYPOINT_REACHED: "mdi:flag-checkered",
     MOTORWAY_EXIT_LEFT: "mdi:arrow-top-left", MOTORWAY_EXIT_RIGHT: "mdi:arrow-top-right", TAKE_EXIT: "mdi:arrow-top-right",
     SWITCH_PARALLEL_ROAD: "mdi:call-split", SWITCH_MAIN_ROAD: "mdi:call-split", ENTRANCE_RAMP: "mdi:call-merge", ENTER_MOTORWAY: "mdi:call-merge",
@@ -6225,6 +6228,11 @@
     playground: "Aire de jeux", swimming_pool: "Piscine", beach: "Plage", hotel: "Hôtel", bank: "Banque", atm: "Distributeur",
     post: "Poste", police: "Police", town_hall: "Mairie", library: "Bibliothèque", school: "École", place_of_worship: "Lieu de culte",
     toilets: "Toilettes", drinking_water: "Eau potable" };
+  // A public transport route in a few words: « bus 73 · RER A » (the walks left out).
+  function gpsLegsLabel(R0) {
+    var legs = (R0 && R0.legs) || [];
+    return legs.filter(function (l) { return l.mode !== "pedestrian"; }).map(function (l) { return (l.kind + " " + (l.name || "")).trim(); }).join(" · ").slice(0, 40);
+  }
   // One icon: the family's colour in a disc, the pictogram in white, a white
   // ring and a soft dark edge — read on the day map and the night one alike.
   function gpsPlaceIcon(fam, icon) {
@@ -6814,6 +6822,7 @@
     setHass(hass) {
       var prev = this._hass, c = this.config;
       this._hass = hass;
+      this.hassN = (this.hassN || 0) + 1;
       if (!this.root) this.build();
       if (this.m3win && this.m3win.isConnected) this.m3win.hass = hass;
       // The look set from the head unit: applied at once, live.
@@ -7068,6 +7077,8 @@
         // A road's shield in the bar: its own small size, never stretched like the bar's spans.
         ".eta .st .shield { flex: none; display: inline-block; min-width: 0; max-width: none; border-left: 0; padding: 1px 6px; overflow: visible; -webkit-line-clamp: unset; font-size: 13px; line-height: 1.25; }" +
         ".eta .st .shield.a, .eta .st .shield.n, .eta .st .shield.e, .eta .st .shield.m { color: #fff; } .eta .st .shield.d { color: #111; }" +
+        ".seg[hidden] { display: none !important; }" +
+        ".modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; } .modes button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px; border: 1px solid #22262c; border-radius: var(--igor-radius, 3px); background: #0f1114; color: #a9adb3; font: inherit; font-size: 11px; cursor: pointer; --mdc-icon-size: 22px; } .modes button.on { border-color: #59d0e0; color: #e9fbff; background: #0e2a30; }" +
         ".panel { position: absolute; inset: 0; z-index: 4; background: rgba(7,8,10,0.96); color: #e9e4da; font-family: " + MONO + "; display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; overflow-y: auto; }" +
         ".panel .ph { display: flex; justify-content: space-between; align-items: center; color: #878c95; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; }" +
         ".panel form { display: flex; gap: 8px; } .panel input { flex: 1; min-width: 0; font: inherit; font-size: 17px; padding: 12px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #0d1014; color: #e9e4da; }" +
@@ -7134,6 +7145,7 @@
         '<div class="eta" id="eta" hidden></div>' +
         '<div class="panel" id="panel" hidden><div class="ph"><span>destination</span><button id="pclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
         '<div class="list" id="ptrip" hidden></div>' +
+        '<div class="modes" id="pmodes"><button type="button" data-m="car"><ha-icon icon="mdi:car"></ha-icon><span>Voiture</span></button><button type="button" data-m="transit"><ha-icon icon="mdi:bus"></ha-icon><span>Transports</span></button><button type="button" data-m="pedestrian"><ha-icon icon="mdi:walk"></ha-icon><span>À pied</span></button><button type="button" data-m="bicycle"><ha-icon icon="mdi:bike"></ha-icon><span>Vélo</span></button></div>' +
         '<form id="pform"><input id="pq" type="text" enterkeyhint="search" placeholder="Adresse, ville, lieu…" autocomplete="off"><button class="go" type="submit"><ha-icon icon="mdi:magnify"></ha-icon><span>Chercher</span></button></form>' +
         '<div class="list" id="plist"></div><div class="list" id="pfav"></div><div class="list" id="phist" hidden></div><button class="stop" id="pstop" hidden><ha-icon icon="mdi:close-octagon-outline"></ha-icon><span>Arrêter le guidage</span></button></div>' +
         '<div class="hud sp"><div class="speed" id="speed"><b>0</b><span>KM/H</span></div></div>' +
@@ -7225,6 +7237,23 @@
       $("layers").addEventListener("click", () => this.openLayers());
       if (this.config.settings) { var lyb = $("layers"); lyb.dataset.l = "Carte"; lyb.title = "Réglages de la carte"; var lyi = lyb.querySelector("ha-icon"); if (lyi) lyi.setAttribute("icon", "mdi:map-legend"); }
       $("pclose").addEventListener("click", () => { $("panel").hidden = true; });
+      // How one travels: by car (the whole guidance), public transport, on
+      // foot or by bike (no radars, no limits, no snapping onto the roads, no
+      // OBD speed, nothing sent to the head unit). Kept on this screen.
+      if (!this.travelMode) { try { this.travelMode = localStorage.getItem("igor-travel-mode") || "car"; } catch (e) { this.travelMode = "car"; } }
+      if (["car", "transit", "pedestrian", "bicycle"].indexOf(this.travelMode) < 0) this.travelMode = "car";
+      var drawModes = () => $("pmodes").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.m === this.travelMode));
+      drawModes();
+      $("pmodes").addEventListener("click", (ev) => {
+        var b = ev.target.closest && ev.target.closest("button[data-m]");
+        if (!b || b.dataset.m === this.travelMode) return;
+        this.travelMode = b.dataset.m;
+        try { localStorage.setItem("igor-travel-mode", this.travelMode); } catch (e) { /* this time only */ }
+        drawModes();
+        try { this.overlays(); } catch (e) { /* at the next fix */ }
+        // A trip under way: computed again the new way.
+        if (this.dest) { this.chooseNext = true; this.alts = []; this.routeAt = 0; this.routeTo(); }
+      });
       // Closed without choosing: a trip under way stays as it was; only a
       // trip asked for and not yet on the road (no route yet) is dropped.
       $("rclose").addEventListener("click", () => { clearTimeout(this.pickTimer); $("rpanel").hidden = true; if (!this.route) this.setDestination(null, true); });
@@ -7479,8 +7508,23 @@
       var box = this.fpsEl = document.createElement("div");
       box.style.cssText = "position:absolute;right:8px;bottom:8px;z-index:20;background:rgba(0,0,0,.6);color:#5cc28f;font:12px monospace;padding:3px 7px;border-radius:4px;pointer-events:none";
       (this.$("map").parentNode || this.$("map")).appendChild(box);
-      var n = 0, t0 = performance.now(), onR = () => { n++; var t = performance.now(); if (t - t0 >= 1000) { var f = Math.round(n * 1000 / (t - t0)); box.textContent = f + " img/s · cible " + (this.fpsNow || "—") + (this.fluidSteps && this.fluidSteps.length ? " · allégé : " + this.fluidSteps.join(", ") : ""); box.style.color = f >= 25 ? "#5cc28f" : f >= 15 ? "#e5a04c" : "#e0675f"; n = 0; t0 = t; } };
-      map.on("render", onR); this.fpsOff = () => map.off("render", onR);
+      box.style.whiteSpace = "pre";
+      // Beside the frames, what makes a button slow: the phone's own delay
+      // (how late a 100 ms timer fires: a busy page), Home Assistant's answer
+      // time (a ping every 3 s) and how many updates of the house it pushes
+      // each second (every one goes through the whole page).
+      var lag = 0, tl = performance.now(), ping = null, ups = 0, hn0 = this.hassN || 0, th0 = performance.now();
+      var lagT = setInterval(() => { var t = performance.now(); lag = Math.max(lag, t - tl - 100); tl = t; }, 100);
+      var pingT = setInterval(() => {
+        var c = this._hass && this._hass.connection, a = performance.now();
+        if (c && c.sendMessagePromise) c.sendMessagePromise({ type: "ping" }).then(() => { ping = Math.round(performance.now() - a); }, () => { ping = -1; });
+      }, 3000);
+      var n = 0, t0 = performance.now(), onR = () => { n++; var t = performance.now(); if (t - t0 >= 1000) {
+        var f = Math.round(n * 1000 / (t - t0)); ups = ((this.hassN || 0) - hn0) * 1000 / (t - th0); hn0 = this.hassN || 0; th0 = t;
+        box.textContent = f + " img/s · cible " + (this.fpsNow || "—") + (this.fluidSteps && this.fluidSteps.length ? " · allégé : " + this.fluidSteps.join(", ") : "") +
+          "\nretard " + Math.round(lag) + " ms · HA " + (ping == null ? "…" : ping < 0 ? "sans réponse" : ping + " ms") + " · " + ups.toFixed(1) + " maj/s";
+        box.style.color = f >= 25 && lag < 100 && (ping == null || (ping >= 0 && ping < 400)) ? "#5cc28f" : f >= 15 && lag < 250 ? "#e5a04c" : "#e0675f"; n = 0; t0 = t; lag = 0; } };
+      map.on("render", onR); this.fpsOff = () => { map.off("render", onR); clearInterval(lagT); clearInterval(pingT); };
     }
     // The ground in relief (hills, valleys and their shading): only when asked
     // — « Relief » in the settings, off by default —, made the first time.
@@ -7930,7 +7974,7 @@
     addTrail(p, onRoad) {
       // Guided, the way behind is the route's own line (drivenTo), not the GPS's.
       if (this.route) { this.cut = true; return; }
-      var snapOn = (Number(this.config.snap) || 0) > 0;
+      var snapOn = this.byCar() && (Number(this.config.snap) || 0) > 0;
       if (snapOn && !onRoad) { this.cut = true; return; }
       var piece = this.trail[this.trail.length - 1], last = piece && piece[piece.length - 1];
       if (last && !this.cut && gpsDist(last, p) < 5) return;
@@ -7961,7 +8005,8 @@
       // The screen's own GPS speed is the speed now; the car's (OBD, through
       // Home Assistant) arrives late.
       if (this.localLive() && this.localSpeed != null) return this.localSpeed;
-      var e = this.config.speed_entity && this._hass.states[this.config.speed_entity];
+      // On foot, by bike, by bus: the car's speed is not this screen's.
+      var e = this.byCar() && this.config.speed_entity && this._hass.states[this.config.speed_entity];
       var kmh = e ? parseFloat(e.state) : NaN;
       if (!isNaN(kmh)) return kmh / 3.6;
       return this.fix ? this.fix.gpsSpeed : 0;
@@ -7988,7 +8033,7 @@
       var sign = this.$("limit"), here = this.pos || (this.fix && this.fix.point);
       // Always there: the limit; the last one seen, greyed, for 2 km after
       // it when the road says nothing; else a grey sign barred.
-      sign.hidden = this.config.speed_limits === false && !le;
+      sign.hidden = (this.config.speed_limits === false && !le) || !this.byCar();
       var shown = limit, stale = false;
       if (!isNaN(limit)) { if (here) this.lastLimit = { v: limit, at: here, cls: this.wayCls || null }; }
       else if (!isNaN(guess)) { shown = guess; stale = true; }
@@ -8601,13 +8646,13 @@
       // 20 s at most: the fix, whenever it comes, is the truth.
       var lost = (now - this.fix.time) / 1000;
       var obd = this.obdSpeed();
-      if (this.config.dead_reckoning !== false && speed > GPS_SLOW && lost > GPS_PREDICT_S && lost < (obd != null ? GPS_DR_MAX_S : 20)) {
+      if (this.config.dead_reckoning !== false && this.byCar() && speed > GPS_SLOW && lost > GPS_PREDICT_S && lost < (obd != null ? GPS_DR_MAX_S : 20)) {
         target = this.deadReckon(now, speed);
       } else { this.drPos = null; this.drAt = 0; }
       // Onto the road, a few times a second, moving or stopped, as a
       // navigator does: within `snap` metres, or what the GPS says it may be
       // off by when that is more (at most 150 m).
-      var snapM = Number(this.config.snap) || 0;
+      var snapM = this.byCar() ? Number(this.config.snap) || 0 : 0;
       if (snapM > 0) snapM = gpsTrust(this.accuracy, 10, Math.max(snapM, Math.min(this.accuracy || 0, 150)), snapM);
       if (snapM > 0 && (!this.snapAt || now - this.snapAt > (this.offlineReady ? 1000 : 200))) {
         this.snapAt = now;
@@ -8716,6 +8761,7 @@
     // A sensor that has not spoken for 45 s is not there: the last figure of
     // a dead link would carry the car far past the truth.
     obdSpeed() {
+      if (!this.byCar()) return null;
       var e = this.config.speed_entity && this._hass && this._hass.states[this.config.speed_entity];
       if (e && Date.now() - (Date.parse(e.last_updated) || 0) > 45000) return null;
       var v = e ? parseFloat(e.state) : NaN;
@@ -8790,7 +8836,7 @@
     // map has none (a key in Igor's options).
     limitTick(now, moving) {
       var p = this.pos;
-      if (!p) return;
+      if (!p || !this.byCar()) return;
       var speed = this.speedMps(), W = this.wayTiles || (this.wayTiles = {});
       // On a motorway at speed, the big roads are enough.
       var fast = (this.wayCls === "motorway" || this.wayCls === "trunk") && speed > 20;
@@ -9353,24 +9399,28 @@
       // back — the abrupt U-turn on a motorway. So the departure is put a
       // couple of seconds ahead, where the car will actually be; standing
       // still (a parking, a choice made by hand) the point stays the truth.
-      if (this.speedMps() > GPS_UTURN) from = gpsProject(from, this.heading, Math.min(80, Math.max(10, this.speedMps() * 2)));
+      if (this.byCar() && this.speedMps() > GPS_UTURN) from = gpsProject(from, this.heading, Math.min(80, Math.max(10, this.speedMps() * 2)));
       this.routeAt = performance.now();
       // With the traffic key: TomTom's route, which knows the jams and goes
       // round closed roads (and the ones the driver chose to avoid); OSRM
       // otherwise, or when TomTom does not answer.
-      if (this.trafficOn()) {
+      if (this.trafficOn() || !this.byCar()) {
         // A destination just chosen by hand: the routes to choose from.
         if (this.chooseNext) { this.chooseNext = false; if (await this.chooseRoute(d, from)) return; if (this.dest !== d) return; }
         var tt = await this.askRoute(d, from, this.tripAvoid || []);
         if (this.dest !== d) return;
         if (tt && tt.ok && tt.route) { this.useTomTom(tt.route); return; }
+        // Public transport has no free stand-in: say why.
+        if (this.travelMode === "transit") { this.banner("mdi:bus-alert", "", (tt && tt.error) || "Transports en commun indisponibles", "wait"); return; }
         if (this.avoid && this.avoid.length) this.banner("mdi:road-variant", "", "Impossible d'éviter la route fermée" + (tt && tt.error ? " (" + tt.error + ")" : ""), "wait");
       }
       // Through the stop(s) first, then to the destination.
       var pts = [from].concat((d.via || []).map((v) => [v.lon, v.lat]), [[d.lon, d.lat]]);
-      var url = String(this.config.router || "https://router.project-osrm.org").replace(/\/$/, "") + "/route/v1/driving/" +
+      // On foot or by bike: OpenStreetMap's own routers (FOSSGIS), the paths and cycle ways.
+      var osrm = this.byCar() ? String(this.config.router || "https://router.project-osrm.org") : "https://routing.openstreetmap.de/" + (this.travelMode === "bicycle" ? "routed-bike" : "routed-foot");
+      var url = osrm.replace(/\/$/, "") + "/route/v1/driving/" +
         pts.map((q) => q[0].toFixed(6) + "," + q[1].toFixed(6)).join(";") +
-        "?overview=full&geometries=geojson&steps=true" + (this.speedMps() > 2 ? "&bearings=" + Math.round(this.heading) + ",60" + ";".repeat(pts.length - 1) : "");
+        "?overview=full&geometries=geojson&steps=true" + (this.byCar() && this.speedMps() > 2 ? "&bearings=" + Math.round(this.heading) + ",60" + ";".repeat(pts.length - 1) : "");
       var body;
       try { body = await (await fetch(url)).json(); }
       catch (e) { this.banner("mdi:wifi-off", "", "Itinéraire indisponible (pas d'internet ?)", "wait"); return; }
@@ -9447,10 +9497,12 @@
       me.style.transform = "translateY(50%)";
       tk.appendChild(me);
     },
-    askRoute(d, from, types, routeType) {
+    byCar() { return !this.travelMode || this.travelMode === "car"; },
+    askRoute(d, from, types, routeType, alternatives) {
+      var car = this.byCar();
       return this._hass.callWS({ type: "call_service", domain: "nives", service: "route", return_response: true,
-        service_data: Object.assign({ from: [from[1], from[0]], to: [d.lat, d.lon], via: (d.via || []).map((v) => [v.lat, v.lon]), avoid: (this.avoid || []).slice(-10), avoid_types: types || [], route_type: routeType || "fastest" },
-          this.startHeading() != null ? { heading: this.startHeading() } : {}) })
+        service_data: Object.assign({ from: [from[1], from[0]], to: [d.lat, d.lon], via: car ? (d.via || []).map((v) => [v.lat, v.lon]) : [], avoid: car ? (this.avoid || []).slice(-10) : [], avoid_types: car ? types || [] : [], route_type: routeType || "fastest", mode: this.travelMode || "car" },
+          alternatives ? { alternatives: alternatives } : {}, car && this.startHeading() != null ? { heading: this.startHeading() } : {}) })
         .then((res) => res && res.response).catch(() => null);
     },
     // The other routes, greyed on the map, each with its bubble (the minutes
@@ -10092,7 +10144,7 @@
     // `fuel_price`, else the average of the stations around), and the total.
     // Unknown parts stay unknown: « péage ? », no figure invented.
     routeCost(R0) {
-      if (!R0) return null;
+      if (!R0 || (R0.mode && R0.mode !== "car")) return null;
       var h = this._hass, num = (id) => { var e = id && h && h.states[id]; var v = e ? parseFloat(e.state) : NaN; return isFinite(v) && v > 0 ? v : null; };
       var l100 = num(this.config.consumption) || 6.5, price = num(this.config.fuel_price);
       if (price == null) {
@@ -10177,13 +10229,24 @@
       // chose for the trip under way lives in tripAvoid, the recalculations
       // keep it; the panel itself starts from a blank page.
       if (!keep) this.askAvoid = null;
-      var mine = this.askAvoid || [], has = (t) => mine.indexOf(t) >= 0;
+      var mine = this.askAvoid || [], has = (t) => mine.indexOf(t) >= 0, car = this.byCar();
       var asks = [{ label: "Le plus rapide", types: mine }, { label: "Le plus court", types: mine, routeType: "shortest" }];
       if (!has("motorways")) asks.push({ label: "Sans autoroute", types: mine.concat(["motorways"]) });
       if (!has("tollRoads")) asks.push({ label: "Sans péage", types: mine.concat(["tollRoads"]) });
       if (!has("lowEmissionZones")) asks.push({ label: "Sans ZFE", types: mine.concat(["lowEmissionZones"]) });
       this.banner("mdi:map-search", "", "Calcul des itinéraires vers " + d.name + "…", "wait");
-      var got = await Promise.all(asks.map((a) => this.askRoute(d, from, a.types, a.routeType)));
+      var got;
+      if (car) got = await Promise.all(asks.map((a) => this.askRoute(d, from, a.types, a.routeType)));
+      else {
+        // Other ways: one ask, its alternatives as the choices.
+        var one = await this.askRoute(d, from, [], "fastest", 2), word = { transit: "Transports", pedestrian: "À pied", bicycle: "À vélo" }[this.travelMode];
+        asks = []; got = [];
+        ((one && one.ok && (one.routes || [one.route])) || []).forEach((R0) => {
+          asks.push({ label: gpsLegsLabel(R0) || word, types: [] });
+          got.push({ ok: true, route: R0 });
+        });
+        if (!got.length && one && one.error) this.banner("mdi:map-marker-question", "", one.error, "wait");
+      }
       if (this.dest !== d) return true;
       var opts = [];
       got.forEach((r, i) => {
@@ -10217,7 +10280,7 @@
         return [Math.round(R0.duration / 60), gpsMetres(R0.distance), R0.delay >= 60 ? Math.round(R0.delay / 60) : 0, String(o.label).replace(/[~;|]/g, " "), R0.tolls && R0.tolls.length ? 1 : 0, R0.lez && R0.lez.length ? 1 : 0,
           C && C.toll != null ? C.toll.toFixed(2) : "", C && C.total != null ? C.total.toFixed(2) : "", C && C.approx ? 1 : 0, String(o.wxShort || "").replace(/[~;|]/g, " ").slice(0, 34)].join("~");
       }).join(";");
-      this.publishRoutes(routesText());
+      if (car) this.publishRoutes(routesText());
       var $ = this.$, list = $("rlist");
       list.innerHTML = "";
       $("rtitle").textContent = "vers " + d.name;
@@ -10234,7 +10297,7 @@
         b.appendChild(mid);
         var r = document.createElement("div"); r.className = "r";
         r.appendChild(document.createTextNode(gpsMetres(R0.distance)));
-        var tr = document.createElement("small"); tr.textContent = R0.delay >= 60 ? "+" + Math.round(R0.delay / 60) + " min de bouchons" : "fluide"; tr.style.color = R0.delay >= 60 ? "#f08c1a" : "#5cc28f"; r.appendChild(tr);
+        var tr = document.createElement("small"); var ride = (R0.legs || []).filter((l) => l.mode !== "pedestrian")[0]; tr.textContent = !car ? (ride && ride.dep ? "départ " + ride.dep : "") : R0.delay >= 60 ? "+" + Math.round(R0.delay / 60) + " min de bouchons" : "fluide"; tr.style.color = R0.delay >= 60 ? "#f08c1a" : "#5cc28f"; r.appendChild(tr);
         b.appendChild(r);
         // The cost under the time: tolls + gazole = total (and the gap to the first).
         var C = this.routeCost(R0), C0 = this.routeCost(opts[0].route), eur = (v) => v.toFixed(2).replace(".", ",") + " €";
@@ -10274,6 +10337,7 @@
       // What to keep off, for this trip and the next ones.
       var chips = $("rchips");
       chips.innerHTML = "";
+      chips.hidden = !car;
       [["motorways", "Éviter autoroutes"], ["tollRoads", "Éviter péages"], ["ferries", "Éviter ferries"], ["lowEmissionZones", "Éviter ZFE"]].forEach((c) => {
         var b = document.createElement("button"); b.type = "button"; b.textContent = c[1]; b.className = has(c[0]) ? "on" : "";
         b.addEventListener("click", () => {
@@ -10377,7 +10441,7 @@
     // screen writes nothing while that writer is alive (20 s), unless it has
     // live GPS and the writer has not. A hidden page never writes.
     mayPublish() {
-      if (document.hidden) return false;
+      if (document.hidden || !this.byCar()) return false;
       var e = this.config.publish_ahead, h = this._hass;
       this.pubId = this.pubId || Math.random().toString(36).slice(2, 8);
       if (!e || !h) return true;
@@ -11520,7 +11584,7 @@
       return r.ahead > 0 ? r.d : null;
     },
     alertTick(now, speed) {
-      if (!this.pos) return;
+      if (!this.pos || !this.byCar()) return;
       this.closureTick();
       var kmh = speed * 3.6;
       var cam = null, onWay = {};
@@ -15847,7 +15911,7 @@
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
   define("igor-car-card", IgorCarCard, "Igor · voiture", "La voiture qui roule : vitesse, régime, température, batterie, trajet.");
   define("igor-security-card", IgorSecurityCard, "Igor · sécurité", "L'alarme (armer, désarmer avec le code), la caméra active ou privée, ses positions enregistrées.");
-  define("igor-gps-card", IgorGpsCard, "Igor · GPS", "La voiture sur sa carte, orientée comme la route, collée à la route la plus proche.");
+  define("igor-gps-card", IgorGpsCard, "Igor Explorer", "La carte d'Igor : guidage, radars, lieux d'OpenStreetMap, carte à explorer.");
   define("igor-carmedia-card", IgorCarMediaCard, "Igor · musique de la voiture", "Le titre en cours sur l'autoradio et trois gros boutons.");
 
   // ===== no top bar with the "Igor Journal (tablette)" theme =====

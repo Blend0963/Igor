@@ -1274,6 +1274,8 @@ ROUTE_SCHEMA = vol.Schema(
         vol.Optional("orbis", default=True): cv.boolean,
         # le prix des péages de chaque itinéraire (HERE, si une clé HERE est donnée)
         vol.Optional("tolls", default=True): cv.boolean,
+        # voiture, à pied, à vélo (TomTom, sinon HERE) ou en transports en commun (HERE)
+        vol.Optional("mode", default="car"): vol.In(["car", "pedestrian", "bicycle", "transit"]),
     }
 )
 
@@ -1344,26 +1346,48 @@ def _async_register_route(hass: HomeAssistant) -> None:
 
         await asyncio.gather(*(one(r) for r in routes[:3]))
 
-    async def _here_route(a, b, via, avoid_types) -> dict | None:
+    async def _here_route(a, b, via, avoid_types, mode: str = "car") -> dict | None:
         """The whole route from HERE, when TomTom gives none."""
         from . import here
 
         hk = _here_key(hass)
         if not hk:
             return None
-        status, body = await _here_get(hass, "route", here.ROUTES_URL, here.route_params(hk, tuple(a), tuple(b), [tuple(v) for v in via], avoid_types, full=True))
-        return here.parse_route(body) if status == 200 and body else None
+        status, body = await _here_get(hass, "route", here.ROUTES_URL, here.route_params(hk, tuple(a), tuple(b), [tuple(v) for v in via], avoid_types, full=True, mode=mode))
+        route = here.parse_route(body) if status == 200 and body else None
+        if route:
+            route["mode"] = mode
+        return route
+
+    async def _transit(a, b, alternatives: int) -> dict:
+        """Public transport, leaving now (HERE Public Transit, the HERE key)."""
+        from . import here
+
+        hk = _here_key(hass)
+        if not hk:
+            return {"enabled": False, "ok": False, "error": "transports en commun : clé HERE absente (options d'Igor)"}
+        status, body = await _here_get(hass, "transit", here.TRANSIT_URL, here.transit_params(hk, tuple(a), tuple(b), alternatives))
+        if status in (401, 403):
+            return {"enabled": True, "ok": False, "error": "clé HERE refusée"}
+        routes = here.parse_transit(body) if status == 200 and body else []
+        if not routes:
+            return {"enabled": True, "ok": False, "error": "pas de transports en commun pour ce trajet"}
+        return {"enabled": True, "ok": True, "route": routes[0], "routes": routes, "source": "here"}
 
     async def _route(call: ServiceCall) -> ServiceResponse:
+        a, b, mode = call.data["from"], call.data["to"], call.data["mode"]
+        if mode == "transit":
+            return await _transit(a, b, call.data["alternatives"])
         out = await _route_tomtom(call)
-        a, b = call.data["from"], call.data["to"]
         if out.get("ok"):
-            if call.data["tolls"]:
+            for r in out["routes"]:
+                r["mode"] = mode
+            if call.data["tolls"] and mode == "car":
                 await _tolls(out["routes"], a, b, call.data["avoid_types"])
                 out["route"] = out["routes"][0]
             return out
         # TomTom without a key, refusing or silent: HERE's route (no traffic stretches).
-        backup = await _here_route(a, b, call.data["via"], call.data["avoid_types"])
+        backup = await _here_route(a, b, call.data["via"], call.data["avoid_types"], mode)
         if backup:
             return {"enabled": True, "ok": True, "route": backup, "routes": [backup], "source": "here"}
         return out
@@ -1382,7 +1406,7 @@ def _async_register_route(hass: HomeAssistant) -> None:
             async with session.request(
                 "POST" if body else "GET",
                 route_url(tuple(a), tuple(b), via),
-                params=route_params(key, call.data.get("heading"), call.data["avoid_types"], call.data["alternatives"], call.data["route_type"]),
+                params=route_params(key, call.data.get("heading"), call.data["avoid_types"], call.data["alternatives"], call.data["route_type"], call.data["mode"]),
                 json=body or None,
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as r:
@@ -1397,7 +1421,7 @@ def _async_register_route(hass: HomeAssistant) -> None:
         if not routes:
             return {"enabled": True, "ok": False, "error": "pas d'itinéraire"}
         # The line drawn from TomTom Orbis (the map shown), the rest classic.
-        if call.data["orbis"]:
+        if call.data["orbis"] and call.data["mode"] == "car":
             better = await _orbis_line(session, key, a, b, via, routes[0], call.data["avoid_types"], call.data["avoid"])
             if better:
                 routes[0] = better

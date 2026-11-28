@@ -1,3 +1,9 @@
+## 0.62.22 — Igor Explorer : à pied, à vélo, en transports en commun
+
+- La carte s'appelle désormais **Igor Explorer** (nom de la carte dans Home Assistant et du tableau de bord du téléphone ; `custom:igor-gps-card` reste le même, rien à changer dans les tableaux de bord).
+- **Tous les modes de déplacement** : en haut du panneau de destination, Voiture, Transports, À pied, Vélo (gardé sur chaque écran). À pied et à vélo : TomTom (sinon HERE, sinon les serveurs d'OpenStreetMap). En transports en commun : HERE Public Transit (clé HERE des options d'Igor), départ maintenant, jusqu'à trois trajets proposés avec leurs lignes et l'heure du premier départ, puis « Prenez le bus 73 direction … à …, descendez à … ». Hors voiture : ni radars, ni limitations, ni péages, ni vitesse OBD, rien envoyé à l'autoradio, la flèche n'est plus collée aux routes.
+- **Compteur d'images** (Réglages → Carte 3D → Performance) : affiche aussi le retard du téléphone, le temps de réponse de Home Assistant et le nombre de mises à jour qu'il envoie par seconde, pour trouver d'où vient une lenteur.
+
 ## 0.62.21 — Carte à explorer : lieux, inclinaison selon le zoom, couleurs du jour
 
 - **Lieux d'OpenStreetMap, dessinés par Igor** : restaurants, points de vue, monuments, parkings, pharmacies, gares, plages… sur toute la carte, à partir des tuiles d'OpenFreeMap (gratuites, sans clé, servies par un CDN et gardées par le navigateur : aucune requête à Overpass pour les afficher). Une seule famille d'icônes (disque de couleur, pictogramme blanc) : les lieux de TomTom sont masqués pour ne pas mélanger deux dessins. Les icônes ne se chevauchent jamais (les plus importants d'abord), les noms apparaissent en zoomant. Un toucher : « Nouvel itinéraire », « Ajouter une étape », « Fiche » (horaires, téléphone, site, Wikipédia, demandés à OpenStreetMap pour ce seul lieu). Radars et stations (avec leurs prix) restent ceux d'Igor.

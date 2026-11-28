@@ -17,6 +17,7 @@ import math
 from typing import Any
 
 ROUTES_URL = "https://router.hereapi.com/v8/routes"
+TRANSIT_URL = "https://transit.router.hereapi.com/v8/routes"
 INCIDENTS_URL = "https://data.traffic.hereapi.com/v7/incidents"
 DISCOVER_URL = "https://discover.search.hereapi.com/v1/discover"
 GEOCODE_URL = "https://geocode.search.hereapi.com/v1/geocode"
@@ -103,13 +104,15 @@ def route_params(
     via: list | tuple = (),
     avoid: list | tuple = (),
     full: bool = False,
+    mode: str = "car",
 ) -> list[tuple[str, str]]:
     """The query (origin, dest, via as (lat, lon)); `via` passed through
     without stopping. `full`: the line and the instructions too (a backup
     route), else only what the tolls need."""
-    ret = "summary,tolls" + (",polyline,actions,instructions" if full else "")
+    car = mode not in ("pedestrian", "bicycle")
+    ret = ("summary,tolls" if car else "summary") + (",polyline,actions,instructions" if full else "")
     params = [
-        ("transportMode", "car"),
+        ("transportMode", "car" if car else mode),
         ("origin", f"{origin[0]:.6f},{origin[1]:.6f}"),
         ("destination", f"{dest[0]:.6f},{dest[1]:.6f}"),
         ("return", ret),
@@ -118,6 +121,8 @@ def route_params(
         ("apikey", key),
     ]
     params += [("via", f"{v[0]:.6f},{v[1]:.6f}!passThrough=true") for v in via]
+    if not car:
+        return params
     feats = [AVOID[a] for a in avoid if a in AVOID]
     if feats:
         params.append(("avoid[features]", ",".join(feats)))
@@ -262,6 +267,106 @@ def parse_route(body: Any) -> dict | None:
         "delay": max(0.0, duration - base), "steps": steps, "toll_eur": toll["eur"] if toll else None,
         "source": "here",
     }
+
+
+# ----- public transport (HERE Public Transit) -----
+TRANSIT_FR = {
+    "pedestrian": "à pied", "bus": "bus", "busRapid": "bus", "privateBus": "car", "regionalTrain": "TER",
+    "intercityTrain": "train", "highSpeedTrain": "TGV", "cityTrain": "RER", "subway": "métro", "lightRail": "tram",
+    "monorail": "monorail", "inclined": "funiculaire", "aerial": "téléphérique", "ferry": "bateau", "flight": "avion",
+    "spaceShip": "navette", "monorailTrain": "monorail",
+}
+
+
+def transit_params(key: str, origin: tuple[float, float], dest: tuple[float, float], alternatives: int = 0) -> list[tuple[str, str]]:
+    """Leaving now, from origin to dest (lat, lon): the line, the actions of
+    the walks and the summary of each leg."""
+    return [
+        ("origin", f"{origin[0]:.6f},{origin[1]:.6f}"),
+        ("destination", f"{dest[0]:.6f},{dest[1]:.6f}"),
+        ("return", "polyline,actions,travelSummary,intermediate"),
+        ("alternatives", str(max(0, min(2, int(alternatives))))),
+        ("lang", "fr-FR"),
+        ("apikey", key),
+    ]
+
+
+def _hhmm(t: Any) -> str:
+    s = str(t or "")
+    return s[11:16] if len(s) >= 16 else ""
+
+
+def _place(x: Any) -> str:
+    p = (x or {}).get("place") or {}
+    return str(p.get("name") or "")[:60]
+
+
+def _one_transit(r: dict) -> dict | None:
+    coords: list[list[float]] = []
+    steps: list[dict] = []
+    legs: list[dict] = []
+    length = duration = 0.0
+    for sec in r.get("sections") or []:
+        if not isinstance(sec, dict):
+            continue
+        try:
+            line = decode_polyline(sec.get("polyline") or "")
+        except ValueError:
+            return None
+        for p in line:
+            if not coords or coords[-1] != p:
+                coords.append(p)
+        summ = sec.get("travelSummary") or sec.get("summary") or {}
+        length += float(summ.get("length") or 0)
+        duration += float(summ.get("duration") or 0)
+        tr = sec.get("transport") or {}
+        mode = str(tr.get("mode") or sec.get("type") or "")
+        dep, arr = sec.get("departure") or {}, sec.get("arrival") or {}
+        leg = {
+            "mode": mode, "kind": TRANSIT_FR.get(mode, mode), "name": str(tr.get("name") or tr.get("shortName") or "")[:20],
+            "headsign": str(tr.get("headsign") or "")[:50], "color": str(tr.get("color") or ""),
+            "from": _place(dep), "to": _place(arr), "dep": _hhmm(dep.get("time")), "arr": _hhmm(arr.get("time")),
+            "stops": len(sec.get("intermediateStops") or []), "duration": float(summ.get("duration") or 0),
+        }
+        legs.append(leg)
+        first = line[0] if line else (coords[-1] if coords else None)
+        if first is None:
+            continue
+        if sec.get("type") == "pedestrian" or mode == "pedestrian":
+            for a in sec.get("actions") or []:
+                if not isinstance(a, dict):
+                    continue
+                try:
+                    off = int(a.get("offset") or 0)
+                except (TypeError, ValueError):
+                    off = 0
+                loc = line[max(0, min(off, len(line) - 1))] if line else first
+                steps.append({"at": 0.0, "loc": loc, "maneuver": _maneuver(a), "text": str(a.get("instruction") or "")[:160],
+                              "road": "", "refs": [], "exit": "", "to": ""})
+        else:
+            what = (leg["kind"] + " " + leg["name"]).strip()
+            text = f"Prenez le {what}" + (f" direction {leg['headsign']}" if leg["headsign"] else "") + \
+                (f" à {leg['from']}" if leg["from"] else "") + (f" ({leg['dep']})" if leg["dep"] else "") + \
+                (f", descendez à {leg['to']}" if leg["to"] else "") + (f" après {leg['stops'] + 1} arrêts" if leg["stops"] else "")
+            steps.append({"at": 0.0, "loc": first, "maneuver": "TRANSIT", "text": text[:160], "road": "", "refs": [], "exit": "", "to": leg["to"]})
+    if len(coords) < 2:
+        return None
+    return {
+        "coords": coords, "jams": [], "limits": [], "lanes": [], "tolls": [], "tunnels": [], "ferries": [],
+        "motorways": [], "lez": [], "distance": length, "duration": duration, "delay": 0.0, "steps": steps,
+        "toll_eur": None, "source": "here", "mode": "transit", "legs": legs,
+    }
+
+
+def parse_transit(body: Any) -> list[dict]:
+    """HERE Public Transit's routes → the card's routes (each with its legs)."""
+    routes = body.get("routes") if isinstance(body, dict) else None
+    out = []
+    for r in routes or []:
+        one = _one_transit(r) if isinstance(r, dict) else None
+        if one:
+            out.append(one)
+    return out
 
 
 # ----- traffic incidents (the backup of TomTom's) -----

@@ -145,19 +145,30 @@ AVOIDABLE = {"motorways", "tollRoads", "ferries", "unpavedRoads", "lowEmissionZo
 SECTION_TYPES = ("traffic", "speedLimit", "lanes", "tollRoad", "tunnel", "ferry", "motorway", "lowEmissionZone")
 
 
+# The ways one travels: the card's word → TomTom's travelMode.
+TRAVEL_MODES = {"car": "car", "pedestrian": "pedestrian", "bicycle": "bicycle"}
+
+
 def route_params(
-    key: str, heading: float | None, avoid: list[str] | tuple = (), alternatives: int = 0, route_type: str = "fastest"
+    key: str, heading: float | None, avoid: list[str] | tuple = (), alternatives: int = 0, route_type: str = "fastest",
+    mode: str = "car",
 ) -> list[tuple[str, str]]:
-    """The query as pairs (sectionType and avoid repeat)."""
+    """The query as pairs (sectionType and avoid repeat). On foot or by bike:
+    no traffic, no heading, nothing to avoid (TomTom's own paths)."""
+    car = TRAVEL_MODES.get(mode, "car") == "car"
     params = [
         ("key", key),
-        ("traffic", "true"),
-        ("travelMode", "car"),
+        ("traffic", "true" if car else "false"),
+        ("travelMode", TRAVEL_MODES.get(mode, "car")),
         ("routeType", route_type if route_type in ("fastest", "shortest") else "fastest"),
         ("instructionsType", "text"),
         ("language", "fr-FR"),
         ("routeRepresentation", "polyline"),
     ]
+    if not car:
+        if alternatives > 0:
+            params.append(("maxAlternatives", str(min(2, int(alternatives)))))
+        return params
     params += [("sectionType", t) for t in SECTION_TYPES]
     params += [("avoid", a) for a in avoid if a in AVOIDABLE]
     if alternatives > 0:
