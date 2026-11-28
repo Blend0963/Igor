@@ -4,6 +4,7 @@
 - Réglages → Carte 3D → nouvel onglet **Lieux** : Igor, TomTom ou aucun, et neuf familles à afficher ou masquer.
 - **Inclinaison selon le zoom** (téléphone et autoradio) : en 3D de près, de plus en plus à plat en dézoomant, et la 3D revient en rezoomant, comme la carte d'un jeu. Pendant un pincement la caméra suit sans couper le geste. Réglage « Inclinaison selon le zoom » (Caméra).
 - **Couleurs du jour plus vives** sur la carte TomTom : verts francs, eau turquoise, quartiers et bâtiments gris-bleu, rues blanches, grands axes crème. Réglage « Couleurs de la carte le jour » (Lumière) : vives ou TomTom.
+- **Nuit indigo** par défaut : sol indigo profond, eau un ton plus clair, parcs vert sombre, routes gris lavande, bâtiments indigo, noms clairs, à tous les zooms. Réglage « Couleurs de la carte la nuit » (Lumière) : indigo, bleu nuit, TomTom ou celles du style.
 
 ## 0.62.20 — Ombres d'Igor retirées
 

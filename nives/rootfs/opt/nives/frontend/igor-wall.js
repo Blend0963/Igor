@@ -5469,6 +5469,7 @@
   //   places: igor                          # the map's places: igor (all of OpenStreetMap's, Igor's own icons, from OpenFreeMap's tiles; default), tous (TomTom's), aucun
   //   places_tiles: https://tiles.openfreemap.org/planet  # where those places come from (an OpenMapTiles TileJSON)
   //   pitch_by_zoom: true                   # the tilt follows the zoom: 3D close up, flat seen from high (false: the tilt stays)
+  //   night_colors: indigo                  # by night: indigo (Igor's), bleu, tomtom, gris (the style's own)
   //   day_colors: vive                      # by day on TomTom's map: Igor's lively colours (tomtom: TomTom's own)
   //   debug: true                           # says in the message band how the relief was made (TomTom's 3D layers, or Igor's)
   //   sdk: true                             # with basemap: tomtom-3d, TomTom's Maps SDK (buildings with facades and lit windows, textured water and woods), fetched from a CDN; false: MapLibre alone
@@ -7340,10 +7341,10 @@
       // switches. « par défaut »: each colour reset to the style's own.
       if (this.tt && this.ttKit && this.ttKit.sdk && this.ttKit.sdk.StylingFoundationsModule) return this.tintSdk(L);
       var night = this.ttStyle === "streetDarkDriving" || (this.config.sdk_style || "").indexOf("Dark") >= 0;
-      var mode = night && L && (L.tn === "tomtom" || L.tn === "bleu") ? L.tn : "";
+      var mode = night ? this.nightTint() : "";
       if ((this.tintMode || "") === mode && this.tintStyle === this.ttStyle) return;
       this.tintMode = mode; this.tintStyle = this.ttStyle;
-      var HUE = { tomtom: [203, 0.36, 1.25, 0.03], bleu: [215, 0.45, 1.1, 0.02] }[mode];
+      var HUE = { tomtom: [203, 0.36, 1.25, 0.03], bleu: [215, 0.45, 1.1, 0.02], indigo: [238, 0.38, 1.15, 0.03] }[mode];
       var parse = (c) => {
         var m, s0 = String(c).trim();
         if ((m = /^#([0-9a-f]{3,8})$/i.exec(s0))) { var h = m[1]; if (h.length <= 4) h = h.split("").map((x) => x + x).join(""); return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1]; }
@@ -7376,7 +7377,7 @@
     }
     tintSdk(L) {
       var sdk = this.ttKit.sdk, dark = this.ttStyle === "streetDarkDriving" || (this.config.sdk_style || "").indexOf("Dark") >= 0;
-      var mode = dark && L && (L.tn === "tomtom" || L.tn === "bleu") ? L.tn : "";
+      var mode = dark ? this.nightTint() : "";
       // By day: Igor's lively colours unless « TomTom » is chosen.
       if (!dark && this.dayLively()) mode = "jour";
       var key = mode + "|" + this.ttStyle;
@@ -7388,14 +7389,17 @@
         tomtom: { land: "#233c4b", water: "#3b5871", vegetation: "#2c4b4f", park: "#30564f", artificial: "#294353", roadMajor: "#456168", road: "#375461", roadOutline: "#2b4553", label: "#d3dfe4", labelHalo: "#1b2f3b" },
         // Igor's day: frank greens, turquoise water, blue-grey built-up areas,
         // white streets and warm main roads — no more washed-out white.
-        jour: { land: "#dde7cf", water: "#4dbedf", vegetation: "#93c97a", park: "#9fd486", artificial: "#d6dae7", roadMajor: "#fff0c2", road: "#ffffff", roadOutline: "#b3bccb", label: "#26303b", labelHalo: "#ffffff" },
+        jour: { land: "#d3e2c6", water: "#3fb5d9", vegetation: "#86be78", park: "#7fbf73", artificial: "#d4d8e4", roadMajor: "#f4f1e6", road: "#ffffff", roadOutline: "#aab3c4", label: "#26303b", labelHalo: "#ffffff" },
+        // Igor's night: deep indigo ground, the water a shade lighter, dark
+        // teal parks, lavender-grey roads that stand out without glaring.
+        indigo: { land: "#1a1c38", water: "#2a2f66", vegetation: "#1b4743", park: "#1e5049", artificial: "#212548", roadMajor: "#8c90c2", road: "#5a5f92", roadOutline: "#13152b", label: "#e2e4ff", labelHalo: "#11122a" },
         bleu: { land: "#16243a", water: "#1d3a5c", vegetation: "#1c3340", park: "#1f3a44", artificial: "#1d2d44", roadMajor: "#3a5878", road: "#2c4560", roadOutline: "#1f3047", label: "#c3cfe0", labelHalo: "#111c2c" }
       };
       var names = ["land", "water", "vegetation", "park", "artificial", "roadMajor", "road", "roadOutline", "label", "labelHalo"];
       this.ttStyling = this.ttStyling || sdk.StylingFoundationsModule.get(this.tt);
       // The map's own buildings (those left when Igor's 3D is off): their
       // colour from the same measure — #456168, lit roofs over darker walls.
-      this.tintBuild = mode === "tomtom" ? "#456168" : mode === "bleu" ? "#2f425a" : mode === "jour" ? "#c6cee2" : null;
+      this.tintBuild = mode === "tomtom" ? "#456168" : mode === "bleu" ? "#2f425a" : mode === "indigo" ? "#2e3568" : mode === "jour" ? "#c6cee2" : null;
       try { this.placesApply(); } catch (e) { /* the places' names as they were */ }
       try { this.baseBuildings(this.map); } catch (e) { /* as it was */ }
       this.ttStyling.then((st) => {
@@ -7404,6 +7408,8 @@
         else if (sdk.resetKnob && sdk.stylingFoundationsKnobCatalogue) names.forEach((n) => { try { sdk.resetKnob(st, sdk.stylingFoundationsKnobCatalogue, "colors." + n); } catch (e) { /* that one as it was */ } });
       }).catch((e) => { this.ttStyling = null; this.tintSdkKey = null; if (this.config.debug) this.message("teinte : " + (e && e.message)); });
     }
+    // The night's colours: Igor's indigo unless another is chosen (« gris »: the style's own).
+    nightTint() { var L = this.look || {}, t = L.tn || this.config.night_colors || "indigo"; return t === "tomtom" || t === "bleu" || t === "indigo" ? t : ""; }
     dayLively() { var L = this.look || {}; return (L.tj || this.config.day_colors || "vive") !== "tomtom"; }
     buildingsLook() {
       var c = this.config, op = Number(c.buildings_opacity), L = this.look, look;
@@ -7414,8 +7420,10 @@
           roadLabels: { occluded: !!Number(L.rl) } };
         if (L.wc === "unie") look.walls = { variation: 0 }; else if (L.wc === "variee") look.walls = { variation: 0.6 };
         // Lit at night (« Éclairage des bâtiments »): many windows on, the façades' pattern shown.
-        if (L.tn === "tomtom" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#456168" });
-        else if (L.tn === "bleu" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#2f425a" });
+        var tn = this.nightTint();
+        if (tn === "indigo" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#2e3568" });
+        else if (tn === "tomtom" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#456168" });
+        else if (tn === "bleu" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#2f425a" });
         else if (this.ttStyle === "streetLightDriving" && this.dayLively() && (L.wc || "style") === "style") look.walls = Object.assign({}, look.walls || {}, { color: "#c6cee2" });
         if (Number(L.eb) && this.ttStyle === "streetDarkDriving") { look.litWindows = { fraction: Math.max(0.55, (Number(L.lw) || 0) / 100) }; look.facade = { pattern: L.fw && L.fw !== "none" ? L.fw : "mixed", intensity: 1 }; }
       } else {
@@ -14567,7 +14575,7 @@
     ["te", "Sol & nature", "Relief", "collines, vallées et leur ombrage · coupé pendant le guidage (sinon les bâtiments cachent la route)", "sw"],
     ["wd", "Sol & nature", "Vent", "feuilles et eau", "seg", [[0, "calme"], [0.5, "léger"], [1, "fort"]]],
     ["dn", "Lumière", "Jour et nuit", "", "seg", [["auto", "selon le soleil"], ["day", "toujours jour"], ["night", "toujours nuit"]]],
-    ["tn", "Lumière", "Couleurs de la carte la nuit", "toute la carte (sol, eau, parcs, routes, noms) : par défaut, bleu nuit, ou celles de la navigation TomTom", "seg", [["gris", "par défaut"], ["bleu", "bleu nuit"], ["tomtom", "TomTom"]]],
+    ["tn", "Lumière", "Couleurs de la carte la nuit", "toute la carte (sol, eau, parcs, routes, noms) : indigo d'Igor, bleu nuit, TomTom ou celles du style", "seg", [["indigo", "indigo"], ["bleu", "bleu nuit"], ["tomtom", "TomTom"], ["gris", "du style"]]],
     ["tj", "Lumière", "Couleurs de la carte le jour", "vives : verts francs, eau turquoise, bâtiments gris-bleu · ou celles de TomTom", "seg", [["vive", "vives"], ["tomtom", "TomTom"]]],
     ["ne", "Lumière", "Nuit quand le soleil passe sous", "en degrés au-dessus de l'horizon", "seg", [[0, "0°"], [3, "3°"], [6, "6°"], [10, "10°"]]],
     ["pi", "Caméra", "Inclinaison", "", "sl", 0, 75, 5, "°"],
@@ -14592,7 +14600,7 @@
     ["cpt", "Performance", "Compteur d'images", "affiche les images par seconde en coin de carte", "sw"]
   ];
   // Not in the presets (left to the dashboard until changed here).
-  var MAP3D_FREE = { dn: "auto", ne: 3, pi: 60, zm: 17, az: 1, cy: "milieu", tj: "vive", zp: 1, qm: 1, qc: 1, qs: 1, qv: 1, qt: 1, qx: 1, qn: 1, qh: 1, qa: 1 };
+  var MAP3D_FREE = { dn: "auto", ne: 3, pi: 60, zm: 17, az: 1, cy: "milieu", tn: "indigo", tj: "vive", zp: 1, qm: 1, qc: 1, qs: 1, qv: 1, qt: 1, qx: 1, qn: 1, qh: 1, qa: 1 };
   function map3dParse(str) {
     var out = { p: "epure", o: {} };
     String(str || "").split(";").forEach((kv) => {
