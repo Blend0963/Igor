@@ -1,3 +1,10 @@
+## 0.62.27 — La carte de secours d'Igor (France, hors TomTom)
+
+- **Une carte de secours sur Home Assistant** : la France métropolitaine et la Corse en tuiles vectorielles OpenStreetMap (le fond de Protomaps, zooms 0 à 14), extraites par Home Assistant de la carte publique quotidienne de Protomaps (seulement les tuiles de la France, lues par plages : la planète n'est jamais téléchargée), en arrière-plan, morceau par morceau (un carré de zoom 8 et tout ce qu'il contient), reprise après un redémarrage, renouvelée tous les 90 jours. Les tuiles identiques (mer, champs) ne sont gardées qu'une fois ; les polices des noms aussi sont gardées. Fichier : `/share/igor/carte.sqlite` (sinon `/config/nives_offline/`), quelques Go.
+- **Bascule automatique** : quand TomTom ne répond plus (style refusé, erreurs répétées : clé, quota, panne), la carte repart toute seule sur la carte de secours, aux couleurs d'Igor (indigo la nuit, vives le jour, suivant le soleil), avec le guidage, les lieux de la bibliothèque, les vignettes ; un message le dit. Au prochain chargement de la page, TomTom est réessayé.
+- Réglages → Carte 3D → Performance → **Carte de secours** : « si besoin » (défaut) ou « toujours ».
+- Correctif : après un changement de style (jour/nuit), les lieux de la bibliothèque reviennent tout de suite.
+
 ## 0.62.26 — Igor sur la carte : demander, guider, préparer
 
 - **Demander à Igor** : le micro de la barre « Où allez-vous ? » (la reconnaissance vocale du téléphone ; sinon la question écrite, bouton « Igor » du panneau de recherche). « Trouve-moi un resto ouvert », « un beau point de vue pas loin », « qu'est-ce que c'est, là, à droite ? »… Igor reçoit l'heure, le mode de déplacement, la vitesse, la rue, le trajet en cours et les lieux de sa bibliothèque autour (et le long de la route), chacun avec sa distance, son côté (devant, à droite…) et ses horaires ; il répond en quelques phrases, à voix haute, et désigne les lieux : entourés de cyan sur la carte, listés sous sa réponse (un toucher : leur vignette ; « Y aller »).

@@ -532,6 +532,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     _async_register_tasker(hass)
     _async_register_offline_maps(hass)
     _async_register_places(hass)
+    _async_register_spare_map(hass)
     # No automatic offline-map download any more (0.39.10): France is a 4.5 GB
     # extract, the image lacks osmium, and the online maps cover the car. The
     # service nives.car_map_update stays, for whoever asks for it by hand.
@@ -552,6 +553,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     entry.async_create_background_task(hass, _push_lock(), "nives_lock_push")
     # Igor's library of places (all of France), filled in the background.
     entry.async_create_background_task(hass, _async_places_loop(hass), "igor_places")
+    # Igor's spare map (France, OpenStreetMap), for when TomTom does not answer.
+    entry.async_create_background_task(hass, _async_spare_loop(hass), "igor_spare_map")
     entry.async_on_unload(async_track_time_interval(hass, _push_lock, LOCK_PUSH_INTERVAL))
     return True
 
@@ -2167,6 +2170,178 @@ async def _async_places_loop(hass: HomeAssistant) -> None:
                 await hass.async_add_executor_job(db.failed, cell, err, P.now())
             pause = min(300.0, max(pause * 2, 20.0))
         await asyncio.sleep(pause)
+
+
+def _spare_map(hass: HomeAssistant):
+    """Igor's spare map (fallback.py), opened once per Core run."""
+    store = hass.data.setdefault(DOMAIN, {})
+    if "spare_map" not in store:
+        from .fallback import SpareMap
+        from .places import storage_path
+
+        store["spare_map"] = SpareMap(storage_path(Path(hass.config.path())).with_name("carte.sqlite"))
+    return store["spare_map"]
+
+
+async def _async_spare_loop(hass: HomeAssistant) -> None:
+    """France's tiles out of Protomaps' latest planet build, piece by piece
+    (one request at a time, resumed after a restart), then again every 90
+    days; the fonts of the names once."""
+    from urllib.parse import quote
+
+    from . import fallback as F
+    from .places import now
+
+    await asyncio.sleep(180)
+    spare = await hass.async_add_executor_job(_spare_map, hass)
+    session = async_get_clientsession(hass)
+    ua = {"User-Agent": "Igor-HomeAssistant (spare map)"}
+
+    async def get_range(url: str, a: int, b: int) -> bytes:
+        async with session.get(url, headers={**ua, "Range": f"bytes={a}-{b - 1}"}, timeout=aiohttp.ClientTimeout(total=600)) as r:
+            if r.status not in (200, 206):
+                raise ValueError(f"Protomaps {r.status}")
+            data = await r.read()
+            return data[a:b] if r.status == 200 else data
+
+    while True:
+        try:
+            # The build: the newest of Protomaps' list, kept 90 days.
+            build, built_at = await hass.async_add_executor_job(spare.meta, "build"), await hass.async_add_executor_job(spare.meta, "build_at")
+            if not build or now() - float(built_at or 0) > F.REFRESH_DAYS * 86400:
+                async with session.get(F.BUILDS_URL, headers=ua, timeout=aiohttp.ClientTimeout(total=60)) as r:
+                    builds = await r.json(content_type=None) if r.status == 200 else []
+                keys = sorted(str(b.get("key") or "") for b in builds if isinstance(b, dict) and str(b.get("key") or "").endswith(".pmtiles"))
+                if keys and keys[-1] != build:
+                    build = keys[-1]
+                    await hass.async_add_executor_job(spare.meta, "build", build)
+                    await hass.async_add_executor_job(spare.meta, "build_at", str(now()))
+                elif keys:
+                    await hass.async_add_executor_job(spare.meta, "build_at", str(now()))
+            if not build:
+                await asyncio.sleep(3600)
+                continue
+            await hass.async_add_executor_job(spare.seed, F.pieces(), build)
+            url = F.BUILD_URL.format(key=build)
+            head = await get_range(url, 0, 16384)
+            h = F.read_header(head)
+            await hass.async_add_executor_job(spare.meta, "compression", str(h["tile_compression"]))
+            root = F.read_directory(head[h["root_offset"]:h["root_offset"] + h["root_length"]], h["internal_compression"])
+            leaves: dict[tuple[int, int], list] = {}
+            # The names' fonts (Latin ranges), once.
+            for font in F.FONTS:
+                for rg in F.FONT_RANGES:
+                    name = f"{font}/{rg}"
+                    if await hass.async_add_executor_job(spare.font, name):
+                        continue
+                    async with session.get(F.FONTS_URL.format(font=quote(font), range=rg), headers=ua, timeout=aiohttp.ClientTimeout(total=60)) as r:
+                        if r.status == 200:
+                            await hass.async_add_executor_job(spare.font, name, await r.read())
+            while True:
+                piece = await hass.async_add_executor_job(spare.next_piece, now())
+                if piece is None:
+                    break
+                try:
+                    ranges = F.piece_ranges(piece)
+                    found, todo = [], [root]
+                    while todo:
+                        d = todo.pop()
+                        found += F.tiles_for(d, ranges)
+                        for off, ln in F.leaves_for(d, ranges):
+                            if (off, ln) not in leaves:
+                                raw = await get_range(url, h["leaf_offset"] + off, h["leaf_offset"] + off + ln)
+                                leaves[(off, ln)] = await hass.async_add_executor_job(F.read_directory, raw, h["internal_compression"])
+                                if len(leaves) > 400:
+                                    leaves.pop(next(iter(leaves)))
+                            todo.append(leaves[(off, ln)])
+                    # Span by span (16 MB at most): stored as they come, the memory stays low.
+                    found.sort(key=lambda e: e[1])
+                    for a, b in F.byte_spans(found):
+                        chunk = await get_range(url, h["data_offset"] + a, h["data_offset"] + b)
+                        part = [e for e in found if a <= e[1] and e[1] + e[2] <= b]
+                        data = {(e[1], e[2]): chunk[e[1] - a:e[1] - a + e[2]] for e in part}
+                        await hass.async_add_executor_job(spare.store, piece, build, part, data, False)
+                        del chunk, data
+                    await hass.async_add_executor_job(spare.store, piece, build, [], {}, True)
+                except (aiohttp.ClientError, TimeoutError, ValueError, OSError) as e:
+                    await hass.async_add_executor_job(spare.failed, piece, f"{type(e).__name__}: {e}", now())
+                    await asyncio.sleep(60)
+                await asyncio.sleep(2)
+        except (aiohttp.ClientError, TimeoutError, ValueError, OSError) as e:
+            _LOGGER.debug("spare map: %s", e)
+            await asyncio.sleep(900)
+            continue
+        await asyncio.sleep(6 * 3600)
+
+
+@callback
+def _async_register_spare_map(hass: HomeAssistant) -> None:
+    """/api/nives/spare/{z}/{x}/{y}.mvt, its style (?t=nuit|jour&o=origin),
+    its fonts, its status."""
+    store = hass.data.setdefault(DOMAIN, {})
+    if store.get("spare_views"):
+        return
+    store["spare_views"] = True
+    import re as _re
+
+    from . import fallback as F
+
+    class SpareTileView(HomeAssistantView):
+        url = "/api/nives/spare/{z}/{x}/{y}.mvt"
+        name = "api:nives:spare_tile"
+        requires_auth = True
+
+        async def get(self, request: web.Request, z: str, x: str, y: str) -> web.Response:
+            try:
+                zi, xi, yi = int(z), int(x), int(y)
+            except ValueError:
+                return web.Response(status=400)
+            if not 0 <= zi <= F.MAX_ZOOM:
+                return web.Response(status=204)
+            spare = await hass.async_add_executor_job(_spare_map, hass)
+            data = await hass.async_add_executor_job(spare.tile, zi, xi, yi)
+            if not data:
+                return web.Response(status=204)
+            headers = {"Cache-Control": "max-age=604800"}
+            if data[:2] == b"\x1f\x8b":
+                headers["Content-Encoding"] = "gzip"
+            return web.Response(body=data, content_type="application/x-protobuf", headers=headers)
+
+    class SpareStyleView(HomeAssistantView):
+        url = "/api/nives/spare/style.json"
+        name = "api:nives:spare_style"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            origin = request.query.get("o", "")
+            if not _re.match(r"^https?://[A-Za-z0-9.\-]+(:\d+)?$", origin):
+                origin = str(request.url.origin())
+            base = origin + "/api/nives/spare"
+            return self.json(F.style(base + "/{z}/{x}/{y}.mvt", base + "/fonts/{fontstack}/{range}.pbf", request.query.get("t", "nuit")))
+
+    class SpareFontView(HomeAssistantView):
+        url = "/api/nives/spare/fonts/{font}/{rng}.pbf"
+        name = "api:nives:spare_font"
+        requires_auth = True
+
+        async def get(self, request: web.Request, font: str, rng: str) -> web.Response:
+            spare = await hass.async_add_executor_job(_spare_map, hass)
+            first = font.split(",")[0].strip()
+            data = await hass.async_add_executor_job(spare.font, f"{first}/{rng}")
+            # A range not kept: no glyph, but no error either.
+            return web.Response(body=data or b"", content_type="application/x-protobuf", headers={"Cache-Control": "max-age=604800"})
+
+    class SpareStatusView(HomeAssistantView):
+        url = "/api/nives/spare/status"
+        name = "api:nives:spare_status"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            spare = await hass.async_add_executor_job(_spare_map, hass)
+            return self.json({"ok": True, **(await hass.async_add_executor_job(spare.status))})
+
+    for v in (SpareTileView(), SpareStyleView(), SpareFontView(), SpareStatusView()):
+        hass.http.register_view(v)
 
 
 @callback

@@ -5570,7 +5570,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.26";
+  var GPS_CARD_VERSION = "0.62.27";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7470,6 +7470,9 @@
       this.$("full").title = this.full ? "Réduire" : "Plein écran";
     }
     styleUrl() {
+      // Igor's spare map (OpenStreetMap, France, served by Home Assistant):
+      // when TomTom does not answer, or when chosen in the settings.
+      if (this.spareOn) { var o = window.location.origin; this.spareTheme = this.spareTheme || (this.sdkStyleNow().indexOf("Dark") >= 0 ? "nuit" : "jour"); return o + "/api/nives/spare/style.json?t=" + this.spareTheme + "&o=" + encodeURIComponent(o); }
       if (this.config.style) return this.config.style;
       // The CARTO dark PNG tiles online by default (cached by the browser):
       // the same images the offline basemap would serve, so the same drawing
@@ -7774,6 +7777,8 @@
       // road): none by default — the route carries its slow stretches itself.
       tryIt(() => this.trafficLook(map, L.tf || "aucun"));
       tryIt(() => this.placesApply());
+      if (L.fb === "secours" && !this.spareOn && this.spareStat && this.spareStat.usable) { setTimeout(() => this.goSpare("choisie dans les réglages"), 0); return; }
+      if (L.fb !== "secours" && this.spareOn && this.spareWhy === "choisie dans les réglages") { setTimeout(() => this.leaveSpare(), 0); return; }
       tryIt(() => {
         var ns = { petite: 0.85, normale: 1, grande: 1.25 }[L.ns] || 1, sz = this.labelSize0 = this.labelSize0 || {};
         ((map.getStyle() && map.getStyle().layers) || []).forEach((l) => {
@@ -8516,11 +8521,17 @@
       // the browser really uses (a phone may not come the same road as the
       // head unit). The fetched style is handed to the map, so nothing is
       // asked twice.
+      // The spare map: is it there (its tiles on Home Assistant)? Chosen in
+      // the settings, it is used at once; otherwise it waits for TomTom to fail.
+      try { this.spareStat = await this._hass.callApi("GET", "nives/spare/status"); } catch (e) { this.spareStat = null; }
+      if (!this.spareOn && this.look && this.look.fb === "secours" && this.spareStat && this.spareStat.usable) { this.spareOn = true; this.spareWhy = "choisie dans les réglages"; }
+      try { this.$("card").classList.toggle("spare", !!this.spareOn); } catch (e) { /* no card */ }
       var style = (this.styleNow = this.styleUrl());
       if (typeof style === "string" && style.indexOf(window.location.origin + "/api/nives/") === 0) {
         try {
           var tok = this._hass && this._hass.auth && this._hass.auth.data && this._hass.auth.data.access_token;
           var r = await fetch(style, tok ? { headers: { Authorization: "Bearer " + tok } } : undefined);
+          if (!r.ok && !this.spareOn && this.spareStat && this.spareStat.usable && /\/api\/nives\/tomtom\//.test(style)) { this.loading = false; this.goSpare("TomTom ne répond pas (" + r.status + ")", p); return; }
           if (!r.ok) {
             this.message("carte : style · réponse " + r.status + (r.status === 401 ? " (session expirée — recharge la page)" : r.status === 403 ? " (accès refusé)" : ""));
             this.loading = false; return;
@@ -8538,7 +8549,7 @@
       // failure to load it, or a map that never shows, and the card starts
       // again without it.
       var kit = null;
-      if (this.config.basemap === "tomtom-3d" && this.config.sdk !== false && !this.sdkOff && !this.offlineReady && window.location.protocol === "https:" || this.config.sdk_bundle && !this.sdkOff) {
+      if (!this.spareOn && (this.config.basemap === "tomtom-3d" && this.config.sdk !== false && !this.sdkOff && !this.offlineReady && window.location.protocol === "https:" || this.config.sdk_bundle && !this.sdkOff)) {
         try { kit = await gpsTomTomKit(this.config); } catch (e) { kit = null; this.sdkWhy = (e && e.message) || "SDK indisponible"; }
       }
       if (kit) {
@@ -8664,7 +8675,7 @@
         if (this.config.buildings === false) (map.getStyle().layers || []).forEach((l) => {
           if (/building/i.test(l.id + " " + (l["source-layer"] || ""))) map.setLayoutProperty(l.id, "visibility", "none");
         });
-        if (this.config.basemap === "tomtom-3d") this.tomtom3d(map);
+        if (this.config.basemap === "tomtom-3d" && !this.spareOn) this.tomtom3d(map);
         this.styleLayers();
         this.msgShown = null;
         this.message("");
@@ -8676,6 +8687,13 @@
         var err = e && e.error, m = err && (err.message || (err.status ? "réponse " + err.status : "")) || String((err && err.message) || err || "erreur inconnue");
         if (m.indexOf("/api/") < 0 && this.lastNives) m += " · " + this.lastNives.replace(window.location.origin, "");
         console.warn("igor-gps-card:", err || e);
+        // TomTom failing again and again (no answer, quota, refused): the spare map.
+        var eu = String((err && err.url) || "");
+        if (!this.spareOn && /\/api\/nives\/tomtom\/|api\.tomtom\.com/.test(eu)) {
+          var tn = Date.now();
+          this.ttFails = (this.ttFails || []).filter((x) => tn - x < 30000).concat([tn]);
+          if (this.ttFails.length >= 8 && this.spareStat && this.spareStat.usable) this.goSpare("TomTom ne répond pas");
+        }
         // A tile or an icon refused now and then: the map goes on. Said on the
         // screen only in debug (the console keeps it), never an address there.
         if (!this.config.debug) return;
@@ -10568,6 +10586,15 @@
       return night ? "streetDarkDriving" : "streetLightDriving";
     },
     themeTick() {
+      if (this.spareOn && this.map) {
+        var tn = Date.now();
+        if (this.spareThemeAt && tn - this.spareThemeAt < 60000) return;
+        this.spareThemeAt = tn;
+        var th = this.sdkStyleNow().indexOf("Dark") >= 0 ? "nuit" : "jour";
+        try { this.$("card").classList.toggle("day", th === "jour"); } catch (e) { /* no card */ }
+        if (th !== this.spareTheme) { this.spareTheme = th; this.styleNow = this.styleUrl(); try { this.map.setStyle(this.styleNow, { diff: false }); } catch (e) { /* next time */ } }
+        return;
+      }
       if (!this.tt || !this.map || this.themeBusy) return;
       var t = Date.now();
       if (this.themeAt && t - this.themeAt < 30000) return;
@@ -10578,6 +10605,27 @@
       // trail and the trees come back with Igor's own style.load.
       this.ttStyle = want; this.themeBusy = true; this.tintSdkKey = null; this.tintKept = null; this.buildKept = null; this.tintMode = null;
       Promise.resolve().then(() => this.tt.setStyle(want)).catch(() => {}).then(() => { this.themeBusy = false; });
+    },
+    // Over to the spare map (and back): the map started again on the other style.
+    goSpare(why, p0) {
+      if (this.spareOn || !this.spareStat || !this.spareStat.usable) return false;
+      this.spareOn = true; this.spareWhy = why;
+      this.restartMap(p0);
+      this.toast("Carte de secours d'Igor · " + why, 9000);
+      return true;
+    },
+    leaveSpare() {
+      if (!this.spareOn) return;
+      this.spareOn = false; this.spareWhy = ""; this.ttFails = [];
+      this.restartMap();
+    },
+    restartMap(p0) {
+      var p = p0 || this.pos || (this.fix && this.fix.point);
+      clearTimeout(this.sdkWatch);
+      try { if (this.marker) this.marker.remove(); if (this.map) this.map.remove(); } catch (e) { /* gone */ }
+      this.map = null; this.tt = null; this.ttKit = null; this.ttStyle = null; this.tintSdkKey = null; this.spareTheme = null; this.loading = false;
+      try { this.$("card").classList.toggle("spare", !!this.spareOn); } catch (e) { /* no card */ }
+      if (p) this.init(p);
     },
     // The woods' trees (TomTom's SDK): thousands of 3D shapes, heavy on a
     // phone (enough to stop it): only when asked — « Arbres des bois » in the
@@ -11138,7 +11186,7 @@
         // The same drawing, from Igor's own library on Home Assistant.
         if (!map.getSource("igor-db")) map.addSource("igor-db", { type: "geojson", data: this.dbData || { type: "FeatureCollection", features: [] } });
         map.addLayer({ id: "igor-lieux-db", type: "symbol", source: "igor-db", minzoom: 12, filter: this.placesFilter(), layout: Object.assign({}, layout, { visibility: "none" }), paint: this.placesPaint() });
-        this.dbMode = null;
+        this.dbMode = null; this.dbSig = null;  // a new style: the library's tiles read again at once
         if (!map._iglDb) { map._iglDb = true; map.on("moveend", () => this.dbTick()); }
         this.dbTick();
       } catch (e) { if (this.config.debug) this.message("lieux : " + (e && e.message)); }
@@ -15244,6 +15292,7 @@
     ["zp", "Caméra", "Inclinaison selon le zoom", "en 3D de près, à plat en dézoomant, comme la carte d'un jeu", "sw"],
     ["az", "Caméra", "Zoom selon la vitesse", "dézoome sur route rapide", "sw"],
     ["cy", "Caméra", "Voiture à l'écran", "plus bas : plus de route devant", "seg", [["haut", "plus haut"], ["milieu", "au milieu"], ["bas", "plus bas"]]],
+    ["fb", "Performance", "Carte de secours", "celle d'Igor (OpenStreetMap, sur Home Assistant) : seulement si TomTom ne répond pas, ou tout le temps", "seg", [["auto", "si besoin"], ["secours", "toujours"]]],
     ["fl", "Performance", "Mode fluide", "allège tout seul quand ça rame", "sw"],
     ["px", "Performance", "Netteté", "", "seg", [["eco", "économe"], ["normale", "normale"], ["max", "maximale"]]],
     ["aa", "Performance", "Lissage des bords", "coûteux sur téléphone ; inutile sur un écran très fin · au prochain affichage de la carte", "seg", [["auto", "auto"], ["oui", "oui"], ["non", "non"]]],
@@ -15251,7 +15300,7 @@
     ["cpt", "Performance", "Compteur d'images", "affiche les images par seconde en coin de carte", "sw"]
   ];
   // Not in the presets (left to the dashboard until changed here).
-  var MAP3D_FREE = { dn: "auto", ne: 3, pi: 60, zm: 17, az: 1, cy: "milieu", tn: "indigo", tj: "vive", zp: 1 };
+  var MAP3D_FREE = { dn: "auto", ne: 3, pi: 60, zm: 17, az: 1, cy: "milieu", tn: "indigo", tj: "vive", zp: 1, fb: "auto" };
   function map3dParse(str) {
     var out = { p: "epure", o: {} };
     String(str || "").split(";").forEach((kv) => {
