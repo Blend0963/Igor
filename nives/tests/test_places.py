@@ -59,3 +59,18 @@ def test_parse_store_query(tmp_path):
     assert db.next_cell(3000.0) is None and db.next_cell(3000.0 + 1300) == (2.25, 48.0, 2.5, 48.25)
     db.replace_cell((2.25, 48.0, 2.5, 48.25), P.split((2.25, 48.0, 2.5, 48.25)))
     assert db.status()["cells_total"] == 5
+
+
+def test_near_sorted_with_sheet(tmp_path):
+    db = P.PlacesDB(tmp_path / "l.sqlite")
+    cell = (2.0, 48.0, 2.25, 48.25)
+    db.store(cell, P.parse([
+        {"type": "node", "id": 1, "lat": 48.100, "lon": 2.100, "tags": {"amenity": "restaurant", "name": "Près", "cuisine": "french"}},
+        {"type": "node", "id": 2, "lat": 48.110, "lon": 2.100, "tags": {"amenity": "restaurant", "name": "Loin"}},
+        {"type": "node", "id": 3, "lat": 48.101, "lon": 2.100, "tags": {"amenity": "pharmacy", "name": "Pharma"}},
+        {"type": "node", "id": 4, "lat": 48.200, "lon": 2.200, "tags": {"amenity": "restaurant", "name": "Hors"}},
+    ]), 1.0)
+    got = db.near([(48.1, 2.1)], 2000, ["restaurant"])
+    assert [g["name"] for g in got] == ["Près", "Loin"] and got[0]["cuisine"] == "french" and got[0]["d"] == 0
+    assert {g["name"] for g in db.near([(48.1, 2.1)], 500)} == {"Près", "Pharma"}
+    assert [g["name"] for g in db.near([(48.1, 2.1), (48.2, 2.2)], 300, ["restaurant"])] == ["Près", "Hors"]

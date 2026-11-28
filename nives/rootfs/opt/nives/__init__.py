@@ -2223,6 +2223,28 @@ def _async_register_places(hass: HomeAssistant) -> None:
             db = await hass.async_add_executor_job(_places_db, hass)
             return self.json({"ok": True, **(await hass.async_add_executor_job(db.status))})
 
+    class PlacesNearView(HomeAssistantView):
+        """?p=lat,lon;lat,lon…&r=metres&s=sub,sub (the places Igor chooses from)."""
+        url = "/api/nives/places/near"
+        name = "api:nives:places_near"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            try:
+                pts = [tuple(float(v) for v in x.split(",")) for x in request.query.get("p", "").split(";") if x]
+                pts = [(a, b) for a, b in pts if -90 <= a <= 90 and -180 <= b <= 180]
+                radius = max(100.0, min(30000.0, float(request.query.get("r", "3000"))))
+                limit = max(1, min(200, int(request.query.get("n", "80"))))
+            except ValueError:
+                return self.json({"ok": False, "error": "p=lat,lon;…"}, status_code=400)
+            subs = [x for x in request.query.get("s", "").split(",") if x][:150]
+            if not pts:
+                return self.json({"ok": False, "error": "aucun point"}, status_code=400)
+            db = await hass.async_add_executor_job(_places_db, hass)
+            rows = await hass.async_add_executor_job(db.near, pts, radius, subs or None, limit)
+            return self.json({"ok": True, "places": rows})
+
+    hass.http.register_view(PlacesNearView())
     hass.http.register_view(PlacesView())
     hass.http.register_view(PlaceInfoView())
     hass.http.register_view(PlacesStatusView())

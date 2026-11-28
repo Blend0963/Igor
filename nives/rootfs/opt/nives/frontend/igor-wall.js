@@ -5501,6 +5501,8 @@
   //                                         # old <audio> element, which pauses the player app on Android
   //   controls: dock                        # a phone: « Où allez-vous ? » on top, labelled square buttons at the bottom
   //                                         # (Stations, Voix, Itinéraire, Lieux, Rando, Réglages), compass and recentring on the right
+  //   igor_guide: false                     # no trip guide from Igor (the words at the start of a 45 min+ trip, the pause near 2 h)
+  //   agent: conversation.igor              # Igor's conversation agent (found by its name otherwise)
   //   trails_tiles: https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png  # the marked trails (« Rando » → Sentiers balisés)
   //   controls: rail                        # the head unit's dashboard (with igor-guide-card beside): big written
   //                                         # buttons on the right, no turn banner / arrival bar / layers / fullscreen
@@ -5568,7 +5570,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.25";
+  var GPS_CARD_VERSION = "0.62.26";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7125,6 +7127,14 @@
         ".eta .st .shield { flex: none; display: inline-block; min-width: 0; max-width: none; border-left: 0; padding: 1px 6px; overflow: visible; -webkit-line-clamp: unset; font-size: 13px; line-height: 1.25; }" +
         ".eta .st .shield.a, .eta .st .shield.n, .eta .st .shield.e, .eta .st .shield.m { color: #fff; } .eta .st .shield.d { color: #111; }" +
         ".seg[hidden] { display: none !important; }" +
+        ".dmic { margin-left: auto; width: 40px; height: 40px; border-radius: 6px; border: 1px solid var(--bd); background: var(--ui2); color: var(--acc); display: grid; place-items: center; cursor: pointer; --mdc-icon-size: 22px; } .dmic.on { background: var(--acc); color: var(--accTx); }" +
+        ".panel button.igo { background: none; border-color: #59d0e0; color: #59d0e0; text-align: center; }" +
+        // Igor's answer: over the map, under the bars, its places beneath.
+        ".igans { position: absolute; z-index: 3; left: 10px; right: 10px; top: calc(130px + env(safe-area-inset-top, 0px)); max-height: calc(100% - 290px); overflow-y: auto; background: var(--ui); border: 1px solid var(--bd); border-left: 4px solid var(--acc); border-radius: 8px; box-shadow: var(--sh); color: var(--tx); font-family: 'DejaVu Sans', Roboto, sans-serif; padding: 12px; box-sizing: border-box; } .igans[hidden] { display: none; }" +
+        ".igans .ih { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); --mdc-icon-size: 18px; } .igans .ih ha-icon { color: var(--acc); } .igans .ix { margin-left: auto; width: 34px; height: 34px; border-radius: 6px; border: 1px solid var(--bd); background: var(--ui2); color: var(--tx); display: grid; place-items: center; cursor: pointer; }" +
+        ".igans .iq { font-size: 12px; color: var(--dim); margin: 6px 0 4px; font-style: italic; } .igans .it { font-size: 14.5px; line-height: 1.45; margin: 4px 0 8px; white-space: pre-line; }" +
+        ".igans .ip { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--bd); cursor: pointer; } .igans .ip > i { width: 34px; height: 34px; flex: none; border-radius: 6px; display: grid; place-items: center; } .igans .ip div { flex: 1; min-width: 0; } .igans .ip b { display: block; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .igans .ip small { color: var(--dim); font-size: 11.5px; }" +
+        ".igans .ip button { flex: none; height: 36px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--acc); background: var(--acc); color: var(--accTx); font: inherit; font-size: 12px; cursor: pointer; }" +
         ".hrow { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid #22262c; border-radius: var(--igor-radius, 3px); background: #0f1114; color: #e9e4da; font: inherit; text-align: left; cursor: pointer; --mdc-icon-size: 26px; } .hrow > div { flex: 1; min-width: 0; } .hrow b { display: block; font-size: 14px; } .hrow small { display: block; font-size: 11px; color: #878c95; margin-top: 3px; } .hrow ha-icon { color: #59d0e0; flex: none; }" +
         ".hsw { flex: none; padding: 6px 12px; border-radius: 4px; border: 1px solid #22262c; color: #878c95; font-size: 12px; } .hsw.on { border-color: #59d0e0; color: #07222a; background: #59d0e0; }" +
         ".hgpx { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #22262c; border-radius: var(--igor-radius, 3px); background: #0f1114; } .hgpx > div { flex: 1; min-width: 0; } .hgpx b { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .hgpx small { color: #878c95; font-size: 11px; } .hgpx button { flex: none; width: 40px; height: 40px; border-radius: 4px; border: 1px solid #22262c; background: #15181c; color: #e9e4da; display: grid; place-items: center; cursor: pointer; --mdc-icon-size: 20px; }" +
@@ -7216,7 +7226,8 @@
         '<button id="hike" data-l="Rando" title="Randonnée"><ha-icon icon="mdi:hiking"></ha-icon></button>' +
         '<button id="layers" data-l="Couches" title="Couches"><ha-icon icon="mdi:layers"></ha-icon></button>' +
         '<button id="full" data-l="Plein écran" title="Plein écran"><ha-icon icon="mdi:fullscreen"></ha-icon></button></div>' +
-        '<div class="dbar" id="dbar"><ha-icon icon="mdi:magnify"></ha-icon><span>Où allez-vous ?</span></div><div class="dside" id="dside"></div>' +
+        '<div class="dbar" id="dbar"><ha-icon icon="mdi:magnify"></ha-icon><span>Où allez-vous ?</span><button type="button" class="dmic" id="dmic" title="Demander à Igor"><ha-icon icon="mdi:microphone"></ha-icon></button></div><div class="dside" id="dside"></div>' +
+        '<div class="igans" id="igans" hidden></div>' +
         '<div class="jinset" id="jinset" hidden></div><div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div style="min-width:0"><div class="d" id="navD"></div><div class="t" id="navT"></div><div class="x" id="navX" hidden></div><div class="l" id="navL" hidden></div></div></div>' +
         '<div class="glow" id="glow" hidden></div>' +
         '<div class="side"><div class="alert" id="alert" hidden><ha-icon id="alIcon" icon="mdi:cctv"></ha-icon><div id="alS"></div><b id="alT"></b><div class="bar2"><i id="alBar"></i></div></div>' +
@@ -7236,7 +7247,7 @@
         '<div class="panel" id="panel" hidden><div class="ph"><span>destination</span><button id="pclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
         '<div class="list" id="ptrip" hidden></div>' +
         '<div class="modes" id="pmodes"><button type="button" data-m="car"><ha-icon icon="mdi:car"></ha-icon><span>Voiture</span></button><button type="button" data-m="transit"><ha-icon icon="mdi:bus"></ha-icon><span>Transports</span></button><button type="button" data-m="pedestrian"><ha-icon icon="mdi:walk"></ha-icon><span>À pied</span></button><button type="button" data-m="bicycle"><ha-icon icon="mdi:bike"></ha-icon><span>Vélo</span></button></div>' +
-        '<form id="pform"><input id="pq" type="text" enterkeyhint="search" placeholder="Adresse, ville, lieu…" autocomplete="off"><button class="go" type="submit"><ha-icon icon="mdi:magnify"></ha-icon><span>Chercher</span></button></form>' +
+        '<form id="pform"><input id="pq" type="text" enterkeyhint="search" placeholder="Adresse, ville, lieu…" autocomplete="off"><button class="go" type="submit"><ha-icon icon="mdi:magnify"></ha-icon><span>Chercher</span></button><button class="igo" type="button" id="pigor" title="Demander à Igor"><ha-icon icon="mdi:robot-happy-outline"></ha-icon><span>Igor</span></button></form>' +
         '<div class="list" id="plist"></div><div class="list" id="pfav"></div><div class="list" id="phist" hidden></div><button class="stop" id="pstop" hidden><ha-icon icon="mdi:close-octagon-outline"></ha-icon><span>Arrêter le guidage</span></button></div>' +
         '<div class="hud sp"><div class="speed" id="speed"><b>0</b><span>KM/H</span></div></div>' +
         '<div class="hud lim"><div class="sign" id="limit" hidden>' + GPS_SIGN + "</div></div>" +
@@ -7397,6 +7408,9 @@
       $("askNo").addEventListener("click", () => this.answerClosure(false));
       $("pstop").addEventListener("click", () => { this.setDestination(null, true); $("panel").hidden = true; });
       $("pform").addEventListener("submit", (ev) => { ev.preventDefault(); clearTimeout(this.typeTimer); this.search($("pq").value); });
+      // Ask Igor (the words typed, or said into the bar's microphone).
+      $("pigor").addEventListener("click", () => { var q = $("pq").value.trim(); if (!q) { $("pq").placeholder = "Demandez à Igor : un resto ouvert, un beau point de vue…"; $("pq").focus(); return; } $("panel").hidden = true; this.askIgor(q); });
+      $("dmic").addEventListener("click", (ev) => { ev.stopPropagation(); this.listenIgor(); });
       // With TomTom's search (a key in Igor's options): results as one types,
       // once the typing pauses (OpenStreetMap's free search forbids that).
       $("pq").addEventListener("input", () => {
@@ -8850,7 +8864,7 @@
       else if (!this.route && this.guideOn) this.publishGuide(null);
       if ((this.config.speed_limits !== false || this.config.street_names !== false) && (!this.limitAt || now - this.limitAt > (this.offlineReady ? 3000 : 800))) { this.limitAt = now; this.limitTick(now, moving); }
       if (!this.alertAt || now - this.alertAt > 500) { this.alertAt = now; this.alertTick(now, speed); }
-      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); this.publishAhead(now); this.refreshFuelTags(this.lastShown); this.themeTick(); }
+      if (!this.poiTickAt || now - this.poiTickAt > 1000) { this.poiTickAt = now; this.poiTick(now, speed); this.camTick(now); this.fuelTick(now); this.trafficTick(now, moving); this.publishAhead(now); this.refreshFuelTags(this.lastShown); this.themeTick(); try { this.pauseTick(now, speed); } catch (e) { /* later */ } }
       // The stations' panel, left open, follows the car: gone far enough from
       // where it last asked (400 m, and never twice within ten seconds), it
       // asks again — the list is the stations around the car, not the ones
@@ -10405,6 +10419,7 @@
         this.useTomTom(o.route);
         this.drawAlts();
         if (o.route.lez && o.route.lez.length) this.toast("Zone à faibles émissions · vignette requise", 9000);
+        try { this.tripGuide(o.route, d); } catch (e) { /* the trip without its guide */ }
       };
       if (opts.length === 1) { pick(opts[0]); return true; }
       // publish_routes: the choice offered on the head unit too (igor-guide-
@@ -11409,10 +11424,205 @@
         mid.appendChild(nm); mid.appendChild(sm); row.appendChild(mid);
         var btn = (icon, title, fn) => { var b = document.createElement("button"); b.type = "button"; b.title = title; b.innerHTML = '<ha-icon icon="' + icon + '"></ha-icon>'; b.addEventListener("click", fn); row.appendChild(b); };
         btn("mdi:eye-outline", "Voir le tracé", () => { this.$("hpanel").hidden = true; this.gpxShow(t); });
+        btn("mdi:robot-happy-outline", "Igor prépare la rando", () => { this.$("hpanel").hidden = true; this.gpxShow(t); this.hikeIgor(t); });
         btn("mdi:directions", "Aller au départ", () => { var q = t.lines[0][0]; this.$("hpanel").hidden = true; this.chooseNext = true; this.setDestination({ lat: q[1], lon: q[0], name: "Départ · " + t.name.slice(0, 30) }, true); });
         btn("mdi:delete-outline", "Supprimer", () => { this.gpxSave(this.gpxList().filter((x) => x !== t)); this.hikeLayers(this.map); if (this.hikeRedraw) this.hikeRedraw(); });
         box.appendChild(row);
       });
+    },
+    // ----- Igor, the AI, on the map -----
+    // Where a point lies from the car (or the walker): ahead, right, behind, left.
+    dirWord(ll) {
+      var here = this.pos || (this.fix && this.fix.point);
+      if (!here || !this.speedMps || this.speedMps() < 1.5) return "";
+      var d = ((gpsBearing(here, ll) - (this.heading || 0)) % 360 + 540) % 360 - 180;
+      return Math.abs(d) < 35 ? "devant" : Math.abs(d) > 145 ? "derrière" : d > 0 ? "à droite" : "à gauche";
+    },
+    // The families a question speaks of (a few words): their subclasses, for
+    // the library's search. Nothing recognised: every place but bus stops.
+    igorSubs(text) {
+      var t = String(text || "").toLowerCase(), fams = [];
+      var W = { manger: /mang|resto|restau|déje|dîne|dine|bouff|café|boire|bar\b|bière|pizza|burger|kebab|brasserie|boulang|pain|glace|petit[- ]déj/,
+        courses: /course|supermarch|magasin|boutique|acheter|épicerie|achat/, sante: /pharma|médec|medec|docteur|hôpital|hopital|urgence|dentist|santé|malade/,
+        voiture: /parking|garer|stationn|garage|lavage|recharge|borne|pneu/, transport: /gare|train|bus|métro|metro|tram|aéroport|avion|bateau/,
+        tourisme: /vue|visit|voir|monument|musée|musee|château|chateau|touris|beau|joli|curios|intéress|interess|qu.est.ce|c.est quoi|là|histoire|église|eglise/,
+        nature: /balade|promen|parc|nature|plage|jardin|pique|rando|forêt|foret|lac|camping|enfant|jeux/, hebergement: /dormir|hôtel|hotel|nuit|chambre|gîte|gite|loger/,
+        services: /toilet|wc|eau|banque|distrib|retrait|argent|poste|mairie|police/ };
+      Object.keys(W).forEach((f) => { if (W[f].test(t)) fams.push(f); });
+      if (!fams.length) return null;
+      return Object.keys(GPS_PLACE_OF).filter((k) => fams.indexOf(GPS_PLACE_OF[k][0]) >= 0);
+    },
+    // The library around some points (else the pins on the screen).
+    async igorNear(points, radius, subs, n) {
+      var q = "nives/places/near?p=" + points.map((p) => p[1].toFixed(5) + "," + p[0].toFixed(5)).join(";") + "&r=" + Math.round(radius) + "&n=" + (n || 60) + (subs && subs.length ? "&s=" + subs.join(",") : "");
+      try { var r = await this._hass.callApi("GET", q); if (r && r.ok && r.places && r.places.length) return r.places; } catch (e) { /* the screen's pins */ }
+      var map = this.map, out = [], seen = {};
+      try {
+        (map.queryRenderedFeatures({ layers: ["igor-lieux", "igor-lieux-db"].filter((id) => map.getLayer(id)) }) || []).forEach((f) => {
+          var p = f.properties || {}, k = p.id || (p.name + f.geometry.coordinates.join());
+          if (seen[k] || (subs && subs.indexOf(p.subclass) < 0 && subs.indexOf(p.class) < 0)) return; seen[k] = 1;
+          var c = f.geometry.coordinates, d = gpsDist(points[0], c);
+          if (d <= radius) out.push({ id: p.id || "", lon: c[0], lat: c[1], class: p.class, subclass: p.subclass, name: p.name || p["name:fr"] || "", rank: p.rank || 3, d: Math.round(d) });
+        });
+      } catch (e) { /* nothing */ }
+      return out.sort((a, b) => a.d - b.d).slice(0, n || 60);
+    },
+    // A place in a line Igor reads: id | name | kind | distance | direction | hours | cuisine.
+    igorLine(p, km) {
+      var kind = GPS_PLACE_FR[p.subclass] || (GPS_PLACE_OF[p.subclass] && GPS_PLACE_FAM[GPS_PLACE_OF[p.subclass][0]].name) || p.subclass || "";
+      return [p.id || "?", p.name || "(sans nom)", kind, km != null ? "km " + km : gpsMetres(p.d || 0), km != null ? "" : this.dirWord([p.lon, p.lat]),
+        p.opening_hours ? "horaires " + p.opening_hours : "", p.cuisine ? "cuisine " + p.cuisine : "", p.wikipedia || p.wikidata ? "connu" : ""].filter(Boolean).join(" | ");
+    },
+    igorWhen() {
+      var d = new Date(), days = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+      return days[d.getDay()] + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+    },
+    // Igor's answer, read as {"dire": …, "lieux": [ids]} (else as plain words).
+    igorParse(said) {
+      var m = String(said || "").match(/\{[\s\S]*\}/), j = null;
+      if (m) { try { j = JSON.parse(m[0]); } catch (e) { j = null; } }
+      if (!j) return { say: String(said || "").trim(), ids: [] };
+      return { say: String(j.dire || j.say || j.reponse || "").trim(), ids: Array.isArray(j.lieux) ? j.lieux.map(String).slice(0, 6) : [] };
+    },
+    // The bar's microphone: the phone's own speech recognition when it has
+    // one (Chrome), else the question typed in the search panel.
+    listenIgor() {
+      var SR = window.SpeechRecognition || window.webkitSpeechRecognition, mic = this.$("dmic");
+      if (!SR) { this.$("panel").hidden = false; var q = this.$("pq"); q.value = ""; q.placeholder = "Demandez à Igor : un resto ouvert, qu'est-ce que c'est là…"; q.focus(); this.toast("Écrivez la question, puis « Igor »", 4000); return; }
+      try {
+        var rec = new SR(); rec.lang = "fr-FR"; rec.interimResults = false; rec.maxAlternatives = 1;
+        mic.classList.add("on"); this.toast("Igor vous écoute…", 6000);
+        rec.onresult = (e) => { var t = e.results && e.results[0] && e.results[0][0] && e.results[0][0].transcript; if (t) this.askIgor(t); };
+        rec.onerror = () => { this.toast("Igor n'a pas entendu : réessayez, ou écrivez la question", 4000); };
+        rec.onend = () => mic.classList.remove("on");
+        rec.start();
+      } catch (e) { mic.classList.remove("on"); }
+    },
+    // « Igor, trouve-moi… », « qu'est-ce que c'est, là ? »: the question,
+    // where the car is and goes, and the places around (the library's, the
+    // ones the words speak of, each with its distance, side and hours);
+    // Igor answers in a few words and names the places — pinned in cyan,
+    // listed under his answer, a touch opens their vignette.
+    async askIgor(question) {
+      var here = this.pos || (this.fix && this.fix.point);
+      if (!here || !this._hass) { this.toast("Position inconnue", 3000); return; }
+      this.showIgor("Igor", question, "Igor regarde autour de vous…", []);
+      var mode = { car: "en voiture", transit: "en transports", pedestrian: "à pied", bicycle: "à vélo" }[this.travelMode || "car"];
+      var subs = this.igorSubs(question), pts = [here], R = this.route, radius = this.byCar() ? 6000 : 1500;
+      if (R && R.cum && this.along != null) [5000, 12000, 25000].forEach((a) => { var x = gpsSlice(R.coords, R.cum, this.along + a, this.along + a + 1)[0]; if (x) pts.push(x); });
+      if (/là|ici|qu.est.ce|c.est quoi|devant|droite|gauche/i.test(question)) radius = Math.min(radius, this.byCar() ? 1500 : 400);
+      var cands = await this.igorNear(pts, radius, subs, 60);
+      var lines = cands.map((p) => this.igorLine(p));
+      var ctx = ["Nous sommes " + this.igorWhen() + ", je me déplace " + mode + (this.speedMps() > 1.5 ? " à " + Math.round(this.speedMps() * 3.6) + " km/h" : " (arrêté)") + (this.roadName && this.roadName.name ? ", sur " + this.roadName.name : "") + "."];
+      if (this.dest && R) ctx.push("Je vais à " + this.dest.name + (R.cum && this.along != null ? ", il reste " + gpsMetres(Math.max(0, R.cum[R.cum.length - 1] - this.along)) : "") + ".");
+      var txt = "Tu es Igor, mon copilote. Ma question : « " + question + " ».\n" + ctx.join(" ") +
+        "\nLieux autour (id | nom | type | distance | direction | infos) :\n" + (lines.length ? lines.join("\n") : "(aucun lieu connu ici)") +
+        "\nRéponds UNIQUEMENT par un objet JSON : {\"dire\": \"ta réponse, 1 à 3 phrases courtes à l'oral, en français\", \"lieux\": [\"id\", …]} — « lieux » : de 0 à 5 id de la liste, ceux que tu recommandes ou dont tu parles, le meilleur d'abord. Tiens compte de l'heure et des horaires.";
+      try {
+        var said = await gpsAskIgor(this._hass, txt, this.config.agent), A = this.igorParse(said);
+        var chosen = A.ids.map((id) => cands.find((c) => c.id === id)).filter(Boolean);
+        this.showIgor("Igor", question, A.say || "…", chosen);
+        if (A.say) this.say(A.say, "igor", true);
+      } catch (e) { this.showIgor("Igor", question, "Igor n'a pas répondu. Vérifiez que l'assistant Igor est joignable.", []); }
+    },
+    // The answer's card and its places (pinned in cyan on the map).
+    showIgor(title, question, text, places) {
+      var box = this.$("igans"), map = this.map;
+      if (!box) return;
+      box.hidden = false; box.innerHTML = "";
+      var esc = (x) => String(x == null ? "" : x).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+      box.innerHTML = '<div class="ih"><ha-icon icon="mdi:robot-happy-outline"></ha-icon><span>' + esc(title) + '</span><button type="button" class="ix" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
+        (question ? '<div class="iq">« ' + esc(question) + ' »</div>' : "") + '<div class="it">' + esc(text) + "</div>";
+      box.querySelector(".ix").addEventListener("click", () => { box.hidden = true; this.igorPins([]); });
+      (places || []).forEach((p) => {
+        var of = GPS_PLACE_OF[p.subclass] || GPS_PLACE_OF[p.class] || ["services", "map-marker"], fam = GPS_PLACE_FAM[of[0]] || { color: "#8a9099" };
+        var row = document.createElement("div"); row.className = "ip";
+        row.innerHTML = '<i style="background:' + fam.color + '">' + gpsPlaceSvg(of[1], 20) + '</i><div><b>' + esc(p.name || GPS_PLACE_FR[p.subclass] || "Lieu") + '</b><small>' +
+          esc([GPS_PLACE_FR[p.subclass] || fam.name, p.km != null ? "km " + p.km : gpsMetres(p.d || 0), this.dirWord([p.lon, p.lat])].filter(Boolean).join(" · ")) + '</small></div><button type="button">Y aller</button>';
+        var osm = { props: { id: p.id, class: p.class, subclass: p.subclass, name: p.name }, ll: [p.lon, p.lat] };
+        row.querySelector("button").addEventListener("click", (ev) => { ev.stopPropagation(); box.hidden = true; this.igorPins([]); this.chooseNext = true; this.setDestination({ lat: p.lat, lon: p.lon, name: p.name || "destination" }, true); });
+        row.addEventListener("click", () => { box.hidden = true; this.follow = false; this.grabbed = true; if (map) map.easeTo({ center: osm.ll, duration: 500 }); setTimeout(() => this.placeVignette(osm), 550); });
+        box.appendChild(row);
+      });
+      this.igorPins(places || []);
+    },
+    igorPins(places) {
+      var map = this.map;
+      if (!map || !map.getStyle) return;
+      var data = { type: "FeatureCollection", features: (places || []).map((p) => ({ type: "Feature", geometry: { type: "Point", coordinates: [p.lon, p.lat] }, properties: {} })) };
+      try {
+        if (map.getSource("igor-pick")) map.getSource("igor-pick").setData(data);
+        else {
+          map.addSource("igor-pick", { type: "geojson", data: data });
+          map.addLayer({ id: "igor-pick", type: "circle", source: "igor-pick", paint: { "circle-radius": 22, "circle-color": "rgba(89,208,224,0.18)", "circle-stroke-color": "#59d0e0", "circle-stroke-width": 3, "circle-pitch-alignment": "map" } });
+        }
+      } catch (e) { /* no ring */ }
+    },
+    // The trip's guide: when a long trip (45 min or more, by car) starts,
+    // Igor says in two sentences what is worth it along the way, and where
+    // to stop when it lasts more than two hours.
+    async tripGuide(R0, d) {
+      if (this.config.igor_guide === false || !this.byCar() || !R0 || !R0.coords || (R0.duration || 0) < 2700 || !this._hass) return;
+      var key = (d && d.name) + "|" + Math.round(R0.distance / 1000);
+      if (this.guideKey === key) return;
+      this.guideKey = key;
+      var cum = [0]; for (var i = 1; i < R0.coords.length; i++) cum.push(cum[i - 1] + gpsDist(R0.coords[i - 1], R0.coords[i]));
+      var total = cum[cum.length - 1], pts = [], kmOf = (ll) => { var best = 1e12, at = 0; for (var j = 0; j < R0.coords.length; j += 3) { var dd = gpsDist(R0.coords[j], ll); if (dd < best) { best = dd; at = cum[j]; } } return Math.round(at / 1000); };
+      for (var a = 0; a < total && pts.length < 12; a += Math.max(8000, total / 12)) pts.push(gpsSlice(R0.coords, cum, a, a + 1)[0]);
+      var subs = Object.keys(GPS_PLACE_OF).filter((k) => ["tourisme", "nature", "manger"].indexOf(GPS_PLACE_OF[k][0]) >= 0);
+      var cands = (await this.igorNear(pts, 2500, subs, 80)).filter((p) => p.rank <= 2 || p.subclass === "viewpoint").slice(0, 45);
+      cands.forEach((p) => { p.km = kmOf([p.lon, p.lat]); });
+      cands.sort((x, y) => x.km - y.km);
+      var arr = new Date(Date.now() + R0.duration * 1000), hm = String(arr.getHours()).padStart(2, "0") + ":" + String(arr.getMinutes()).padStart(2, "0");
+      var txt = "Tu es Igor, mon copilote. Je pars " + this.igorWhen() + " vers " + (d && d.name || "ma destination") + " : " + Math.round(total / 1000) + " km, " + Math.round(R0.duration / 60) + " min, arrivée vers " + hm + ".\n" +
+        "Lieux le long du trajet (id | nom | type | km depuis le départ | infos) :\n" + (cands.length ? cands.map((p) => this.igorLine(p, p.km)).join("\n") : "(aucun)") +
+        "\nRéponds UNIQUEMENT par un objet JSON : {\"dire\": \"2 phrases courtes à l'oral : ce qui vaut le coup sur ce trajet" + (R0.duration > 7200 ? ", et où faire une pause vers la 2e heure (le lieu et son km)" : "") + "\", \"lieux\": [\"id\", …]} — 0 à 4 id de la liste.";
+      try {
+        var A = this.igorParse(await gpsAskIgor(this._hass, txt, this.config.agent));
+        if (!A.say || this.guideKey !== key) return;
+        this.showIgor("Igor · votre trajet", "", A.say, A.ids.map((id) => cands.find((c) => c.id === id)).filter(Boolean));
+        this.say(A.say, "igor", true);
+        this.tripT0 = Date.now(); this.pauseAsked = false;
+      } catch (e) { /* the trip goes on without its guide */ }
+    },
+    // After 1 h 50 of driving: Igor proposes a stop within the next 25 km.
+    pauseTick(now, speed) {
+      if (!this.tripT0 || this.pauseAsked || !this.route || !this.byCar() || this.config.igor_guide === false) return;
+      if (Date.now() - this.tripT0 < 110 * 60000) return;
+      this.pauseAsked = true;
+      var R = this.route, pts = [];
+      [5000, 12000, 20000].forEach((a) => { var x = R.cum && this.along != null ? gpsSlice(R.coords, R.cum, this.along + a, this.along + a + 1)[0] : null; if (x) pts.push(x); });
+      if (!pts.length) return;
+      var subs = Object.keys(GPS_PLACE_OF).filter((k) => ["manger", "tourisme", "nature"].indexOf(GPS_PLACE_OF[k][0]) >= 0 || k === "toilets");
+      this.igorNear(pts, 2500, subs, 40).then((cands) => {
+        var txt = "Tu es Igor, mon copilote. Je conduis depuis près de 2 heures (" + this.igorWhen() + ").\nLieux dans les 25 prochains km (id | nom | type | distance | infos) :\n" + cands.map((p) => this.igorLine(p)).join("\n") +
+          "\nRéponds UNIQUEMENT par un objet JSON : {\"dire\": \"1 à 2 phrases à l'oral pour me proposer une pause précise\", \"lieux\": [\"id\"]}.";
+        return gpsAskIgor(this._hass, txt, this.config.agent).then((said) => {
+          var A = this.igorParse(said);
+          if (!A.say) return;
+          this.showIgor("Igor · une pause ?", "", A.say, A.ids.map((id) => cands.find((c) => c.id === id)).filter(Boolean));
+          this.say(A.say, "igor", true);
+        });
+      }).catch(() => { /* no pause proposed */ });
+    },
+    // A GPX hike prepared by Igor: length, climb, the time it takes, the
+    // light left, the water, the toilets and the views along it.
+    async hikeIgor(t) {
+      if (!t || !t.lines || !t.lines.length) return;
+      this.showIgor("Igor · la rando", t.name, "Igor prépare la randonnée…", []);
+      var all = [].concat.apply([], t.lines), pts = [], step = Math.max(1, Math.floor(all.length / 12));
+      for (var i = 0; i < all.length && pts.length < 12; i += step) pts.push(all[i]);
+      var subs = ["drinking_water", "toilets", "viewpoint", "picnic_site", "parking", "restaurant", "cafe", "bakery", "campsite", "attraction", "castle", "monument", "ruins"];
+      var cands = await this.igorNear(pts, 400, subs, 50);
+      var hours = t.km / 4.5 + (t.up || 0) / 600, sun = this._hass.states["sun.sun"], set = sun && sun.attributes && sun.attributes.next_setting ? new Date(sun.attributes.next_setting) : null;
+      var setTxt = set ? "coucher du soleil " + String(set.getHours()).padStart(2, "0") + ":" + String(set.getMinutes()).padStart(2, "0") : "";
+      var txt = "Tu es Igor. Prépare-moi cette randonnée : « " + t.name + " », " + t.km.toFixed(1) + " km, D+ " + Math.round(t.up || 0) + " m, environ " + (Math.floor(hours) + " h " + String(Math.round((hours % 1) * 60)).padStart(2, "0")) + " de marche. Il est " + this.igorWhen() + (setTxt ? ", " + setTxt : "") + ".\n" +
+        "Le long du tracé (id | nom | type | distance au point le plus proche | infos) :\n" + (cands.length ? cands.map((p) => this.igorLine(p)).join("\n") : "(rien de connu)") +
+        "\nRéponds UNIQUEMENT par un objet JSON : {\"dire\": \"4 phrases courtes : difficulté, heure limite de départ pour rentrer avant la nuit, l'eau et les toilettes, ce qu'il ne faut pas manquer\", \"lieux\": [\"id\", …]} — 0 à 5 id utiles.";
+      try {
+        var A = this.igorParse(await gpsAskIgor(this._hass, txt, this.config.agent));
+        this.showIgor("Igor · la rando", t.name, A.say || "…", A.ids.map((id) => cands.find((c) => c.id === id)).filter(Boolean));
+      } catch (e) { this.showIgor("Igor · la rando", t.name, "Igor n'a pas répondu.", []); }
     },
     // The tilt follows the zoom, as a game's map: full 3D close up, flat
     // seen from high — eased (smoothstep), so it never jumps.

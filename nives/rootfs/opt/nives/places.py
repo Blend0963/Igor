@@ -212,6 +212,12 @@ def parse(elements: list[dict]) -> list[tuple]:
     return rows
 
 
+def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    r = math.radians
+    a = math.sin(r(lat2 - lat1) / 2) ** 2 + math.cos(r(lat1)) * math.cos(r(lat2)) * math.sin(r(lon2 - lon1) / 2) ** 2
+    return 6371000.0 * 2 * math.asin(math.sqrt(min(1.0, a)))
+
+
 def tile_bbox(z: int, x: int, y: int) -> tuple[float, float, float, float]:
     n = 2 ** z
 
@@ -295,6 +301,36 @@ class PlacesDB:
                 (e, w, n, s, max_rank, limit),
             ).fetchall()
         return [list(r) for r in rows]
+
+    def near(self, points: list[tuple[float, float]], radius_m: float, subs: list[str] | None = None, limit: int = 80) -> list[dict]:
+        """The places within radius_m of any of the points (lat, lon), the
+        nearest first, each with its sheet (hours, cuisine, phone…) — what
+        Igor reads to choose. `subs`: only these subclasses (or classes)."""
+        found: dict[str, dict] = {}
+        with self._db() as db:
+            for lat, lon in points[:12]:
+                dlat = radius_m / 111320.0
+                dlon = radius_m / (111320.0 * max(0.2, math.cos(math.radians(lat))))
+                q = ("SELECT p.id, p.lon, p.lat, p.cls, p.sub, p.name, p.rank, p.info FROM places_box x JOIN places p ON p.rid = x.rid "
+                     "WHERE x.w <= ? AND x.e >= ? AND x.s <= ? AND x.n >= ?")
+                args: list[Any] = [lon + dlon, lon - dlon, lat + dlat, lat - dlat]
+                if subs:
+                    marks = ",".join("?" * len(subs))
+                    q += f" AND (p.sub IN ({marks}) OR p.cls IN ({marks}))"
+                    args += list(subs) + list(subs)
+                q += " AND p.rank <= 4 LIMIT 4000"
+                for r in db.execute(q, args):
+                    d = _haversine(lat, lon, r[2], r[1])
+                    if d > radius_m or (r[0] in found and found[r[0]]["d"] <= d):
+                        continue
+                    one = {"id": r[0], "lon": r[1], "lat": r[2], "class": r[3], "subclass": r[4], "name": r[5], "rank": r[6], "d": round(d)}
+                    try:
+                        one.update(json.loads(r[7]) if r[7] else {})
+                    except ValueError:
+                        pass
+                    found[r[0]] = one
+        out = sorted(found.values(), key=lambda x: (x["rank"] > 3, x["d"]))
+        return out[:limit]
 
     def complete(self, b: tuple[float, float, float, float]) -> bool:
         """Every square under b already read (at least once)."""

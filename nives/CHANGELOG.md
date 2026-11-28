@@ -1,3 +1,10 @@
+## 0.62.26 — Igor sur la carte : demander, guider, préparer
+
+- **Demander à Igor** : le micro de la barre « Où allez-vous ? » (la reconnaissance vocale du téléphone ; sinon la question écrite, bouton « Igor » du panneau de recherche). « Trouve-moi un resto ouvert », « un beau point de vue pas loin », « qu'est-ce que c'est, là, à droite ? »… Igor reçoit l'heure, le mode de déplacement, la vitesse, la rue, le trajet en cours et les lieux de sa bibliothèque autour (et le long de la route), chacun avec sa distance, son côté (devant, à droite…) et ses horaires ; il répond en quelques phrases, à voix haute, et désigne les lieux : entourés de cyan sur la carte, listés sous sa réponse (un toucher : leur vignette ; « Y aller »).
+- **Le guide du trajet** : au départ d'un trajet de 45 min ou plus en voiture, Igor dit en deux phrases ce qui vaut le coup sur la route ; au-delà de 2 h, où faire une pause ; et vers 1 h 50 de conduite, il propose une pause précise dans les 25 km à venir (`igor_guide: false` pour s'en passer).
+- **La rando préparée** : dans Rando, le bouton Igor d'un tracé GPX : difficulté, heure limite de départ pour rentrer avant la nuit (coucher du soleil de Home Assistant), points d'eau et toilettes, ce qu'il ne faut pas manquer, d'après la bibliothèque des lieux le long du tracé.
+- Serveur : `/api/nives/places/near` (les lieux de la bibliothèque autour de points, les plus proches d'abord, avec leur fiche).
+
 ## 0.62.25 — Les lieux d'Igor seuls, partout, toujours tous
 
 - **Plus aucun lieu de TomTom** : sur Igor Explorer comme sur l'écran déporté de la voiture, seuls les lieux de la bibliothèque d'Igor (OpenStreetMap), dans les épingles d'Igor. Les stations-service passent aussi en épingle (leurs prix restent au-dessus).
