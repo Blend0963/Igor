@@ -5447,6 +5447,7 @@
   //   hide_attribution: false
   //   style: <a MapLibre style URL>         # another base map (the theme's CARTO one by default)
   //   basemap: tomtom                       # TomTom's dark map (PNG), with the TomTom key of Igor's options, relayed by HA
+  //   basemap: mapbox                       # Mapbox Standard (3D buildings and landmarks, light by the hour): the token of Igor's options
   //   basemap: tomtom-3d                    # TomTom's vector map, buildings in relief (a phone; heavy for a head unit)
   //   tiles: https://…/{z}/{x}/{y}.png?key=…  # your own raster base map (tiles_maxzoom: 20, tiles_attribution)
   //   destination: input_text.car_destination  # « lat,lon;Nom »: guidance there (set it from a phone, or the card's flag)
@@ -5503,7 +5504,6 @@
   //                                         # (Stations, Voix, Itinéraire, Lieux, Rando, Réglages), compass and recentring on the right
   //   igor_guide: false                     # no trip guide from Igor (the words at the start of a 45 min+ trip, the pause near 2 h)
   //   agent: conversation.igor              # Igor's conversation agent (found by its name otherwise)
-  //   trails_tiles: https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png  # the marked trails (« Rando » → Sentiers balisés)
   //   controls: rail                        # the head unit's dashboard (with igor-guide-card beside): big written
   //                                         # buttons on the right, no turn banner / arrival bar / layers / fullscreen
   //   local_gps: true                       # on the head unit itself: the arrow follows the screen's own GPS
@@ -5570,7 +5570,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.28";
+  var GPS_CARD_VERSION = "0.62.34";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6282,12 +6282,108 @@
     var nameEl = all("name")[0], name = (nameEl && nameEl.textContent.trim()) || String(file || "Tracé").replace(/\.gpx$/i, "");
     return { name: name.slice(0, 60), lines: lines, wpts: wpts, km: Math.round(km * 100) / 100, up: up };
   }
+  // OpenStreetMap's waymark (osmc:symbol « red:white:red_bar ») in words.
+  function gpsWaymark(sym) {
+    var C = { red: "rouge", white: "blanc", yellow: "jaune", blue: "bleu", green: "vert", orange: "orange", purple: "violet", black: "noir", brown: "marron" };
+    var p = String(sym || "").split(":"), fg = (p[2] || "").split("_"), out = [];
+    if (C[fg[0]]) out.push(C[fg[0]] + (fg[1] === "bar" ? " (barre)" : fg[1] ? " (" + fg[1] + ")" : ""));
+    if (C[(p[1] || "").split("_")[0]]) out.push("sur " + C[(p[1] || "").split("_")[0]]);
+    if (p[4] || p[3]) out.push("« " + (p[3] && !C[p[3]] ? p[3] : p[4] || "") + " »");
+    var s = out.join(" ").replace(/«\s*»/, "").trim();
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : String(sym);
+  }
+  // Rubik, Igor Explorer's typeface (shipped in frontend/fonts, OFL): the
+  // map's names and the card's own words. The page declares it once (a
+  // font declared inside a shadow root is not seen by the browser).
+  var GPS_FONT_BASE = "/nives_static/fonts/rubik-";
+  var GPS_FONT_LATIN = ["U+0000-00FF", "U+0131", "U+0152-0153", "U+02BB-02BC", "U+02C6", "U+02DA", "U+02DC", "U+0304", "U+0308", "U+0329", "U+2000-206F", "U+20AC", "U+2122", "U+2191", "U+2193", "U+2212", "U+2215", "U+FEFF", "U+FFFD"];
+  var GPS_FONT_EXT = ["U+0100-02BA", "U+02BD-02C5", "U+02C7-02CC", "U+02CE-02D7", "U+02DD-02FF", "U+1D00-1DBF", "U+1E00-1E9F", "U+1EF2-1EFF", "U+2020", "U+20A0-20AB", "U+20AD-20C0", "U+2113", "U+2C60-2C7F", "U+A720-A7FF"];
+  function gpsFontFiles(w) {
+    var o = window.location.origin;
+    return [{ url: o + GPS_FONT_BASE + "latin-" + w + "-normal.woff2", unicodeRange: GPS_FONT_LATIN }, { url: o + GPS_FONT_BASE + "latin-ext-" + w + "-normal.woff2", unicodeRange: GPS_FONT_EXT }];
+  }
+  function gpsFontDeclare() {
+    if (document.getElementById("igor-rubik")) return;
+    var st = document.createElement("style"); st.id = "igor-rubik";
+    st.textContent = [400, 500, 600, 700].map(function (w) {
+      return gpsFontFiles(w).map(function (f) { return "@font-face{font-family:'Igor Rubik';font-style:normal;font-weight:" + w + ";font-display:swap;src:url(" + f.url + ") format('woff2');unicode-range:" + f.unicodeRange.join(",") + "}"; }).join("");
+    }).join("");
+    document.head.appendChild(st);
+  }
+  // Mapbox GL JS (the Mapbox background): loaded once from Mapbox, the
+  // engine Mapbox Standard needs (MapLibre cannot read its 3D and lights).
+  var GPS_MAPBOX_VER = "3.36.0", gpsMapboxP = null;
+  function gpsMapbox() {
+    if (window.mapboxgl && window.mapboxgl.Map) return Promise.resolve(window.mapboxgl);
+    if (gpsMapboxP) return gpsMapboxP;
+    gpsMapboxP = new Promise(function (res, rej) {
+      var sc = document.createElement("script");
+      sc.src = "https://api.mapbox.com/mapbox-gl-js/v" + GPS_MAPBOX_VER + "/mapbox-gl.js";
+      sc.onload = function () { if (window.mapboxgl && window.mapboxgl.Map) res(window.mapboxgl); else { gpsMapboxP = null; rej(new Error("Mapbox GL absent")); } };
+      sc.onerror = function () { gpsMapboxP = null; rej(new Error("Mapbox GL injoignable")); };
+      document.head.appendChild(sc);
+    });
+    return gpsMapboxP;
+  }
+  // A road number's panel (A and N red, D yellow, others white), stretched
+  // around its text by MapLibre while its rounded corners stay round.
+  function gpsShieldImage(map, id) {
+    var C = { "igl-shield-red": ["#c8102e", "#ffffff"], "igl-shield-yellow": ["#f2c200", "#3a3000"], "igl-shield-white": ["#ffffff", "#6b7385"] }[id] || ["#ffffff", "#6b7385"];
+    var S = 32, cv = document.createElement("canvas"); cv.width = S * 2; cv.height = S * 2;
+    var g = cv.getContext("2d"); g.scale(2, 2);
+    g.beginPath(); if (g.roundRect) g.roundRect(2, 2, S - 4, S - 4, 6); else g.rect(2, 2, S - 4, S - 4);
+    g.fillStyle = C[0]; g.fill(); g.lineWidth = 1.6; g.strokeStyle = C[1]; g.stroke();
+    map.addImage(id, g.getImageData(0, 0, S * 2, S * 2), { pixelRatio: 2, stretchX: [[16, 48]], stretchY: [[16, 48]], content: [12, 10, 52, 54] });
+  }
+  // The map's names in Igor's faces (the TomTom map, its own label layers):
+  // regions thin wide capitals, towns bold narrow capitals, districts small
+  // spaced capitals, water blue italics, woods green italics; the street
+  // names hidden (a touch on a street says it), the road numbers kept.
+  var GPS_LABEL_PAL = {
+    jour: { city: "#ffffff", cityhalo: "#33415c", region: "rgba(255,255,255,0.85)", quarter: "#5a6378", water: "#1d6f9a", green: "#2f5d33", halo: "rgba(255,255,255,0.85)" },
+    nuit: { city: "#e2e4ff", cityhalo: "#11122a", region: "rgba(226,228,255,0.55)", quarter: "#9a9dd0", water: "#7fb6ff", green: "#7fcf9a", halo: "#11122a" }
+  };
+  var GPS_FACES = { "Igor Rubik Light": "rubik-{r}-300-normal", "Igor Rubik Medium": "rubik-{r}-500-normal", "Igor Rubik Italic": "rubik-{r}-400-italic", "Igor Barlow Bold": "barlow-condensed-{r}-700-normal" };
+  function gpsFaces() {
+    var o = window.location.origin + "/nives_static/fonts/", out = {};
+    Object.keys(GPS_FACES).forEach(function (n) { var p = GPS_FACES[n]; out[n] = [{ url: o + p.replace("{r}", "latin") + ".woff2", "unicode-range": GPS_FONT_LATIN }, { url: o + p.replace("{r}", "latin-ext") + ".woff2", "unicode-range": GPS_FONT_EXT }]; });
+    return out;
+  }
+  function gpsLabelLook(map, theme) {
+    if (!map || !map.getStyle) return;
+    var P = GPS_LABEL_PAL[theme] || GPS_LABEL_PAL.jour;
+    try { if (map.setFontFaces) map.setFontFaces(Object.assign({}, (map.getFontFaces && map.getFontFaces()) || {}, gpsFaces())); } catch (e) { return; }
+    var set = (id, lay, paint) => { Object.keys(lay).forEach((k) => { try { map.setLayoutProperty(id, k, lay[k]); } catch (e) { /* */ } }); Object.keys(paint).forEach((k) => { try { map.setPaintProperty(id, k, paint[k]); } catch (e) { /* */ } }); };
+    (map.getStyle().layers || []).forEach((l) => {
+      if (l.type !== "symbol" || /^igor|^route|^gps|^pois|^incidents|^trail|^man|^alt/.test(l.id) || !l.layout || l.layout["text-field"] == null) return;
+      var n = (l.id + " " + (l["source-layer"] || "")).toLowerCase();
+      if (/shield|number|\bref\b|exit|junction|motorway.?label|route.?label/.test(n)) return;  // the road numbers stay
+      if (l.layout["symbol-placement"] === "line" && /road|street|transport|path|track|minor|major|primary|secondary|tertiary|residential|service|motorway/.test(n) && !/water|river|stream|canal/.test(n)) {
+        try { map.setLayoutProperty(l.id, "visibility", "none"); } catch (e) { /* */ }
+        return;
+      }
+      if (/water|ocean|sea|lake|river|bay|canal|stream/.test(n)) set(l.id, { "text-font": ["Igor Rubik Italic"], "text-letter-spacing": 0.08 }, { "text-color": P.water, "text-halo-color": P.halo, "text-halo-width": 1 });
+      else if (/park|forest|wood|nature|green/.test(n)) set(l.id, { "text-font": ["Igor Rubik Italic"] }, { "text-color": P.green, "text-halo-color": P.halo, "text-halo-width": 1 });
+      else if (/country|state|region|province|department/.test(n)) set(l.id, { "text-font": ["Igor Rubik Light"], "text-transform": "uppercase", "text-letter-spacing": 0.45 }, { "text-color": P.region, "text-halo-width": 0 });
+      else if (/suburb|neighbo|district|quarter|hamlet|borough|locality.?minor/.test(n)) set(l.id, { "text-font": ["Igor Rubik Medium"], "text-transform": "uppercase", "text-letter-spacing": 0.3 }, { "text-color": P.quarter, "text-halo-color": P.halo, "text-halo-width": 1 });
+      else if (/place|settlement|city|town|village|capital|locality/.test(n)) set(l.id, { "text-font": ["Igor Barlow Bold"], "text-transform": "uppercase", "text-letter-spacing": 0.04 }, { "text-color": P.city, "text-halo-color": P.cityhalo, "text-halo-width": 1.6 });
+    });
+  }
   // A pictogram as inline SVG (the vignette's header).
   function gpsPlaceSvg(icon, size, color) {
     return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24"><path fill="' + (color || "#fff") + '" d="' + (GPS_PLACE_SVG[icon] || GPS_PLACE_SVG["map-marker"]) + '"/></svg>';
   }
-  // Igor's own agent (an LLM): `agent`, else the conversation entity named Igor.
+  // Igor on the map: always the online model (Mistral…), never the house's
+  // local one — /api/nives/ask carries a « situation », which keeps Igor's
+  // server off the local model. An older Igor without it: Assist's agent.
   function gpsAskIgor(hass, text, agent) {
+    if (hass.callApi) return hass.callApi("POST", "nives/ask", { text: text }).then(function (r) {
+      if (r && r.ok && r.text) return r.text;
+      throw new Error((r && r.error) || "vide");
+    }, function (e) { if (e && (e.status_code === 404 || e.status === 404)) return gpsAskAgent(hass, text, agent); throw e; });
+    return gpsAskAgent(hass, text, agent);
+  }
+  function gpsAskAgent(hass, text, agent) {
     var hs = hass.states, a = agent || Object.keys(hs).find(function (id) { return id.indexOf("conversation.") === 0 && /igor|nives/i.test(id + " " + ((hs[id].attributes || {}).friendly_name || "")); });
     return hass.callWS(Object.assign({ type: "conversation/process", text: text, language: "fr" }, a ? { agent_id: a } : {})).then(function (r) {
       var said = r && r.response && r.response.speech && r.response.speech.plain && r.response.speech.plain.speech;
@@ -6928,6 +7024,7 @@
     }
     localLive() { return !!this.localAt && performance.now() - this.localAt < 4000; }
     build() {
+      try { gpsFontDeclare(); } catch (e) { /* the system's font then */ }
       this.root = this.attachShadow({ mode: "open" });
       this.root.innerHTML = scaled(
         '<link rel="stylesheet" href="' + GPS_MAPLIBRE + '.css" data-ml-css><style>' +
@@ -7127,6 +7224,8 @@
         ".eta .st .shield { flex: none; display: inline-block; min-width: 0; max-width: none; border-left: 0; padding: 1px 6px; overflow: visible; -webkit-line-clamp: unset; font-size: 13px; line-height: 1.25; }" +
         ".eta .st .shield.a, .eta .st .shield.n, .eta .st .shield.e, .eta .st .shield.m { color: #fff; } .eta .st .shield.d { color: #111; }" +
         ".seg[hidden] { display: none !important; }" +
+        // The whole card in Rubik (its digits too), the icons left alone.
+        "ha-card, ha-card *:not(ha-icon), .pvig, .pvig *:not(ha-icon), .mappick, .mappick *:not(ha-icon) { font-family: 'Igor Rubik', 'Rubik', Roboto, 'DejaVu Sans', sans-serif !important; letter-spacing: 0 !important; }" +
         ".dmic { margin-left: auto; width: 40px; height: 40px; border-radius: 6px; border: 1px solid var(--bd); background: var(--ui2); color: var(--acc); display: grid; place-items: center; cursor: pointer; --mdc-icon-size: 22px; } .dmic.on { background: var(--acc); color: var(--accTx); }" +
         ".panel button.igo { background: none; border-color: #59d0e0; color: #59d0e0; text-align: center; }" +
         // Igor's answer: over the map, under the bars, its places beneath.
@@ -7146,6 +7245,7 @@
         ".pv-h { display: flex; gap: 11px; align-items: center; padding: 11px 12px; } .pv-h > i { width: 44px; height: 44px; flex: none; border-radius: 6px; background: var(--pc); display: grid; place-items: center; }" +
         ".pv-n { flex: 1; min-width: 0; } .pv-n b { display: block; font-size: 15px; line-height: 1.25; } .pv-n small, .pv-d small { display: block; font-size: 11.5px; color: var(--dim); margin-top: 2px; }" +
         ".pv-d { text-align: right; flex: none; } .pv-d b { font-family: " + MONO + "; font-size: 16px; }" +
+        ".pv-c { flex: none; align-self: flex-start; width: 34px; height: 34px; margin: -2px -4px 0 2px; border-radius: 6px; border: 1px solid var(--bd); background: var(--ui2); color: var(--tx); display: grid; place-items: center; cursor: pointer; --mdc-icon-size: 18px; }" +
         ".pv-kv { padding: 0 12px; } .pv-kv > div { display: flex; align-items: center; gap: 9px; padding: 6px 0; border-top: 1px solid var(--bd); font-size: 12.5px; --mdc-icon-size: 16px; } .pv-kv ha-icon { color: var(--dim); flex: none; } .pv-kv span { color: var(--dim); width: 70px; flex: none; } .pv-kv b { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
         ".pv-wait { color: var(--dim); font-size: 12px; padding: 6px 0; border-top: 1px solid var(--bd); }" +
         ".pv-x { margin: 8px 12px 0; padding: 9px 11px; border-radius: 6px; background: var(--ui2); font-size: 12.5px; line-height: 1.45; max-height: 170px; overflow-y: auto; } .pv-x[hidden] { display: none; } .pv-x p { margin: 4px 0; } .pv-x a { color: var(--acc); } .pv-src { font-size: 10.5px; letter-spacing: .06em; color: var(--dim); text-transform: uppercase; }" +
@@ -7171,6 +7271,23 @@
         ".dock .toast { bottom: 115px; } .dock.guiding .toast { bottom: 165px; } .dock.withspeed .toast { left: 160px; }" +
         ".dock .eta { bottom: 76px; left: 10px !important; right: 10px; background: var(--ui); border-color: var(--bd); color: var(--tx); box-shadow: var(--sh); } .dock .eta span { border-left-color: var(--bd); color: var(--dim); } .dock .eta span i { color: var(--tx); }" +
         ".dock .speed, .dock .street, .dock .toast { background: var(--ui); border-color: var(--bd); color: var(--tx); box-shadow: var(--sh); }" +
+        // The phone's rounded corners: everything kept away from the edges
+        // (18 px, plus the system's own insets), the toast never over the buttons.
+        ".dock { --gx: 18px; --sb: env(safe-area-inset-bottom, 0px); --st: env(safe-area-inset-top, 0px); }" +
+        ".dock .dbar { top: calc(14px + var(--st)); left: calc(var(--gx) + env(safe-area-inset-left, 0px)); right: calc(var(--gx) + env(safe-area-inset-right, 0px)); border-radius: 12px; }" +
+        ".dock .btns { bottom: calc(16px + var(--sb)) !important; left: var(--gx) !important; right: var(--gx) !important; } .dock .btns button { border-radius: 12px !important; }" +
+        ".dock .nav { top: calc(76px + var(--st)); left: var(--gx) !important; right: var(--gx) !important; border-radius: 12px; }" +
+        ".dock .eta { bottom: calc(84px + var(--sb)); left: var(--gx) !important; right: var(--gx) !important; border-radius: 12px; }" +
+        ".dock .street { bottom: calc(84px + var(--sb)); } .dock.guiding .street { bottom: calc(138px + var(--sb)); }" +
+        ".dock .hud.sp { left: var(--gx); bottom: calc(126px + var(--sb)); } .dock.guiding .hud.sp { bottom: calc(180px + var(--sb)); } .dock .speed { border-radius: 12px; }" +
+        ".dock .hud.lim { left: calc(var(--gx) + 84px); bottom: calc(131px + var(--sb)); } .dock.guiding .hud.lim { bottom: calc(185px + var(--sb)); }" +
+        ".dock .toast { bottom: calc(126px + var(--sb)) !important; left: var(--gx) !important; right: calc(var(--gx) + 62px) !important; transform: none !important; max-width: none !important; border-radius: 12px; }" +
+        ".dock.withspeed .toast { left: calc(var(--gx) + 152px) !important; } .dock.guiding .toast { bottom: calc(180px + var(--sb)) !important; }" +
+        ".dock .dside { right: var(--gx); bottom: calc(126px + var(--sb)); } .dock.guiding .dside { bottom: calc(180px + var(--sb)); } .dock .dside button { border-radius: 12px; }" +
+        ".dock .snap { top: calc(138px + var(--st)); } .dock .side { top: calc(160px + var(--st)); } .dock .jinset { top: calc(160px + var(--st)); left: var(--gx); right: var(--gx); }" +
+        ".dock .mapboxgl-ctrl-top-left { top: calc(70px + var(--st)); left: var(--gx); } .dock.guiding .mapboxgl-ctrl-top-left { top: calc(160px + var(--st)); }" +
+        ".dock .mapboxgl-ctrl-top-right { top: calc(70px + var(--st)); right: var(--gx); } .dock.guiding .mapboxgl-ctrl-top-right { top: calc(160px + var(--st)); }" +
+        ".dock .igans { left: var(--gx); right: var(--gx); top: calc(140px + var(--st)); border-radius: 12px; }" +
         ".modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; } .modes button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px; border: 1px solid #22262c; border-radius: var(--igor-radius, 3px); background: #0f1114; color: #a9adb3; font: inherit; font-size: 11px; cursor: pointer; --mdc-icon-size: 22px; } .modes button.on { border-color: #59d0e0; color: #e9fbff; background: #0e2a30; }" +
         ".panel { position: absolute; inset: 0; z-index: 4; background: rgba(7,8,10,0.96); color: #e9e4da; font-family: " + MONO + "; display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; overflow-y: auto; }" +
         ".panel .ph { display: flex; justify-content: space-between; align-items: center; color: #878c95; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; }" +
@@ -7197,11 +7314,15 @@
         ".alttag.win { color: #5cc28f; border-color: #5cc28f; } .alttag.lose { color: #f08c1a; border-color: #f08c1a; }" +
         ".eur { color: #e0a33a; font-weight: 700; margin-right: 6px; }" +
         ".lez { color: #e5323b; border: 1px solid #e5323b; border-radius: 3px; font-size: 11px; font-weight: 700; padding: 0 3px; margin-right: 6px; }" +
-        ".mappick { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.96); border: 1px solid #22262c; font-family: " + MONO + "; }" +
-        ".mappick .mp-head { display: flex; align-items: center; gap: 4px; }" +
-        ".mappick button { font: inherit; font-size: 14px; padding: 10px 12px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #e9e4da; cursor: pointer; display: flex; align-items: center; gap: 10px; --mdc-icon-size: 20px; white-space: nowrap; } .mappick button ha-icon { color: #59d0e0; flex: none; }" +
-        ".mappick .mp-name { color: #878c95; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; min-width: 0; padding: 2px 0 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
-        ".mappick .mp-x { flex: none; margin-left: auto; width: 30px; height: 30px; min-height: 0; padding: 0; justify-content: center; border: none; background: transparent; color: #878c95; --mdc-icon-size: 18px; } .mappick .mp-x ha-icon { color: #878c95; }" +
+        // The map's own colours (indigo by night, light by day), as the vignettes.
+        ".mappick { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 8px; background: var(--ui); border: 1px solid var(--bd); box-shadow: var(--sh); color: var(--tx); font-family: 'DejaVu Sans', Roboto, sans-serif; min-width: 220px; }" +
+        ".mappick .mp-head { display: flex; align-items: center; gap: 6px; }" +
+        ".mappick button { font: inherit; font-size: 14px; padding: 11px 12px; border-radius: 6px; border: 1px solid var(--bd); background: var(--ui2); color: var(--tx); cursor: pointer; display: flex; align-items: center; gap: 10px; --mdc-icon-size: 20px; white-space: nowrap; } .mappick button ha-icon { color: var(--acc); flex: none; }" +
+        ".mappick > button:first-of-type { background: var(--acc); border-color: var(--acc); color: var(--accTx); } .mappick > button:first-of-type ha-icon { color: var(--accTx); }" +
+        ".mappick .mp-name { color: var(--tx); font-size: 14px; font-weight: 600; flex: 1; min-width: 0; padding: 2px 0 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
+        ".mappick .mp-ref { flex: none; font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 4px; background: #ffffff; color: #3a3f4a; border: 1px solid #c9ced8; } .mappick .mp-ref.red { background: #c8102e; color: #fff; border-color: #c8102e; } .mappick .mp-ref.yel { background: #f2c200; color: #2a2400; border-color: #d6aa00; }" +
+        ".mappick .mp-x { flex: none; margin-left: auto; width: 34px; height: 34px; min-height: 0; padding: 0; justify-content: center; border: 1px solid var(--bd); background: var(--ui2); color: var(--tx); --mdc-icon-size: 18px; } .mappick .mp-x ha-icon { color: var(--tx); }" +
+        ".poisheet .ps-table th { color: var(--dim); text-align: left; padding-right: 10px; font-weight: 400; } .poisheet .ps-table td { color: var(--tx); }" +
         ".poisheet { max-width: 320px; }\n" +
         ".poisheet .ps-body { padding: 10px 12px; display: grid; gap: 8px; max-height: 46vh; overflow-y: auto; }\n" +
         ".ps-table { border-collapse: collapse; width: 100%; font-size: 13px; }\n" +
@@ -7239,7 +7360,7 @@
         '<div class="panel fpanel" id="fpanel" hidden><div class="ph"><span>stations-service</span><button id="fclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="flist"></div></div>' +
         '<div class="lpanel" id="lpanel" hidden></div>' +
         '<div class="panel hpanel" id="hpanel" hidden><div class="ph"><span>randonnée</span><button id="hclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
-        '<button type="button" class="hrow" id="htrails"><ha-icon icon="mdi:map-marker-path"></ha-icon><div><b>Sentiers balisés</b><small>GR, GRP, PR et chemins locaux, aux couleurs de leur balisage (Waymarked Trails)</small></div><span class="hsw">non</span></button>' +
+        '<button type="button" class="hrow" id="htrails"><ha-icon icon="mdi:map-marker-path"></ha-icon><div><b>Sentiers balisés</b><small>GR, GRP, PR et chemins locaux d\'OpenStreetMap, en tracés aux couleurs de leur balisage ; un toucher : leur fiche</small></div><span class="hsw">non</span></button>' +
         '<label class="hrow hfile"><ha-icon icon="mdi:file-upload-outline"></ha-icon><div><b>Importer un tracé GPX</b><small>gardé sur ce téléphone · affiché en orange</small></div><input type="file" id="hgpx" accept=".gpx,application/gpx+xml,application/xml,text/xml" hidden></label>' +
         '<div class="list" id="hlist"></div></div>' +
         '<div class="pprice" id="pprice" hidden><div class="pp-card"><div class="pph"><span id="ppName"></span><button id="ppClose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="pp-addr" id="ppAddr"></div><div class="pp-list" id="ppList"></div></div></div>' +
@@ -7472,7 +7593,7 @@
     styleUrl() {
       // Igor's spare map (OpenStreetMap, France, served by Home Assistant):
       // when TomTom does not answer, or when chosen in the settings.
-      if (this.spareOn) { var o = window.location.origin; this.spareTheme = this.spareTheme || (this.sdkStyleNow().indexOf("Dark") >= 0 ? "nuit" : "jour"); var LB = this.look || {}; return o + "/api/nives/spare/style.json?t=" + this.spareTheme + "&b3=" + (LB.b3 == null || Number(LB.b3) ? 1 : 0) + "&bo=" + ((Number(LB.bo) || 90) / 100) + "&o=" + encodeURIComponent(o); }
+      if (this.spareOn) { var o = window.location.origin; this.spareTheme = this.spareTheme || (this.sdkStyleNow().indexOf("Dark") >= 0 ? "nuit" : "jour"); var LB = this.look || {}; return o + "/api/nives/spare/style.json?ff=" + (window.maplibregl && window.maplibregl.Map && window.maplibregl.Map.prototype.setFontFaces ? 1 : 0) + "&t=" + this.spareTheme + "&b3=" + (LB.b3 == null || Number(LB.b3) ? 1 : 0) + "&bo=" + ((Number(LB.bo) || 90) / 100) + "&o=" + encodeURIComponent(o); }
       if (this.config.style) return this.config.style;
       // The CARTO dark PNG tiles online by default (cached by the browser):
       // the same images the offline basemap would serve, so the same drawing
@@ -7572,7 +7693,7 @@
         tomtom: { land: "#233c4b", water: "#3b5871", vegetation: "#2c4b4f", park: "#30564f", artificial: "#294353", roadMajor: "#456168", road: "#375461", roadOutline: "#2b4553", label: "#d3dfe4", labelHalo: "#1b2f3b" },
         // Igor's day: frank greens, turquoise water, blue-grey built-up areas,
         // white streets and warm main roads — no more washed-out white.
-        jour: { land: "#d3e2c6", water: "#3fb5d9", vegetation: "#86be78", park: "#7fbf73", artificial: "#d4d8e4", roadMajor: "#f4f1e6", road: "#ffffff", roadOutline: "#aab3c4", label: "#26303b", labelHalo: "#ffffff" },
+        jour: { land: "#b5ccaa", water: "#3fb2d6", vegetation: "#5f9a64", park: "#7fbf73", artificial: "#d3d6e2", roadMajor: "#f4f1e6", road: "#ffffff", roadOutline: "#aab3c4", label: "#26303b", labelHalo: "#ffffff" },
         // Igor's night: deep indigo ground, the water a shade lighter, dark
         // teal parks, lavender-grey roads that stand out without glaring.
         indigo: { land: "#1a1c38", water: "#2a2f66", vegetation: "#1b4743", park: "#1e5049", artificial: "#212548", roadMajor: "#8c90c2", road: "#5a5f92", roadOutline: "#13152b", label: "#e2e4ff", labelHalo: "#11122a" },
@@ -7583,17 +7704,52 @@
       // The map's own buildings (those left when Igor's 3D is off): their
       // colour from the same measure — #456168, lit roofs over darker walls.
       try { this.$("card").classList.toggle("day", !dark); } catch (e) { /* no card yet */ }
-      this.tintBuild = mode === "tomtom" ? "#456168" : mode === "bleu" ? "#2f425a" : mode === "indigo" ? "#2e3568" : mode === "jour" ? "#c6cee2" : null;
+      this.tintBuild = mode === "tomtom" ? "#456168" : mode === "bleu" ? "#2f425a" : mode === "indigo" ? "#36407a" : mode === "jour" ? "#9aaed3" : null;
       try { this.placesApply(); } catch (e) { /* the places' names as they were */ }
       try { this.baseBuildings(this.map); } catch (e) { /* as it was */ }
+      try { if (this.tt3d && this.tt3d.applyConfig) this.tt3d.applyConfig(this.buildingsLook()); } catch (e) { /* as it was */ }
       this.ttStyling.then((st) => {
         if (this.tintSdkKey !== key) return;
+        if (!this.fontSet && st.applyConfig) {
+          try { st.applyConfig({ labels: { customTypeface: { regular: gpsFontFiles(400), medium: gpsFontFiles(500), bold: gpsFontFiles(600) } } }); this.fontSet = true; } catch (e) { /* TomTom's own face */ }
+        }
         if (mode) st.setMapColors(PAL[mode]);
         else if (sdk.resetKnob && sdk.stylingFoundationsKnobCatalogue) names.forEach((n) => { try { sdk.resetKnob(st, sdk.stylingFoundationsKnobCatalogue, "colors." + n); } catch (e) { /* that one as it was */ } });
+        try { this.motorwayLook(this.map, mode === "jour" ? "jour" : mode === "indigo" ? "nuit" : ""); } catch (e) { /* as it was */ }
+        try { gpsLabelLook(this.map, dark ? "nuit" : "jour"); } catch (e) { /* TomTom's labels as they were */ }
       }).catch((e) => { this.ttStyling = null; this.tintSdkKey = null; if (this.config.debug) this.message("teinte : " + (e && e.message)); });
     }
     // The night's colours: Igor's indigo unless another is chosen (« gris »: the style's own).
     nightTint() { var L = this.look || {}, t = L.tn || this.config.night_colors || "indigo"; return t === "tomtom" || t === "bleu" || t === "indigo" ? t : ""; }
+    // The motorways in yellow (their outline a deeper one), as a road map
+    // draws them — TomTom's colours have no knob of their own for them.
+    motorwayLook(map, theme) {
+      if (!map || !map.getStyle) return;
+      var keep = this.mwKept || (this.mwKept = {});
+      var C = { jour: ["#f7df7c", "#d6b54a"], nuit: ["#b49b46", "#6f5e25"] }[theme];
+      (map.getStyle().layers || []).forEach((l) => {
+        if (l.type !== "line" || /^igor|^route|^trail|^man|^alt/.test(l.id)) return;
+        var name = l.id + " " + (l["source-layer"] || "");
+        if (!/motorway|autoroute/i.test(name) || /label|shield|name|number|arrow|oneway|ramp.*label/i.test(name)) return;
+        if (!(l.id in keep)) keep[l.id] = map.getPaintProperty(l.id, "line-color");
+        var edge = /outline|casing|case|border|edge/i.test(l.id);
+        try { map.setPaintProperty(l.id, "line-color", C ? (edge ? C[1] : C[0]) : keep[l.id]); } catch (e) { /* that one as it was */ }
+      });
+    }
+    // Igor's buildings: each one a shade of blue-grey (by day) or of indigo
+    // (by night), picked from a small palette, the roofs a lighter one, no
+    // shadow — a map read at a glance rather than a photograph.
+    buildingPalette() {
+      var L = this.look || {};
+      if (L.wc === "unie") return null;
+      if (this.ttStyle === "streetLightDriving" && this.dayLively())
+        return { walls: { color: "#9aaed3", palette: ["#9aaed3", "#8aa1cc", "#b2c2df", "#7f96c3", "#a7b8d8", "#c0cde6"], paletteIntensity: 1, paletteMode: "pick", variation: 0.1 },
+          roofs: { palette: ["#b9c8e4", "#a9bbdd", "#cbd6ec", "#a1b4d9"], paletteIntensity: 1, paletteMode: "pick" } };
+      if (this.ttStyle === "streetDarkDriving" && this.nightTint() === "indigo")
+        return { walls: { color: "#36407a", palette: ["#36407a", "#2e386f", "#414c8a", "#2a3366", "#3b4682"], paletteIntensity: 1, paletteMode: "pick", variation: 0.1 },
+          roofs: { palette: ["#46529a", "#3e4990", "#5160a8"], paletteIntensity: 1, paletteMode: "pick" } };
+      return null;
+    }
     dayLively() { var L = this.look || {}; return (L.tj || this.config.day_colors || "vive") !== "tomtom"; }
     buildingsLook() {
       var c = this.config, op = Number(c.buildings_opacity), L = this.look, look;
@@ -7605,15 +7761,17 @@
         if (L.wc === "unie") look.walls = { variation: 0 }; else if (L.wc === "variee") look.walls = { variation: 0.6 };
         // Lit at night (« Éclairage des bâtiments »): many windows on, the façades' pattern shown.
         var tn = this.nightTint();
-        if (tn === "indigo" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#2e3568" });
+        var BP = this.buildingPalette();
+        if (BP) { look.walls = BP.walls; look.roofs = BP.roofs; look.shadows = { visible: false }; }
         else if (tn === "tomtom" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#456168" });
         else if (tn === "bleu" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#2f425a" });
-        else if (this.ttStyle === "streetLightDriving" && this.dayLively() && (L.wc || "style") === "style") look.walls = Object.assign({}, look.walls || {}, { color: "#c6cee2" });
         if (Number(L.eb) && this.ttStyle === "streetDarkDriving") { look.litWindows = { fraction: Math.max(0.55, (Number(L.lw) || 0) / 100) }; look.facade = { pattern: L.fw && L.fw !== "none" ? L.fw : "mixed", intensity: 1 }; }
       } else {
         look = { opacity: isFinite(op) && op > 0 ? Math.min(1, op) : 0.85 };
         if (c.buildings_windows !== true) look.facade = { pattern: "plain", intensity: 0 };
         if (c.buildings_windows !== true) look.litWindows = { fraction: 0 };
+        var BP0 = this.buildingPalette();
+        if (BP0) { look.walls = BP0.walls; look.roofs = BP0.roofs; look.shadows = { visible: false }; }
       }
       var own = c.sdk_buildings && typeof c.sdk_buildings === "object" ? c.sdk_buildings : {};
       Object.keys(own).forEach((k) => { look[k] = own[k] && typeof own[k] === "object" && look[k] && typeof look[k] === "object" ? Object.assign({}, look[k], own[k]) : own[k]; });
@@ -7779,12 +7937,16 @@
       // road): none by default — the route carries its slow stretches itself.
       tryIt(() => this.trafficLook(map, L.tf || "aucun"));
       tryIt(() => this.placesApply());
+      if (L.fb === "mapbox" && !this.mapboxCfg && !this.mapboxOff && this.map) { this.spareOn = false; setTimeout(() => this.restartMap(), 0); return; }
+      if (L.fb !== "mapbox" && this.mapboxCfg && this.map) { setTimeout(() => this.restartMap(), 0); return; }
       if (L.fb === "secours" && !this.spareOn && this.spareStat && this.spareStat.usable) { setTimeout(() => this.goSpare("choisie dans les réglages"), 0); return; }
       if (L.fb !== "secours" && this.spareOn && this.spareWhy === "choisie dans les réglages") { setTimeout(() => this.leaveSpare(), 0); return; }
       tryIt(() => {
         var ns = { petite: 0.85, normale: 1, grande: 1.25 }[L.ns] || 1, sz = this.labelSize0 = this.labelSize0 || {};
         ((map.getStyle() && map.getStyle().layers) || []).forEach((l) => {
-          if (l.type !== "symbol" || /^igor|^route|^gps/.test(l.id)) return;
+          // Igor's own layers (« pois », « pois-icons »: the radars and the
+          // stations) are never TomTom's places, whatever their name says.
+          if (l.type !== "symbol" || /^igor|^route|^gps|^pois$|^pois-icons$|^incidents/.test(l.id)) return;
           var name = l.id + " " + (l["source-layer"] || "");
           if (/poi|point.of.interest/i.test(name)) { map.setLayoutProperty(l.id, "visibility", "none"); return; }
           if (!/road|street|transport/i.test(name) || !l.layout || l.layout["text-field"] == null) return;
@@ -7803,7 +7965,7 @@
     }
     tomtom3d(map) {
       var layers = map.getStyle().layers || [];
-      var poiLayers = layers.filter((l) => l.type === "symbol" && !/^igor/.test(l.id) && /poi|point.of.interest/i.test(l.id + " " + (l["source-layer"] || "")));
+      var poiLayers = layers.filter((l) => l.type === "symbol" && !/^igor|^pois$|^pois-icons$/.test(l.id) && /poi|point.of.interest/i.test(l.id + " " + (l["source-layer"] || "")));
       if (!this.basePois()) poiLayers.forEach((l) => map.setLayoutProperty(l.id, "visibility", "none"));
       else {
         // TomTom's own places stay (shops, pharmacies, parkings, stations);
@@ -8526,9 +8688,26 @@
       // The spare map: is it there (its tiles on Home Assistant)? Chosen in
       // the settings, it is used at once; otherwise it waits for TomTom to fail.
       try { this.spareStat = await this._hass.callApi("GET", "nives/spare/status"); } catch (e) { this.spareStat = null; }
+      // Mapbox (« Fond de carte : Mapbox », or `basemap: mapbox`): its token
+      // from Igor's options, its engine from Mapbox. Missing or refused: the
+      // map goes on with TomTom (or Igor's), and says why.
+      this.mapboxCfg = null;
+      if (this.wantMapbox() && !this.mapboxOff) {
+        try {
+          var mc = await this._hass.callApi("GET", "nives/mapbox");
+          if (!mc || !mc.ok) throw new Error("clé Mapbox absente (options d'Igor)");
+          await gpsMapbox();
+          this.mapboxCfg = mc;
+          if (!this.mlRef) this.mlRef = window.maplibregl;
+          window.maplibregl = window.mapboxgl;
+          var mbcss = this.root.querySelector("link[data-ml-css]");
+          if (mbcss) mbcss.setAttribute("href", "https://api.mapbox.com/mapbox-gl-js/v" + GPS_MAPBOX_VER + "/mapbox-gl.css");
+          this.spareOn = false;
+        } catch (e) { this.mapboxOff = true; this.toast("Mapbox indisponible · " + ((e && e.message) || ""), 8000); }
+      }
       if (!this.spareOn && this.look && this.look.fb === "secours" && this.spareStat && this.spareStat.usable) { this.spareOn = true; this.spareWhy = "choisie dans les réglages"; }
       try { this.$("card").classList.toggle("spare", !!this.spareOn); } catch (e) { /* no card */ }
-      var style = (this.styleNow = this.styleUrl());
+      var style = this.mapboxCfg ? null : (this.styleNow = this.styleUrl());
       if (typeof style === "string" && style.indexOf(window.location.origin + "/api/nives/") === 0) {
         try {
           var tok = this._hass && this._hass.auth && this._hass.auth.data && this._hass.auth.data.access_token;
@@ -8547,11 +8726,14 @@
         }
       }
       var map;
+      if (this.mapboxCfg) {
+        try { map = this.mapboxMap(p); } catch (e) { map = null; this.mapboxCfg = null; this.mapboxOff = true; this.toast("Mapbox · " + ((e && e.message) || "refusé"), 8000); if (this.mlRef) window.maplibregl = this.mlRef; }
+      }
       // TomTom's SDK (basemap: tomtom-3d, the phone): its map, its 3D. A
       // failure to load it, or a map that never shows, and the card starts
       // again without it.
       var kit = null;
-      if (!this.spareOn && (this.config.basemap === "tomtom-3d" && this.config.sdk !== false && !this.sdkOff && !this.offlineReady && window.location.protocol === "https:" || this.config.sdk_bundle && !this.sdkOff)) {
+      if (!map && !this.spareOn && (this.config.basemap === "tomtom-3d" && this.config.sdk !== false && !this.sdkOff && !this.offlineReady && window.location.protocol === "https:" || this.config.sdk_bundle && !this.sdkOff)) {
         try { kit = await gpsTomTomKit(this.config); } catch (e) { kit = null; this.sdkWhy = (e && e.message) || "SDK indisponible"; }
       }
       if (kit) {
@@ -8596,7 +8778,7 @@
       // car sits at the screen's centre while guiding) drags the map like
       // anywhere else, instead of holding a dead spot.
       arrow.style.pointerEvents = "none";
-      this.marker = new ml.Marker({ element: arrow, rotationAlignment: "map", pitchAlignment: "map" }).setLngLat(p).addTo(map);
+      this.marker = new (this.mapboxCfg ? window.mapboxgl : ml).Marker({ element: arrow, rotationAlignment: "map", pitchAlignment: "map" }).setLngLat(p).addTo(map);
       // Each touch (its start, its moves, its end) holds the map and restarts the wait.
       ["dragstart", "zoomstart", "rotatestart", "pitchstart", "drag", "zoom", "dragend", "zoomend", "rotateend", "pitchend"].forEach((ev) => map.on(ev, (e) => { if (e.originalEvent) this.setFollow(false); }));
       // The screen's moves rebuild the points: what the eye leaves is let
@@ -8677,7 +8859,7 @@
         if (this.config.buildings === false) (map.getStyle().layers || []).forEach((l) => {
           if (/building/i.test(l.id + " " + (l["source-layer"] || ""))) map.setLayoutProperty(l.id, "visibility", "none");
         });
-        if (this.config.basemap === "tomtom-3d" && !this.spareOn) this.tomtom3d(map);
+        if (this.config.basemap === "tomtom-3d" && !this.spareOn && !this.mapboxCfg) this.tomtom3d(map);
         this.styleLayers();
         this.msgShown = null;
         this.message("");
@@ -8691,6 +8873,9 @@
         console.warn("igor-gps-card:", err || e);
         // TomTom failing again and again (no answer, quota, refused): the spare map.
         var eu = String((err && err.url) || "");
+        if (this.mapboxCfg && /api\.mapbox\.com/.test(eu) && err && (err.status === 401 || err.status === 403)) {
+          this.mapboxOff = true; this.toast("Clé Mapbox refusée : retour à la carte habituelle", 9000); setTimeout(() => this.restartMap(), 0); return;
+        }
         if (!this.spareOn && /\/api\/nives\/tomtom\/|api\.tomtom\.com/.test(eu)) {
           var tn = Date.now();
           this.ttFails = (this.ttFails || []).filter((x) => tn - x < 30000).concat([tn]);
@@ -9885,6 +10070,8 @@
       });
       var osmPlace = this.placeAt(e.point);
       if (!fuel && osmPlace) { this.placeVignette(osmPlace); return; }
+      var trail = !fuel && this.trailAt(e.point);
+      if (trail) { this.trailVignette(trail, e.lngLat ? [e.lngLat.lng, e.lngLat.lat] : null); return; }
       if (!name && osmPlace) {
         var op = osmPlace.props, osub = op.subclass || op.class || "", oof = GPS_PLACE_OF[op.subclass] || GPS_PLACE_OF[op.class];
         name = String(op["name:fr"] || op.name || GPS_PLACE_FR[osub] || (oof && GPS_PLACE_FAM[oof[0]].name) || "").trim().slice(0, 40);
@@ -9892,13 +10079,20 @@
       // A place on the map's own layer says its enseigne, or its kind when
       // it has no name (a pharmacy, a cafe); the empty map alone says
       // « Ce point » — the two ways (a new route, a stop) stand under it.
+      var streetRef = "", askStreet = false;
       if (!name) {
         var pq = [];
         try { pq = (map.getLayer("pois") ? map.queryRenderedFeatures(e.point, { layers: ["pois", "pois-icons"] }) : []) || []; } catch (err) { pq = []; }
         var pr = pq.length && pq[0].properties ? pq[0].properties : null;
         if (pr && pr.label && String(pr.label).trim()) name = String(pr.label).trim().slice(0, 40);
         else if (pr && pr.kind && GPS_POI[pr.kind] && GPS_POI[pr.kind].name) name = GPS_POI[pr.kind].name;
-        else name = "Ce point";
+        else {
+          // A street under the finger: its name (and its number), from the
+          // map's own road lines, else asked of OpenStreetMap (Nominatim).
+          var road = this.roadAt(e.point);
+          if (road) { name = road.name; streetRef = road.ref; }
+          else { name = "Ce point"; askStreet = true; }
+        }
       }
       this.closePick();
       var el = document.createElement("div");
@@ -9909,6 +10103,12 @@
         if (lg) { var im = document.createElement("img"); im.className = "mp-logo"; im.src = lg; im.alt = ""; head.appendChild(im); }
       }
       if (name) { var t = document.createElement("div"); t.className = "mp-name"; t.textContent = name; head.appendChild(t); }
+      if (streetRef) { var rb = document.createElement("span"); rb.className = "mp-ref " + (/^[ANE]/.test(streetRef) ? "red" : /^D/.test(streetRef) ? "yel" : ""); rb.textContent = streetRef; head.appendChild(rb); }
+      if (askStreet && e.lngLat) {
+        var tn = head.querySelector(".mp-name"), base = String(this.config.geocoder || "https://nominatim.openstreetmap.org").replace(/\/$/, "");
+        fetch(base + "/reverse?format=jsonv2&zoom=17&accept-language=fr&lat=" + e.lngLat.lat.toFixed(6) + "&lon=" + e.lngLat.lng.toFixed(6))
+          .then((r) => r.json()).then((j) => { var a = (j && j.address) || {}, rd = a.road || a.pedestrian || a.footway || a.path; if (rd && tn && tn.isConnected) tn.textContent = rd + (a.city || a.town || a.village ? " · " + (a.city || a.town || a.village) : ""); }).catch(() => {});
+      }
       var x = document.createElement("button"); x.type = "button"; x.className = "mp-x"; x.title = "Fermer";
       x.innerHTML = '<ha-icon icon="mdi:close"></ha-icon>';
       x.addEventListener("click", (ev) => { ev.stopPropagation(); this.closePick(); });
@@ -9964,6 +10164,14 @@
       el.addEventListener("click", (ev) => ev.stopPropagation());
       var mk = new window.maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -12] }).setLngLat(e.lngLat).addTo(map);
       this._pick = mk;
+      // Never past the screen's edge: slid sideways when the point is near it.
+      requestAnimationFrame(() => {
+        try {
+          var r = el.getBoundingClientRect(), c = map.getContainer().getBoundingClientRect(), dx = 0;
+          if (r.left < c.left + 10) dx = c.left + 10 - r.left; else if (r.right > c.right - 10) dx = c.right - 10 - r.right;
+          if (dx) mk.setOffset([dx, -12]);
+        } catch (err) { /* as it is */ }
+      });
     },
     closePick() {
       if (this._pick) { try { this._pick.getElement().dispatchEvent(new Event("igor-gone")); } catch (e) { /* gone */ } }
@@ -10588,6 +10796,15 @@
       return night ? "streetDarkDriving" : "streetLightDriving";
     },
     themeTick() {
+      if (this.mapboxCfg && this.map) {
+        var tm = Date.now();
+        if (this.mbThemeAt && tm - this.mbThemeAt < 60000) return;
+        this.mbThemeAt = tm;
+        var pr = this.mapboxPreset();
+        try { this.$("card").classList.toggle("day", pr === "day" || pr === "dawn"); } catch (e) { /* no card */ }
+        if (pr !== this.mbPreset) { this.mbPreset = pr; try { this.map.setConfigProperty("basemap", "lightPreset", pr); } catch (e) { /* a style without it */ } }
+        return;
+      }
       if (this.spareOn && this.map) {
         var tn = Date.now();
         if (this.spareThemeAt && tn - this.spareThemeAt < 60000) return;
@@ -10608,6 +10825,38 @@
       this.ttStyle = want; this.themeBusy = true; this.tintSdkKey = null; this.tintKept = null; this.buildKept = null; this.tintMode = null;
       Promise.resolve().then(() => this.tt.setStyle(want)).catch(() => {}).then(() => { this.themeBusy = false; });
     },
+    wantMapbox() { var L = this.look || {}; return L.fb === "mapbox" || (L.fb == null && this.config.basemap === "mapbox"); },
+    // Mapbox's light: dawn, day, dusk or night, from the sun (Home Assistant's
+    // sun.sun), or held by « Jour et nuit ».
+    mapboxPreset() {
+      var L = this.look || {}, sun = this._hass && this._hass.states["sun.sun"], a = (sun && sun.attributes) || {};
+      if (L.dn === "day") return "day";
+      if (L.dn === "night") return "night";
+      var el = Number(a.elevation), rising = a.rising === true || (a.rising == null && new Date().getHours() < 12);
+      if (!isFinite(el)) return sun && sun.state === "below_horizon" ? "night" : "day";
+      return el < -6 ? "night" : el < 6 ? (rising ? "dawn" : "dusk") : "day";
+    },
+    // The Mapbox map: Mapbox Standard (or the style of Igor's options), its
+    // 3D buildings and landmarks, its own place names; no street names nor
+    // shops of its own (Igor's places, and a touch on a street, say them).
+    // Igor's lines go into its « middle » slot (inside the 3D), its pins on top.
+    mapboxMap(p) {
+      var mb = window.mapboxgl, cfg = this.mapboxCfg;
+      var map = new mb.Map({
+        container: this.$("map"), accessToken: cfg.token, style: cfg.style, center: p, zoom: this.config.zoom, pitch: this.config.pitch,
+        bearing: this.headingUp ? this.heading : 0, attributionControl: false, logoPosition: "top-left", antialias: this.antialiasOn(), maxPitch: 80,
+        config: { basemap: { lightPreset: (this.mbPreset = this.mapboxPreset()), show3dObjects: true, show3dTrees: true, show3dLandmarks: true, show3dBuildings: true, showPlaceLabels: true, showRoadLabels: false,
+          showPointOfInterestLabels: false, showTransitLabels: false, showPedestrianRoads: true } },
+        transformRequest: (url) => this.mapRequest(url) || { url: url }
+      });
+      map.addControl(new mb.AttributionControl({ compact: true }), "top-right");
+      var add0 = map.addLayer.bind(map);
+      map.addLayer = (layer, before) => {
+        if (layer && !layer.slot && !before) layer = Object.assign({}, layer, { slot: /^(route|trail|man|alt|incidents|igor-trails|igor-gpx|igor-pick)/.test(layer.id || "") ? "middle" : "top" });
+        return add0(layer, before);
+      };
+      return map;
+    },
     // Over to the spare map (and back): the map started again on the other style.
     goSpare(why, p0) {
       if (this.spareOn || !this.spareStat || !this.spareStat.usable) return false;
@@ -10626,6 +10875,8 @@
       clearTimeout(this.sdkWatch);
       try { if (this.marker) this.marker.remove(); if (this.map) this.map.remove(); } catch (e) { /* gone */ }
       this.map = null; this.tt = null; this.ttKit = null; this.ttStyle = null; this.tintSdkKey = null; this.spareTheme = null; this.loading = false;
+      this.ttStyling = null; this.fontSet = false; this.mwKept = null; this.mbPreset = null;
+      if (this.mlRef && !this.wantMapbox()) { window.maplibregl = this.mlRef; this.mapboxCfg = null; var mlc = this.root && this.root.querySelector("link[data-ml-css]"); if (mlc) mlc.setAttribute("href", GPS_MAPLIBRE + ".css"); }
       try { this.$("card").classList.toggle("spare", !!this.spareOn); } catch (e) { /* no card */ }
       if (p) this.init(p);
     },
@@ -11105,7 +11356,7 @@
       // The look shared with the head unit (`settings:`): its window, not the old list of places.
       if (this.config.settings && this._hass) {
         if (this.m3win && this.m3win.isConnected) { this.m3win.close(); this.m3win = null; return; }
-        this.m3win = openMap3dWindow(this._hass, this.config.settings);
+        this.m3win = openMap3dWindow(this._hass, this.config.settings, this.root);
         return;
       }
       var p = this.$("lpanel");
@@ -11163,6 +11414,7 @@
         map._iglMissing = true;
         map.on("styleimagemissing", (e) => {
           var id = e && e.id;
+          if (id && id.indexOf("igl-shield-") === 0 && !map.hasImage(id)) { try { gpsShieldImage(map, id); } catch (err) { /* plain text */ } return; }
           if (!id || id.indexOf("igl|") !== 0 || map.hasImage(id)) return;
           var parts = id.split("|");
           try { map.addImage(id, gpsPlaceIcon(parts[1], parts[2]), { pixelRatio: 4 }); } catch (err) { /* drawn next time */ }
@@ -11180,14 +11432,10 @@
           "symbol-sort-key": ["case", ["==", ["get", "subclass"], "viewpoint"], -1, ["coalesce", ["get", "rank"], 99]],
           visibility: this.placesOn() ? "visible" : "none"
         };
-        if (font) Object.assign(layout, {
-          "text-field": ["step", ["zoom"], "", 16, ["coalesce", ["get", "name:fr"], ["get", "name"], ""]],
-          "text-font": font, "text-size": 12, "text-offset": [0, 0.35], "text-anchor": "top", "text-optional": true, "text-max-width": 8
-        });
-        map.addLayer({ id: "igor-lieux", type: "symbol", source: "igor-osm", "source-layer": "poi", minzoom: 12, filter: this.placesFilter(), layout: layout, paint: this.placesPaint() });
+        map.addLayer({ id: "igor-lieux", type: "symbol", source: "igor-osm", "source-layer": "poi", minzoom: 15, filter: this.placesFilter(), layout: layout, paint: this.placesPaint() });
         // The same drawing, from Igor's own library on Home Assistant.
         if (!map.getSource("igor-db")) map.addSource("igor-db", { type: "geojson", data: this.dbData || { type: "FeatureCollection", features: [] } });
-        map.addLayer({ id: "igor-lieux-db", type: "symbol", source: "igor-db", minzoom: 12, filter: this.placesFilter(), layout: Object.assign({}, layout, { visibility: "none" }), paint: this.placesPaint() });
+        map.addLayer({ id: "igor-lieux-db", type: "symbol", source: "igor-db", minzoom: 15, filter: this.placesFilter(), layout: Object.assign({}, layout, { visibility: "none" }), paint: this.placesPaint() });
         this.dbMode = null; this.dbSig = null;  // a new style: the library's tiles read again at once
         if (!map._iglDb) { map._iglDb = true; map.on("moveend", () => this.dbTick()); }
         this.dbTick();
@@ -11210,7 +11458,8 @@
       var map = this.map;
       this.dbStatus();
       if (!map || !map.getLayer || !map.getLayer("igor-lieux-db")) return;
-      var z = map.getZoom(), tz = z >= 14 ? 14 : z >= 13 ? 13 : z >= 12 ? 12 : 0;
+      // Only close up (zoom 15 and in): farther, the pins would smother the map.
+      var z = map.getZoom(), tz = z >= 14.5 ? 14 : 0;
       if (!tz || !this.placesOn()) return;
       var bb = map.getBounds(), n = Math.pow(2, tz);
       var tx = (lon) => Math.floor((lon + 180) / 360 * n), ty = (lat) => { var r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); };
@@ -11241,18 +11490,36 @@
       Promise.all(keys.map(one)).then((tiles) => {
         this.dbBusy = false;
         if (seq !== this.dbSeq || !this.map) return;
-        var ok = tiles.length && tiles.every((t) => t && t.complete), seen = {}, feats = [];
-        if (ok) tiles.forEach((t) => t.f.forEach((r) => {
-          if (seen[r[0]]) return; seen[r[0]] = 1;
+        var ok = tiles.length && tiles.every((t) => t && t.complete), seen = {}, feats = [], named = {};
+        // One place, one pin: the same name in the same family within 300 m
+        // is the same place told twice (a station's entrances, a shop's two
+        // nodes) — the best-ranked one stays, the others go.
+        var famOf = (r) => { var o = GPS_PLACE_OF[r[4]] || GPS_PLACE_OF[r[3]]; return o ? o[0] : r[3]; };
+        var rows = [];
+        if (ok) tiles.forEach((t) => t.f.forEach((r) => { if (!seen[r[0]]) { seen[r[0]] = 1; rows.push(r); } }));
+        rows.sort((a, b) => a[6] - b[6]);
+        rows.forEach((r) => {
+          var nm = String(r[5] || "").toLowerCase().replace(/[^a-z0-9àâäéèêëîïôöùûüç]+/g, " ").trim();
+          if (nm) {
+            var key = famOf(r) + "|" + nm, prev = named[key] || [];
+            if (prev.some((q) => gpsDist(q, [r[1], r[2]]) < 300)) return;
+            prev.push([r[1], r[2]]); named[key] = prev;
+          }
           feats.push({ type: "Feature", geometry: { type: "Point", coordinates: [r[1], r[2]] }, properties: { id: r[0], class: r[3], subclass: r[4], name: r[5], rank: r[6] } });
-        }));
+        });
         if (ok) { this.dbData = { type: "FeatureCollection", features: feats }; var src = map.getSource("igor-db"); if (src) src.setData(this.dbData); }
         if (ok !== this.dbMode) { this.dbMode = ok; this.placesApply(); }
         this.dbTick();  // the view moved on while the tiles came: its own turn
       });
     },
+    // Every family, but not the bus and tram stops (dozens of « Gare de… »
+    // around a station, each named after it), the information boards nor
+    // the fuel (the Ministry's stations are drawn apart, with their prices).
     placesFilter() {
-      return ["in", gpsPlaceExprs().fam, ["literal", this.placesFamilies()]];
+      var sub = ["coalesce", ["get", "subclass"], ["get", "class"]];
+      return ["all", ["in", gpsPlaceExprs().fam, ["literal", this.placesFamilies()]],
+        ["!", ["in", sub, ["literal", ["bus_stop", "tram_stop", "information", "fuel", "bus", "aerialway"]]]],
+        ["!", ["in", ["get", "class"], ["literal", ["fuel", "bus"]]]]];
     },
     placesPaint() {
       var day = this.ttStyle ? this.ttStyle.indexOf("Dark") < 0 : this.config.theme === "clair";
@@ -11272,6 +11539,23 @@
       ["igor-lieux", "igor-lieux-db"].forEach((id) => { if (map.getLayer(id)) Object.keys(P).forEach((k) => map.setPaintProperty(id, k, P[k])); });
     },
     // The finger on one of them (a little square around it: an icon is small).
+    // The road under the finger, from the map's own lines (TomTom's or the
+    // spare map's): its name and number, or null.
+    roadAt(point) {
+      var map = this.map;
+      if (!map || !point) return null;
+      try {
+        var fs = map.queryRenderedFeatures([[point.x - 10, point.y - 10], [point.x + 10, point.y + 10]]) || [];
+        for (var i = 0; i < fs.length; i++) {
+          var f = fs[i], l = f.layer || {}, n = (l.id + " " + (l["source-layer"] || "")).toLowerCase(), p = f.properties || {};
+          if (l.type !== "line" || /^igor|^route|^trail|^man|^alt|^incidents/.test(l.id) || !/road|street|transport|highway|major|minor|motorway/.test(n)) continue;
+          var nm = p["name:fr"] || p.name || p.street_name || p.road_name || "";
+          var ref = String(p.shield_text || p.ref || p.road_number || "").split(";")[0];
+          if (nm || ref) return { name: String(nm || ref).slice(0, 60), ref: nm ? ref : "" };
+        }
+      } catch (e) { /* none */ }
+      return null;
+    },
     placeAt(point) {
       var map = this.map;
       if (!map || !map.getLayer("igor-lieux") || !point) return null;
@@ -11329,7 +11613,8 @@
       el.className = "pvig";
       el.style.setProperty("--pc", fam.color);
       el.innerHTML = '<div class="pv-h"><i>' + gpsPlaceSvg(of[1], 26) + '</i><div class="pv-n"><b>' + esc(name) + '</b><small>' + esc(kind) + '</small></div>' +
-        (dist != null ? '<div class="pv-d"><b>' + gpsMetres(dist) + '</b><small>≈ ' + Math.max(1, Math.round(dist / 1000 / kmh * 60 * 1.3)) + ' min</small></div>' : "") + '</div>' +
+        (dist != null ? '<div class="pv-d"><b>' + gpsMetres(dist) + '</b><small>≈ ' + Math.max(1, Math.round(dist / 1000 / kmh * 60 * 1.3)) + ' min</small></div>' : "") +
+        '<button type="button" class="pv-c" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
         '<div class="pv-kv"><div class="pv-wait">Recherche des informations…</div></div><div class="pv-x" hidden></div>' +
         '<div class="pv-a"></div><div class="pv-t"><i></i></div>';
       var acts = el.querySelector(".pv-a"), kv = el.querySelector(".pv-kv"), extra = el.querySelector(".pv-x"), timer = null;
@@ -11378,6 +11663,7 @@
         catch (err) { extra.innerHTML = '<div class="pv-wait">Igor n\'a pas répondu.</div>'; }
         place();
       });
+      el.querySelector(".pv-c").addEventListener("click", (ev) => { ev.stopPropagation(); this.closePick(); });
       el.addEventListener("click", (ev) => { ev.stopPropagation(); hold(); });
       el.addEventListener("pointerdown", (ev) => ev.stopPropagation());
       // Over the pin; below it when the pin is high on the screen (the bars
@@ -11427,10 +11713,27 @@
       if (!map || !map.getStyle) return;
       try {
         var firstSym = ((map.getStyle().layers || []).find((l) => l.type === "symbol") || {}).id;
-        if (this.trailsOn && !map.getLayer("igor-trails")) {
-          if (!map.getSource("igor-trails")) map.addSource("igor-trails", { type: "raster", tileSize: 256, maxzoom: 18, tiles: [this.config.trails_tiles || "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png"], attribution: "© waymarkedtrails.org, OpenStreetMap" });
-          map.addLayer({ id: "igor-trails", type: "raster", source: "igor-trails", paint: { "raster-opacity": 0.95, "raster-fade-duration": 0 } }, firstSym);
-        } else if (!this.trailsOn && map.getLayer("igor-trails")) map.removeLayer("igor-trails");
+        // The marked trails, as vector lines (Igor's server keeps them, from
+        // OpenStreetMap): red on white for the GR, red on yellow for the GRP,
+        // yellow for the PR — or the colour the trail itself declares.
+        if (!map.getSource("igor-trails")) {
+          map.addSource("igor-trails", { type: "geojson", data: this.trailsData || { type: "FeatureCollection", features: [] }, attribution: "© OpenStreetMap" });
+          var net = ["get", "net"];
+          var col = ["to-color", ["get", "colour"], ["match", net, ["iwn", "nwn", "rwn"], "#e5323b", "lwn", "#f2c14e", "#c06cd8"]];
+          var cas = ["match", net, ["iwn", "nwn"], "#ffffff", "rwn", "#f2c14e", "rgba(7,8,10,0.45)"];
+          var wd = (a, b) => ["interpolate", ["linear"], ["zoom"], 10, a, 16, b];
+          map.addLayer({ id: "igor-trails-sel", type: "line", source: "igor-trails", filter: ["==", ["get", "id"], ""], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#59d0e0", "line-width": wd(9, 16), "line-opacity": 0.45, "line-blur": 2 } }, firstSym);
+          map.addLayer({ id: "igor-trails-case", type: "line", source: "igor-trails", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": cas, "line-width": wd(3, 7.5) } }, firstSym);
+          map.addLayer({ id: "igor-trails", type: "line", source: "igor-trails", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": col, "line-width": wd(1.6, 4.5) } }, firstSym);
+          var tfont = null;
+          (map.getStyle().layers || []).some((l) => { var f = l.layout && l.layout["text-font"]; if (Array.isArray(f) && typeof f[0] === "string") { tfont = f; return true; } return false; });
+          if (tfont) map.addLayer({ id: "igor-trails-ref", type: "symbol", source: "igor-trails", minzoom: 12,
+            layout: { "symbol-placement": "line", "text-field": ["case", ["!=", ["get", "ref"], ""], ["get", "ref"], ["get", "name"]], "text-font": tfont, "text-size": 12, "symbol-spacing": 400 },
+            paint: { "text-color": col, "text-halo-color": "#ffffff", "text-halo-width": 2 } });
+          if (!map._iglTrails) { map._iglTrails = true; map.on("moveend", () => this.trailsTick()); }
+        }
+        ["igor-trails-sel", "igor-trails-case", "igor-trails", "igor-trails-ref"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", this.trailsOn ? "visible" : "none"); });
+        if (this.trailsOn) { this.trailsSig = null; this.trailsTick(); }
         var data = { type: "FeatureCollection", features: [] };
         (this.gpxList() || []).forEach((t) => {
           data.features.push({ type: "Feature", geometry: { type: "MultiLineString", coordinates: t.lines }, properties: { name: t.name } });
@@ -11444,6 +11747,131 @@
           map.addLayer({ id: "igor-gpx-pt", type: "circle", source: "igor-gpx", filter: ["==", ["geometry-type"], "Point"], paint: { "circle-radius": 5, "circle-color": "#ff8a1f", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
         }
       } catch (e) { if (this.config.debug) this.message("randonnée : " + (e && e.message)); }
+    },
+    // The zoom-10 squares on screen, each asked of Igor's server once (kept
+    // there 60 days; still being fetched: asked again 30 s later).
+    trailsTick() {
+      var map = this.map;
+      if (!this.trailsOn || !map || !map.getSource || !map.getSource("igor-trails") || !this._hass || !this._hass.callApi) return;
+      if (map.getZoom() < 9.5) return;
+      var bb = map.getBounds(), n = 1024, tx = (lon) => Math.floor((lon + 180) / 360 * n), ty = (lat) => { var r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); };
+      var keys = [];
+      for (var x = tx(bb.getWest()); x <= tx(bb.getEast()); x++) for (var y = ty(bb.getNorth()); y <= ty(bb.getSouth()); y++) if (keys.length < 9) keys.push("10/" + x + "/" + y);
+      var mem = this.trailTiles || (this.trailTiles = {}), sig = keys.join(","), now = Date.now();
+      var need = keys.filter((k) => !mem[k] || (mem[k].pending && now - mem[k].at > 30000));
+      if (sig === this.trailsSig && !need.length) return;
+      this.trailsSig = sig;
+      var draw = () => {
+        var feats = [];
+        keys.forEach((k) => { var g = mem[k] && mem[k].gj; if (g && g.features) feats = feats.concat(g.features); });
+        this.trailsData = { type: "FeatureCollection", features: feats };
+        var src = this.map && this.map.getSource("igor-trails"); if (src) src.setData(this.trailsData);
+      };
+      draw();
+      if (!need.length) return;
+      if (!this.trailsToldAt || now - this.trailsToldAt > 60000) { this.trailsToldAt = now; this.toast("Sentiers balisés : chargement des environs…", 3000); }
+      need.forEach((k) => {
+        mem[k] = Object.assign(mem[k] || {}, { at: now, pending: true });
+        this._hass.callApi("GET", "nives/trails?t=" + k).then((r) => {
+          mem[k] = { at: Date.now(), pending: !!(r && r.pending), gj: (r && r.geojson) || (mem[k] && mem[k].gj) || null };
+          if (r && r.pending) setTimeout(() => { this.trailsSig = null; this.trailsTick(); }, 31000);
+          draw();
+        }).catch(() => { mem[k] = { at: Date.now(), pending: true, gj: null }; });
+      });
+    },
+    trailAt(point) {
+      var map = this.map;
+      if (!this.trailsOn || !map || !map.getLayer("igor-trails") || !point) return null;
+      try {
+        var f = (map.queryRenderedFeatures([[point.x - 12, point.y - 12], [point.x + 12, point.y + 12]], { layers: ["igor-trails", "igor-trails-case"] }) || [])[0];
+        return f ? (f.properties || null) : null;
+      } catch (e) { return null; }
+    },
+    // A trail touched: its sheet in a vignette — its name and network, its
+    // length, from where to where, its waymark, who keeps it; and: join it
+    // (the route to its nearest point), see it whole, keep it as a hike
+    // (Rando), Wikipédia, Igor's preparation.
+    trailVignette(tp, ll) {
+      var map = this.map;
+      if (!map || !tp || !tp.id) return;
+      this.closePick();
+      var esc = (x) => String(x == null ? "" : x).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+      var color = { iwn: "#e5323b", nwn: "#e5323b", rwn: "#e5323b", lwn: "#d9a441" }[tp.net] || "#c06cd8";
+      var lines = [];
+      (this.trailsData && this.trailsData.features || []).forEach((f) => { if (f.properties && f.properties.id === tp.id) lines = lines.concat(f.geometry.coordinates); });
+      var here = this.pos || (this.fix && this.fix.point), near = null, nd = 1e12;
+      lines.forEach((ln) => ln.forEach((q) => { var d = here ? gpsDist(here, q) : 0; if (d < nd) { nd = d; near = q; } }));
+      try { map.setFilter("igor-trails-sel", ["==", ["get", "id"], tp.id]); } catch (e) { /* no glow */ }
+      var title = [tp.ref, tp.name].filter(Boolean).join(" · ") || "Sentier balisé";
+      var el = document.createElement("div");
+      el.className = "pvig"; el.style.setProperty("--pc", color);
+      el.innerHTML = '<div class="pv-h"><i><ha-icon icon="mdi:hiking" style="color:#fff;--mdc-icon-size:26px"></ha-icon></i><div class="pv-n"><b>' + esc(title) + '</b><small>' +
+        esc({ iwn: "itinéraire international", nwn: "GR · grande randonnée", rwn: "GRP · grande randonnée de pays", lwn: "PR · promenade et randonnée" }[tp.net] || "sentier balisé") + '</small></div>' +
+        (here && near ? '<div class="pv-d"><b>' + gpsMetres(nd) + '</b><small>le plus proche</small></div>' : "") +
+        '<button type="button" class="pv-c" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
+        '<div class="pv-kv"><div class="pv-wait">Fiche du sentier…</div></div><div class="pv-x" hidden></div><div class="pv-a"></div><div class="pv-t"><i></i></div>';
+      var kv = el.querySelector(".pv-kv"), extra = el.querySelector(".pv-x"), acts = el.querySelector(".pv-a"), bar = el.querySelector(".pv-t i"), timer = null, info = null;
+      var arm = (ms) => { clearTimeout(timer); bar.style.transition = "none"; bar.style.width = "100%"; void bar.offsetWidth; bar.style.transition = "width " + ms + "ms linear"; bar.style.width = "0%"; timer = setTimeout(() => { if (this._pick === mk) this.closePick(); }, ms); };
+      var hold = () => { clearTimeout(timer); bar.style.transition = "none"; bar.style.width = "0%"; };
+      var act = (icon, label, fn, on) => { var b = document.createElement("button"); b.type = "button"; if (on) b.className = "on"; b.innerHTML = '<ha-icon icon="' + icon + '"></ha-icon><span>' + label + "</span>"; b.addEventListener("click", (ev) => { ev.stopPropagation(); fn(b); }); acts.appendChild(b); return b; };
+      var km = () => { var d = info && parseFloat(String(info.distance || "").replace(",", ".")); return isFinite(d) && d > 0 ? d : null; };
+      if (near) act("mdi:directions", "Rejoindre", () => { this.closePick(); this.chooseNext = true; this.setDestination({ lat: near[1], lon: near[0], name: title.slice(0, 40) }, true); }, true);
+      act("mdi:eye-outline", "Voir", () => {
+        var b = null; lines.forEach((ln) => ln.forEach((q) => { b = b ? [Math.min(b[0], q[0]), Math.min(b[1], q[1]), Math.max(b[2], q[0]), Math.max(b[3], q[1])] : [q[0], q[1], q[0], q[1]]; }));
+        if (b) { this.closePick(); this.follow = false; this.grabbed = true; map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 70, duration: 800 }); try { map.setFilter("igor-trails-sel", ["==", ["get", "id"], tp.id]); } catch (e) { /* */ } }
+      });
+      act("mdi:content-save-outline", "Garder", () => {
+        if (!lines.length) return;
+        var t = { name: title.slice(0, 60), lines: lines, wpts: [], km: km() || Math.round(lines.reduce((a, ln) => a + ln.slice(1).reduce((s0, q, i) => s0 + gpsDist(ln[i], q), 0), 0) / 10) / 100, up: info && parseFloat(info.ascent) || 0 };
+        this.gpxSave(this.gpxList().filter((x) => x.name !== t.name).concat([t]).slice(-8)); this.hikeLayers(this.map);
+        this.toast("Gardé dans Rando : « " + t.name + " »", 4000);
+      });
+      act("mdi:wikipedia", "Wikipédia", async () => {
+        hold(); extra.hidden = false; extra.innerHTML = '<div class="pv-wait">Wikipédia…</div>';
+        var lang = "fr", page = null, m;
+        if (info && info.wikipedia && (m = String(info.wikipedia).match(/^([a-z-]+):(.+)$/i))) { lang = m[1]; page = m[2]; }
+        try {
+          if (!page) { var sr = await (await fetch("https://fr.wikipedia.org/w/api.php?action=query&list=search&srlimit=1&format=json&origin=*&srsearch=" + encodeURIComponent(title))).json(); page = sr && sr.query && sr.query.search && sr.query.search[0] && sr.query.search[0].title; }
+          if (!page) throw new Error("rien");
+          var wj = await (await fetch("https://" + lang + ".wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(String(page).replace(/ /g, "_")))).json();
+          var url = (wj.content_urls && wj.content_urls.mobile && wj.content_urls.mobile.page) || ("https://" + lang + ".wikipedia.org/wiki/" + encodeURIComponent(page));
+          extra.innerHTML = '<b class="pv-src">Wikipédia · ' + esc(wj.title || page) + "</b><p>" + esc(wj.extract || "Pas de résumé.") + '</p><a target="_blank" rel="noopener" href="' + esc(url) + '">Lire l\'article</a>';
+        } catch (err) { extra.innerHTML = '<div class="pv-wait">Rien sur Wikipédia pour ce sentier.</div>'; }
+        place();
+      });
+      act("mdi:robot-happy-outline", "Igor", () => { this.closePick(); this.hikeIgor({ name: title, lines: lines, km: km() || (info && info.km_seen) || 0, up: info && parseFloat(info.ascent) || 0 }); });
+      el.querySelector(".pv-c").addEventListener("click", (ev) => { ev.stopPropagation(); this.closePick(); });
+      el.addEventListener("click", (ev) => { ev.stopPropagation(); hold(); });
+      el.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+      var cont = map.getContainer(), card = this.$("card"), at = ll || near;
+      el.style.position = "absolute"; el.style.zIndex = "3"; card.appendChild(el);
+      var mk = { getElement: () => el, remove: () => { el.remove(); try { map.setFilter("igor-trails-sel", ["==", ["get", "id"], ""]); } catch (e) { /* */ } } };
+      this._pick = mk;
+      var place = () => {
+        if (this._pick !== mk || !at) return;
+        var W = cont.clientWidth, H = cont.clientHeight, w = el.offsetWidth || 340, h = el.offsetHeight || 200, sp = map.project(at);
+        var x = Math.max(10, Math.min(W - 10 - w, sp.x - w / 2)), up = sp.y - 24 - 130, down = H - 130 - (sp.y + 14);
+        var y = h <= up || up >= down ? sp.y - 24 - h : sp.y + 14;
+        el.style.left = Math.round(x) + "px"; el.style.top = Math.round(Math.max(130, Math.min(H - 130 - h, y))) + "px";
+      };
+      place(); map.on("move", place);
+      el.addEventListener("igor-gone", () => map.off("move", place));
+      arm(20000);
+      this._hass.callApi("GET", "nives/trails/info?id=" + encodeURIComponent(tp.id)).then((r) => {
+        if (this._pick !== mk) return;
+        info = (r && r.trail) || {};
+        var rows = [], k0 = km();
+        rows.push(["mdi:map-marker-distance", "Longueur", k0 ? k0 + " km" : info.km_seen ? "au moins " + String(info.km_seen).replace(".", ",") + " km" : "?"]);
+        if (info.from || info.to) rows.push(["mdi:arrow-right", "Itinéraire", [info.from, info.to].filter(Boolean).join(" → ") + (info.roundtrip === "yes" ? " (boucle)" : "")]);
+        if (info.ascent || info.descent) rows.push(["mdi:elevation-rise", "Dénivelé", [info.ascent ? "+" + info.ascent + " m" : "", info.descent ? "−" + info.descent + " m" : ""].filter(Boolean).join(" / ")]);
+        if (info["osmc:symbol"]) rows.push(["mdi:sign-direction", "Balisage", gpsWaymark(info["osmc:symbol"])]);
+        if (info.operator) rows.push(["mdi:account-group", "Entretien", info.operator]);
+        if (info.website) rows.push(["mdi:web", "Site", String(info.website).replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")]);
+        kv.innerHTML = rows.map((r0) => '<div><ha-icon icon="' + r0[0] + '"></ha-icon><span>' + r0[1] + "</span><b>" + esc(r0[2]) + "</b></div>").join("") +
+          (info.description ? '<div class="pv-wait" style="white-space:normal">' + esc(info.description) + "</div>" : "");
+        if (info.website) { var wb = [...kv.querySelectorAll("b")].pop(); if (wb) { wb.style.cursor = "pointer"; wb.addEventListener("click", () => window.open(/^https?:/.test(info.website) ? info.website : "https://" + info.website, "_blank")); } }
+        place();
+      }).catch(() => { kv.innerHTML = '<div class="pv-wait">Fiche indisponible pour l\'instant.</div>'; });
     },
     gpxList() {
       if (this.gpxCache) return this.gpxCache;
@@ -11923,7 +12351,9 @@
       };
       Object.keys(T).forEach((k) => (T[k].items || []).forEach((q) => {
         if (all[q.id] || kinds.indexOf(q.kind) < 0) return;
-        if (q.kind === "fuel") tileFuel.push(q);
+        // The stations: the Ministry's list alone (where the prices come
+        // from, at their declared place) — OpenStreetMap's pumps no more.
+        if (q.kind === "fuel") return;
         if (near40(q.kind, q.p)) return;
         all[q.id] = true;
         if (q.kind === "camera") cams.push(q);
@@ -12057,19 +12487,19 @@
       // A station that wears its price tag (logo + price) is that tag only:
       // no dot, no pump icon under it — one station, one mark on the map.
       var fuelOn = !!(this.layers && this.layers.fuel);
-      var tagged = (q) => fuelOn && q.kind === "fuel" && ((q.prices || {}).gazole != null || !!(q.rupture || {}).gazole);
+      var tagged = () => false;  // a station: its pin, its price above it
       // On TomTom's 3D map its own pumps are the stations: Igor draws none.
       var marks = shown.filter((q) => !tagged(q) && !(q.kind === "fuel" && this.basePois()));
       var near = car ? marks.filter((q) => q.kind !== "camera" && gpsDist(q.p, car) < GPS_ICON_M)
         .sort((a, b) => gpsDist(a.p, car) - gpsDist(b.p, car)).slice(0, GPS_ICON_MAX) : [];
-      var iconed = shown.filter((q) => q.kind === "camera").concat(near);
-      var sig = ids.join(","), isig = iconed.map((q) => q.id).join(",");
+      var iconed = shown.filter((q) => q.kind === "camera" || (q.kind === "fuel" && zoom >= 12)).concat(near.filter((q) => q.kind !== "fuel"));
+      var sig = ids.join(",") + "|" + (zoom >= 12 ? 1 : 0), isig = iconed.map((q) => q.id).join(",");
       if (sig === this.poiShown && isig === this.poiIconSig) return;
       var asFeat = (q) => ({ type: "Feature", geometry: { type: "Point", coordinates: q.p }, properties: { kind: q.kind, label: q.label || "", brand: q.brand || "", color: (GPS_POI[q.kind] || {}).color || "#8a9099" } });
       if (sig !== this.poiShown) {
         this.poiShown = sig;
         var src = map && map.getSource("pois");
-        if (src) src.setData({ type: "FeatureCollection", features: marks.filter((q) => q.kind !== "camera").map(asFeat) });
+        if (src) src.setData({ type: "FeatureCollection", features: marks.filter((q) => q.kind !== "camera" && !(q.kind === "fuel" && zoom >= 12)).map(asFeat) });
         this.lastShown = shown;
         this.refreshFuelTags(shown);
       }
@@ -12108,8 +12538,14 @@
       // On TomTom's map, a price only where TomTom draws its pump (zoomed
       // out, no pump, no price), on that pump, one price per pump (the
       // nearest station); elsewhere, on the station's own point.
-      var taken = {}, far = !tt && map.getZoom() < 13;  // another map, zoomed out: no prices either
-      (far ? [] : (shown || this.pois) || []).forEach((q) => {
+      // The prices: zoom 13.5 and in, on screen, the 12 stations nearest the
+      // view's centre — they come and go with their pins, never alone.
+      var taken = {}, far = !tt && map.getZoom() < 13.5;
+      var ctr = map.getCenter(), cc = [ctr.lng, ctr.lat], bnd = map.getBounds();
+      var onScreen = (q) => bnd && q.p[0] >= bnd.getWest() && q.p[0] <= bnd.getEast() && q.p[1] >= bnd.getSouth() && q.p[1] <= bnd.getNorth();
+      var fuelNow = (far ? [] : (shown || this.pois) || []).filter((q) => q.kind === "fuel" && onScreen(q))
+        .sort((a, b) => gpsDist(a.p, cc) - gpsDist(b.p, cc)).slice(0, 12);
+      fuelNow.forEach((q) => {
         if (q.kind !== "fuel") return;
         var pr = (q.prices || {}).gazole, ru = (q.rupture || {}).gazole;
         if (pr == null && !ru) return;
@@ -12128,7 +12564,7 @@
         var m = this.fuelTags[q.id];
         if (!m) {
           var el = document.createElement("div"); el.className = "ftag" + (tt ? " slim" : "");
-          m = new window.maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, tt ? -24 : -14] }).setLngLat(at).addTo(map);
+          m = new window.maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, tt ? -24 : -44] }).setLngLat(at).addTo(map);
           this.fuelTags[q.id] = m;
         } else if (tt) m.setLngLat(at);
         var el = m.getElement();
@@ -15239,11 +15675,15 @@
   // The « Carte 3D » window, over the whole screen, from any card (the phone's
   // map: its « Couches » button): the same window and the same settings as
   // Réglages → Carte 3D on the head unit — one look for both screens.
-  function openMap3dWindow(hass, id) {
+  // `host`: where the window lives. Inside the map's own card: a card in
+  // full screen (requestFullscreen) shows nothing but itself, and a window
+  // hung on the page's body stayed invisible behind it — opened « once in
+  // two », only after a back gesture had left the full screen.
+  function openMap3dWindow(hass, id, host) {
     var w = document.createElement("igor-settings-card");
     w.setConfig({ map3d: id, window_only: true });
     w.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;z-index:2147482000";
-    document.body.appendChild(w);
+    (host || document.fullscreenElement || document.body).appendChild(w);
     w.hass = hass;
     w.openMap3d();
     return w;
@@ -15294,7 +15734,7 @@
     ["zp", "Caméra", "Inclinaison selon le zoom", "en 3D de près, à plat en dézoomant, comme la carte d'un jeu", "sw"],
     ["az", "Caméra", "Zoom selon la vitesse", "dézoome sur route rapide", "sw"],
     ["cy", "Caméra", "Voiture à l'écran", "plus bas : plus de route devant", "seg", [["haut", "plus haut"], ["milieu", "au milieu"], ["bas", "plus bas"]]],
-    ["fb", "Performance", "Carte de secours", "celle d'Igor (OpenStreetMap, sur Home Assistant) : seulement si TomTom ne répond pas, ou tout le temps", "seg", [["auto", "si besoin"], ["secours", "toujours"]]],
+    ["fb", "Lumière", "Fond de carte", "TomTom (3D, trafic), Mapbox (bâtiments et monuments 3D, lumière selon l'heure ; clé Mapbox dans les options d'Igor) ou la carte d'Igor (OpenStreetMap sur Home Assistant)", "seg", [["auto", "TomTom"], ["mapbox", "Mapbox"], ["secours", "Igor"]]],
     ["fl", "Performance", "Mode fluide", "allège tout seul quand ça rame", "sw"],
     ["px", "Performance", "Netteté", "", "seg", [["eco", "économe"], ["normale", "normale"], ["max", "maximale"]]],
     ["aa", "Performance", "Lissage des bords", "coûteux sur téléphone ; inutile sur un écran très fin · au prochain affichage de la carte", "seg", [["auto", "auto"], ["oui", "oui"], ["non", "non"]]],
@@ -16500,6 +16940,192 @@
     }
   }
 
+  // ----- igor-mapbox-card: Mapbox, all of it (a test bench) -----
+  //   type: custom:igor-mapbox-card
+  //   entity: device_tracker.myphone      # where the map opens (else the phone's own GPS)
+  //   zoom: 16
+  //   pitch: 60
+  // Mapbox Standard as Mapbox makes it — its colours, its 3D buildings and
+  // landmarks, its trees, its fonts, its street names, shops and transit —
+  // and around it what Mapbox offers a web page: the light by the hour
+  // (dawn, day, dusk, night, following the sun or held), its themes
+  // (default, faded, monochrome), Standard or Standard Satellite, its live
+  // traffic, its 3D terrain, its search (Geocoding v6), its routes with
+  // traffic (Directions, driving-traffic) and its GPS dot. Nothing of Igor's
+  // own drawing. The token: Igor's options (/api/nives/mapbox).
+  var MBX_PRESETS = [["auto", "Auto (soleil)"], ["dawn", "Aube"], ["day", "Jour"], ["dusk", "Crépuscule"], ["night", "Nuit"]];
+  var MBX_THEMES = [["default", "Standard"], ["faded", "Estompé"], ["monochrome", "Monochrome"]];
+  var MBX_STYLES = [["standard", "Standard", "mapbox://styles/mapbox/standard"], ["satellite", "Satellite", "mapbox://styles/mapbox/standard-satellite"], ["mine", "Mon style", ""]];
+  var MBX_TOGGLES = [["show3dObjects", "Tous les objets 3D", true], ["show3dBuildings", "Bâtiments 3D", true], ["show3dFacades", "Façades détaillées", true],
+    ["show3dLandmarks", "Monuments 3D", true], ["show3dTrees", "Arbres 3D", true], ["showPlaceLabels", "Noms des villes et quartiers", true], ["showRoadLabels", "Noms des rues", true],
+    ["showPointOfInterestLabels", "Commerces et lieux", true], ["showTransitLabels", "Transports en commun", true], ["showPedestrianRoads", "Chemins piétons", true]];
+  class IgorMapboxCard extends HTMLElement {
+    setConfig(config) { this.config = Object.assign({ zoom: 16, pitch: 60 }, config || {}); }
+    getCardSize() { return 8; }
+    set hass(h) { this._hass = h; if (!this.root) this.build(); if (!this.map && !this.starting) this.start(); }
+    load() {
+      var d = { preset: "auto", theme: "default", style: "standard", traffic: false, terrain: false };
+      MBX_TOGGLES.forEach(function (t) { d[t[0]] = t[2]; });
+      try { return Object.assign(d, JSON.parse(localStorage.getItem("igor-mapbox") || "{}")); } catch (e) { return d; }
+    }
+    save() { try { localStorage.setItem("igor-mapbox", JSON.stringify(this.s)); } catch (e) { /* this time only */ } }
+    build() {
+      try { gpsFontDeclare(); } catch (e) { /* */ }
+      this.s = this.load();
+      this.root = this.attachShadow({ mode: "open" });
+      this.root.innerHTML = '<link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v' + GPS_MAPBOX_VER + '/mapbox-gl.css"><style>' +
+        ":host { display: block; height: 100%; } ha-card { position: fixed; inset: 0; z-index: 2147481000; background: #0b0d18; border-radius: 0; overflow: hidden; font-family: 'Igor Rubik', Rubik, Roboto, sans-serif; --gx: 16px; }" +
+        "#map { position: absolute; inset: 0; }" +
+        ".msg { position: absolute; inset: 0; display: grid; place-items: center; color: #aab; padding: 30px; text-align: center; font-size: 15px; } .msg[hidden] { display: none; }" +
+        ".bar { position: absolute; z-index: 3; top: calc(14px + env(safe-area-inset-top, 0px)); left: var(--gx); right: var(--gx); display: flex; gap: 8px; }" +
+        ".bar form { flex: 1; display: flex; height: 48px; background: rgba(255,255,255,.95); border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,.25); overflow: hidden; } .bar input { flex: 1; border: 0; padding: 0 14px; font: inherit; font-size: 16px; background: none; color: #1f2833; outline: none; min-width: 0; }" +
+        ".bar button, .fab { width: 48px; height: 48px; border-radius: 12px; border: 0; background: rgba(255,255,255,.95); color: #1f2833; display: grid; place-items: center; box-shadow: 0 6px 18px rgba(0,0,0,.25); cursor: pointer; --mdc-icon-size: 22px; flex: none; }" +
+        ".list { position: absolute; z-index: 4; top: calc(70px + env(safe-area-inset-top, 0px)); left: var(--gx); right: var(--gx); background: rgba(255,255,255,.97); border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,.25); overflow: hidden; } .list[hidden] { display: none; }" +
+        ".list div { padding: 12px 14px; border-top: 1px solid #e3e7ef; cursor: pointer; color: #1f2833; font-size: 14px; } .list div:first-child { border-top: 0; } .list small { display: block; color: #6b7385; font-size: 12px; margin-top: 2px; }" +
+        ".route { position: absolute; z-index: 3; left: var(--gx); right: var(--gx); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: rgba(255,255,255,.97); border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,.25); padding: 12px 14px; display: flex; align-items: center; gap: 12px; color: #1f2833; } .route[hidden] { display: none; }" +
+        ".route b { font-size: 22px; } .route span { color: #6b7385; font-size: 13px; flex: 1; } .route button { border: 0; background: #e8ecf3; border-radius: 8px; padding: 9px 12px; font: inherit; cursor: pointer; }" +
+        ".side { position: absolute; z-index: 3; right: var(--gx); bottom: calc(110px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 8px; }" +
+        ".panel { position: absolute; z-index: 5; left: 0; right: 0; bottom: 0; max-height: 78%; overflow-y: auto; background: rgba(255,255,255,.98); border-radius: 16px 16px 0 0; box-shadow: 0 -6px 24px rgba(0,0,0,.25); padding: 14px var(--gx) calc(18px + env(safe-area-inset-bottom, 0px)); color: #1f2833; } .panel[hidden] { display: none; }" +
+        ".panel h3 { margin: 14px 0 8px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: #6b7385; font-weight: 500; } .panel .top { display: flex; align-items: center; } .panel .top b { flex: 1; font-size: 17px; }" +
+        ".seg { display: flex; flex-wrap: wrap; gap: 6px; } .seg button { border: 1px solid #d6dbe6; background: #f4f6fa; color: #1f2833; border-radius: 8px; padding: 9px 12px; font: inherit; font-size: 14px; cursor: pointer; } .seg button.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }" +
+        ".tg { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid #eef1f6; font-size: 15px; } .tg button { min-width: 64px; border: 1px solid #d6dbe6; background: #f4f6fa; border-radius: 8px; padding: 7px 10px; font: inherit; cursor: pointer; } .tg button.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }" +
+        ".note { font-size: 12.5px; color: #6b7385; margin-top: 6px; }" +
+        ".mapboxgl-ctrl-top-left, .mapboxgl-ctrl-top-right { top: calc(70px + env(safe-area-inset-top, 0px)); }" +
+        "</style><ha-card><div id='map'></div><div class='msg' id='msg'>Chargement de Mapbox…</div>" +
+        "<div class='bar'><form id='f'><input id='q' type='text' enterkeyhint='search' placeholder='Rechercher (Mapbox)' autocomplete='off'></form><button id='set' title='Réglages Mapbox'><ha-icon icon='mdi:tune-variant'></ha-icon></button></div>" +
+        "<div class='list' id='list' hidden></div><div class='side'><button class='fab' id='me' title='Ma position'><ha-icon icon='mdi:crosshairs-gps'></ha-icon></button></div>" +
+        "<div class='route' id='route' hidden><b id='rt'></b><span id='rs'></span><button id='rx'>Effacer</button></div>" +
+        "<div class='panel' id='panel' hidden></div></ha-card>";
+      var $ = (id) => this.root.getElementById(id);
+      this.$ = $;
+      $("set").addEventListener("click", () => { var p = $("panel"); p.hidden = !p.hidden; if (!p.hidden) this.drawPanel(); });
+      $("f").addEventListener("submit", (ev) => { ev.preventDefault(); this.search($("q").value); });
+      $("me").addEventListener("click", () => { var c = this.here(); if (c && this.map) this.map.easeTo({ center: c, zoom: Math.max(this.map.getZoom(), 16), duration: 700 }); });
+      $("rx").addEventListener("click", () => this.clearRoute());
+    }
+    here() {
+      if (this.gps) return this.gps;
+      var st = this.config.entity && this._hass && this._hass.states[this.config.entity], a = (st && st.attributes) || {};
+      return typeof a.latitude === "number" ? [a.longitude, a.latitude] : null;
+    }
+    async start() {
+      this.starting = true;
+      var $ = this.$;
+      try {
+        this.cfg = await this._hass.callApi("GET", "nives/mapbox");
+        if (!this.cfg || !this.cfg.ok) { $("msg").textContent = "Pas de clé Mapbox : Paramètres → Appareils et services → Igor → Configurer → Clé Mapbox."; return; }
+        var mb = await gpsMapbox();
+        var c = this.here() || [2.3522, 48.8566];
+        var map = this.map = new mb.Map({ container: $("map"), accessToken: this.cfg.token, style: this.styleUrl(), center: c, zoom: this.config.zoom, pitch: this.config.pitch, maxPitch: 85, antialias: true, config: { basemap: this.basemapConfig() } });
+        map.addControl(new mb.NavigationControl({ visualizePitch: true }), "top-right");
+        var geo = new mb.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true, showUserHeading: true });
+        map.addControl(geo, "top-right");
+        geo.on("geolocate", (e) => { this.gps = [e.coords.longitude, e.coords.latitude]; });
+        map.on("style.load", () => { $("msg").hidden = true; this.applyExtras(); if (this.routeGeo) this.drawRoute(this.routeGeo); });
+        map.on("error", (e) => { var er = e && e.error; if (er && (er.status === 401 || er.status === 403)) { $("msg").hidden = false; $("msg").textContent = "Clé Mapbox refusée (" + er.status + ") : vérifiez le jeton et ses restrictions d'adresse."; } });
+        this.tick = setInterval(() => this.lightTick(), 60000);
+        this.lightTick();
+      } catch (e) { $("msg").textContent = "Mapbox indisponible : " + ((e && e.message) || e); }
+      finally { this.starting = false; }
+    }
+    disconnectedCallback() { clearInterval(this.tick); }
+    styleUrl() { var st = MBX_STYLES.find((x) => x[0] === this.s.style) || MBX_STYLES[0]; return st[0] === "mine" ? (this.cfg.style || MBX_STYLES[0][2]) : st[2]; }
+    preset() {
+      if (this.s.preset !== "auto") return this.s.preset;
+      var sun = this._hass && this._hass.states["sun.sun"], a = (sun && sun.attributes) || {}, el = Number(a.elevation);
+      if (!isFinite(el)) { var hh = new Date().getHours(); return hh < 6 || hh >= 22 ? "night" : hh < 9 ? "dawn" : hh >= 19 ? "dusk" : "day"; }
+      var rising = a.rising === true || (a.rising == null && new Date().getHours() < 12);
+      return el < -6 ? "night" : el < 6 ? (rising ? "dawn" : "dusk") : "day";
+    }
+    basemapConfig() {
+      var c = { lightPreset: this.preset(), theme: this.s.theme };
+      MBX_TOGGLES.forEach((t) => { c[t[0]] = !!this.s[t[0]]; });
+      return c;
+    }
+    lightTick() {
+      if (!this.map) return;
+      var p = this.preset();
+      if (p !== this.shownPreset) { this.shownPreset = p; this.setCfg("lightPreset", p); }
+    }
+    setCfg(k, v) { try { this.map.setConfigProperty("basemap", k, v); } catch (e) { /* a style without it */ } }
+    // Mapbox's own extras: live traffic (Mapbox Traffic v1) and the 3D terrain (Mapbox Terrain DEM).
+    applyExtras() {
+      var map = this.map;
+      try {
+        if (this.s.traffic && !map.getLayer("mbx-traffic")) {
+          if (!map.getSource("mbx-traffic")) map.addSource("mbx-traffic", { type: "vector", url: "mapbox://mapbox.mapbox-traffic-v1" });
+          map.addLayer({ id: "mbx-traffic", type: "line", source: "mbx-traffic", "source-layer": "traffic", slot: "middle", layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-width": ["interpolate", ["linear"], ["zoom"], 10, 1.5, 16, 4], "line-offset": ["interpolate", ["linear"], ["zoom"], 10, 1, 16, 3],
+              "line-color": ["match", ["get", "congestion"], "low", "#2ecc71", "moderate", "#f39c12", "heavy", "#e74c3c", "severe", "#8e1b1b", "#9aa3b5"] } });
+        } else if (!this.s.traffic && map.getLayer("mbx-traffic")) map.removeLayer("mbx-traffic");
+        if (this.s.terrain) {
+          if (!map.getSource("mbx-dem")) map.addSource("mbx-dem", { type: "raster-dem", url: "mapbox://mapbox.mapbox-terrain-dem-v1", tileSize: 512, maxzoom: 14 });
+          map.setTerrain({ source: "mbx-dem", exaggeration: 1.3 });
+        } else map.setTerrain(null);
+      } catch (e) { /* as it is */ }
+    }
+    drawPanel() {
+      var p = this.$("panel"), s = this.s;
+      p.innerHTML = "";
+      var top = document.createElement("div"); top.className = "top"; top.innerHTML = "<b>Mapbox · réglages</b>";
+      var x = document.createElement("button"); x.className = "fab"; x.style.boxShadow = "none"; x.innerHTML = "<ha-icon icon='mdi:close'></ha-icon>"; x.addEventListener("click", () => { p.hidden = true; }); top.appendChild(x); p.appendChild(top);
+      var seg = (title, opts, key, on) => {
+        var h = document.createElement("h3"); h.textContent = title; p.appendChild(h);
+        var g = document.createElement("div"); g.className = "seg"; p.appendChild(g);
+        opts.forEach((o) => { var b = document.createElement("button"); b.textContent = o[1]; if (s[key] === o[0]) b.className = "on"; b.addEventListener("click", () => { s[key] = o[0]; this.save(); on(o[0]); this.drawPanel(); }); g.appendChild(b); });
+      };
+      seg("Lumière (selon l'heure)", MBX_PRESETS, "preset", () => { this.shownPreset = null; this.lightTick(); });
+      var n = document.createElement("div"); n.className = "note"; n.textContent = "Auto : aube et crépuscule quand le soleil est à moins de 6° de l'horizon, nuit en dessous de −6°, jour au-dessus. Maintenant : " + ({ dawn: "aube", day: "jour", dusk: "crépuscule", night: "nuit" }[this.preset()]) + "."; p.appendChild(n);
+      seg("Thème", MBX_THEMES, "theme", (v) => this.setCfg("theme", v));
+      seg("Carte", MBX_STYLES.filter((x) => x[0] !== "mine" || (this.cfg && this.cfg.style && this.cfg.style.indexOf("mapbox/standard") < 0)), "style", () => { this.map.setStyle(this.styleUrl(), { config: { basemap: this.basemapConfig() } }); this.shownPreset = this.preset(); });
+      var h = document.createElement("h3"); h.textContent = "Affichage"; p.appendChild(h);
+      var tg = (label, key, on) => { var r = document.createElement("div"); r.className = "tg"; r.appendChild(document.createTextNode(label)); var b = document.createElement("button"); b.textContent = s[key] ? "oui" : "non"; if (s[key]) b.className = "on"; b.addEventListener("click", () => { s[key] = !s[key]; this.save(); on(s[key]); this.drawPanel(); }); r.appendChild(b); p.appendChild(r); };
+      MBX_TOGGLES.forEach((t) => tg(t[1], t[0], (v) => this.setCfg(t[0], v)));
+      tg("Trafic en direct (Mapbox)", "traffic", () => this.applyExtras());
+      tg("Relief 3D", "terrain", () => this.applyExtras());
+    }
+    // Mapbox's search (Geocoding v6), near where the map looks.
+    async search(q) {
+      q = String(q || "").trim(); var list = this.$("list");
+      if (!q || !this.map) { list.hidden = true; return; }
+      var c = this.map.getCenter();
+      try {
+        var r = await (await fetch("https://api.mapbox.com/search/geocode/v6/forward?language=fr&limit=6&proximity=" + c.lng.toFixed(5) + "," + c.lat.toFixed(5) + "&q=" + encodeURIComponent(q) + "&access_token=" + encodeURIComponent(this.cfg.token))).json();
+        list.innerHTML = ""; list.hidden = false;
+        (r.features || []).forEach((f) => {
+          var d = document.createElement("div"), pr = f.properties || {};
+          d.innerHTML = "<b></b><small></small>"; d.firstChild.textContent = pr.name || ""; d.lastChild.textContent = pr.place_formatted || pr.full_address || "";
+          d.addEventListener("click", () => { list.hidden = true; var co = f.geometry.coordinates; this.map.flyTo({ center: co, zoom: 16.5, pitch: 60, duration: 1500 }); this.dest = co; this.route(co, pr.name); });
+          list.appendChild(d);
+        });
+        if (!list.children.length) { list.innerHTML = "<div>Rien trouvé.</div>"; }
+      } catch (e) { list.hidden = false; list.innerHTML = "<div>Recherche Mapbox indisponible.</div>"; }
+    }
+    // Mapbox's route with live traffic (Directions, driving-traffic), from where the phone is.
+    async route(to, name) {
+      var from = this.here();
+      if (!from) return;
+      try {
+        var r = await (await fetch("https://api.mapbox.com/directions/v5/mapbox/driving-traffic/" + from.join(",") + ";" + to.join(",") + "?geometries=geojson&overview=full&language=fr&access_token=" + encodeURIComponent(this.cfg.token))).json();
+        var R = r.routes && r.routes[0];
+        if (!R) return;
+        this.routeGeo = R.geometry; this.drawRoute(R.geometry);
+        var m = Math.round(R.duration / 60);
+        this.$("rt").textContent = m >= 60 ? Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0") : m + " min";
+        this.$("rs").textContent = (R.distance / 1000).toFixed(1).replace(".", ",") + " km · " + (name || "destination") + " · trafic Mapbox";
+        this.$("route").hidden = false;
+      } catch (e) { /* no route */ }
+    }
+    drawRoute(geo) {
+      var map = this.map, data = { type: "Feature", geometry: geo, properties: {} };
+      if (map.getSource("mbx-route")) { map.getSource("mbx-route").setData(data); return; }
+      map.addSource("mbx-route", { type: "geojson", data: data });
+      map.addLayer({ id: "mbx-route-case", type: "line", source: "mbx-route", slot: "middle", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#0b4fb3", "line-width": 11 } });
+      map.addLayer({ id: "mbx-route", type: "line", source: "mbx-route", slot: "middle", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#3d8bfd", "line-width": 7 } });
+    }
+    clearRoute() { this.routeGeo = null; this.$("route").hidden = true; try { ["mbx-route", "mbx-route-case"].forEach((id) => this.map.getLayer(id) && this.map.removeLayer(id)); this.map.removeSource("mbx-route"); } catch (e) { /* */ } }
+  }
+
   function define(name, cls, label, description) {
     if (!customElements.get(name)) customElements.define(name, cls);
     window.customCards = window.customCards || [];
@@ -16549,6 +17175,7 @@
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
   define("igor-car-card", IgorCarCard, "Igor · voiture", "La voiture qui roule : vitesse, régime, température, batterie, trajet.");
   define("igor-security-card", IgorSecurityCard, "Igor · sécurité", "L'alarme (armer, désarmer avec le code), la caméra active ou privée, ses positions enregistrées.");
+  define("igor-mapbox-card", IgorMapboxCard, "Igor · Mapbox", "Mapbox tel quel : ses couleurs, ses bâtiments 3D, sa lumière selon l'heure, son trafic, sa recherche et ses itinéraires.");
   define("igor-gps-card", IgorGpsCard, "Igor Explorer", "La carte d'Igor : guidage, radars, lieux d'OpenStreetMap, carte à explorer.");
   define("igor-carmedia-card", IgorCarMediaCard, "Igor · musique de la voiture", "Le titre en cours sur l'autoradio et trois gros boutons.");
 

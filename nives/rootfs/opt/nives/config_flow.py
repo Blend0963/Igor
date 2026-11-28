@@ -30,6 +30,8 @@ from .const import (
     CONF_CODE_HASH,
     CONF_TRAFFIC_KEY,
     CONF_HERE_KEY,
+    CONF_MAPBOX_STYLE,
+    CONF_MAPBOX_TOKEN,
     CONF_HERE_DAILY,
     CONF_ALLOWED_USERS,
     CONF_CAR_TRACKER,
@@ -235,7 +237,19 @@ class OptionsFlow(config_entries.OptionsFlow):
                     hk = str(current.get(CONF_HERE_KEY) or "")
                 if hk:
                     user_input[CONF_HERE_KEY] = hk
-                return self.async_create_entry(title="", data=user_input)
+                # The Mapbox token, kept the same way (never shown back).
+                mt = str(user_input.pop(CONF_MAPBOX_TOKEN, "") or "").strip()
+                if mt == "-":
+                    mt = ""
+                elif not mt:
+                    mt = str(current.get(CONF_MAPBOX_TOKEN) or "")
+                if mt:
+                    user_input[CONF_MAPBOX_TOKEN] = mt
+                ms = str(user_input.get(CONF_MAPBOX_STYLE) or "").strip()
+                if ms and not ms.startswith(("mapbox://styles/", "https://")):
+                    errors[CONF_MAPBOX_STYLE] = "mapbox_style"
+                else:
+                    return self.async_create_entry(title="", data=user_input)
 
         # Home Assistant's people, to pick who Igor still answers while the
         # key is away (no name to type wrong); names set in YAML stay listed.
@@ -310,6 +324,10 @@ class OptionsFlow(config_entries.OptionsFlow):
                     vol.Optional(CONF_HERE_DAILY, default=int(current.get(CONF_HERE_DAILY) or 300)): selector.NumberSelector(
                         selector.NumberSelectorConfig(min=0, max=2000, step=10, mode=selector.NumberSelectorMode.BOX)
                     ),
+                    vol.Optional(CONF_MAPBOX_TOKEN, default=""): selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+                    ),
+                    vol.Optional(CONF_MAPBOX_STYLE, description={"suggested_value": current.get(CONF_MAPBOX_STYLE) or ""}): selector.TextSelector(),
                 }
             ),
             errors=errors,

@@ -1,3 +1,52 @@
+## 0.62.34 — Mapbox tel quel (carte de test)
+
+- **Nouvelle carte `custom:igor-mapbox-card`** (« Igor · Mapbox ») : Mapbox Standard exactement comme Mapbox la fait — ses couleurs, sa police, ses bâtiments, façades, monuments et **arbres en 3D**, ses noms de rues, commerces et transports — en plein écran, rien d'Igor par-dessus. Son panneau (⚙) :
+  - **Lumière selon l'heure** : Auto (suit le soleil : aube et crépuscule à moins de 6° de l'horizon, nuit sous −6°, jour au-dessus), ou tenue sur Aube, Jour, Crépuscule, Nuit ;
+  - **Thème** : Standard, Estompé, Monochrome ; **Carte** : Standard ou Standard Satellite (ou votre style des options d'Igor) ;
+  - **Affichage** : objets 3D, bâtiments, façades, monuments, arbres, noms des villes, des rues, commerces, transports, chemins piétons ;
+  - **Trafic en direct Mapbox** et **relief 3D** (Mapbox Terrain).
+- Sa **recherche** (Mapbox Geocoding) et ses **itinéraires avec trafic** (Mapbox Directions, driving-traffic), son point GPS avec la direction, sa boussole. Les choix sont gardés sur l'écran.
+- Igor Explorer sur fond Mapbox : arbres, monuments et bâtiments 3D demandés explicitement.
+
+## 0.62.33 — Mapbox comme fond de carte
+
+- **Mapbox Standard sur Igor Explorer** : bâtiments et monuments en 3D, lumière selon l'heure (aube, jour, crépuscule, nuit, suivant le soleil de Home Assistant, ou tenue par « Jour et nuit »), ses propres noms de lieux. Ses noms de rues et ses commerces sont masqués : ce sont ceux d'Igor (la bibliothèque des lieux, le toucher sur une rue). Guidage, lieux, vignettes, sentiers, GPX, dock et Igor par-dessus ; les tracés d'Igor se rangent dans la 3D (couche « middle »), les épingles au-dessus.
+- Options d'Igor : **clé Mapbox** (jeton public `pk.…`, jamais réaffiché ; un tiret l'efface) et **style Mapbox** facultatif (un style à vous de Mapbox Studio, `mapbox://styles/…` ; vide : Mapbox Standard). Le jeton est donné aux seuls écrans connectés (`/api/nives/mapbox`).
+- Réglages → Carte 3D → Lumière → **Fond de carte** : TomTom, Mapbox ou Igor (ou `basemap: mapbox` dans la carte). Sans clé, ou clé refusée : retour à la carte habituelle, avec un message.
+- Mapbox GL JS 3.36 chargé depuis Mapbox ; le logo et la mention Mapbox restent visibles (sous la barre de recherche), comme Mapbox l'exige.
+
+## 0.62.32 — La carte d'Igor : noms, couleurs, tous les bâtiments
+
+- **Carte d'Igor (OpenStreetMap sur Home Assistant) jusqu'au zoom 15** : tous les bâtiments, et non plus seulement les grands. La carte déjà téléchargée est complétée d'elle-même (les tuiles en place servent pendant ce temps). Taille : plusieurs dizaines de Go pour la France.
+- **Une police par sorte de nom** (sur la carte d'Igor, et sur la carte TomTom autant que ses couches le permettent) : régions en capitales fines très espacées ; villes et villages en capitales étroites et grasses (Barlow Condensed) ; quartiers et lieux-dits en petites capitales espacées ; mers, lacs, rivières en italique bleu ; forêts et parcs en italique vert. Les noms viennent avec le zoom (régions et grandes villes de loin, villages, puis quartiers, parcs et rivières).
+- **Plus de noms de rues sur la carte** : seuls les numéros de route, dans leur panneau (A et N rouges, D jaunes). **Un toucher sur une rue donne son nom** (et son numéro) dans la bulle, qui reste dans l'écran ; à défaut, OpenStreetMap (Nominatim) le dit.
+- **Couleurs de la carte d'Igor** : prés vert clair, champs olive, forêts vert soutenu, villes gris lavande, eau turquoise, plages sable, autoroutes blanches de loin et jaunes de près ; la même logique en indigo la nuit. Le jour, la carte TomTom prend le même vert pour le sol et les forêts.
+- Réglages → Carte 3D → Lumière → **Fond de carte** : TomTom (la carte d'Igor s'il ne répond pas) ou Igor.
+- Polices embarquées en plus : Rubik fine et italique, Barlow Condensed (OFL).
+
+## 0.62.31 — Rubik, la police d'Igor Explorer
+
+- **Les noms de la carte** (villes, rues, lieux) en **Rubik** : sur la carte TomTom (police personnalisée du SDK) et sur la carte de secours (MapLibre 6). Les écritures non latines restent dans la police de TomTom.
+- **L'interface** d'Igor Explorer aussi : barre de recherche, guidage, vitesse, barre d'arrivée, dock, vignettes, bulles.
+- La police est embarquée dans le module (`frontend/fonts`, licence OFL) : aucun téléchargement extérieur.
+
+## 0.62.30 — Igor Explorer : coins, lieux, stations, bâtiments, autoroutes
+
+- **Coins arrondis du téléphone** : la barre de recherche, le guidage, la barre d'arrivée, le dock et les boutons de côté s'écartent des bords (18 px plus les marges du système), coins plus ronds ; le message (« Itinéraire changé ») ne passe plus sur les boutons de droite.
+- **Lieux** : seulement de près (zoom 15 et plus : plus de nuée d'épingles en dézoomant, la carte s'allège) ; **plus de nom sous les épingles** ; **plus de doublons** (le même nom dans la même famille à moins de 300 m : une seule épingle, la mieux classée) ; plus d'arrêts de bus ni de tram (des dizaines de « Gare de… » autour d'une gare, à côté de la vraie), ni de panneaux d'information.
+- **Stations-service** : uniquement celles du ministère (là d'où viennent les prix, à leur adresse déclarée), en épingle Igor, **le prix posé au-dessus de l'épingle** ; les prix ne s'affichent qu'à partir du zoom 13,5, pour les 12 stations les plus proches du centre de l'écran, et partent avec elles.
+- **Correctif** : les épingles d'Igor (stations et radars) étaient masquées avec les lieux de TomTom (leur couche portait le même mot « pois ») — c'est pourquoi certaines stations n'apparaissaient pas.
+- **Bâtiments** : chacun d'une nuance de bleu-gris (le jour) ou d'indigo (la nuit), prise dans une petite palette, toits plus clairs, **sans ombre** ; même chose sur la carte de secours (selon la hauteur).
+- **Autoroutes en jaune** (bord jaune plus soutenu), le jour comme la nuit, sur TomTom et sur la carte de secours.
+
+## 0.62.29 — Igor Explorer : retouches
+
+- **Bouton des réglages de la carte** : la fenêtre s'ouvre à chaque fois. Elle était accrochée à la page, et la carte en plein écran (le vrai plein écran du téléphone) ne montre qu'elle-même : la fenêtre s'ouvrait invisible, n'apparaissait qu'après un retour arrière, et un second appui la refermait (« une fois sur deux »). Elle s'ouvre maintenant dans la carte.
+- **Vignette d'un lieu** : une croix pour la fermer.
+- **La bulle d'un point de la carte** (« Nouvel itinéraire », « Ajouter une étape ») et la fiche d'un lieu prennent les couleurs de la carte (indigo la nuit, clair le jour).
+- **Sentiers balisés en tracés vectoriels** (plus d'images) : les relations de randonnée d'OpenStreetMap, gardées par Home Assistant par carré de 40 × 26 km (60 jours, `sentiers.sqlite` à côté de la bibliothèque des lieux), dessinées par la carte : GR rouge sur blanc, GRP rouge sur jaune, PR jaune (ou la couleur que le sentier déclare), leur numéro le long du tracé. **Un toucher sur un sentier : sa fiche** — nom et réseau, longueur, de… à…, dénivelé, balisage en clair (« Rouge (barre) sur blanc »), qui l'entretient, son site ; Rejoindre (l'itinéraire jusqu'à son point le plus proche), Voir (le sentier en entier, surligné), Garder (dans Rando, comme un GPX), Wikipédia, Igor (la rando préparée).
+- **Igor sur la carte passe toujours par le modèle en ligne** (Mistral…), jamais par le modèle local de la maison : nouvelle adresse `/api/nives/ask` (une question sans conversation gardée, le verrou de la maison respecté).
+
 ## 0.62.28 — Carte de secours : bâtiments en 3D
 
 - Les bâtiments de la carte de secours se dressent en relief dès le zoom 14 (la hauteur d'OpenStreetMap, sinon ses étages × 3 m, sinon environ trois étages), dans les couleurs d'Igor, éclairés en lavande la nuit ; les réglages « Bâtiments en 3D » et « Opacité » s'y appliquent.
