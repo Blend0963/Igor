@@ -1,3 +1,10 @@
+## 0.62.38 — Diagnostic de la carte Mapbox, trajet lisible, stations Mapbox
+
+- **Diagnostic de la carte** (Igor Explorer) : un appui long (1,5 s) sur « Carte » ouvre un panneau qui dit ce que Mapbox charge vraiment sur cet écran : version, style, couches de Mapbox, chargement, caméra, sources et leurs tuiles reçues ou refusées, erreurs (sans la clé). Bouton **Copier**, et bouton **Carte Mapbox seule** : la carte de Mapbox nue à la même place, comme la carte de test, pour savoir si ce sont les ajouts d'Igor qui la cachent. `debug: true` l'ouvre tout seul.
+- **Trajet lisible la nuit sur Mapbox** : l'éclairage de Mapbox assombrissait tout ce qu'Igor dessine (le trajet devenait presque noir). Le trajet, les sentiers, les repères et les noms d'Igor gardent maintenant leurs couleurs.
+- **Stations-service** : sur le style Mapbox, ce sont les stations de Mapbox ; le prix du gazole (Ministère) est posé au-dessus de chacune. L'épingle d'Igor n'est plus dessinée par-dessus.
+- **Fenêtre « Carte » lisible** : en 0.62.37 elle était transparente (ses couleurs n'étaient jamais posées). Elle a maintenant un fond, des boutons et des onglets aux couleurs de l'heure, avec la police d'Igor Explorer.
+
 ## 0.62.37 — La carte Mapbox s'affiche enfin dans Igor Explorer
 
 - **Correctif : le globe Mapbox restait vide** sur Igor Explorer et l'écran déporté. Trouvé grâce aux journaux de Home Assistant (« this.gl is not a constructor ») : depuis 0.62.35, la création des repères (prix des stations, destination, étapes, itinéraires proposés, point touché) échouait. Comme les prix des stations sont redessinés à chaque image, la carte tombait en erreur en boucle. Corrigé et vérifié sur le vrai moteur Mapbox GL JS 3.36.
