@@ -5569,7 +5569,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.29";
+  var GPS_CARD_VERSION = "0.62.30";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7190,6 +7190,21 @@
         ".dock .toast { bottom: 115px; } .dock.guiding .toast { bottom: 165px; } .dock.withspeed .toast { left: 160px; }" +
         ".dock .eta { bottom: 76px; left: 10px !important; right: 10px; background: var(--ui); border-color: var(--bd); color: var(--tx); box-shadow: var(--sh); } .dock .eta span { border-left-color: var(--bd); color: var(--dim); } .dock .eta span i { color: var(--tx); }" +
         ".dock .speed, .dock .street, .dock .toast { background: var(--ui); border-color: var(--bd); color: var(--tx); box-shadow: var(--sh); }" +
+        // The phone's rounded corners: everything kept away from the edges
+        // (18 px, plus the system's own insets), the toast never over the buttons.
+        ".dock { --gx: 18px; --sb: env(safe-area-inset-bottom, 0px); --st: env(safe-area-inset-top, 0px); }" +
+        ".dock .dbar { top: calc(14px + var(--st)); left: calc(var(--gx) + env(safe-area-inset-left, 0px)); right: calc(var(--gx) + env(safe-area-inset-right, 0px)); border-radius: 12px; }" +
+        ".dock .btns { bottom: calc(16px + var(--sb)) !important; left: var(--gx) !important; right: var(--gx) !important; } .dock .btns button { border-radius: 12px !important; }" +
+        ".dock .nav { top: calc(76px + var(--st)); left: var(--gx) !important; right: var(--gx) !important; border-radius: 12px; }" +
+        ".dock .eta { bottom: calc(84px + var(--sb)); left: var(--gx) !important; right: var(--gx) !important; border-radius: 12px; }" +
+        ".dock .street { bottom: calc(84px + var(--sb)); } .dock.guiding .street { bottom: calc(138px + var(--sb)); }" +
+        ".dock .hud.sp { left: var(--gx); bottom: calc(126px + var(--sb)); } .dock.guiding .hud.sp { bottom: calc(180px + var(--sb)); } .dock .speed { border-radius: 12px; }" +
+        ".dock .hud.lim { left: calc(var(--gx) + 84px); bottom: calc(131px + var(--sb)); } .dock.guiding .hud.lim { bottom: calc(185px + var(--sb)); }" +
+        ".dock .toast { bottom: calc(126px + var(--sb)) !important; left: var(--gx) !important; right: calc(var(--gx) + 62px) !important; transform: none !important; max-width: none !important; border-radius: 12px; }" +
+        ".dock.withspeed .toast { left: calc(var(--gx) + 152px) !important; } .dock.guiding .toast { bottom: calc(180px + var(--sb)) !important; }" +
+        ".dock .dside { right: var(--gx); bottom: calc(126px + var(--sb)); } .dock.guiding .dside { bottom: calc(180px + var(--sb)); } .dock .dside button { border-radius: 12px; }" +
+        ".dock .snap { top: calc(138px + var(--st)); } .dock .side { top: calc(160px + var(--st)); } .dock .jinset { top: calc(160px + var(--st)); left: var(--gx); right: var(--gx); }" +
+        ".dock .igans { left: var(--gx); right: var(--gx); top: calc(140px + var(--st)); border-radius: 12px; }" +
         ".modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; } .modes button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px; border: 1px solid #22262c; border-radius: var(--igor-radius, 3px); background: #0f1114; color: #a9adb3; font: inherit; font-size: 11px; cursor: pointer; --mdc-icon-size: 22px; } .modes button.on { border-color: #59d0e0; color: #e9fbff; background: #0e2a30; }" +
         ".panel { position: absolute; inset: 0; z-index: 4; background: rgba(7,8,10,0.96); color: #e9e4da; font-family: " + MONO + "; display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; overflow-y: auto; }" +
         ".panel .ph { display: flex; justify-content: space-between; align-items: center; color: #878c95; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; }" +
@@ -7605,17 +7620,48 @@
       // The map's own buildings (those left when Igor's 3D is off): their
       // colour from the same measure — #456168, lit roofs over darker walls.
       try { this.$("card").classList.toggle("day", !dark); } catch (e) { /* no card yet */ }
-      this.tintBuild = mode === "tomtom" ? "#456168" : mode === "bleu" ? "#2f425a" : mode === "indigo" ? "#2e3568" : mode === "jour" ? "#c6cee2" : null;
+      this.tintBuild = mode === "tomtom" ? "#456168" : mode === "bleu" ? "#2f425a" : mode === "indigo" ? "#36407a" : mode === "jour" ? "#9aaed3" : null;
       try { this.placesApply(); } catch (e) { /* the places' names as they were */ }
       try { this.baseBuildings(this.map); } catch (e) { /* as it was */ }
+      try { if (this.tt3d && this.tt3d.applyConfig) this.tt3d.applyConfig(this.buildingsLook()); } catch (e) { /* as it was */ }
       this.ttStyling.then((st) => {
         if (this.tintSdkKey !== key) return;
         if (mode) st.setMapColors(PAL[mode]);
         else if (sdk.resetKnob && sdk.stylingFoundationsKnobCatalogue) names.forEach((n) => { try { sdk.resetKnob(st, sdk.stylingFoundationsKnobCatalogue, "colors." + n); } catch (e) { /* that one as it was */ } });
+        try { this.motorwayLook(this.map, mode === "jour" ? "jour" : mode === "indigo" ? "nuit" : ""); } catch (e) { /* as it was */ }
       }).catch((e) => { this.ttStyling = null; this.tintSdkKey = null; if (this.config.debug) this.message("teinte : " + (e && e.message)); });
     }
     // The night's colours: Igor's indigo unless another is chosen (« gris »: the style's own).
     nightTint() { var L = this.look || {}, t = L.tn || this.config.night_colors || "indigo"; return t === "tomtom" || t === "bleu" || t === "indigo" ? t : ""; }
+    // The motorways in yellow (their outline a deeper one), as a road map
+    // draws them — TomTom's colours have no knob of their own for them.
+    motorwayLook(map, theme) {
+      if (!map || !map.getStyle) return;
+      var keep = this.mwKept || (this.mwKept = {});
+      var C = { jour: ["#f7df7c", "#d6b54a"], nuit: ["#b49b46", "#6f5e25"] }[theme];
+      (map.getStyle().layers || []).forEach((l) => {
+        if (l.type !== "line" || /^igor|^route|^trail|^man|^alt/.test(l.id)) return;
+        var name = l.id + " " + (l["source-layer"] || "");
+        if (!/motorway|autoroute/i.test(name) || /label|shield|name|number|arrow|oneway|ramp.*label/i.test(name)) return;
+        if (!(l.id in keep)) keep[l.id] = map.getPaintProperty(l.id, "line-color");
+        var edge = /outline|casing|case|border|edge/i.test(l.id);
+        try { map.setPaintProperty(l.id, "line-color", C ? (edge ? C[1] : C[0]) : keep[l.id]); } catch (e) { /* that one as it was */ }
+      });
+    }
+    // Igor's buildings: each one a shade of blue-grey (by day) or of indigo
+    // (by night), picked from a small palette, the roofs a lighter one, no
+    // shadow — a map read at a glance rather than a photograph.
+    buildingPalette() {
+      var L = this.look || {};
+      if (L.wc === "unie") return null;
+      if (this.ttStyle === "streetLightDriving" && this.dayLively())
+        return { walls: { color: "#9aaed3", palette: ["#9aaed3", "#8aa1cc", "#b2c2df", "#7f96c3", "#a7b8d8", "#c0cde6"], paletteIntensity: 1, paletteMode: "pick", variation: 0.1 },
+          roofs: { palette: ["#b9c8e4", "#a9bbdd", "#cbd6ec", "#a1b4d9"], paletteIntensity: 1, paletteMode: "pick" } };
+      if (this.ttStyle === "streetDarkDriving" && this.nightTint() === "indigo")
+        return { walls: { color: "#36407a", palette: ["#36407a", "#2e386f", "#414c8a", "#2a3366", "#3b4682"], paletteIntensity: 1, paletteMode: "pick", variation: 0.1 },
+          roofs: { palette: ["#46529a", "#3e4990", "#5160a8"], paletteIntensity: 1, paletteMode: "pick" } };
+      return null;
+    }
     dayLively() { var L = this.look || {}; return (L.tj || this.config.day_colors || "vive") !== "tomtom"; }
     buildingsLook() {
       var c = this.config, op = Number(c.buildings_opacity), L = this.look, look;
@@ -7627,15 +7673,17 @@
         if (L.wc === "unie") look.walls = { variation: 0 }; else if (L.wc === "variee") look.walls = { variation: 0.6 };
         // Lit at night (« Éclairage des bâtiments »): many windows on, the façades' pattern shown.
         var tn = this.nightTint();
-        if (tn === "indigo" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#2e3568" });
+        var BP = this.buildingPalette();
+        if (BP) { look.walls = BP.walls; look.roofs = BP.roofs; look.shadows = { visible: false }; }
         else if (tn === "tomtom" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#456168" });
         else if (tn === "bleu" && this.ttStyle === "streetDarkDriving") look.walls = Object.assign({}, look.walls || {}, { color: "#2f425a" });
-        else if (this.ttStyle === "streetLightDriving" && this.dayLively() && (L.wc || "style") === "style") look.walls = Object.assign({}, look.walls || {}, { color: "#c6cee2" });
         if (Number(L.eb) && this.ttStyle === "streetDarkDriving") { look.litWindows = { fraction: Math.max(0.55, (Number(L.lw) || 0) / 100) }; look.facade = { pattern: L.fw && L.fw !== "none" ? L.fw : "mixed", intensity: 1 }; }
       } else {
         look = { opacity: isFinite(op) && op > 0 ? Math.min(1, op) : 0.85 };
         if (c.buildings_windows !== true) look.facade = { pattern: "plain", intensity: 0 };
         if (c.buildings_windows !== true) look.litWindows = { fraction: 0 };
+        var BP0 = this.buildingPalette();
+        if (BP0) { look.walls = BP0.walls; look.roofs = BP0.roofs; look.shadows = { visible: false }; }
       }
       var own = c.sdk_buildings && typeof c.sdk_buildings === "object" ? c.sdk_buildings : {};
       Object.keys(own).forEach((k) => { look[k] = own[k] && typeof own[k] === "object" && look[k] && typeof look[k] === "object" ? Object.assign({}, look[k], own[k]) : own[k]; });
@@ -7806,7 +7854,9 @@
       tryIt(() => {
         var ns = { petite: 0.85, normale: 1, grande: 1.25 }[L.ns] || 1, sz = this.labelSize0 = this.labelSize0 || {};
         ((map.getStyle() && map.getStyle().layers) || []).forEach((l) => {
-          if (l.type !== "symbol" || /^igor|^route|^gps/.test(l.id)) return;
+          // Igor's own layers (« pois », « pois-icons »: the radars and the
+          // stations) are never TomTom's places, whatever their name says.
+          if (l.type !== "symbol" || /^igor|^route|^gps|^pois$|^pois-icons$|^incidents/.test(l.id)) return;
           var name = l.id + " " + (l["source-layer"] || "");
           if (/poi|point.of.interest/i.test(name)) { map.setLayoutProperty(l.id, "visibility", "none"); return; }
           if (!/road|street|transport/i.test(name) || !l.layout || l.layout["text-field"] == null) return;
@@ -7825,7 +7875,7 @@
     }
     tomtom3d(map) {
       var layers = map.getStyle().layers || [];
-      var poiLayers = layers.filter((l) => l.type === "symbol" && !/^igor/.test(l.id) && /poi|point.of.interest/i.test(l.id + " " + (l["source-layer"] || "")));
+      var poiLayers = layers.filter((l) => l.type === "symbol" && !/^igor|^pois$|^pois-icons$/.test(l.id) && /poi|point.of.interest/i.test(l.id + " " + (l["source-layer"] || "")));
       if (!this.basePois()) poiLayers.forEach((l) => map.setLayoutProperty(l.id, "visibility", "none"));
       else {
         // TomTom's own places stay (shops, pharmacies, parkings, stations);
@@ -11204,14 +11254,10 @@
           "symbol-sort-key": ["case", ["==", ["get", "subclass"], "viewpoint"], -1, ["coalesce", ["get", "rank"], 99]],
           visibility: this.placesOn() ? "visible" : "none"
         };
-        if (font) Object.assign(layout, {
-          "text-field": ["step", ["zoom"], "", 16, ["coalesce", ["get", "name:fr"], ["get", "name"], ""]],
-          "text-font": font, "text-size": 12, "text-offset": [0, 0.35], "text-anchor": "top", "text-optional": true, "text-max-width": 8
-        });
-        map.addLayer({ id: "igor-lieux", type: "symbol", source: "igor-osm", "source-layer": "poi", minzoom: 12, filter: this.placesFilter(), layout: layout, paint: this.placesPaint() });
+        map.addLayer({ id: "igor-lieux", type: "symbol", source: "igor-osm", "source-layer": "poi", minzoom: 15, filter: this.placesFilter(), layout: layout, paint: this.placesPaint() });
         // The same drawing, from Igor's own library on Home Assistant.
         if (!map.getSource("igor-db")) map.addSource("igor-db", { type: "geojson", data: this.dbData || { type: "FeatureCollection", features: [] } });
-        map.addLayer({ id: "igor-lieux-db", type: "symbol", source: "igor-db", minzoom: 12, filter: this.placesFilter(), layout: Object.assign({}, layout, { visibility: "none" }), paint: this.placesPaint() });
+        map.addLayer({ id: "igor-lieux-db", type: "symbol", source: "igor-db", minzoom: 15, filter: this.placesFilter(), layout: Object.assign({}, layout, { visibility: "none" }), paint: this.placesPaint() });
         this.dbMode = null; this.dbSig = null;  // a new style: the library's tiles read again at once
         if (!map._iglDb) { map._iglDb = true; map.on("moveend", () => this.dbTick()); }
         this.dbTick();
@@ -11234,7 +11280,8 @@
       var map = this.map;
       this.dbStatus();
       if (!map || !map.getLayer || !map.getLayer("igor-lieux-db")) return;
-      var z = map.getZoom(), tz = z >= 14 ? 14 : z >= 13 ? 13 : z >= 12 ? 12 : 0;
+      // Only close up (zoom 15 and in): farther, the pins would smother the map.
+      var z = map.getZoom(), tz = z >= 14.5 ? 14 : 0;
       if (!tz || !this.placesOn()) return;
       var bb = map.getBounds(), n = Math.pow(2, tz);
       var tx = (lon) => Math.floor((lon + 180) / 360 * n), ty = (lat) => { var r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); };
@@ -11265,18 +11312,36 @@
       Promise.all(keys.map(one)).then((tiles) => {
         this.dbBusy = false;
         if (seq !== this.dbSeq || !this.map) return;
-        var ok = tiles.length && tiles.every((t) => t && t.complete), seen = {}, feats = [];
-        if (ok) tiles.forEach((t) => t.f.forEach((r) => {
-          if (seen[r[0]]) return; seen[r[0]] = 1;
+        var ok = tiles.length && tiles.every((t) => t && t.complete), seen = {}, feats = [], named = {};
+        // One place, one pin: the same name in the same family within 300 m
+        // is the same place told twice (a station's entrances, a shop's two
+        // nodes) — the best-ranked one stays, the others go.
+        var famOf = (r) => { var o = GPS_PLACE_OF[r[4]] || GPS_PLACE_OF[r[3]]; return o ? o[0] : r[3]; };
+        var rows = [];
+        if (ok) tiles.forEach((t) => t.f.forEach((r) => { if (!seen[r[0]]) { seen[r[0]] = 1; rows.push(r); } }));
+        rows.sort((a, b) => a[6] - b[6]);
+        rows.forEach((r) => {
+          var nm = String(r[5] || "").toLowerCase().replace(/[^a-z0-9àâäéèêëîïôöùûüç]+/g, " ").trim();
+          if (nm) {
+            var key = famOf(r) + "|" + nm, prev = named[key] || [];
+            if (prev.some((q) => gpsDist(q, [r[1], r[2]]) < 300)) return;
+            prev.push([r[1], r[2]]); named[key] = prev;
+          }
           feats.push({ type: "Feature", geometry: { type: "Point", coordinates: [r[1], r[2]] }, properties: { id: r[0], class: r[3], subclass: r[4], name: r[5], rank: r[6] } });
-        }));
+        });
         if (ok) { this.dbData = { type: "FeatureCollection", features: feats }; var src = map.getSource("igor-db"); if (src) src.setData(this.dbData); }
         if (ok !== this.dbMode) { this.dbMode = ok; this.placesApply(); }
         this.dbTick();  // the view moved on while the tiles came: its own turn
       });
     },
+    // Every family, but not the bus and tram stops (dozens of « Gare de… »
+    // around a station, each named after it), the information boards nor
+    // the fuel (the Ministry's stations are drawn apart, with their prices).
     placesFilter() {
-      return ["in", gpsPlaceExprs().fam, ["literal", this.placesFamilies()]];
+      var sub = ["coalesce", ["get", "subclass"], ["get", "class"]];
+      return ["all", ["in", gpsPlaceExprs().fam, ["literal", this.placesFamilies()]],
+        ["!", ["in", sub, ["literal", ["bus_stop", "tram_stop", "information", "fuel", "bus", "aerialway"]]]],
+        ["!", ["in", ["get", "class"], ["literal", ["fuel", "bus"]]]]];
     },
     placesPaint() {
       var day = this.ttStyle ? this.ttStyle.indexOf("Dark") < 0 : this.config.theme === "clair";
@@ -12091,7 +12156,9 @@
       };
       Object.keys(T).forEach((k) => (T[k].items || []).forEach((q) => {
         if (all[q.id] || kinds.indexOf(q.kind) < 0) return;
-        if (q.kind === "fuel") tileFuel.push(q);
+        // The stations: the Ministry's list alone (where the prices come
+        // from, at their declared place) — OpenStreetMap's pumps no more.
+        if (q.kind === "fuel") return;
         if (near40(q.kind, q.p)) return;
         all[q.id] = true;
         if (q.kind === "camera") cams.push(q);
@@ -12225,19 +12292,19 @@
       // A station that wears its price tag (logo + price) is that tag only:
       // no dot, no pump icon under it — one station, one mark on the map.
       var fuelOn = !!(this.layers && this.layers.fuel);
-      var tagged = (q) => fuelOn && q.kind === "fuel" && ((q.prices || {}).gazole != null || !!(q.rupture || {}).gazole);
+      var tagged = () => false;  // a station: its pin, its price above it
       // On TomTom's 3D map its own pumps are the stations: Igor draws none.
       var marks = shown.filter((q) => !tagged(q) && !(q.kind === "fuel" && this.basePois()));
       var near = car ? marks.filter((q) => q.kind !== "camera" && gpsDist(q.p, car) < GPS_ICON_M)
         .sort((a, b) => gpsDist(a.p, car) - gpsDist(b.p, car)).slice(0, GPS_ICON_MAX) : [];
-      var iconed = shown.filter((q) => q.kind === "camera").concat(near);
-      var sig = ids.join(","), isig = iconed.map((q) => q.id).join(",");
+      var iconed = shown.filter((q) => q.kind === "camera" || (q.kind === "fuel" && zoom >= 12)).concat(near.filter((q) => q.kind !== "fuel"));
+      var sig = ids.join(",") + "|" + (zoom >= 12 ? 1 : 0), isig = iconed.map((q) => q.id).join(",");
       if (sig === this.poiShown && isig === this.poiIconSig) return;
       var asFeat = (q) => ({ type: "Feature", geometry: { type: "Point", coordinates: q.p }, properties: { kind: q.kind, label: q.label || "", brand: q.brand || "", color: (GPS_POI[q.kind] || {}).color || "#8a9099" } });
       if (sig !== this.poiShown) {
         this.poiShown = sig;
         var src = map && map.getSource("pois");
-        if (src) src.setData({ type: "FeatureCollection", features: marks.filter((q) => q.kind !== "camera").map(asFeat) });
+        if (src) src.setData({ type: "FeatureCollection", features: marks.filter((q) => q.kind !== "camera" && !(q.kind === "fuel" && zoom >= 12)).map(asFeat) });
         this.lastShown = shown;
         this.refreshFuelTags(shown);
       }
@@ -12276,8 +12343,14 @@
       // On TomTom's map, a price only where TomTom draws its pump (zoomed
       // out, no pump, no price), on that pump, one price per pump (the
       // nearest station); elsewhere, on the station's own point.
-      var taken = {}, far = !tt && map.getZoom() < 13;  // another map, zoomed out: no prices either
-      (far ? [] : (shown || this.pois) || []).forEach((q) => {
+      // The prices: zoom 13.5 and in, on screen, the 12 stations nearest the
+      // view's centre — they come and go with their pins, never alone.
+      var taken = {}, far = !tt && map.getZoom() < 13.5;
+      var ctr = map.getCenter(), cc = [ctr.lng, ctr.lat], bnd = map.getBounds();
+      var onScreen = (q) => bnd && q.p[0] >= bnd.getWest() && q.p[0] <= bnd.getEast() && q.p[1] >= bnd.getSouth() && q.p[1] <= bnd.getNorth();
+      var fuelNow = (far ? [] : (shown || this.pois) || []).filter((q) => q.kind === "fuel" && onScreen(q))
+        .sort((a, b) => gpsDist(a.p, cc) - gpsDist(b.p, cc)).slice(0, 12);
+      fuelNow.forEach((q) => {
         if (q.kind !== "fuel") return;
         var pr = (q.prices || {}).gazole, ru = (q.rupture || {}).gazole;
         if (pr == null && !ru) return;
@@ -12296,7 +12369,7 @@
         var m = this.fuelTags[q.id];
         if (!m) {
           var el = document.createElement("div"); el.className = "ftag" + (tt ? " slim" : "");
-          m = new window.maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, tt ? -24 : -14] }).setLngLat(at).addTo(map);
+          m = new window.maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, tt ? -24 : -44] }).setLngLat(at).addTo(map);
           this.fuelTags[q.id] = m;
         } else if (tt) m.setLngLat(at);
         var el = m.getElement();

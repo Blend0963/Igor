@@ -1,3 +1,12 @@
+## 0.62.30 — Igor Explorer : coins, lieux, stations, bâtiments, autoroutes
+
+- **Coins arrondis du téléphone** : la barre de recherche, le guidage, la barre d'arrivée, le dock et les boutons de côté s'écartent des bords (18 px plus les marges du système), coins plus ronds ; le message (« Itinéraire changé ») ne passe plus sur les boutons de droite.
+- **Lieux** : seulement de près (zoom 15 et plus : plus de nuée d'épingles en dézoomant, la carte s'allège) ; **plus de nom sous les épingles** ; **plus de doublons** (le même nom dans la même famille à moins de 300 m : une seule épingle, la mieux classée) ; plus d'arrêts de bus ni de tram (des dizaines de « Gare de… » autour d'une gare, à côté de la vraie), ni de panneaux d'information.
+- **Stations-service** : uniquement celles du ministère (là d'où viennent les prix, à leur adresse déclarée), en épingle Igor, **le prix posé au-dessus de l'épingle** ; les prix ne s'affichent qu'à partir du zoom 13,5, pour les 12 stations les plus proches du centre de l'écran, et partent avec elles.
+- **Correctif** : les épingles d'Igor (stations et radars) étaient masquées avec les lieux de TomTom (leur couche portait le même mot « pois ») — c'est pourquoi certaines stations n'apparaissaient pas.
+- **Bâtiments** : chacun d'une nuance de bleu-gris (le jour) ou d'indigo (la nuit), prise dans une petite palette, toits plus clairs, **sans ombre** ; même chose sur la carte de secours (selon la hauteur).
+- **Autoroutes en jaune** (bord jaune plus soutenu), le jour comme la nuit, sur TomTom et sur la carte de secours.
+
 ## 0.62.29 — Igor Explorer : retouches
 
 - **Bouton des réglages de la carte** : la fenêtre s'ouvre à chaque fois. Elle était accrochée à la page, et la carte en plein écran (le vrai plein écran du téléphone) ne montre qu'elle-même : la fenêtre s'ouvrait invisible, n'apparaissait qu'après un retour arrière, et un second appui la refermait (« une fois sur deux »). Elle s'ouvre maintenant dans la carte.

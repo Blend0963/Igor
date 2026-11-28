@@ -308,9 +308,9 @@ class SpareMap:
 
 # ----- the map's look: Protomaps' layers in Igor's colours -----
 PAL = {
-    "nuit": {"bg": "#1a1c38", "water": "#2a2f66", "park": "#1e5049", "wood": "#1b4743", "urban": "#212548", "bld": "#2e3568",
+    "nuit": {"bg": "#1a1c38", "water": "#2a2f66", "park": "#1e5049", "wood": "#1b4743", "urban": "#212548", "bld": "#36407a", "bld2": "#2a3366", "hw": "#b49b46", "hwcase": "#6f5e25",
              "major": "#8c90c2", "minor": "#5a5f92", "path": "#474c80", "case": "#13152b", "rail": "#4b5088", "label": "#e2e4ff", "halo": "#11122a", "border": "#6a6fb0"},
-    "jour": {"bg": "#d3e2c6", "water": "#3fb5d9", "park": "#7fbf73", "wood": "#86be78", "urban": "#d4d8e4", "bld": "#c6cee2",
+    "jour": {"bg": "#d3e2c6", "water": "#3fb5d9", "park": "#7fbf73", "wood": "#86be78", "urban": "#d4d8e4", "bld": "#b2c2df", "bld2": "#7f96c3", "hw": "#f7df7c", "hwcase": "#d6b54a",
              "major": "#f4f1e6", "minor": "#ffffff", "path": "#e9e4d6", "case": "#aab3c4", "rail": "#9aa3b5", "label": "#26303b", "halo": "#ffffff", "border": "#8e7fb0"},
 }
 
@@ -345,7 +345,7 @@ def style(tiles_url: str, glyphs_url: str, theme: str = "nuit", buildings_3d: bo
             # height, else its floors × 3 m, else about three floors), rising
             # as the zoom comes in, lit from the sky; flat when 3D is off.
             ({"id": "buildings", "type": "fill-extrusion", "source": src, "source-layer": "buildings", "minzoom": 14,
-              "paint": {"fill-extrusion-color": c["bld"], "fill-extrusion-opacity": max(0.3, min(1.0, opacity)), "fill-extrusion-vertical-gradient": True,
+              "paint": {"fill-extrusion-color": ["interpolate", ["linear"], ["coalesce", ["get", "height"], 9], 4, c["bld"], 40, c["bld2"]], "fill-extrusion-opacity": max(0.3, min(1.0, opacity)), "fill-extrusion-vertical-gradient": True,
                         "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 14, 0, 15.5,
                                                   ["coalesce", ["get", "height"], ["*", ["coalesce", ["get", "building:levels"], 0], 3], 9]],
                         "fill-extrusion-base": ["interpolate", ["linear"], ["zoom"], 14, 0, 15.5, ["coalesce", ["get", "min_height"], 0]]}}
@@ -358,10 +358,15 @@ def style(tiles_url: str, glyphs_url: str, theme: str = "nuit", buildings_3d: bo
              "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["case"], "line-width": w(12, 1.5, 22)}},
             {"id": "minor", "type": "line", "source": src, "source-layer": "roads", "minzoom": 12, "filter": road(["minor_road"]),
              "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["minor"], "line-width": w(12, 0.8, 18)}},
-            {"id": "major-case", "type": "line", "source": src, "source-layer": "roads", "filter": road(["major_road", "highway"]),
+            {"id": "major-case", "type": "line", "source": src, "source-layer": "roads", "filter": road(["major_road"]),
              "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["case"], "line-width": w(6, 1, 30)}},
-            {"id": "major", "type": "line", "source": src, "source-layer": "roads", "filter": road(["major_road", "highway"]),
+            {"id": "major", "type": "line", "source": src, "source-layer": "roads", "filter": road(["major_road"]),
              "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["major"], "line-width": w(6, 0.5, 25)}},
+            # The motorways in yellow, a deeper yellow at their edge.
+            {"id": "highway-case", "type": "line", "source": src, "source-layer": "roads", "filter": road(["highway"]),
+             "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["hwcase"], "line-width": w(5, 1.4, 34)}},
+            {"id": "highway", "type": "line", "source": src, "source-layer": "roads", "filter": road(["highway"]),
+             "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["hw"], "line-width": w(5, 0.9, 28)}},
             {"id": "road-names", "type": "symbol", "source": src, "source-layer": "roads", "minzoom": 14, "filter": road(["major_road", "minor_road", "highway"]),
              "layout": {"symbol-placement": "line", "text-field": name, "text-font": ["Noto Sans Regular"], "text-size": 12},
              "paint": {"text-color": c["label"], "text-halo-color": c["halo"], "text-halo-width": 1.5}},
