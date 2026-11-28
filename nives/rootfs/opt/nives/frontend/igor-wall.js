@@ -5557,7 +5557,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.17";
+  var GPS_CARD_VERSION = "0.62.20";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -15568,13 +15568,14 @@
     }
     return cfg.views[/^\d+$/.test(seg) ? Number(seg) : 0] || null;
   }
-  // A wall with `kiosk: true` (a car's head unit), or a map that is a second
-  // screen (`display_only: true`, the phone under it): no top bar on its
+  // A wall with `kiosk: true` (a car's head unit), a map that is a second
+  // screen (`display_only: true`, the phone under it) or the whole screen
+  // (`edge_to_edge: true`, the phone's GPS): no top bar on its
   // pages, whatever the device's theme.
   function viewKiosk(root) {
     var view = currentView(root);
     if (!view) return false;
-    try { return /"type":"custom:igor-wall"[^]*?"kiosk":true|"kiosk":true[^]*?"type":"custom:igor-wall"|"display_only":true/.test(JSON.stringify(view)); } catch (e) { return false; }
+    try { return /"type":"custom:igor-wall"[^]*?"kiosk":true|"kiosk":true[^]*?"type":"custom:igor-wall"|"display_only":true|"edge_to_edge":true/.test(JSON.stringify(view)); } catch (e) { return false; }
   }
   function viewHasWall(root) {
     var cfg = root && root.lovelace && root.lovelace.config;
