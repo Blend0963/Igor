@@ -1,3 +1,11 @@
+## 0.62.23 — Igor Explorer : dock, épingles, vignettes, randonnée
+
+- **Dock** (`controls: dock`, le tableau de bord du téléphone) : « Où allez-vous ? » en haut, boutons carrés étiquetés en bas (Stations, Voix, Itinéraire, Lieux, Rando, Réglages), boussole et recentrage à droite, le tout aux couleurs de la carte (indigo la nuit, clair le jour). L'autoradio garde son rail.
+- **Lieux en épingles** de la couleur de leur famille, la pointe sur l'endroit exact ; les points de vue passent en premier.
+- **Vignette Igor** au toucher d'un lieu : pictogramme, nom, type, distance et temps estimé, horaires, adresse, téléphone, site (OpenStreetMap), et les actions Y aller, Étape, Appeler, **Wikipédia** (le résumé dans la vignette, puis l'article) et **Igor** (l'avis de l'IA sur le lieu, l'heure et les horaires pris en compte). Elle se ferme seule après 15 s sans toucher.
+- **Randonnée** (bouton Rando) : les **sentiers balisés** (GR, GRP, PR, chemins locaux de Waymarked Trails, aux couleurs de leur réseau et avec leur balisage) et l'**import de tracés GPX** (gardés sur le téléphone, en orange, avec distance et dénivelé ; voir le tracé, aller au départ, supprimer).
+- Le bouton « Lieux » masque ou affiche les lieux d'un toucher.
+
 ## 0.62.22 — Igor Explorer : à pied, à vélo, en transports en commun
 
 - La carte s'appelle désormais **Igor Explorer** (nom de la carte dans Home Assistant et du tableau de bord du téléphone ; `custom:igor-gps-card` reste le même, rien à changer dans les tableaux de bord).

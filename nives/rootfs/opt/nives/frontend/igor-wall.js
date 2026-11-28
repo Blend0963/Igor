@@ -5499,6 +5499,9 @@
   //                                         # (written « time|message » by a script; see script.voiture_dire)
   //   voice_over_music: true                # the voice over the music (Web Audio, no audio focus); false: the
   //                                         # old <audio> element, which pauses the player app on Android
+  //   controls: dock                        # a phone: « Où allez-vous ? » on top, labelled square buttons at the bottom
+  //                                         # (Stations, Voix, Itinéraire, Lieux, Rando, Réglages), compass and recentring on the right
+  //   trails_tiles: https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png  # the marked trails (« Rando » → Sentiers balisés)
   //   controls: rail                        # the head unit's dashboard (with igor-guide-card beside): big written
   //                                         # buttons on the right, no turn banner / arrival bar / layers / fullscreen
   //   local_gps: true                       # on the head unit itself: the arrow follows the screen's own GPS
@@ -5565,7 +5568,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.22";
+  var GPS_CARD_VERSION = "0.62.23";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6233,18 +6236,62 @@
     var legs = (R0 && R0.legs) || [];
     return legs.filter(function (l) { return l.mode !== "pedestrian"; }).map(function (l) { return (l.kind + " " + (l.name || "")).trim(); }).join(" · ").slice(0, 40);
   }
-  // One icon: the family's colour in a disc, the pictogram in white, a white
-  // ring and a soft dark edge — read on the day map and the night one alike.
+  // One icon: a pin of the family's colour, white edge, the pictogram in
+  // white, its point on the very place (anchored at the bottom), a soft
+  // shadow on the ground — read on the day map and the night one alike.
   function gpsPlaceIcon(fam, icon) {
-    var S = 96, c = document.createElement("canvas"); c.width = S; c.height = S;
+    var W = 96, H = 120, c = document.createElement("canvas"); c.width = W; c.height = H;
     var g = c.getContext("2d"), col = (GPS_PLACE_FAM[fam] || {}).color || "#8a9099";
     g.scale(2, 2);
-    g.beginPath(); g.arc(24, 24, 21, 0, Math.PI * 2); g.fillStyle = "rgba(7,8,10,0.35)"; g.fill();
-    g.beginPath(); g.arc(24, 24, 19.5, 0, Math.PI * 2); g.fillStyle = "#ffffff"; g.fill();
-    g.beginPath(); g.arc(24, 24, 16.5, 0, Math.PI * 2); g.fillStyle = col; g.fill();
+    g.beginPath(); g.ellipse(24, 56.5, 7, 2.6, 0, 0, Math.PI * 2); g.fillStyle = "rgba(7,8,10,0.38)"; g.fill();
+    var pin = function () { g.beginPath(); g.moveTo(24, 56); g.bezierCurveTo(20, 47, 6, 38, 6, 24); g.arc(24, 24, 18, Math.PI, 0); g.bezierCurveTo(42, 38, 28, 47, 24, 56); g.closePath(); };
+    pin(); g.fillStyle = col; g.fill(); g.lineWidth = 2.4; g.strokeStyle = "#ffffff"; g.stroke();
     var d = GPS_PLACE_SVG[icon] || GPS_PLACE_SVG["map-marker"];
-    try { g.translate(24 - 10.8, 24 - 10.8); g.scale(0.9, 0.9); g.fillStyle = "#ffffff"; g.fill(new Path2D(d)); } catch (e) { /* no Path2D: the disc alone */ }
-    return g.getImageData(0, 0, S, S);
+    try { g.translate(24 - 10.8, 24 - 10.8); g.scale(0.9, 0.9); g.fillStyle = "#ffffff"; g.fill(new Path2D(d)); } catch (e) { /* no Path2D: the pin alone */ }
+    return g.getImageData(0, 0, W, H);
+  }
+  // A GPX file → { name, lines: [[[lon, lat], …], …], wpts, km, up }:
+  // its tracks (trk/trkseg/trkpt) and routes (rte/rtept), thinned to a point
+  // every 5 m at most (a long hike stays light), its waypoints, its length
+  // and its climb (when the points carry an elevation).
+  function gpsGpxParse(text, file) {
+    var doc;
+    try { doc = new DOMParser().parseFromString(text, "application/xml"); } catch (e) { return null; }
+    if (!doc || doc.getElementsByTagName("parsererror").length) return null;
+    var all = (n) => Array.prototype.slice.call(doc.getElementsByTagNameNS ? doc.getElementsByTagNameNS("*", n) : doc.getElementsByTagName(n));
+    var lines = [], km = 0, up = 0;
+    var take = (pts) => {
+      var line = [], lastE = null;
+      pts.forEach((pt) => {
+        var la = parseFloat(pt.getAttribute("lat")), lo = parseFloat(pt.getAttribute("lon"));
+        if (!isFinite(la) || !isFinite(lo)) return;
+        var q = [Math.round(lo * 1e6) / 1e6, Math.round(la * 1e6) / 1e6], prev = line[line.length - 1];
+        var ee = pt.getElementsByTagNameNS ? pt.getElementsByTagNameNS("*", "ele")[0] : null, e = ee ? parseFloat(ee.textContent) : NaN;
+        if (isFinite(e)) { if (lastE != null && e > lastE) up += e - lastE; lastE = e; }
+        if (prev) { var d = gpsDist(prev, q); if (d < 5) return; km += d / 1000; }
+        line.push(q);
+      });
+      if (line.length > 1) lines.push(line);
+    };
+    all("trkseg").forEach((sg) => take(Array.prototype.slice.call(sg.getElementsByTagNameNS("*", "trkpt"))));
+    all("rte").forEach((r) => take(Array.prototype.slice.call(r.getElementsByTagNameNS("*", "rtept"))));
+    if (!lines.length) return null;
+    var wpts = all("wpt").slice(0, 200).map((w) => { var n = w.getElementsByTagNameNS("*", "name")[0]; return { p: [parseFloat(w.getAttribute("lon")), parseFloat(w.getAttribute("lat"))], n: n ? n.textContent.trim().slice(0, 40) : "" }; }).filter((w) => isFinite(w.p[0]) && isFinite(w.p[1]));
+    var nameEl = all("name")[0], name = (nameEl && nameEl.textContent.trim()) || String(file || "Tracé").replace(/\.gpx$/i, "");
+    return { name: name.slice(0, 60), lines: lines, wpts: wpts, km: Math.round(km * 100) / 100, up: up };
+  }
+  // A pictogram as inline SVG (the vignette's header).
+  function gpsPlaceSvg(icon, size, color) {
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24"><path fill="' + (color || "#fff") + '" d="' + (GPS_PLACE_SVG[icon] || GPS_PLACE_SVG["map-marker"]) + '"/></svg>';
+  }
+  // Igor's own agent (an LLM): `agent`, else the conversation entity named Igor.
+  function gpsAskIgor(hass, text, agent) {
+    var hs = hass.states, a = agent || Object.keys(hs).find(function (id) { return id.indexOf("conversation.") === 0 && /igor|nives/i.test(id + " " + ((hs[id].attributes || {}).friendly_name || "")); });
+    return hass.callWS(Object.assign({ type: "conversation/process", text: text, language: "fr" }, a ? { agent_id: a } : {})).then(function (r) {
+      var said = r && r.response && r.response.speech && r.response.speech.plain && r.response.speech.plain.speech;
+      if (!said || r.response.response_type === "error") throw new Error("vide");
+      return said;
+    });
   }
   // The style expressions, made once: a feature → its family, its icon.
   var gpsPlaceExpr = null;
@@ -7078,6 +7125,42 @@
         ".eta .st .shield { flex: none; display: inline-block; min-width: 0; max-width: none; border-left: 0; padding: 1px 6px; overflow: visible; -webkit-line-clamp: unset; font-size: 13px; line-height: 1.25; }" +
         ".eta .st .shield.a, .eta .st .shield.n, .eta .st .shield.e, .eta .st .shield.m { color: #fff; } .eta .st .shield.d { color: #111; }" +
         ".seg[hidden] { display: none !important; }" +
+        ".hrow { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid #22262c; border-radius: var(--igor-radius, 3px); background: #0f1114; color: #e9e4da; font: inherit; text-align: left; cursor: pointer; --mdc-icon-size: 26px; } .hrow > div { flex: 1; min-width: 0; } .hrow b { display: block; font-size: 14px; } .hrow small { display: block; font-size: 11px; color: #878c95; margin-top: 3px; } .hrow ha-icon { color: #59d0e0; flex: none; }" +
+        ".hsw { flex: none; padding: 6px 12px; border-radius: 4px; border: 1px solid #22262c; color: #878c95; font-size: 12px; } .hsw.on { border-color: #59d0e0; color: #07222a; background: #59d0e0; }" +
+        ".hgpx { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #22262c; border-radius: var(--igor-radius, 3px); background: #0f1114; } .hgpx > div { flex: 1; min-width: 0; } .hgpx b { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .hgpx small { color: #878c95; font-size: 11px; } .hgpx button { flex: none; width: 40px; height: 40px; border-radius: 4px; border: 1px solid #22262c; background: #15181c; color: #e9e4da; display: grid; place-items: center; cursor: pointer; --mdc-icon-size: 20px; }" +
+        // The themes' colours (the map's own): indigo by night, light by day.
+        "ha-card { --ui: rgba(22,24,52,0.92); --ui2: #262a5a; --bd: #3b4080; --tx: #e6e7ff; --dim: #9a9dd0; --acc: #59d0e0; --accTx: #07222a; --sh: 0 6px 18px rgba(0,0,0,.45); }" +
+        "ha-card.day { --ui: rgba(255,255,255,0.95); --ui2: #eef1f7; --bd: #c3cad8; --tx: #1f2833; --dim: #64708a; --acc: #0e9bb0; --accTx: #ffffff; --sh: 0 6px 18px rgba(40,50,80,.25); }" +
+        // Igor's vignette over a place.
+        ".pvig { width: min(340px, calc(100vw - 28px)); background: var(--ui); border: 1px solid var(--bd); border-radius: 8px; box-shadow: var(--sh); color: var(--tx); font-family: 'DejaVu Sans', Roboto, sans-serif; overflow: hidden; cursor: default; }" +
+        ".pv-h { display: flex; gap: 11px; align-items: center; padding: 11px 12px; } .pv-h > i { width: 44px; height: 44px; flex: none; border-radius: 6px; background: var(--pc); display: grid; place-items: center; }" +
+        ".pv-n { flex: 1; min-width: 0; } .pv-n b { display: block; font-size: 15px; line-height: 1.25; } .pv-n small, .pv-d small { display: block; font-size: 11.5px; color: var(--dim); margin-top: 2px; }" +
+        ".pv-d { text-align: right; flex: none; } .pv-d b { font-family: " + MONO + "; font-size: 16px; }" +
+        ".pv-kv { padding: 0 12px; } .pv-kv > div { display: flex; align-items: center; gap: 9px; padding: 6px 0; border-top: 1px solid var(--bd); font-size: 12.5px; --mdc-icon-size: 16px; } .pv-kv ha-icon { color: var(--dim); flex: none; } .pv-kv span { color: var(--dim); width: 70px; flex: none; } .pv-kv b { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
+        ".pv-wait { color: var(--dim); font-size: 12px; padding: 6px 0; border-top: 1px solid var(--bd); }" +
+        ".pv-x { margin: 8px 12px 0; padding: 9px 11px; border-radius: 6px; background: var(--ui2); font-size: 12.5px; line-height: 1.45; max-height: 170px; overflow-y: auto; } .pv-x[hidden] { display: none; } .pv-x p { margin: 4px 0; } .pv-x a { color: var(--acc); } .pv-src { font-size: 10.5px; letter-spacing: .06em; color: var(--dim); text-transform: uppercase; }" +
+        ".pv-a { display: flex; gap: 6px; padding: 10px 12px 12px; } .pv-a button { flex: 1; min-width: 0; height: 54px; border-radius: 6px; border: 1px solid var(--bd); background: var(--ui2); color: var(--tx); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font: inherit; font-size: 10.5px; cursor: pointer; --mdc-icon-size: 20px; } .pv-a button.on { background: var(--acc); border-color: var(--acc); color: var(--accTx); } .pv-a button[hidden] { display: none; }" +
+        ".pv-t { height: 3px; background: var(--ui2); } .pv-t i { display: block; height: 3px; width: 0; background: var(--acc); }" +
+        // controls: dock — the phone: a search bar on top, five labelled
+        // square buttons along the bottom, the compass and the recentring on
+        // the right; everything in the map's own colours.
+        ".dbar { display: none; }" +
+        ".dock .dbar { position: absolute; z-index: 3; top: calc(10px + env(safe-area-inset-top, 0px)); left: 10px; right: 10px; height: 50px; display: flex; align-items: center; gap: 10px; padding: 0 14px; box-sizing: border-box; border-radius: 6px; background: var(--ui); border: 1px solid var(--bd); color: var(--dim); box-shadow: var(--sh); font-size: 15px; cursor: pointer; --mdc-icon-size: 22px; } .dock .dbar ha-icon { color: var(--acc); }" +
+        ".dock .btns { top: auto; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); left: 10px; right: 10px; flex-direction: row; gap: 6px; margin: 0 !important; }" +
+        ".dock .btns button { flex: 1; width: auto !important; height: 58px !important; flex-direction: column; display: flex; align-items: center; justify-content: center; gap: 3px; border-radius: 6px; background: var(--ui); border: 1px solid var(--bd); color: var(--tx); box-shadow: var(--sh); --mdc-icon-size: 22px !important; font-size: 10.5px; }" +
+        ".dock .btns button::after { content: attr(data-l); } .dock .btns button.on { background: var(--acc); border-color: var(--acc); color: var(--accTx); } .dock .btns button[hidden] { display: none; }" +
+        ".dside { display: none; } .dock .dside { position: absolute; z-index: 2; right: 10px; bottom: 125px; display: flex; flex-direction: column; gap: 8px; } .dock.guiding .dside { bottom: 175px; }" +
+        ".dock .dside button { width: 48px; height: 48px; border-radius: 6px; background: var(--ui); border: 1px solid var(--bd); color: var(--tx); box-shadow: var(--sh); display: grid; place-items: center; cursor: pointer; --mdc-icon-size: 22px; } .dock .dside button[hidden] { display: none; }" +
+        ".dock .nav { top: calc(68px + env(safe-area-inset-top, 0px)); left: 10px !important; right: 10px; background: var(--ui); border-color: var(--bd); border-left-color: var(--acc); color: var(--tx); box-shadow: var(--sh); } .dock .nav ha-icon { color: var(--acc); } .dock .nav .t { color: var(--dim); }" +
+        ".dock .snap { top: calc(130px + env(safe-area-inset-top, 0px)); }" +
+        ".dock .jinset { top: calc(150px + env(safe-area-inset-top, 0px)); left: 10px; right: 10px; }" +
+        ".dock .side { top: calc(150px + env(safe-area-inset-top, 0px)); }" +
+        ".dock .hud.lim { top: auto; right: auto; left: 92px; bottom: 120px; } .dock.guiding .hud.lim { bottom: 170px; }" +
+        ".dock .hud.sp { bottom: 115px; } .dock.guiding .hud.sp { bottom: 165px; }" +
+        ".dock .street { bottom: 76px; } .dock.guiding .street { bottom: 126px; } .dock.guiding .hud.sp, .dock.guiding .hud.lim { margin-bottom: 0; }" +
+        ".dock .toast { bottom: 115px; } .dock.guiding .toast { bottom: 165px; } .dock.withspeed .toast { left: 160px; }" +
+        ".dock .eta { bottom: 76px; left: 10px !important; right: 10px; background: var(--ui); border-color: var(--bd); color: var(--tx); box-shadow: var(--sh); } .dock .eta span { border-left-color: var(--bd); color: var(--dim); } .dock .eta span i { color: var(--tx); }" +
+        ".dock .speed, .dock .street, .dock .toast { background: var(--ui); border-color: var(--bd); color: var(--tx); box-shadow: var(--sh); }" +
         ".modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; } .modes button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px; border: 1px solid #22262c; border-radius: var(--igor-radius, 3px); background: #0f1114; color: #a9adb3; font: inherit; font-size: 11px; cursor: pointer; --mdc-icon-size: 22px; } .modes button.on { border-color: #59d0e0; color: #e9fbff; background: #0e2a30; }" +
         ".panel { position: absolute; inset: 0; z-index: 4; background: rgba(7,8,10,0.96); color: #e9e4da; font-family: " + MONO + "; display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; overflow-y: auto; }" +
         ".panel .ph { display: flex; justify-content: space-between; align-items: center; color: #878c95; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; }" +
@@ -7129,8 +7212,11 @@
         '<button id="fuel" data-l="Stations" title="Stations-service"><ha-icon icon="mdi:gas-station"></ha-icon></button>' +
         '<button id="voice" data-l="Voix" title="Voix du guidage"><ha-icon icon="mdi:volume-high"></ha-icon></button>' +
         '<button id="overview" data-l="Itinéraires" title="Choisir l’itinéraire" hidden><ha-icon icon="mdi:map-search"></ha-icon></button>' +
+        '<button id="places" data-l="Lieux" title="Lieux" hidden><ha-icon icon="mdi:map-marker-multiple"></ha-icon></button>' +
+        '<button id="hike" data-l="Rando" title="Randonnée"><ha-icon icon="mdi:hiking"></ha-icon></button>' +
         '<button id="layers" data-l="Couches" title="Couches"><ha-icon icon="mdi:layers"></ha-icon></button>' +
         '<button id="full" data-l="Plein écran" title="Plein écran"><ha-icon icon="mdi:fullscreen"></ha-icon></button></div>' +
+        '<div class="dbar" id="dbar"><ha-icon icon="mdi:magnify"></ha-icon><span>Où allez-vous ?</span></div><div class="dside" id="dside"></div>' +
         '<div class="jinset" id="jinset" hidden></div><div class="nav" id="nav" hidden><ha-icon id="navIcon" icon="mdi:arrow-up"></ha-icon><div style="min-width:0"><div class="d" id="navD"></div><div class="t" id="navT"></div><div class="x" id="navX" hidden></div><div class="l" id="navL" hidden></div></div></div>' +
         '<div class="glow" id="glow" hidden></div>' +
         '<div class="side"><div class="alert" id="alert" hidden><ha-icon id="alIcon" icon="mdi:cctv"></ha-icon><div id="alS"></div><b id="alT"></b><div class="bar2"><i id="alBar"></i></div></div>' +
@@ -7141,6 +7227,10 @@
         '<div class="panel rpanel" id="rpanel" hidden><div class="ph"><span id="rtitle">itinéraires</span><button id="rclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="rlist"></div><div class="seg" id="rchips"></div></div>' +
         '<div class="panel fpanel" id="fpanel" hidden><div class="ph"><span>stations-service</span><button id="fclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="flist"></div></div>' +
         '<div class="lpanel" id="lpanel" hidden></div>' +
+        '<div class="panel hpanel" id="hpanel" hidden><div class="ph"><span>randonnée</span><button id="hclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
+        '<button type="button" class="hrow" id="htrails"><ha-icon icon="mdi:map-marker-path"></ha-icon><div><b>Sentiers balisés</b><small>GR, GRP, PR et chemins locaux, aux couleurs de leur balisage (Waymarked Trails)</small></div><span class="hsw">non</span></button>' +
+        '<label class="hrow hfile"><ha-icon icon="mdi:file-upload-outline"></ha-icon><div><b>Importer un tracé GPX</b><small>gardé sur ce téléphone · affiché en orange</small></div><input type="file" id="hgpx" accept=".gpx,application/gpx+xml,application/xml,text/xml" hidden></label>' +
+        '<div class="list" id="hlist"></div></div>' +
         '<div class="pprice" id="pprice" hidden><div class="pp-card"><div class="pph"><span id="ppName"></span><button id="ppClose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="pp-addr" id="ppAddr"></div><div class="pp-list" id="ppList"></div></div></div>' +
         '<div class="eta" id="eta" hidden></div>' +
         '<div class="panel" id="panel" hidden><div class="ph"><span>destination</span><button id="pclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
@@ -7218,6 +7308,50 @@
       // (a card shown small in a dashboard, `compact`, still opens on a touch).
       if (!this.config.compact && this.config.fullscreen_button !== true) { $("full").hidden = true; requestAnimationFrame(() => { if (!this.full) this.setFull(true); }); }
       $("card").classList.toggle("rail", this.config.controls === "rail");
+      // The head unit's rail has no room for walking (a phone's business).
+      if (this.config.controls === "rail") $("hike").hidden = true;
+      // controls: dock — the phone's layout (search on top, dock at the bottom).
+      if (this.config.controls === "dock" && !this.config.display_only) {
+        $("card").classList.add("dock");
+        $("dside").appendChild($("orient")); $("dside").appendChild($("recenter"));
+        $("dest").hidden = true; $("full").hidden = true; $("places").hidden = false;
+        $("layers").setAttribute("data-l", "Réglages"); $("layers").firstElementChild.setAttribute("icon", "mdi:cog");
+        $("overview").setAttribute("data-l", "Itinéraire");
+        $("dbar").addEventListener("click", () => $("dest").click());
+        $("places").classList.toggle("on", !this.placesHidden);
+      }
+      // Walking: the marked trails (a layer), and the GPX tracks kept on this screen.
+      try { this.trailsOn = localStorage.getItem("igor-trails") === "1"; } catch (e) { this.trailsOn = false; }
+      var drawHike = () => { var sw = $("htrails").querySelector(".hsw"); sw.classList.toggle("on", !!this.trailsOn); sw.textContent = this.trailsOn ? "oui" : "non"; $("hike").classList.toggle("on", !!this.trailsOn || !!(this.gpxList() || []).length); this.gpxListDraw(); };
+      $("hike").addEventListener("click", () => { ["panel", "rpanel", "fpanel"].forEach((id) => { $(id).hidden = true; }); $("hpanel").hidden = false; drawHike(); });
+      $("hclose").addEventListener("click", () => { $("hpanel").hidden = true; });
+      $("htrails").addEventListener("click", () => {
+        this.trailsOn = !this.trailsOn;
+        try { localStorage.setItem("igor-trails", this.trailsOn ? "1" : "0"); } catch (e) { /* this time only */ }
+        this.hikeLayers(this.map); drawHike();
+      });
+      $("hgpx").addEventListener("change", (ev) => {
+        var inp = $("hgpx"), f = inp.files && inp.files[0];
+        if (!f) return;
+        var rd = new FileReader();
+        rd.onload = () => {
+          var t = gpsGpxParse(String(rd.result || ""), f.name);
+          inp.value = "";
+          if (!t) { this.toast("Ce fichier ne contient aucun tracé GPX lisible", 5000); return; }
+          var list = this.gpxList().filter((x) => x.name !== t.name).concat([t]).slice(-8);
+          this.gpxSave(list); this.hikeLayers(this.map); drawHike();
+          this.gpxShow(t); $("hpanel").hidden = true;
+          this.toast("Tracé « " + t.name + " » · " + gpsMetres(t.km * 1000) + (t.up ? " · D+ " + Math.round(t.up) + " m" : ""), 6000);
+        };
+        rd.readAsText(f);
+      });
+      this.hikeRedraw = drawHike;
+      $("places").addEventListener("click", () => {
+        this.placesHidden = !this.placesHidden;
+        $("places").classList.toggle("on", !this.placesHidden);
+        try { this.placesApply(); } catch (e) { /* at the next look */ }
+        this.toast(this.placesHidden ? "Lieux masqués" : "Lieux affichés", 2500);
+      });
       // The guidance column (igor-guide-card) asks: the destination panel,
       // a favourite, the end of the guidance.
       this.onCmd = (ev) => {
@@ -7428,6 +7562,7 @@
       this.ttStyling = this.ttStyling || sdk.StylingFoundationsModule.get(this.tt);
       // The map's own buildings (those left when Igor's 3D is off): their
       // colour from the same measure — #456168, lit roofs over darker walls.
+      try { this.$("card").classList.toggle("day", !dark); } catch (e) { /* no card yet */ }
       this.tintBuild = mode === "tomtom" ? "#456168" : mode === "bleu" ? "#2f425a" : mode === "indigo" ? "#2e3568" : mode === "jour" ? "#c6cee2" : null;
       try { this.placesApply(); } catch (e) { /* the places' names as they were */ }
       try { this.baseBuildings(this.map); } catch (e) { /* as it was */ }
@@ -9714,6 +9849,7 @@
         return false;
       });
       var osmPlace = this.placeAt(e.point);
+      if (!fuel && osmPlace) { this.placeVignette(osmPlace); return; }
       if (!name && osmPlace) {
         var op = osmPlace.props, osub = op.subclass || op.class || "", oof = GPS_PLACE_OF[op.subclass] || GPS_PLACE_OF[op.class];
         name = String(op["name:fr"] || op.name || GPS_PLACE_FR[osub] || (oof && GPS_PLACE_FAM[oof[0]].name) || "").trim().slice(0, 40);
@@ -9795,6 +9931,7 @@
       this._pick = mk;
     },
     closePick() {
+      if (this._pick) { try { this._pick.getElement().dispatchEvent(new Event("igor-gone")); } catch (e) { /* gone */ } }
       if (this._pick) { try { this._pick.remove(); } catch (e) { /* gone */ } this._pick = null; }
     },
     // The offline map updates itself (server autostart + this call when the
@@ -10950,7 +11087,7 @@
       var L = this.look, v = L && L.poi != null ? L.poi : this.config.places;
       return v === "aucun" || v === "tous" || v === "igor" ? v : "igor";
     },
-    placesOn() { return this.config.places !== false && this.placesMode() === "igor"; },
+    placesOn() { return this.config.places !== false && !this.placesHidden && this.placesMode() === "igor"; },
     // The families the settings keep (« Lieux » tab: every one by default).
     placesFamilies() {
       var L = this.look || {};
@@ -10972,14 +11109,16 @@
         var X = gpsPlaceExprs();
         var layout = {
           "icon-image": X.icon,
-          "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 0.85, 15, 1.1, 18, 1.4],
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 0.8, 15, 1.0, 18, 1.25],
+          "icon-anchor": "bottom",
           "icon-padding": 2,
-          "symbol-sort-key": ["coalesce", ["get", "rank"], 99],
+          // The views first (a walker's map), then by importance.
+          "symbol-sort-key": ["case", ["==", ["get", "subclass"], "viewpoint"], -1, ["coalesce", ["get", "rank"], 99]],
           visibility: this.placesOn() ? "visible" : "none"
         };
         if (font) Object.assign(layout, {
           "text-field": ["step", ["zoom"], "", 16, ["coalesce", ["get", "name:fr"], ["get", "name"], ""]],
-          "text-font": font, "text-size": 12, "text-offset": [0, 1.5], "text-anchor": "top", "text-optional": true, "text-max-width": 8
+          "text-font": font, "text-size": 12, "text-offset": [0, 0.35], "text-anchor": "top", "text-optional": true, "text-max-width": 8
         });
         map.addLayer({ id: "igor-lieux", type: "symbol", source: "igor-osm", "source-layer": "poi", minzoom: 12, filter: this.placesFilter(), layout: layout, paint: this.placesPaint() });
       } catch (e) { if (this.config.debug) this.message("lieux : " + (e && e.message)); }
@@ -11007,7 +11146,7 @@
       var map = this.map;
       if (!map || !map.getLayer("igor-lieux") || !point) return null;
       try {
-        var f = (map.queryRenderedFeatures([[point.x - 16, point.y - 16], [point.x + 16, point.y + 16]], { layers: ["igor-lieux"] }) || [])[0];
+        var f = (map.queryRenderedFeatures([[point.x - 14, point.y - 14], [point.x + 14, point.y + 14]], { layers: ["igor-lieux"] }) || [])[0];
         return f ? { props: f.properties || {}, ll: f.geometry && f.geometry.coordinates } : null;
       } catch (e) { return null; }
     },
@@ -11030,6 +11169,174 @@
         });
       } catch (e) { /* the tile's word alone */ }
       return poi;
+    },
+    // A place touched: Igor's vignette over its pin — pictogram, name, kind,
+    // distance; then what OpenStreetMap says (hours, address, phone, site);
+    // the actions: go, add as a stop, call, Wikipédia (its summary, in
+    // place), and Igor's own word on the place. Gone after 15 s untouched
+    // (the cyan bar), at once on a touch elsewhere.
+    placeVignette(osm) {
+      var map = this.map;
+      if (!map || !window.maplibregl || !osm || !osm.ll) return;
+      this.closePick();
+      var p = osm.props || {}, sub = p.subclass || p.class || "", of = GPS_PLACE_OF[p.subclass] || GPS_PLACE_OF[p.class] || ["services", "map-marker"];
+      var fam = GPS_PLACE_FAM[of[0]] || { color: "#8a9099", name: "" }, name = String(p["name:fr"] || p.name || GPS_PLACE_FR[sub] || fam.name || "Lieu").slice(0, 60);
+      var kind = GPS_PLACE_FR[sub] || fam.name, here = this.pos || (this.fix && this.fix.point), dist = here ? gpsDist(here, osm.ll) : null;
+      var kmh = { car: 35, transit: 18, pedestrian: 4.5, bicycle: 15 }[this.travelMode || "car"] || 35;
+      var esc = (x) => String(x == null ? "" : x).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+      var el = document.createElement("div");
+      el.className = "pvig";
+      el.style.setProperty("--pc", fam.color);
+      el.innerHTML = '<div class="pv-h"><i>' + gpsPlaceSvg(of[1], 26) + '</i><div class="pv-n"><b>' + esc(name) + '</b><small>' + esc(kind) + '</small></div>' +
+        (dist != null ? '<div class="pv-d"><b>' + gpsMetres(dist) + '</b><small>≈ ' + Math.max(1, Math.round(dist / 1000 / kmh * 60 * 1.3)) + ' min</small></div>' : "") + '</div>' +
+        '<div class="pv-kv"><div class="pv-wait">Recherche des informations…</div></div><div class="pv-x" hidden></div>' +
+        '<div class="pv-a"></div><div class="pv-t"><i></i></div>';
+      var acts = el.querySelector(".pv-a"), kv = el.querySelector(".pv-kv"), extra = el.querySelector(".pv-x"), timer = null;
+      var bar = el.querySelector(".pv-t i");
+      var arm = (ms) => { clearTimeout(timer); bar.style.transition = "none"; bar.style.width = "100%"; void bar.offsetWidth; bar.style.transition = "width " + ms + "ms linear"; bar.style.width = "0%"; timer = setTimeout(() => { if (this._pick === mk) this.closePick(); }, ms); };
+      var hold = () => { clearTimeout(timer); bar.style.transition = "none"; bar.style.width = "0%"; };
+      var act = (icon, label, fn, on) => {
+        var b = document.createElement("button"); b.type = "button"; if (on) b.className = "on";
+        b.innerHTML = '<ha-icon icon="' + icon + '"></ha-icon><span>' + label + '</span>';
+        b.addEventListener("click", (ev) => { ev.stopPropagation(); fn(b); });
+        acts.appendChild(b); return b;
+      };
+      var at = { lat: osm.ll[1], lon: osm.ll[0] };
+      act("mdi:directions", "Y aller", () => { this.closePick(); this.chooseNext = true; this.setDestination({ lat: at.lat, lon: at.lon, name: name }, true); }, true);
+      if (this.dest) act("mdi:flag-variant", "Étape", () => { this.closePick(); var d = this.dest; this.setDestination(Object.assign({}, d, { via: (d.via || []).concat([{ lat: at.lat, lon: at.lon, name: name }]) }), true); });
+      var callB = act("mdi:phone", "Appeler", () => { if (poi && poi.phone) window.open("tel:" + String(poi.phone).replace(/[^+\d]/g, ""), "_self"); });
+      callB.hidden = true;
+      var poi = null;
+      // Wikipédia: the article the place's tags name, else the first found by its name and town.
+      var wikiB = act("mdi:wikipedia", "Wikipédia", async () => {
+        hold();
+        extra.hidden = false; extra.innerHTML = '<div class="pv-wait">Wikipédia…</div>';
+        var lang = "fr", page = null, m;
+        if (poi && poi.wikipedia && (m = String(poi.wikipedia).match(/^([a-z-]+):(.+)$/i))) { lang = m[1]; page = m[2]; }
+        try {
+          if (!page) {
+            var q = name + (poi && poi.city ? " " + poi.city : "");
+            var sr = await (await fetch("https://fr.wikipedia.org/w/api.php?action=query&list=search&srlimit=1&format=json&origin=*&srsearch=" + encodeURIComponent(q))).json();
+            page = sr && sr.query && sr.query.search && sr.query.search[0] && sr.query.search[0].title;
+          }
+          if (!page) throw new Error("rien");
+          var wj = await (await fetch("https://" + lang + ".wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(String(page).replace(/ /g, "_")))).json();
+          var url = (wj.content_urls && wj.content_urls.mobile && wj.content_urls.mobile.page) || ("https://" + lang + ".wikipedia.org/wiki/" + encodeURIComponent(page));
+          extra.innerHTML = '<b class="pv-src">Wikipédia · ' + esc(wj.title || page) + '</b><p>' + esc(wj.extract || "Pas de résumé.") + '</p><a target="_blank" rel="noopener" href="' + esc(url) + '">Lire l\'article</a>';
+        } catch (err) { extra.innerHTML = '<div class="pv-wait">Rien sur Wikipédia pour ce lieu.</div>'; }
+        place();
+      });
+      act("mdi:robot-happy-outline", "Igor", async () => {
+        hold();
+        extra.hidden = false; extra.innerHTML = '<div class="pv-wait">Igor réfléchit…</div>';
+        var hh = new Date(), when = String(hh.getHours()).padStart(2, "0") + ":" + String(hh.getMinutes()).padStart(2, "0");
+        var where = poi ? [poi.street, poi.city].filter(Boolean).join(", ") : "";
+        var txt = "Je regarde sur la carte « " + name + " » (" + kind + (where ? ", " + where : "") + ")" + (dist != null ? ", à " + gpsMetres(dist) + " de moi" : "") +
+          ". Il est " + when + (poi && poi.opening_hours ? ", horaires : " + poi.opening_hours : "") + ". En trois phrases courtes : qu'est-ce que c'est, est-ce que ça vaut le coup d'y aller maintenant, et un conseil.";
+        try { var said = await gpsAskIgor(this._hass, txt, this.config.agent); extra.innerHTML = '<b class="pv-src">Igor</b><p>' + esc(said) + '</p>'; }
+        catch (err) { extra.innerHTML = '<div class="pv-wait">Igor n\'a pas répondu.</div>'; }
+        place();
+      });
+      el.addEventListener("click", (ev) => { ev.stopPropagation(); hold(); });
+      el.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+      // Over the pin; below it when the pin is high on the screen (the bars
+      // up there), and slid sideways so it never leaves the screen.
+      // Over the map's own furniture (speed, sign, bars), still tied to its
+      // pin: over it where there is room, else under it, always inside the
+      // free band between the bars (130 px kept at the top and the bottom).
+      var cont = map.getContainer(), card = this.$("card");
+      el.style.position = "absolute"; el.style.zIndex = "3";
+      card.appendChild(el);
+      var mk = { getElement: () => el, remove: () => el.remove() };
+      this._pick = mk;
+      var place = () => {
+        if (this._pick !== mk) return;
+        var W = cont.clientWidth, H = cont.clientHeight, w = el.offsetWidth || 340, h = el.offsetHeight || 200, sp = map.project(osm.ll);
+        var x = Math.max(10, Math.min(W - 10 - w, sp.x - w / 2)), up = sp.y - 52 - 130, down = H - 130 - (sp.y + 14);
+        var y = h <= up || up >= down ? sp.y - 52 - h : sp.y + 14;
+        y = Math.max(130, Math.min(H - 130 - h, y));
+        el.style.left = Math.round(x) + "px"; el.style.top = Math.round(y) + "px";
+      };
+      place(); map.on("move", place);
+      var off = () => { map.off("move", place); };
+      el.addEventListener("igor-gone", off);
+      setTimeout(() => { if (this._pick !== mk) off(); }, 60000);
+      arm(15000);
+      // What OpenStreetMap knows of it (Overpass, for this place alone).
+      this.placeDetail(osm).then((d) => {
+        if (this._pick !== mk) return;
+        poi = d || {};
+        var rows = [];
+        if (poi.opening_hours) rows.push(["mdi:clock-outline", "Horaires", poi.opening_hours]);
+        var addr = [[poi.housenumber, poi.street].filter(Boolean).join(" "), poi.city].filter(Boolean).join(", ");
+        if (addr) rows.push(["mdi:map-marker", "Adresse", addr]);
+        if (poi.phone) rows.push(["mdi:phone", "Téléphone", poi.phone]);
+        if (poi.website) rows.push(["mdi:web", "Site", String(poi.website).replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")]);
+        kv.innerHTML = rows.length ? rows.map((r) => '<div><ha-icon icon="' + r[0] + '"></ha-icon><span>' + r[1] + '</span><b>' + esc(r[2]) + '</b></div>').join("")
+          : '<div class="pv-wait">Pas d\'autres informations sur OpenStreetMap.</div>';
+        if (poi.website) { var w = kv.querySelector("div:last-child b"); if (w) { w.style.cursor = "pointer"; w.addEventListener("click", () => window.open(/^https?:/.test(poi.website) ? poi.website : "https://" + poi.website, "_blank")); } }
+        callB.hidden = !poi.phone;
+        place();
+      });
+    },
+    // The marked trails (Waymarked Trails' hiking layer: every GR, GRP, PR
+    // and local route of OpenStreetMap, drawn with its network's colour and
+    // its waymark), under the route; and the imported GPX tracks, in orange.
+    hikeLayers(map) {
+      if (!map || !map.getStyle) return;
+      try {
+        var firstSym = ((map.getStyle().layers || []).find((l) => l.type === "symbol") || {}).id;
+        if (this.trailsOn && !map.getLayer("igor-trails")) {
+          if (!map.getSource("igor-trails")) map.addSource("igor-trails", { type: "raster", tileSize: 256, maxzoom: 18, tiles: [this.config.trails_tiles || "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png"], attribution: "© waymarkedtrails.org, OpenStreetMap" });
+          map.addLayer({ id: "igor-trails", type: "raster", source: "igor-trails", paint: { "raster-opacity": 0.95, "raster-fade-duration": 0 } }, firstSym);
+        } else if (!this.trailsOn && map.getLayer("igor-trails")) map.removeLayer("igor-trails");
+        var data = { type: "FeatureCollection", features: [] };
+        (this.gpxList() || []).forEach((t) => {
+          data.features.push({ type: "Feature", geometry: { type: "MultiLineString", coordinates: t.lines }, properties: { name: t.name } });
+          (t.wpts || []).forEach((w) => data.features.push({ type: "Feature", geometry: { type: "Point", coordinates: w.p }, properties: { name: w.n || "" } }));
+        });
+        if (map.getSource("igor-gpx")) map.getSource("igor-gpx").setData(data);
+        else {
+          map.addSource("igor-gpx", { type: "geojson", data: data });
+          map.addLayer({ id: "igor-gpx-case", type: "line", source: "igor-gpx", filter: ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 10, 4, 16, 9] } }, firstSym);
+          map.addLayer({ id: "igor-gpx", type: "line", source: "igor-gpx", filter: ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#ff8a1f", "line-width": ["interpolate", ["linear"], ["zoom"], 10, 2.5, 16, 6] } }, firstSym);
+          map.addLayer({ id: "igor-gpx-pt", type: "circle", source: "igor-gpx", filter: ["==", ["geometry-type"], "Point"], paint: { "circle-radius": 5, "circle-color": "#ff8a1f", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
+        }
+      } catch (e) { if (this.config.debug) this.message("randonnée : " + (e && e.message)); }
+    },
+    gpxList() {
+      if (this.gpxCache) return this.gpxCache;
+      try { this.gpxCache = JSON.parse(localStorage.getItem("igor-gpx") || "[]"); } catch (e) { this.gpxCache = []; }
+      return this.gpxCache;
+    },
+    gpxSave(list) {
+      this.gpxCache = list;
+      try { localStorage.setItem("igor-gpx", JSON.stringify(list)); }
+      catch (e) { this.toast("Mémoire du téléphone pleine : le tracé reste jusqu'à la fermeture", 5000); }
+    },
+    gpxShow(t) {
+      var map = this.map, b = null;
+      if (!map || !t) return;
+      t.lines.forEach((l) => l.forEach((q) => { b = b ? [Math.min(b[0], q[0]), Math.min(b[1], q[1]), Math.max(b[2], q[0]), Math.max(b[3], q[1])] : [q[0], q[1], q[0], q[1]]; }));
+      if (!b) return;
+      this.follow = false; this.grabbed = true;
+      map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 70, pitch: 0, duration: 800 });
+    },
+    gpxListDraw() {
+      var box = this.$ && this.$("hlist");
+      if (!box) return;
+      box.innerHTML = "";
+      this.gpxList().forEach((t) => {
+        var row = document.createElement("div"); row.className = "hgpx";
+        var mid = document.createElement("div"), nm = document.createElement("b"), sm = document.createElement("small");
+        nm.textContent = t.name; sm.textContent = gpsMetres(t.km * 1000) + (t.up ? " · D+ " + Math.round(t.up) + " m" : "") + (t.wpts && t.wpts.length ? " · " + t.wpts.length + " points" : "");
+        mid.appendChild(nm); mid.appendChild(sm); row.appendChild(mid);
+        var btn = (icon, title, fn) => { var b = document.createElement("button"); b.type = "button"; b.title = title; b.innerHTML = '<ha-icon icon="' + icon + '"></ha-icon>'; b.addEventListener("click", fn); row.appendChild(b); };
+        btn("mdi:eye-outline", "Voir le tracé", () => { this.$("hpanel").hidden = true; this.gpxShow(t); });
+        btn("mdi:directions", "Aller au départ", () => { var q = t.lines[0][0]; this.$("hpanel").hidden = true; this.chooseNext = true; this.setDestination({ lat: q[1], lon: q[0], name: "Départ · " + t.name.slice(0, 30) }, true); });
+        btn("mdi:delete-outline", "Supprimer", () => { this.gpxSave(this.gpxList().filter((x) => x !== t)); this.hikeLayers(this.map); if (this.hikeRedraw) this.hikeRedraw(); });
+        box.appendChild(row);
+      });
     },
     // The tilt follows the zoom, as a game's map: full 3D close up, flat
     // seen from high — eased (smoothstep), so it never jumps.
@@ -11084,6 +11391,7 @@
         "circle-stroke-color": "#07080a", "circle-stroke-width": 1.5, "circle-pitch-alignment": "viewport" } });
       map.addLayer({ id: "pois-icons", type: "symbol", source: "pois-icons", layout: layout, paint: paint });
       this.placesLayer(map, font);
+      this.hikeLayers(map);
       this.applyLayers();
     },
     poiData() { return { type: "FeatureCollection", features: [] }; },
