@@ -58,4 +58,23 @@ def test_store_runs_and_dedupe(tmp_path):
     assert m.status()["pieces_done"] == 0 and m.tile(3, 2, 2) == b"abc"
     assert m.font("Noto/0-255", b"x") == b"x" and m.font("Noto/0-255") == b"x"
     s = F.style("https://h/api/nives/spare/{z}/{x}/{y}.mvt", "https://h/api/nives/spare/fonts/{fontstack}/{range}.pbf", "jour")
-    assert s["sources"]["spare"]["tiles"][0].endswith(".mvt") and s["layers"][0]["paint"]["background-color"] == "#d3e2c6"
+    assert s["sources"]["spare"]["tiles"][0].endswith(".mvt") and s["layers"][0]["paint"]["background-color"] == F.PAL["jour"]["bg"]
+
+
+def test_deepen_asks_every_piece_again(tmp_path):
+    m = F.SpareMap(tmp_path / "c.sqlite")
+    m.seed(["low", "8/1/1"], "b1")
+    assert m.deepen(15) is True  # first time: noted
+    m.store("low", "b1", [], {}, True); m.store("8/1/1", "b1", [], {}, True)
+    assert m.next_piece(0) is None and m.deepen(15) is False
+    assert m.deepen(16) is True and m.next_piece(0) in ("low", "8/1/1")
+
+
+def test_style_kinds_and_faces():
+    s = F.style("https://h/t/{z}/{x}/{y}.mvt", "https://h/g/{fontstack}/{range}.pbf", "jour", True, 0.9, "https://h/nives_static/fonts")
+    ids = [l["id"] for l in s["layers"]]
+    for want in ("lc-wood", "lu-sand", "highway", "shields", "water-names", "towns", "regions", "quarters"):
+        assert want in ids
+    assert not any(l.get("id") == "road-names" for l in s["layers"])
+    assert "Igor Barlow Bold" in s["font-faces"] and s["font-faces"]["Igor Rubik Italic"][0]["url"].endswith("rubik-latin-400-italic.woff2")
+    assert s["sources"]["spare"]["maxzoom"] == F.MAX_ZOOM == 15

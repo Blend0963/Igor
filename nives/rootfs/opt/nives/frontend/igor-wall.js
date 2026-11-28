@@ -5569,7 +5569,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.31";
+  var GPS_CARD_VERSION = "0.62.32";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6308,6 +6308,50 @@
       return gpsFontFiles(w).map(function (f) { return "@font-face{font-family:'Igor Rubik';font-style:normal;font-weight:" + w + ";font-display:swap;src:url(" + f.url + ") format('woff2');unicode-range:" + f.unicodeRange.join(",") + "}"; }).join("");
     }).join("");
     document.head.appendChild(st);
+  }
+  // A road number's panel (A and N red, D yellow, others white), stretched
+  // around its text by MapLibre while its rounded corners stay round.
+  function gpsShieldImage(map, id) {
+    var C = { "igl-shield-red": ["#c8102e", "#ffffff"], "igl-shield-yellow": ["#f2c200", "#3a3000"], "igl-shield-white": ["#ffffff", "#6b7385"] }[id] || ["#ffffff", "#6b7385"];
+    var S = 32, cv = document.createElement("canvas"); cv.width = S * 2; cv.height = S * 2;
+    var g = cv.getContext("2d"); g.scale(2, 2);
+    g.beginPath(); if (g.roundRect) g.roundRect(2, 2, S - 4, S - 4, 6); else g.rect(2, 2, S - 4, S - 4);
+    g.fillStyle = C[0]; g.fill(); g.lineWidth = 1.6; g.strokeStyle = C[1]; g.stroke();
+    map.addImage(id, g.getImageData(0, 0, S * 2, S * 2), { pixelRatio: 2, stretchX: [[16, 48]], stretchY: [[16, 48]], content: [12, 10, 52, 54] });
+  }
+  // The map's names in Igor's faces (the TomTom map, its own label layers):
+  // regions thin wide capitals, towns bold narrow capitals, districts small
+  // spaced capitals, water blue italics, woods green italics; the street
+  // names hidden (a touch on a street says it), the road numbers kept.
+  var GPS_LABEL_PAL = {
+    jour: { city: "#ffffff", cityhalo: "#33415c", region: "rgba(255,255,255,0.85)", quarter: "#5a6378", water: "#1d6f9a", green: "#2f5d33", halo: "rgba(255,255,255,0.85)" },
+    nuit: { city: "#e2e4ff", cityhalo: "#11122a", region: "rgba(226,228,255,0.55)", quarter: "#9a9dd0", water: "#7fb6ff", green: "#7fcf9a", halo: "#11122a" }
+  };
+  var GPS_FACES = { "Igor Rubik Light": "rubik-{r}-300-normal", "Igor Rubik Medium": "rubik-{r}-500-normal", "Igor Rubik Italic": "rubik-{r}-400-italic", "Igor Barlow Bold": "barlow-condensed-{r}-700-normal" };
+  function gpsFaces() {
+    var o = window.location.origin + "/nives_static/fonts/", out = {};
+    Object.keys(GPS_FACES).forEach(function (n) { var p = GPS_FACES[n]; out[n] = [{ url: o + p.replace("{r}", "latin") + ".woff2", "unicode-range": GPS_FONT_LATIN }, { url: o + p.replace("{r}", "latin-ext") + ".woff2", "unicode-range": GPS_FONT_EXT }]; });
+    return out;
+  }
+  function gpsLabelLook(map, theme) {
+    if (!map || !map.getStyle) return;
+    var P = GPS_LABEL_PAL[theme] || GPS_LABEL_PAL.jour;
+    try { if (map.setFontFaces) map.setFontFaces(Object.assign({}, (map.getFontFaces && map.getFontFaces()) || {}, gpsFaces())); } catch (e) { return; }
+    var set = (id, lay, paint) => { Object.keys(lay).forEach((k) => { try { map.setLayoutProperty(id, k, lay[k]); } catch (e) { /* */ } }); Object.keys(paint).forEach((k) => { try { map.setPaintProperty(id, k, paint[k]); } catch (e) { /* */ } }); };
+    (map.getStyle().layers || []).forEach((l) => {
+      if (l.type !== "symbol" || /^igor|^route|^gps|^pois|^incidents|^trail|^man|^alt/.test(l.id) || !l.layout || l.layout["text-field"] == null) return;
+      var n = (l.id + " " + (l["source-layer"] || "")).toLowerCase();
+      if (/shield|number|\bref\b|exit|junction|motorway.?label|route.?label/.test(n)) return;  // the road numbers stay
+      if (l.layout["symbol-placement"] === "line" && /road|street|transport|path|track|minor|major|primary|secondary|tertiary|residential|service|motorway/.test(n) && !/water|river|stream|canal/.test(n)) {
+        try { map.setLayoutProperty(l.id, "visibility", "none"); } catch (e) { /* */ }
+        return;
+      }
+      if (/water|ocean|sea|lake|river|bay|canal|stream/.test(n)) set(l.id, { "text-font": ["Igor Rubik Italic"], "text-letter-spacing": 0.08 }, { "text-color": P.water, "text-halo-color": P.halo, "text-halo-width": 1 });
+      else if (/park|forest|wood|nature|green/.test(n)) set(l.id, { "text-font": ["Igor Rubik Italic"] }, { "text-color": P.green, "text-halo-color": P.halo, "text-halo-width": 1 });
+      else if (/country|state|region|province|department/.test(n)) set(l.id, { "text-font": ["Igor Rubik Light"], "text-transform": "uppercase", "text-letter-spacing": 0.45 }, { "text-color": P.region, "text-halo-width": 0 });
+      else if (/suburb|neighbo|district|quarter|hamlet|borough|locality.?minor/.test(n)) set(l.id, { "text-font": ["Igor Rubik Medium"], "text-transform": "uppercase", "text-letter-spacing": 0.3 }, { "text-color": P.quarter, "text-halo-color": P.halo, "text-halo-width": 1 });
+      else if (/place|settlement|city|town|village|capital|locality/.test(n)) set(l.id, { "text-font": ["Igor Barlow Bold"], "text-transform": "uppercase", "text-letter-spacing": 0.04 }, { "text-color": P.city, "text-halo-color": P.cityhalo, "text-halo-width": 1.6 });
+    });
   }
   // A pictogram as inline SVG (the vignette's header).
   function gpsPlaceSvg(icon, size, color) {
@@ -7258,6 +7302,7 @@
         ".mappick button { font: inherit; font-size: 14px; padding: 11px 12px; border-radius: 6px; border: 1px solid var(--bd); background: var(--ui2); color: var(--tx); cursor: pointer; display: flex; align-items: center; gap: 10px; --mdc-icon-size: 20px; white-space: nowrap; } .mappick button ha-icon { color: var(--acc); flex: none; }" +
         ".mappick > button:first-of-type { background: var(--acc); border-color: var(--acc); color: var(--accTx); } .mappick > button:first-of-type ha-icon { color: var(--accTx); }" +
         ".mappick .mp-name { color: var(--tx); font-size: 14px; font-weight: 600; flex: 1; min-width: 0; padding: 2px 0 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
+        ".mappick .mp-ref { flex: none; font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 4px; background: #ffffff; color: #3a3f4a; border: 1px solid #c9ced8; } .mappick .mp-ref.red { background: #c8102e; color: #fff; border-color: #c8102e; } .mappick .mp-ref.yel { background: #f2c200; color: #2a2400; border-color: #d6aa00; }" +
         ".mappick .mp-x { flex: none; margin-left: auto; width: 34px; height: 34px; min-height: 0; padding: 0; justify-content: center; border: 1px solid var(--bd); background: var(--ui2); color: var(--tx); --mdc-icon-size: 18px; } .mappick .mp-x ha-icon { color: var(--tx); }" +
         ".poisheet .ps-table th { color: var(--dim); text-align: left; padding-right: 10px; font-weight: 400; } .poisheet .ps-table td { color: var(--tx); }" +
         ".poisheet { max-width: 320px; }\n" +
@@ -7630,7 +7675,7 @@
         tomtom: { land: "#233c4b", water: "#3b5871", vegetation: "#2c4b4f", park: "#30564f", artificial: "#294353", roadMajor: "#456168", road: "#375461", roadOutline: "#2b4553", label: "#d3dfe4", labelHalo: "#1b2f3b" },
         // Igor's day: frank greens, turquoise water, blue-grey built-up areas,
         // white streets and warm main roads — no more washed-out white.
-        jour: { land: "#d3e2c6", water: "#3fb5d9", vegetation: "#86be78", park: "#7fbf73", artificial: "#d4d8e4", roadMajor: "#f4f1e6", road: "#ffffff", roadOutline: "#aab3c4", label: "#26303b", labelHalo: "#ffffff" },
+        jour: { land: "#b5ccaa", water: "#3fb2d6", vegetation: "#5f9a64", park: "#7fbf73", artificial: "#d3d6e2", roadMajor: "#f4f1e6", road: "#ffffff", roadOutline: "#aab3c4", label: "#26303b", labelHalo: "#ffffff" },
         // Igor's night: deep indigo ground, the water a shade lighter, dark
         // teal parks, lavender-grey roads that stand out without glaring.
         indigo: { land: "#1a1c38", water: "#2a2f66", vegetation: "#1b4743", park: "#1e5049", artificial: "#212548", roadMajor: "#8c90c2", road: "#5a5f92", roadOutline: "#13152b", label: "#e2e4ff", labelHalo: "#11122a" },
@@ -7653,6 +7698,7 @@
         if (mode) st.setMapColors(PAL[mode]);
         else if (sdk.resetKnob && sdk.stylingFoundationsKnobCatalogue) names.forEach((n) => { try { sdk.resetKnob(st, sdk.stylingFoundationsKnobCatalogue, "colors." + n); } catch (e) { /* that one as it was */ } });
         try { this.motorwayLook(this.map, mode === "jour" ? "jour" : mode === "indigo" ? "nuit" : ""); } catch (e) { /* as it was */ }
+        try { gpsLabelLook(this.map, dark ? "nuit" : "jour"); } catch (e) { /* TomTom's labels as they were */ }
       }).catch((e) => { this.ttStyling = null; this.tintSdkKey = null; if (this.config.debug) this.message("teinte : " + (e && e.message)); });
     }
     // The night's colours: Igor's indigo unless another is chosen (« gris »: the style's own).
@@ -9990,13 +10036,20 @@
       // A place on the map's own layer says its enseigne, or its kind when
       // it has no name (a pharmacy, a cafe); the empty map alone says
       // « Ce point » — the two ways (a new route, a stop) stand under it.
+      var streetRef = "", askStreet = false;
       if (!name) {
         var pq = [];
         try { pq = (map.getLayer("pois") ? map.queryRenderedFeatures(e.point, { layers: ["pois", "pois-icons"] }) : []) || []; } catch (err) { pq = []; }
         var pr = pq.length && pq[0].properties ? pq[0].properties : null;
         if (pr && pr.label && String(pr.label).trim()) name = String(pr.label).trim().slice(0, 40);
         else if (pr && pr.kind && GPS_POI[pr.kind] && GPS_POI[pr.kind].name) name = GPS_POI[pr.kind].name;
-        else name = "Ce point";
+        else {
+          // A street under the finger: its name (and its number), from the
+          // map's own road lines, else asked of OpenStreetMap (Nominatim).
+          var road = this.roadAt(e.point);
+          if (road) { name = road.name; streetRef = road.ref; }
+          else { name = "Ce point"; askStreet = true; }
+        }
       }
       this.closePick();
       var el = document.createElement("div");
@@ -10007,6 +10060,12 @@
         if (lg) { var im = document.createElement("img"); im.className = "mp-logo"; im.src = lg; im.alt = ""; head.appendChild(im); }
       }
       if (name) { var t = document.createElement("div"); t.className = "mp-name"; t.textContent = name; head.appendChild(t); }
+      if (streetRef) { var rb = document.createElement("span"); rb.className = "mp-ref " + (/^[ANE]/.test(streetRef) ? "red" : /^D/.test(streetRef) ? "yel" : ""); rb.textContent = streetRef; head.appendChild(rb); }
+      if (askStreet && e.lngLat) {
+        var tn = head.querySelector(".mp-name"), base = String(this.config.geocoder || "https://nominatim.openstreetmap.org").replace(/\/$/, "");
+        fetch(base + "/reverse?format=jsonv2&zoom=17&accept-language=fr&lat=" + e.lngLat.lat.toFixed(6) + "&lon=" + e.lngLat.lng.toFixed(6))
+          .then((r) => r.json()).then((j) => { var a = (j && j.address) || {}, rd = a.road || a.pedestrian || a.footway || a.path; if (rd && tn && tn.isConnected) tn.textContent = rd + (a.city || a.town || a.village ? " · " + (a.city || a.town || a.village) : ""); }).catch(() => {});
+      }
       var x = document.createElement("button"); x.type = "button"; x.className = "mp-x"; x.title = "Fermer";
       x.innerHTML = '<ha-icon icon="mdi:close"></ha-icon>';
       x.addEventListener("click", (ev) => { ev.stopPropagation(); this.closePick(); });
@@ -10062,6 +10121,14 @@
       el.addEventListener("click", (ev) => ev.stopPropagation());
       var mk = new window.maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -12] }).setLngLat(e.lngLat).addTo(map);
       this._pick = mk;
+      // Never past the screen's edge: slid sideways when the point is near it.
+      requestAnimationFrame(() => {
+        try {
+          var r = el.getBoundingClientRect(), c = map.getContainer().getBoundingClientRect(), dx = 0;
+          if (r.left < c.left + 10) dx = c.left + 10 - r.left; else if (r.right > c.right - 10) dx = c.right - 10 - r.right;
+          if (dx) mk.setOffset([dx, -12]);
+        } catch (err) { /* as it is */ }
+      });
     },
     closePick() {
       if (this._pick) { try { this._pick.getElement().dispatchEvent(new Event("igor-gone")); } catch (e) { /* gone */ } }
@@ -11262,6 +11329,7 @@
         map._iglMissing = true;
         map.on("styleimagemissing", (e) => {
           var id = e && e.id;
+          if (id && id.indexOf("igl-shield-") === 0 && !map.hasImage(id)) { try { gpsShieldImage(map, id); } catch (err) { /* plain text */ } return; }
           if (!id || id.indexOf("igl|") !== 0 || map.hasImage(id)) return;
           var parts = id.split("|");
           try { map.addImage(id, gpsPlaceIcon(parts[1], parts[2]), { pixelRatio: 4 }); } catch (err) { /* drawn next time */ }
@@ -11386,6 +11454,23 @@
       ["igor-lieux", "igor-lieux-db"].forEach((id) => { if (map.getLayer(id)) Object.keys(P).forEach((k) => map.setPaintProperty(id, k, P[k])); });
     },
     // The finger on one of them (a little square around it: an icon is small).
+    // The road under the finger, from the map's own lines (TomTom's or the
+    // spare map's): its name and number, or null.
+    roadAt(point) {
+      var map = this.map;
+      if (!map || !point) return null;
+      try {
+        var fs = map.queryRenderedFeatures([[point.x - 10, point.y - 10], [point.x + 10, point.y + 10]]) || [];
+        for (var i = 0; i < fs.length; i++) {
+          var f = fs[i], l = f.layer || {}, n = (l.id + " " + (l["source-layer"] || "")).toLowerCase(), p = f.properties || {};
+          if (l.type !== "line" || /^igor|^route|^trail|^man|^alt|^incidents/.test(l.id) || !/road|street|transport|highway|major|minor|motorway/.test(n)) continue;
+          var nm = p["name:fr"] || p.name || p.street_name || p.road_name || "";
+          var ref = String(p.shield_text || p.ref || p.road_number || "").split(";")[0];
+          if (nm || ref) return { name: String(nm || ref).slice(0, 60), ref: nm ? ref : "" };
+        }
+      } catch (e) { /* none */ }
+      return null;
+    },
     placeAt(point) {
       var map = this.map;
       if (!map || !map.getLayer("igor-lieux") || !point) return null;
@@ -15564,7 +15649,7 @@
     ["zp", "Caméra", "Inclinaison selon le zoom", "en 3D de près, à plat en dézoomant, comme la carte d'un jeu", "sw"],
     ["az", "Caméra", "Zoom selon la vitesse", "dézoome sur route rapide", "sw"],
     ["cy", "Caméra", "Voiture à l'écran", "plus bas : plus de route devant", "seg", [["haut", "plus haut"], ["milieu", "au milieu"], ["bas", "plus bas"]]],
-    ["fb", "Performance", "Carte de secours", "celle d'Igor (OpenStreetMap, sur Home Assistant) : seulement si TomTom ne répond pas, ou tout le temps", "seg", [["auto", "si besoin"], ["secours", "toujours"]]],
+    ["fb", "Lumière", "Fond de carte", "TomTom (3D, trafic ; la carte d'Igor s'il ne répond pas) ou la carte d'Igor (OpenStreetMap sur Home Assistant : ses couleurs, ses noms, rapide)", "seg", [["auto", "TomTom"], ["secours", "Igor"]]],
     ["fl", "Performance", "Mode fluide", "allège tout seul quand ça rame", "sw"],
     ["px", "Performance", "Netteté", "", "seg", [["eco", "économe"], ["normale", "normale"], ["max", "maximale"]]],
     ["aa", "Performance", "Lissage des bords", "coûteux sur téléphone ; inutile sur un écran très fin · au prochain affichage de la carte", "seg", [["auto", "auto"], ["oui", "oui"], ["non", "non"]]],

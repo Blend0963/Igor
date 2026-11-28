@@ -1,3 +1,12 @@
+## 0.62.32 — La carte d'Igor : noms, couleurs, tous les bâtiments
+
+- **Carte d'Igor (OpenStreetMap sur Home Assistant) jusqu'au zoom 15** : tous les bâtiments, et non plus seulement les grands. La carte déjà téléchargée est complétée d'elle-même (les tuiles en place servent pendant ce temps). Taille : plusieurs dizaines de Go pour la France.
+- **Une police par sorte de nom** (sur la carte d'Igor, et sur la carte TomTom autant que ses couches le permettent) : régions en capitales fines très espacées ; villes et villages en capitales étroites et grasses (Barlow Condensed) ; quartiers et lieux-dits en petites capitales espacées ; mers, lacs, rivières en italique bleu ; forêts et parcs en italique vert. Les noms viennent avec le zoom (régions et grandes villes de loin, villages, puis quartiers, parcs et rivières).
+- **Plus de noms de rues sur la carte** : seuls les numéros de route, dans leur panneau (A et N rouges, D jaunes). **Un toucher sur une rue donne son nom** (et son numéro) dans la bulle, qui reste dans l'écran ; à défaut, OpenStreetMap (Nominatim) le dit.
+- **Couleurs de la carte d'Igor** : prés vert clair, champs olive, forêts vert soutenu, villes gris lavande, eau turquoise, plages sable, autoroutes blanches de loin et jaunes de près ; la même logique en indigo la nuit. Le jour, la carte TomTom prend le même vert pour le sol et les forêts.
+- Réglages → Carte 3D → Lumière → **Fond de carte** : TomTom (la carte d'Igor s'il ne répond pas) ou Igor.
+- Polices embarquées en plus : Rubik fine et italique, Barlow Condensed (OFL).
+
 ## 0.62.31 — Rubik, la police d'Igor Explorer
 
 - **Les noms de la carte** (villes, rues, lieux) en **Rubik** : sur la carte TomTom (police personnalisée du SDK) et sur la carte de secours (MapLibre 6). Les écritures non latines restent dans la police de TomTom.

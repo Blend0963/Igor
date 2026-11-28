@@ -2225,6 +2225,8 @@ async def _async_spare_loop(hass: HomeAssistant) -> None:
                 await asyncio.sleep(3600)
                 continue
             await hass.async_add_executor_job(spare.seed, F.pieces(), build)
+            # Deeper than before (zoom 15: every building): the pieces again.
+            await hass.async_add_executor_job(spare.deepen, F.MAX_ZOOM)
             url = F.BUILD_URL.format(key=build)
             head = await get_range(url, 0, 16384)
             h = F.read_header(head)

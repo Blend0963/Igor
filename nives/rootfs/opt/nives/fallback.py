@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 FRANCE_BBOX = (-5.25, 41.25, 9.75, 51.25)
-MAX_ZOOM = 14
+MAX_ZOOM = 15
 PIECE_Z = 8
 BUILDS_URL = "https://build-metadata.protomaps.dev/builds.json"
 BUILD_URL = "https://build.protomaps.com/{key}"
@@ -245,6 +245,17 @@ class SpareMap:
             db.executemany("INSERT OR IGNORE INTO pieces(key, state, build) VALUES (?, 'todo', '')", [(k,) for k in keys])
             db.execute("UPDATE pieces SET state='todo', tries=0 WHERE build != ?", (build,))
 
+    def deepen(self, max_zoom: int) -> bool:
+        """The map kept down to a shallower zoom: every piece asked again
+        (the tiles already there stay and serve meanwhile). True if so."""
+        with self._lock, self._db() as db:
+            r = db.execute("SELECT v FROM meta WHERE k='max_zoom'").fetchone()
+            if r and r[0] == str(max_zoom):
+                return False
+            db.execute("UPDATE pieces SET state='todo', tries=0")
+            db.execute("INSERT OR REPLACE INTO meta(k, v) VALUES ('max_zoom', ?)", (str(max_zoom),))
+        return True
+
     def next_piece(self, now: float) -> str | None:
         with self._lock, self._db() as db:
             r = db.execute("SELECT key FROM pieces WHERE state='todo' OR (state='error' AND at < ? - 300 * (1 << MIN(tries, 6))) ORDER BY state DESC, tries, key LIMIT 1", (now,)).fetchone()
@@ -307,92 +318,149 @@ class SpareMap:
 
 
 # ----- the map's look: Protomaps' layers in Igor's colours -----
+# One name per kind of thing, each in its own face: the regions in thin wide
+# capitals, the towns in bold narrow capitals, the districts in small spaced
+# capitals, the water in blue italics, the woods in green italics; no street
+# names (a touch on a street says it), only the road numbers in their panels.
 PAL = {
-    "nuit": {"bg": "#1a1c38", "water": "#2a2f66", "park": "#1e5049", "wood": "#1b4743", "urban": "#212548", "bld": "#36407a", "bld2": "#2a3366", "hw": "#b49b46", "hwcase": "#6f5e25",
-             "major": "#8c90c2", "minor": "#5a5f92", "path": "#474c80", "case": "#13152b", "rail": "#4b5088", "label": "#e2e4ff", "halo": "#11122a", "border": "#6a6fb0"},
-    "jour": {"bg": "#d3e2c6", "water": "#3fb5d9", "park": "#7fbf73", "wood": "#86be78", "urban": "#d4d8e4", "bld": "#b2c2df", "bld2": "#7f96c3", "hw": "#f7df7c", "hwcase": "#d6b54a",
-             "major": "#f4f1e6", "minor": "#ffffff", "path": "#e9e4d6", "case": "#aab3c4", "rail": "#9aa3b5", "label": "#26303b", "halo": "#ffffff", "border": "#8e7fb0"},
+    "nuit": {"bg": "#1f3a3d", "earth": "#1f3a3d", "water": "#2a2f66", "water2": "#23285a", "park": "#1e5049", "grass": "#24453f", "wood": "#1b4743",
+             "field": "#33402c", "sand": "#6d5f3e", "urban": "#212548", "bld": "#36407a", "bld2": "#2a3366", "hw": "#b49b46", "hwcase": "#6f5e25",
+             "hwfar": "#8c90c2", "major": "#8c90c2", "minor": "#5a5f92", "path": "#474c80", "case": "#13152b", "rail": "#4b5088",
+             "city": "#e2e4ff", "cityhalo": "#11122a", "region": "rgba(226,228,255,0.55)", "quarter": "#9a9dd0", "wlabel": "#7fb6ff",
+             "glabel": "#7fcf9a", "halo": "#11122a", "border": "#6a6fb0"},
+    "jour": {"bg": "#a9c6a2", "earth": "#a9c6a2", "water": "#3fb2d6", "water2": "#2f9cc4", "park": "#7fbf73", "grass": "#b6d3a5", "wood": "#5f9a64",
+             "field": "#a8a768", "sand": "#e6cf96", "urban": "#d3d6e2", "bld": "#b2c2df", "bld2": "#7f96c3", "hw": "#f7df7c", "hwcase": "#d6b54a",
+             "hwfar": "#ffffff", "major": "#ffffff", "minor": "#ffffff", "path": "#e9e4d6", "case": "#b8bfcc", "rail": "#9aa3b5",
+             "city": "#ffffff", "cityhalo": "#33415c", "region": "rgba(255,255,255,0.85)", "quarter": "#5a6378", "wlabel": "#1d6f9a",
+             "glabel": "#2f5d33", "halo": "rgba(255,255,255,0.85)", "border": "#8e7fb0"},
 }
 
 
-# Rubik, the map's typeface (Igor ships it: frontend/fonts, OFL), Latin then Latin Extended.
+# The faces Igor ships (frontend/fonts, OFL), Latin then Latin Extended.
 LATIN = ["U+0000-00FF", "U+0131", "U+0152-0153", "U+02BB-02BC", "U+02C6", "U+02DA", "U+02DC", "U+0304", "U+0308", "U+0329",
          "U+2000-206F", "U+20AC", "U+2122", "U+2191", "U+2193", "U+2212", "U+2215", "U+FEFF", "U+FFFD"]
 LATIN_EXT = ["U+0100-02BA", "U+02BD-02C5", "U+02C7-02CC", "U+02CE-02D7", "U+02DD-02FF", "U+1D00-1DBF", "U+1E00-1E9F",
              "U+1EF2-1EFF", "U+2020", "U+20A0-20AB", "U+20AD-20C0", "U+2113", "U+2C60-2C7F", "U+A720-A7FF"]
+FACES = {
+    "Igor Rubik Light": "rubik-{r}-300-normal", "Igor Rubik": "rubik-{r}-400-normal", "Igor Rubik Medium": "rubik-{r}-500-normal",
+    "Igor Rubik SemiBold": "rubik-{r}-600-normal", "Igor Rubik Italic": "rubik-{r}-400-italic", "Igor Rubik Medium Italic": "rubik-{r}-500-italic",
+    "Igor Barlow Bold": "barlow-condensed-{r}-700-normal", "Igor Barlow SemiBold": "barlow-condensed-{r}-600-normal",
+}
 
 
-def rubik_faces(base: str) -> dict[str, list[dict[str, Any]]]:
-    """MapLibre's « font-faces »: the names the labels ask for → Rubik's files."""
-    def files(w: int) -> list[dict[str, Any]]:
-        return [{"url": f"{base}/rubik-latin-{w}-normal.woff2", "unicode-range": LATIN},
-                {"url": f"{base}/rubik-latin-ext-{w}-normal.woff2", "unicode-range": LATIN_EXT}]
-    return {"Rubik Regular": files(400), "Rubik Medium": files(500), "Rubik SemiBold": files(600)}
+def igor_faces(base: str) -> dict[str, list[dict[str, Any]]]:
+    """MapLibre's « font-faces »: each face name → its Latin files."""
+    return {name: [{"url": f"{base}/{pat.format(r='latin')}.woff2", "unicode-range": LATIN},
+                   {"url": f"{base}/{pat.format(r='latin-ext')}.woff2", "unicode-range": LATIN_EXT}] for name, pat in FACES.items()}
+
+
+rubik_faces = igor_faces
 
 
 def style(tiles_url: str, glyphs_url: str, theme: str = "nuit", buildings_3d: bool = True, opacity: float = 0.9,
           fonts_url: str | None = None) -> dict[str, Any]:
     c = PAL.get(theme, PAL["nuit"])
     w = lambda a, b, d: ["interpolate", ["exponential", 1.6], ["zoom"], a, b, 18, d]  # noqa: E731
-    road = lambda kinds: ["in", ["get", "kind"], ["literal", kinds]]  # noqa: E731
+    kind = lambda kinds: ["in", ["get", "kind"], ["literal", kinds]]  # noqa: E731
     name = ["coalesce", ["get", "name:fr"], ["get", "name"]]
+    f = (lambda igor, noto: [igor]) if fonts_url else (lambda igor, noto: [noto])  # noqa: E731
     src = "spare"
-    out = {
-        "version": 8, "name": "Igor · carte de secours",
+    ref = ["coalesce", ["get", "shield_text"], ["get", "ref"], ""]
+    first = ["slice", ["to-string", ref], 0, 1]
+    layers: list[dict[str, Any]] = [
+        {"id": "bg", "type": "background", "paint": {"background-color": c["bg"]}},
+        {"id": "earth", "type": "fill", "source": src, "source-layer": "earth", "paint": {"fill-color": c["earth"]}},
+        # The ground: fields olive, meadows light, woods deep, built-up lavender, sand.
+        {"id": "lc-field", "type": "fill", "source": src, "source-layer": "landcover", "filter": kind(["farmland"]), "paint": {"fill-color": c["field"], "fill-opacity": 0.75}},
+        {"id": "lc-grass", "type": "fill", "source": src, "source-layer": "landcover", "filter": kind(["grassland", "scrub", "barren"]), "paint": {"fill-color": c["grass"]}},
+        {"id": "lc-wood", "type": "fill", "source": src, "source-layer": "landcover", "filter": kind(["forest"]), "paint": {"fill-color": c["wood"]}},
+        {"id": "lc-urban", "type": "fill", "source": src, "source-layer": "landcover", "filter": kind(["urban_area"]), "paint": {"fill-color": c["urban"]}},
+        {"id": "lu-urban", "type": "fill", "source": src, "source-layer": "landuse",
+         "filter": kind(["residential", "commercial", "industrial", "retail", "railway", "school", "university", "hospital", "pedestrian", "parking", "military"]),
+         "paint": {"fill-color": c["urban"]}},
+        {"id": "lu-field", "type": "fill", "source": src, "source-layer": "landuse", "filter": kind(["farmland", "orchard", "vineyard", "allotments"]), "paint": {"fill-color": c["field"], "fill-opacity": 0.8}},
+        {"id": "lu-grass", "type": "fill", "source": src, "source-layer": "landuse", "filter": kind(["grass", "meadow", "village_green", "recreation_ground", "golf_course", "cemetery", "playground", "pitch"]),
+         "paint": {"fill-color": c["grass"]}},
+        {"id": "lu-park", "type": "fill", "source": src, "source-layer": "landuse", "filter": kind(["park", "garden", "nature_reserve", "national_park", "protected_area", "zoo"]), "paint": {"fill-color": c["park"]}},
+        {"id": "lu-wood", "type": "fill", "source": src, "source-layer": "landuse", "filter": kind(["forest", "wood"]), "paint": {"fill-color": c["wood"]}},
+        {"id": "lu-sand", "type": "fill", "source": src, "source-layer": "landuse", "filter": kind(["beach", "sand", "dune"]), "paint": {"fill-color": c["sand"]}},
+        {"id": "water", "type": "fill", "source": src, "source-layer": "water", "filter": ["!=", ["geometry-type"], "LineString"],
+         "paint": {"fill-color": ["match", ["get", "kind"], "ocean", c["water2"], c["water"]]}},
+        {"id": "rivers", "type": "line", "source": src, "source-layer": "water", "filter": ["==", ["geometry-type"], "LineString"],
+         "layout": {"line-cap": "round"}, "paint": {"line-color": c["water"], "line-width": w(9, 0.6, 7)}},
+        {"id": "boundaries", "type": "line", "source": src, "source-layer": "boundaries", "filter": ["<=", ["coalesce", ["get", "kind_detail"], 2], 4],
+         "paint": {"line-color": c["border"], "line-width": 1, "line-dasharray": [3, 2], "line-opacity": 0.5}},
+        {"id": "paths", "type": "line", "source": src, "source-layer": "roads", "minzoom": 14, "filter": kind(["path", "other"]),
+         "paint": {"line-color": c["path"], "line-width": w(14, 0.6, 3), "line-dasharray": [2, 1]}},
+        {"id": "rail", "type": "line", "source": src, "source-layer": "roads", "filter": kind(["rail"]), "paint": {"line-color": c["rail"], "line-width": w(10, 0.6, 3)}},
+        {"id": "minor-case", "type": "line", "source": src, "source-layer": "roads", "minzoom": 12, "filter": kind(["minor_road"]),
+         "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["case"], "line-width": w(12, 1.5, 22)}},
+        {"id": "minor", "type": "line", "source": src, "source-layer": "roads", "minzoom": 12, "filter": kind(["minor_road"]),
+         "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["minor"], "line-width": w(12, 0.8, 18)}},
+        {"id": "major-case", "type": "line", "source": src, "source-layer": "roads", "filter": kind(["major_road"]),
+         "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["case"], "line-width": w(6, 1, 30)}},
+        {"id": "major", "type": "line", "source": src, "source-layer": "roads", "filter": kind(["major_road"]),
+         "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["major"], "line-width": w(6, 0.5, 25)}},
+        # The motorways: white from far, yellow close up, a deeper edge.
+        {"id": "highway-case", "type": "line", "source": src, "source-layer": "roads", "filter": kind(["highway"]),
+         "layout": {"line-cap": "round", "line-join": "round"},
+         "paint": {"line-color": ["step", ["zoom"], c["case"], 11, c["hwcase"]], "line-width": w(5, 1.4, 34)}},
+        {"id": "highway", "type": "line", "source": src, "source-layer": "roads", "filter": kind(["highway"]),
+         "layout": {"line-cap": "round", "line-join": "round"},
+         "paint": {"line-color": ["step", ["zoom"], c["hwfar"], 11, c["hw"]], "line-width": w(5, 0.9, 28)}},
+    ]
+    layers.append(
+        {"id": "buildings", "type": "fill-extrusion", "source": src, "source-layer": "buildings", "minzoom": 13,
+         "paint": {"fill-extrusion-color": ["interpolate", ["linear"], ["coalesce", ["get", "height"], 9], 4, c["bld"], 40, c["bld2"]],
+                   "fill-extrusion-opacity": max(0.3, min(1.0, opacity)), "fill-extrusion-vertical-gradient": True,
+                   "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 13, 0, 15,
+                                             ["coalesce", ["get", "height"], ["*", ["coalesce", ["get", "building:levels"], 0], 3], 9]],
+                   "fill-extrusion-base": ["interpolate", ["linear"], ["zoom"], 13, 0, 15, ["coalesce", ["get", "min_height"], 0]]}}
+        if buildings_3d else
+        {"id": "buildings", "type": "fill", "source": src, "source-layer": "buildings", "minzoom": 13, "paint": {"fill-color": c["bld"], "fill-opacity": 0.9}})
+    halo = lambda col, wd=1.4: {"text-halo-color": col, "text-halo-width": wd}  # noqa: E731
+    layers += [
+        # The road numbers in their panels: A red, N red, D yellow (images drawn by the card).
+        {"id": "shields", "type": "symbol", "source": src, "source-layer": "roads", "minzoom": 9,
+         "filter": ["all", ["!=", ref, ""], ["in", ["get", "kind"], ["literal", ["highway", "major_road"]]]],
+         "layout": {"symbol-placement": "line", "symbol-spacing": 420, "text-field": ref, "text-font": f("Igor Barlow SemiBold", "Noto Sans Medium"), "text-size": 12,
+                    "text-rotation-alignment": "viewport", "icon-rotation-alignment": "viewport",
+                    "icon-image": ["match", first, ["A", "N", "E"], "igl-shield-red", "D", "igl-shield-yellow", "igl-shield-white"],
+                    "icon-text-fit": "both", "icon-text-fit-padding": [2, 5, 1, 5]},
+         "paint": {"text-color": ["match", first, ["A", "N", "E"], "#ffffff", "#2a2400"]}},
+        {"id": "water-names", "type": "symbol", "source": src, "source-layer": "water", "filter": ["all", ["has", "name"], ["==", ["geometry-type"], "Point"]],
+         "layout": {"text-field": name, "text-font": f("Igor Rubik Italic", "Noto Sans Italic"), "text-size": ["interpolate", ["linear"], ["zoom"], 6, 12, 14, 15],
+                    "text-letter-spacing": 0.08, "text-max-width": 8},
+         "paint": {"text-color": c["wlabel"], **halo(c["halo"], 1)}},
+        {"id": "river-names", "type": "symbol", "source": src, "source-layer": "water", "minzoom": 11, "filter": ["all", ["has", "name"], ["==", ["geometry-type"], "LineString"]],
+         "layout": {"symbol-placement": "line", "text-field": name, "text-font": f("Igor Rubik Italic", "Noto Sans Italic"), "text-size": 13, "text-letter-spacing": 0.1},
+         "paint": {"text-color": c["wlabel"], **halo(c["halo"], 1)}},
+        {"id": "green-names", "type": "symbol", "source": src, "source-layer": "landuse", "minzoom": 12,
+         "filter": ["all", ["has", "name"], kind(["park", "forest", "wood", "nature_reserve", "national_park", "garden"])],
+         "layout": {"text-field": name, "text-font": f("Igor Rubik Italic", "Noto Sans Italic"), "text-size": 12.5, "text-max-width": 8},
+         "paint": {"text-color": c["glabel"], **halo(c["halo"], 1)}},
+        {"id": "quarters", "type": "symbol", "source": src, "source-layer": "places", "minzoom": 13,
+         "filter": ["any", kind(["neighbourhood", "macrohood"]), ["all", kind(["locality"]), ["!", ["in", ["get", "kind_detail"], ["literal", ["city", "town", "village"]]]]]],
+         "layout": {"text-field": ["upcase", name], "text-font": f("Igor Rubik Medium", "Noto Sans Medium"), "text-size": 11.5, "text-letter-spacing": 0.3, "text-max-width": 9},
+         "paint": {"text-color": c["quarter"], **halo(c["halo"], 1)}},
+        {"id": "towns", "type": "symbol", "source": src, "source-layer": "places",
+         "filter": ["all", kind(["locality"]), ["in", ["get", "kind_detail"], ["literal", ["city", "town", "village"]]]],
+         "layout": {"text-field": ["upcase", name], "text-font": f("Igor Barlow Bold", "Noto Sans Medium"), "text-letter-spacing": 0.04,
+                    "text-size": ["interpolate", ["linear"], ["zoom"], 6, ["match", ["get", "kind_detail"], "city", 15, 11], 12, ["match", ["get", "kind_detail"], "city", 24, 17], 15, 19],
+                    "symbol-sort-key": ["coalesce", ["get", "min_zoom"], 10], "text-max-width": 10},
+         "paint": {"text-color": c["city"], **halo(c["cityhalo"], 1.6)}},
+        {"id": "regions", "type": "symbol", "source": src, "source-layer": "places", "maxzoom": 10, "filter": kind(["region", "country"]),
+         "layout": {"text-field": ["upcase", name], "text-font": f("Igor Rubik Light", "Noto Sans Regular"), "text-letter-spacing": 0.45,
+                    "text-size": ["interpolate", ["linear"], ["zoom"], 4, 14, 9, 26], "text-max-width": 14},
+         "paint": {"text-color": c["region"]}},
+    ]
+    out: dict[str, Any] = {
+        "version": 8, "name": "Igor",
         "light": {"anchor": "viewport", "color": "#ffffff" if theme == "jour" else "#b9bdf0", "intensity": 0.35 if theme == "jour" else 0.28, "position": [1.15, 210, 30]},
         "glyphs": glyphs_url,
-        "sources": {src: {"type": "vector", "tiles": [tiles_url], "minzoom": 0, "maxzoom": MAX_ZOOM,
-                          "attribution": "© OpenStreetMap · Protomaps"}},
-        "layers": [
-            {"id": "bg", "type": "background", "paint": {"background-color": c["bg"]}},
-            {"id": "earth", "type": "fill", "source": src, "source-layer": "earth", "paint": {"fill-color": c["bg"]}},
-            {"id": "urban", "type": "fill", "source": src, "source-layer": "landuse",
-             "filter": road(["residential", "commercial", "industrial", "retail", "urban_area", "neighbourhood"]), "paint": {"fill-color": c["urban"]}},
-            {"id": "wood", "type": "fill", "source": src, "source-layer": "landcover", "filter": road(["forest", "wood", "scrub", "grassland"]), "paint": {"fill-color": c["wood"], "fill-opacity": 0.8}},
-            {"id": "park", "type": "fill", "source": src, "source-layer": "landuse",
-             "filter": road(["park", "forest", "wood", "nature_reserve", "national_park", "grass", "meadow", "garden", "golf_course", "cemetery", "playground", "pitch"]),
-             "paint": {"fill-color": c["park"]}},
-            {"id": "water", "type": "fill", "source": src, "source-layer": "water", "paint": {"fill-color": c["water"]}},
-            {"id": "rivers", "type": "line", "source": src, "source-layer": "water", "filter": ["==", ["geometry-type"], "LineString"],
-             "paint": {"line-color": c["water"], "line-width": w(9, 0.6, 6)}},
-            {"id": "boundaries", "type": "line", "source": src, "source-layer": "boundaries", "filter": ["<=", ["coalesce", ["get", "kind_detail"], 2], 4],
-             "paint": {"line-color": c["border"], "line-width": 1, "line-dasharray": [3, 2], "line-opacity": 0.6}},
-            # The buildings: raised from their footprint (OpenStreetMap's
-            # height, else its floors × 3 m, else about three floors), rising
-            # as the zoom comes in, lit from the sky; flat when 3D is off.
-            ({"id": "buildings", "type": "fill-extrusion", "source": src, "source-layer": "buildings", "minzoom": 14,
-              "paint": {"fill-extrusion-color": ["interpolate", ["linear"], ["coalesce", ["get", "height"], 9], 4, c["bld"], 40, c["bld2"]], "fill-extrusion-opacity": max(0.3, min(1.0, opacity)), "fill-extrusion-vertical-gradient": True,
-                        "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 14, 0, 15.5,
-                                                  ["coalesce", ["get", "height"], ["*", ["coalesce", ["get", "building:levels"], 0], 3], 9]],
-                        "fill-extrusion-base": ["interpolate", ["linear"], ["zoom"], 14, 0, 15.5, ["coalesce", ["get", "min_height"], 0]]}}
-             if buildings_3d else
-             {"id": "buildings", "type": "fill", "source": src, "source-layer": "buildings", "minzoom": 14, "paint": {"fill-color": c["bld"], "fill-opacity": 0.9}}),
-            {"id": "paths", "type": "line", "source": src, "source-layer": "roads", "minzoom": 13, "filter": road(["path", "other"]),
-             "paint": {"line-color": c["path"], "line-width": w(13, 0.5, 3), "line-dasharray": [2, 1]}},
-            {"id": "rail", "type": "line", "source": src, "source-layer": "roads", "filter": road(["rail"]), "paint": {"line-color": c["rail"], "line-width": w(10, 0.6, 3)}},
-            {"id": "minor-case", "type": "line", "source": src, "source-layer": "roads", "minzoom": 12, "filter": road(["minor_road"]),
-             "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["case"], "line-width": w(12, 1.5, 22)}},
-            {"id": "minor", "type": "line", "source": src, "source-layer": "roads", "minzoom": 12, "filter": road(["minor_road"]),
-             "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["minor"], "line-width": w(12, 0.8, 18)}},
-            {"id": "major-case", "type": "line", "source": src, "source-layer": "roads", "filter": road(["major_road"]),
-             "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["case"], "line-width": w(6, 1, 30)}},
-            {"id": "major", "type": "line", "source": src, "source-layer": "roads", "filter": road(["major_road"]),
-             "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["major"], "line-width": w(6, 0.5, 25)}},
-            # The motorways in yellow, a deeper yellow at their edge.
-            {"id": "highway-case", "type": "line", "source": src, "source-layer": "roads", "filter": road(["highway"]),
-             "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["hwcase"], "line-width": w(5, 1.4, 34)}},
-            {"id": "highway", "type": "line", "source": src, "source-layer": "roads", "filter": road(["highway"]),
-             "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["hw"], "line-width": w(5, 0.9, 28)}},
-            {"id": "road-names", "type": "symbol", "source": src, "source-layer": "roads", "minzoom": 14, "filter": road(["major_road", "minor_road", "highway"]),
-             "layout": {"symbol-placement": "line", "text-field": name, "text-font": ["Rubik Medium" if fonts_url else "Noto Sans Regular"], "text-size": 12},
-             "paint": {"text-color": c["label"], "text-halo-color": c["halo"], "text-halo-width": 1.5}},
-            {"id": "places", "type": "symbol", "source": src, "source-layer": "places",
-             "filter": road(["locality", "neighbourhood", "macrohood", "region", "country"]),
-             "layout": {"text-field": name, "text-font": ["Rubik SemiBold" if fonts_url else "Noto Sans Medium"], "text-size": ["interpolate", ["linear"], ["zoom"], 5, 11, 12, 15, 16, 17],
-                        "symbol-sort-key": ["coalesce", ["get", "min_zoom"], 10]},
-             "paint": {"text-color": c["label"], "text-halo-color": c["halo"], "text-halo-width": 1.8}},
-        ],
+        "sources": {src: {"type": "vector", "tiles": [tiles_url], "minzoom": 0, "maxzoom": MAX_ZOOM, "attribution": "© OpenStreetMap · Protomaps"}},
+        "layers": layers,
     }
     if fonts_url:
-        out["font-faces"] = rubik_faces(fonts_url)
+        out["font-faces"] = igor_faces(fonts_url)
     return out
