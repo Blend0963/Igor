@@ -1,3 +1,10 @@
+## 0.62.21 — Carte à explorer : lieux, inclinaison selon le zoom, couleurs du jour
+
+- **Lieux d'OpenStreetMap, dessinés par Igor** : restaurants, points de vue, monuments, parkings, pharmacies, gares, plages… sur toute la carte, à partir des tuiles d'OpenFreeMap (gratuites, sans clé, servies par un CDN et gardées par le navigateur : aucune requête à Overpass pour les afficher). Une seule famille d'icônes (disque de couleur, pictogramme blanc) : les lieux de TomTom sont masqués pour ne pas mélanger deux dessins. Les icônes ne se chevauchent jamais (les plus importants d'abord), les noms apparaissent en zoomant. Un toucher : « Nouvel itinéraire », « Ajouter une étape », « Fiche » (horaires, téléphone, site, Wikipédia, demandés à OpenStreetMap pour ce seul lieu). Radars et stations (avec leurs prix) restent ceux d'Igor.
+- Réglages → Carte 3D → nouvel onglet **Lieux** : Igor, TomTom ou aucun, et neuf familles à afficher ou masquer.
+- **Inclinaison selon le zoom** (téléphone et autoradio) : en 3D de près, de plus en plus à plat en dézoomant, et la 3D revient en rezoomant, comme la carte d'un jeu. Pendant un pincement la caméra suit sans couper le geste. Réglage « Inclinaison selon le zoom » (Caméra).
+- **Couleurs du jour plus vives** sur la carte TomTom : verts francs, eau turquoise, quartiers et bâtiments gris-bleu, rues blanches, grands axes crème. Réglage « Couleurs de la carte le jour » (Lumière) : vives ou TomTom.
+
 ## 0.62.20 — Ombres d'Igor retirées
 
 - Retrait de la lumière, du dégradé et des ombres portées ajoutés par Igor en 0.62.18 : les bâtiments 3D de TomTom ont déjà les leurs, et les deux se superposaient.
