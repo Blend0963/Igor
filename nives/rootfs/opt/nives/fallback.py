@@ -315,13 +315,29 @@ PAL = {
 }
 
 
-def style(tiles_url: str, glyphs_url: str, theme: str = "nuit", buildings_3d: bool = True, opacity: float = 0.9) -> dict[str, Any]:
+# Rubik, the map's typeface (Igor ships it: frontend/fonts, OFL), Latin then Latin Extended.
+LATIN = ["U+0000-00FF", "U+0131", "U+0152-0153", "U+02BB-02BC", "U+02C6", "U+02DA", "U+02DC", "U+0304", "U+0308", "U+0329",
+         "U+2000-206F", "U+20AC", "U+2122", "U+2191", "U+2193", "U+2212", "U+2215", "U+FEFF", "U+FFFD"]
+LATIN_EXT = ["U+0100-02BA", "U+02BD-02C5", "U+02C7-02CC", "U+02CE-02D7", "U+02DD-02FF", "U+1D00-1DBF", "U+1E00-1E9F",
+             "U+1EF2-1EFF", "U+2020", "U+20A0-20AB", "U+20AD-20C0", "U+2113", "U+2C60-2C7F", "U+A720-A7FF"]
+
+
+def rubik_faces(base: str) -> dict[str, list[dict[str, Any]]]:
+    """MapLibre's « font-faces »: the names the labels ask for → Rubik's files."""
+    def files(w: int) -> list[dict[str, Any]]:
+        return [{"url": f"{base}/rubik-latin-{w}-normal.woff2", "unicode-range": LATIN},
+                {"url": f"{base}/rubik-latin-ext-{w}-normal.woff2", "unicode-range": LATIN_EXT}]
+    return {"Rubik Regular": files(400), "Rubik Medium": files(500), "Rubik SemiBold": files(600)}
+
+
+def style(tiles_url: str, glyphs_url: str, theme: str = "nuit", buildings_3d: bool = True, opacity: float = 0.9,
+          fonts_url: str | None = None) -> dict[str, Any]:
     c = PAL.get(theme, PAL["nuit"])
     w = lambda a, b, d: ["interpolate", ["exponential", 1.6], ["zoom"], a, b, 18, d]  # noqa: E731
     road = lambda kinds: ["in", ["get", "kind"], ["literal", kinds]]  # noqa: E731
     name = ["coalesce", ["get", "name:fr"], ["get", "name"]]
     src = "spare"
-    return {
+    out = {
         "version": 8, "name": "Igor · carte de secours",
         "light": {"anchor": "viewport", "color": "#ffffff" if theme == "jour" else "#b9bdf0", "intensity": 0.35 if theme == "jour" else 0.28, "position": [1.15, 210, 30]},
         "glyphs": glyphs_url,
@@ -368,12 +384,15 @@ def style(tiles_url: str, glyphs_url: str, theme: str = "nuit", buildings_3d: bo
             {"id": "highway", "type": "line", "source": src, "source-layer": "roads", "filter": road(["highway"]),
              "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": c["hw"], "line-width": w(5, 0.9, 28)}},
             {"id": "road-names", "type": "symbol", "source": src, "source-layer": "roads", "minzoom": 14, "filter": road(["major_road", "minor_road", "highway"]),
-             "layout": {"symbol-placement": "line", "text-field": name, "text-font": ["Noto Sans Regular"], "text-size": 12},
+             "layout": {"symbol-placement": "line", "text-field": name, "text-font": ["Rubik Medium" if fonts_url else "Noto Sans Regular"], "text-size": 12},
              "paint": {"text-color": c["label"], "text-halo-color": c["halo"], "text-halo-width": 1.5}},
             {"id": "places", "type": "symbol", "source": src, "source-layer": "places",
              "filter": road(["locality", "neighbourhood", "macrohood", "region", "country"]),
-             "layout": {"text-field": name, "text-font": ["Noto Sans Medium"], "text-size": ["interpolate", ["linear"], ["zoom"], 5, 11, 12, 15, 16, 17],
+             "layout": {"text-field": name, "text-font": ["Rubik SemiBold" if fonts_url else "Noto Sans Medium"], "text-size": ["interpolate", ["linear"], ["zoom"], 5, 11, 12, 15, 16, 17],
                         "symbol-sort-key": ["coalesce", ["get", "min_zoom"], 10]},
              "paint": {"text-color": c["label"], "text-halo-color": c["halo"], "text-halo-width": 1.8}},
         ],
     }
+    if fonts_url:
+        out["font-faces"] = rubik_faces(fonts_url)
+    return out

@@ -5569,7 +5569,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.30";
+  var GPS_CARD_VERSION = "0.62.31";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6291,6 +6291,24 @@
     var s = out.join(" ").replace(/«\s*»/, "").trim();
     return s ? s.charAt(0).toUpperCase() + s.slice(1) : String(sym);
   }
+  // Rubik, Igor Explorer's typeface (shipped in frontend/fonts, OFL): the
+  // map's names and the card's own words. The page declares it once (a
+  // font declared inside a shadow root is not seen by the browser).
+  var GPS_FONT_BASE = "/nives_static/fonts/rubik-";
+  var GPS_FONT_LATIN = ["U+0000-00FF", "U+0131", "U+0152-0153", "U+02BB-02BC", "U+02C6", "U+02DA", "U+02DC", "U+0304", "U+0308", "U+0329", "U+2000-206F", "U+20AC", "U+2122", "U+2191", "U+2193", "U+2212", "U+2215", "U+FEFF", "U+FFFD"];
+  var GPS_FONT_EXT = ["U+0100-02BA", "U+02BD-02C5", "U+02C7-02CC", "U+02CE-02D7", "U+02DD-02FF", "U+1D00-1DBF", "U+1E00-1E9F", "U+1EF2-1EFF", "U+2020", "U+20A0-20AB", "U+20AD-20C0", "U+2113", "U+2C60-2C7F", "U+A720-A7FF"];
+  function gpsFontFiles(w) {
+    var o = window.location.origin;
+    return [{ url: o + GPS_FONT_BASE + "latin-" + w + "-normal.woff2", unicodeRange: GPS_FONT_LATIN }, { url: o + GPS_FONT_BASE + "latin-ext-" + w + "-normal.woff2", unicodeRange: GPS_FONT_EXT }];
+  }
+  function gpsFontDeclare() {
+    if (document.getElementById("igor-rubik")) return;
+    var st = document.createElement("style"); st.id = "igor-rubik";
+    st.textContent = [400, 500, 600, 700].map(function (w) {
+      return gpsFontFiles(w).map(function (f) { return "@font-face{font-family:'Igor Rubik';font-style:normal;font-weight:" + w + ";font-display:swap;src:url(" + f.url + ") format('woff2');unicode-range:" + f.unicodeRange.join(",") + "}"; }).join("");
+    }).join("");
+    document.head.appendChild(st);
+  }
   // A pictogram as inline SVG (the vignette's header).
   function gpsPlaceSvg(icon, size, color) {
     return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24"><path fill="' + (color || "#fff") + '" d="' + (GPS_PLACE_SVG[icon] || GPS_PLACE_SVG["map-marker"]) + '"/></svg>';
@@ -6946,6 +6964,7 @@
     }
     localLive() { return !!this.localAt && performance.now() - this.localAt < 4000; }
     build() {
+      try { gpsFontDeclare(); } catch (e) { /* the system's font then */ }
       this.root = this.attachShadow({ mode: "open" });
       this.root.innerHTML = scaled(
         '<link rel="stylesheet" href="' + GPS_MAPLIBRE + '.css" data-ml-css><style>' +
@@ -7145,6 +7164,8 @@
         ".eta .st .shield { flex: none; display: inline-block; min-width: 0; max-width: none; border-left: 0; padding: 1px 6px; overflow: visible; -webkit-line-clamp: unset; font-size: 13px; line-height: 1.25; }" +
         ".eta .st .shield.a, .eta .st .shield.n, .eta .st .shield.e, .eta .st .shield.m { color: #fff; } .eta .st .shield.d { color: #111; }" +
         ".seg[hidden] { display: none !important; }" +
+        // The whole card in Rubik (its digits too), the icons left alone.
+        "ha-card, ha-card *:not(ha-icon), .pvig, .pvig *:not(ha-icon), .mappick, .mappick *:not(ha-icon) { font-family: 'Igor Rubik', 'Rubik', Roboto, 'DejaVu Sans', sans-serif !important; letter-spacing: 0 !important; }" +
         ".dmic { margin-left: auto; width: 40px; height: 40px; border-radius: 6px; border: 1px solid var(--bd); background: var(--ui2); color: var(--acc); display: grid; place-items: center; cursor: pointer; --mdc-icon-size: 22px; } .dmic.on { background: var(--acc); color: var(--accTx); }" +
         ".panel button.igo { background: none; border-color: #59d0e0; color: #59d0e0; text-align: center; }" +
         // Igor's answer: over the map, under the bars, its places beneath.
@@ -7509,7 +7530,7 @@
     styleUrl() {
       // Igor's spare map (OpenStreetMap, France, served by Home Assistant):
       // when TomTom does not answer, or when chosen in the settings.
-      if (this.spareOn) { var o = window.location.origin; this.spareTheme = this.spareTheme || (this.sdkStyleNow().indexOf("Dark") >= 0 ? "nuit" : "jour"); var LB = this.look || {}; return o + "/api/nives/spare/style.json?t=" + this.spareTheme + "&b3=" + (LB.b3 == null || Number(LB.b3) ? 1 : 0) + "&bo=" + ((Number(LB.bo) || 90) / 100) + "&o=" + encodeURIComponent(o); }
+      if (this.spareOn) { var o = window.location.origin; this.spareTheme = this.spareTheme || (this.sdkStyleNow().indexOf("Dark") >= 0 ? "nuit" : "jour"); var LB = this.look || {}; return o + "/api/nives/spare/style.json?ff=" + (window.maplibregl && window.maplibregl.Map && window.maplibregl.Map.prototype.setFontFaces ? 1 : 0) + "&t=" + this.spareTheme + "&b3=" + (LB.b3 == null || Number(LB.b3) ? 1 : 0) + "&bo=" + ((Number(LB.bo) || 90) / 100) + "&o=" + encodeURIComponent(o); }
       if (this.config.style) return this.config.style;
       // The CARTO dark PNG tiles online by default (cached by the browser):
       // the same images the offline basemap would serve, so the same drawing
@@ -7626,6 +7647,9 @@
       try { if (this.tt3d && this.tt3d.applyConfig) this.tt3d.applyConfig(this.buildingsLook()); } catch (e) { /* as it was */ }
       this.ttStyling.then((st) => {
         if (this.tintSdkKey !== key) return;
+        if (!this.fontSet && st.applyConfig) {
+          try { st.applyConfig({ labels: { customTypeface: { regular: gpsFontFiles(400), medium: gpsFontFiles(500), bold: gpsFontFiles(600) } } }); this.fontSet = true; } catch (e) { /* TomTom's own face */ }
+        }
         if (mode) st.setMapColors(PAL[mode]);
         else if (sdk.resetKnob && sdk.stylingFoundationsKnobCatalogue) names.forEach((n) => { try { sdk.resetKnob(st, sdk.stylingFoundationsKnobCatalogue, "colors." + n); } catch (e) { /* that one as it was */ } });
         try { this.motorwayLook(this.map, mode === "jour" ? "jour" : mode === "indigo" ? "nuit" : ""); } catch (e) { /* as it was */ }
@@ -10700,6 +10724,7 @@
       clearTimeout(this.sdkWatch);
       try { if (this.marker) this.marker.remove(); if (this.map) this.map.remove(); } catch (e) { /* gone */ }
       this.map = null; this.tt = null; this.ttKit = null; this.ttStyle = null; this.tintSdkKey = null; this.spareTheme = null; this.loading = false;
+      this.ttStyling = null; this.fontSet = false; this.mwKept = null;
       try { this.$("card").classList.toggle("spare", !!this.spareOn); } catch (e) { /* no card */ }
       if (p) this.init(p);
     },

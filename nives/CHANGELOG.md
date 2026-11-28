@@ -1,3 +1,9 @@
+## 0.62.31 — Rubik, la police d'Igor Explorer
+
+- **Les noms de la carte** (villes, rues, lieux) en **Rubik** : sur la carte TomTom (police personnalisée du SDK) et sur la carte de secours (MapLibre 6). Les écritures non latines restent dans la police de TomTom.
+- **L'interface** d'Igor Explorer aussi : barre de recherche, guidage, vitesse, barre d'arrivée, dock, vignettes, bulles.
+- La police est embarquée dans le module (`frontend/fonts`, licence OFL) : aucun téléchargement extérieur.
+
 ## 0.62.30 — Igor Explorer : coins, lieux, stations, bâtiments, autoroutes
 
 - **Coins arrondis du téléphone** : la barre de recherche, le guidage, la barre d'arrivée, le dock et les boutons de côté s'écartent des bords (18 px plus les marges du système), coins plus ronds ; le message (« Itinéraire changé ») ne passe plus sur les boutons de droite.
