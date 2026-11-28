@@ -5570,7 +5570,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.34";
+  var GPS_CARD_VERSION = "0.62.35";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6325,6 +6325,30 @@
     });
     return gpsMapboxP;
   }
+  // Mapbox's own places (mapbox-streets-v8, « poi_label »: well placed, and
+  // part of the map's load — no other cost), drawn in Igor's pins: their
+  // Maki icon name → the card's own kind (GPS_PLACE_OF), else their class.
+  var MBX_MAKI = { restaurant: "restaurant", "restaurant-pizza": "restaurant", "restaurant-noodle": "restaurant", "restaurant-seafood": "restaurant", "fast-food": "fast_food", cafe: "cafe", bar: "bar", beer: "pub",
+    "ice-cream": "ice_cream", bakery: "bakery", confectionery: "confectionery", grocery: "supermarket", shop: "shop", "clothing-store": "clothes", "shoe": "shoes", "alcohol-shop": "alcohol_shop", florist: "florist",
+    hairdresser: "hairdresser", laundry: "laundry", music: "music", bicycle: "bicycle", pharmacy: "pharmacy", hospital: "hospital", doctor: "doctors", dentist: "dentist", veterinary: "veterinary",
+    parking: "parking", "parking-garage": "parking", car: "car", "car-repair": "car_repair", "car-rental": "car_rental", "charging-station": "charging_station", rail: "station", "rail-metro": "subway",
+    "rail-light": "tram_stop", bus: "bus_station", airport: "airport", ferry: "ferry_terminal", "bicycle-share": "bicycle_rental", attraction: "attraction", landmark: "attraction", monument: "monument",
+    museum: "museum", "art-gallery": "art_gallery", castle: "castle", theatre: "theatre", cinema: "cinema", zoo: "zoo", aquarium: "aquarium", "amusement-park": "theme_park", information: "information",
+    viewpoint: "viewpoint", park: "park", garden: "garden", campsite: "campsite", "picnic-site": "picnic_site", playground: "playground", swimming: "swimming_pool", golf: "golf", stadium: "stadium",
+    "fitness-centre": "sports_centre", beach: "beach", "dog-park": "dog_park", lodging: "hotel", bank: "bank", post: "post", police: "police", "fire-station": "fire_station", "town-hall": "town_hall",
+    library: "library", school: "school", college: "college", "place-of-worship": "place_of_worship", "religious-christian": "place_of_worship", "religious-jewish": "place_of_worship",
+    "religious-muslim": "place_of_worship", cemetery: "cemetery", toilet: "toilets", "drinking-water": "drinking_water", "recycling": "recycling" };
+  var MBX_CLASS = { food_and_drink: "restaurant", food_and_drink_stores: "supermarket", store_like: "shop", lodging: "hotel", medical: "clinic", park_like: "park", education: "school", religion: "place_of_worship",
+    sport_and_leisure: "sports_centre", arts_and_entertainment: "attraction", historic: "monument", landmark: "attraction", visitor_amenities: "information", commercial_services: "shop", public_facilities: "town_hall" };
+  function gpsMbxExprs() {
+    var icon = (k) => { var o = GPS_PLACE_OF[k] || ["services", "map-marker"]; return "igl|" + o[0] + "|" + o[1]; };
+    var byIcon = {}; Object.keys(MBX_MAKI).forEach((m) => { var ic = icon(MBX_MAKI[m]); (byIcon[ic] = byIcon[ic] || []).push(m); });
+    var byClass = {}; Object.keys(MBX_CLASS).forEach((c) => { var ic = icon(MBX_CLASS[c]); (byClass[ic] = byClass[ic] || []).push(c); });
+    var m1 = ["match", ["get", "maki"]]; Object.keys(byIcon).forEach((ic) => { m1.push(byIcon[ic], ic); });
+    var m2 = ["match", ["get", "class"]]; Object.keys(byClass).forEach((ic) => { m2.push(byClass[ic], ic); }); m2.push("igl|services|map-marker");
+    m1.push(m2);
+    return m1;
+  }
   // A road number's panel (A and N red, D yellow, others white), stretched
   // around its text by MapLibre while its rounded corners stay round.
   function gpsShieldImage(map, id) {
@@ -6994,9 +7018,25 @@
       walk(this.config || {});
       return (this.watchList = out.filter((x, i, a) => a.indexOf(x) === i));
     }
-    connectedCallback() { if (this.map && !this.raf) this.raf = requestAnimationFrame(() => this.tick()); if (this.onCmd) window.addEventListener("igor-gps-cmd", this.onCmd); }
+    connectedCallback() {
+      clearTimeout(this.dropT);
+      if (this.dropped && !this.map && this._hass) { this.dropped = false; if (this.dropAt) this.restartMap(this.dropAt); else try { this.read(); } catch (e) { igorFault(this, e); } }
+      if (this.map && !this.raf) this.raf = requestAnimationFrame(() => this.tick()); if (this.onCmd) window.addEventListener("igor-gps-cmd", this.onCmd); }
     disconnectedCallback() {
       cancelAnimationFrame(this.raf); this.raf = null;
+      // A page left (another dashboard): its map is let go after 20 s — a
+      // phone gives few 3D contexts, and maps kept alive behind the scenes
+      // ran them out (no map drew any more, on any page, until a reload).
+      // Back on the page, it is drawn again where it was.
+      clearTimeout(this.dropT);
+      this.dropT = setTimeout(() => {
+        if (this.isConnected || !this.map) return;
+        this.dropAt = this.pos || (this.fix && this.fix.point) || null;
+        try { if (this.marker) this.marker.remove(); this.map.remove(); } catch (e) { /* gone */ }
+        clearTimeout(this.sdkWatch);
+        this.map = null; this.marker = null; this.tt = null; this.ttKit = null; this.ttStyle = null; this.tintSdkKey = null; this.spareTheme = null;
+        this.ttStyling = null; this.fontSet = false; this.mwKept = null; this.mbPreset = null; this.loading = false; this.dropped = true;
+      }, 20000);
       if (this.onCmd) window.removeEventListener("igor-gps-cmd", this.onCmd);
       if (this.geoWatch != null && navigator.geolocation) { navigator.geolocation.clearWatch(this.geoWatch); this.geoWatch = null; }
     }
@@ -7240,6 +7280,20 @@
         // The themes' colours (the map's own): indigo by night, light by day.
         "ha-card { --ui: rgba(22,24,52,0.92); --ui2: #262a5a; --bd: #3b4080; --tx: #e6e7ff; --dim: #9a9dd0; --acc: #59d0e0; --accTx: #07222a; --sh: 0 6px 18px rgba(0,0,0,.45); }" +
         "ha-card.day { --ui: rgba(255,255,255,0.95); --ui2: #eef1f7; --bd: #c3cad8; --tx: #1f2833; --dim: #64708a; --acc: #0e9bb0; --accTx: #ffffff; --sh: 0 6px 18px rgba(40,50,80,.25); }" +
+        // On Mapbox: the screen's colours follow its light — dawn, day,
+        // dusk, night — the map's own colours left as Mapbox draws them.
+        "ha-card.mbx.lp-night { --ui: rgba(17,25,46,0.93); --ui2: #1f2c4b; --bd: #33466d; --tx: #e3eaff; --dim: #93a3c9; --acc: #62b6ff; --accTx: #061a30; --sh: 0 6px 18px rgba(0,0,0,.5); }" +
+        "ha-card.mbx.lp-dusk { --ui: rgba(46,31,56,0.93); --ui2: #4a3258; --bd: #6d4c72; --tx: #fbeae2; --dim: #cfaab4; --acc: #ffa35a; --accTx: #2b1404; --sh: 0 6px 18px rgba(20,5,20,.5); }" +
+        "ha-card.mbx.lp-dawn { --ui: rgba(255,247,245,0.95); --ui2: #f7e8e6; --bd: #e2c8c6; --tx: #3b2a35; --dim: #8b6f7b; --acc: #e0697d; --accTx: #ffffff; --sh: 0 6px 18px rgba(90,40,60,.22); }" +
+        "ha-card.mbx.lp-day { --ui: rgba(255,255,255,0.96); --ui2: #eef2f7; --bd: #c8d0dc; --tx: #1d2733; --dim: #637087; --acc: #2f80ed; --accTx: #ffffff; --sh: 0 6px 18px rgba(40,50,80,.22); }" +
+        // Every window in the same light: the routes to choose, the « better
+        // route » question, the search, the stations — not only the dock.
+        "ha-card.mbx .panel, ha-card.mbx .ask { background: var(--ui); color: var(--tx); border-color: var(--bd); }" +
+        "ha-card.mbx .panel .ph, ha-card.mbx .panel .list small, ha-card.mbx .panel .note, ha-card.mbx .rpanel .ropt .cost, ha-card.mbx .ask .q div, ha-card.mbx .nav .x { color: var(--dim); }" +
+        "ha-card.mbx .panel button, ha-card.mbx .panel input, ha-card.mbx .ask button { background: var(--ui2); border-color: var(--bd); color: var(--tx); } ha-card.mbx .panel button.ic ha-icon { color: var(--tx); }" +
+        "ha-card.mbx .panel button.go, ha-card.mbx .ask button.yes { background: var(--acc); border-color: var(--acc); color: var(--accTx); } ha-card.mbx .panel button.igo { background: none; border-color: var(--acc); color: var(--acc); }" +
+        "ha-card.mbx .rpanel .ropt.sel, ha-card.mbx .rpanel .seg button.on { border-color: var(--acc); } ha-card.mbx .rpanel .seg button.on { color: var(--acc); } ha-card.mbx .rpanel .ropt .cost strong { color: var(--tx); }" +
+        "ha-card.mbx .alttag { background: var(--ui); color: var(--tx); border-color: var(--bd); box-shadow: var(--sh); } ha-card.mbx .tbar b { color: var(--tx); }" +
         // Igor's vignette over a place.
         ".pvig { width: min(340px, calc(100vw - 28px)); background: var(--ui); border: 1px solid var(--bd); border-radius: 8px; box-shadow: var(--sh); color: var(--tx); font-family: 'DejaVu Sans', Roboto, sans-serif; overflow: hidden; cursor: default; }" +
         ".pv-h { display: flex; gap: 11px; align-items: center; padding: 11px 12px; } .pv-h > i { width: 44px; height: 44px; flex: none; border-radius: 6px; background: var(--pc); display: grid; place-items: center; }" +
@@ -7786,6 +7840,7 @@
     // TomTom's own lines as they are.
     trafficLook(map, mode) {
       var show = mode === "tout" || mode === "chaussee";
+      if (this.mapboxCfg) return this.mbxTraffic(map, show);
       ((map.getStyle() && map.getStyle().layers) || []).forEach((l) => {
         if (/^igor-tf-/.test(l.id)) { map.removeLayer(l.id); return; }
         if (this.isTrafficLayer(l)) map.setLayoutProperty(l.id, "visibility", show ? "visible" : "none");
@@ -7897,6 +7952,7 @@
       };
       tryIt(() => { if (this.tt3d && this.tt3d.applyConfig) this.tt3d.applyConfig(this.buildingsLook()); });
       tryIt(() => this.terrainLook());
+      tryIt(() => { this.mbLookApply(); this.placesApply(); });
       tryIt(() => this.tintLook(map, L));
       tryIt(() => this.baseBuildings(map));
       tryIt(() => { if (this.ttSurf && this.ttSurf.updateConfig) this.ttSurf.updateConfig({ visible: !!Number(L.sf), trees: { visible: this.sdkTreesOn() }, wind: { speedFactor: Number(L.wd) || 0 } }); });
@@ -7937,10 +7993,7 @@
       // road): none by default — the route carries its slow stretches itself.
       tryIt(() => this.trafficLook(map, L.tf || "aucun"));
       tryIt(() => this.placesApply());
-      if (L.fb === "mapbox" && !this.mapboxCfg && !this.mapboxOff && this.map) { this.spareOn = false; setTimeout(() => this.restartMap(), 0); return; }
-      if (L.fb !== "mapbox" && this.mapboxCfg && this.map) { setTimeout(() => this.restartMap(), 0); return; }
-      if (L.fb === "secours" && !this.spareOn && this.spareStat && this.spareStat.usable) { setTimeout(() => this.goSpare("choisie dans les réglages"), 0); return; }
-      if (L.fb !== "secours" && this.spareOn && this.spareWhy === "choisie dans les réglages") { setTimeout(() => this.leaveSpare(), 0); return; }
+
       tryIt(() => {
         var ns = { petite: 0.85, normale: 1, grande: 1.25 }[L.ns] || 1, sz = this.labelSize0 = this.labelSize0 || {};
         ((map.getStyle() && map.getStyle().layers) || []).forEach((l) => {
@@ -8698,14 +8751,12 @@
           if (!mc || !mc.ok) throw new Error("clé Mapbox absente (options d'Igor)");
           await gpsMapbox();
           this.mapboxCfg = mc;
-          if (!this.mlRef) this.mlRef = window.maplibregl;
-          window.maplibregl = window.mapboxgl;
           var mbcss = this.root.querySelector("link[data-ml-css]");
           if (mbcss) mbcss.setAttribute("href", "https://api.mapbox.com/mapbox-gl-js/v" + GPS_MAPBOX_VER + "/mapbox-gl.css");
           this.spareOn = false;
         } catch (e) { this.mapboxOff = true; this.toast("Mapbox indisponible · " + ((e && e.message) || ""), 8000); }
       }
-      if (!this.spareOn && this.look && this.look.fb === "secours" && this.spareStat && this.spareStat.usable) { this.spareOn = true; this.spareWhy = "choisie dans les réglages"; }
+
       try { this.$("card").classList.toggle("spare", !!this.spareOn); } catch (e) { /* no card */ }
       var style = this.mapboxCfg ? null : (this.styleNow = this.styleUrl());
       if (typeof style === "string" && style.indexOf(window.location.origin + "/api/nives/") === 0) {
@@ -8727,7 +8778,7 @@
       }
       var map;
       if (this.mapboxCfg) {
-        try { map = this.mapboxMap(p); } catch (e) { map = null; this.mapboxCfg = null; this.mapboxOff = true; this.toast("Mapbox · " + ((e && e.message) || "refusé"), 8000); if (this.mlRef) window.maplibregl = this.mlRef; }
+        try { map = this.mapboxMap(p); } catch (e) { map = null; this.mapboxCfg = null; this.mapboxOff = true; this.toast("Mapbox · " + ((e && e.message) || "refusé"), 8000); }
       }
       // TomTom's SDK (basemap: tomtom-3d, the phone): its map, its 3D. A
       // failure to load it, or a map that never shows, and the card starts
@@ -8778,7 +8829,11 @@
       // car sits at the screen's centre while guiding) drags the map like
       // anywhere else, instead of holding a dead spot.
       arrow.style.pointerEvents = "none";
-      this.marker = new (this.mapboxCfg ? window.mapboxgl : ml).Marker({ element: arrow, rotationAlignment: "map", pitchAlignment: "map" }).setLngLat(p).addTo(map);
+      // Laid on the road up to 42° of tilt, then held there: steeper, a
+      // picture lying flat on the ground was squeezed into a thin sliver.
+      this.arrowEl = arrow.firstElementChild; this.arrowKey = null;
+      if (this.arrowEl) { this.arrowEl.style.transformOrigin = "50% 50%"; this.arrowEl.style.display = "block"; }
+      this.marker = new (this.mapboxCfg ? window.mapboxgl : ml).Marker({ element: arrow, rotationAlignment: "viewport", pitchAlignment: "viewport" }).setLngLat(p).addTo(map);
       // Each touch (its start, its moves, its end) holds the map and restarts the wait.
       ["dragstart", "zoomstart", "rotatestart", "pitchstart", "drag", "zoom", "dragend", "zoomend", "rotateend", "pitchend"].forEach((ev) => map.on(ev, (e) => { if (e.originalEvent) this.setFollow(false); }));
       // The screen's moves rebuild the points: what the eye leaves is let
@@ -8873,6 +8928,10 @@
         console.warn("igor-gps-card:", err || e);
         // TomTom failing again and again (no answer, quota, refused): the spare map.
         var eu = String((err && err.url) || "");
+        if (this.mapboxCfg && /traffic\/map\/4\/tile\/flow/.test(eu) && !this.ttFlowDown) {
+          this.ttFlowFails = (this.ttFlowFails || 0) + 1;
+          if (this.ttFlowFails >= 4) { this.ttFlowDown = true; try { this.mbxTraffic(this.map, true); } catch (e2) { /* */ } }
+        }
         if (this.mapboxCfg && /api\.mapbox\.com/.test(eu) && err && (err.status === 401 || err.status === 403)) {
           this.mapboxOff = true; this.toast("Clé Mapbox refusée : retour à la carte habituelle", 9000); setTimeout(() => this.restartMap(), 0); return;
         }
@@ -9057,7 +9116,11 @@
       // Last guard: driving, not a step back (a big jump, a real relocation, still goes).
       if (forward && jump <= 400 && gpsAhead(before, this.pos, this.heading) < -0.2) this.pos = before;
       this.shown = gpsLerpAngle(this.shown, this.heading, ease(0.1));
-      this.marker.setLngLat(this.pos).setRotation(this.shown);
+      this.marker.setLngLat(this.pos);
+      if (this.arrowEl) {
+        var apt = Math.min(42, this.map.getPitch() || 0), arz = ((this.shown - (this.map.getBearing() || 0)) % 360 + 360) % 360, akey = Math.round(apt * 2) + "|" + Math.round(arz * 4);
+        if (akey !== this.arrowKey) { this.arrowKey = akey; this.arrowEl.style.transform = "perspective(320px) rotateX(" + apt.toFixed(1) + "deg) rotateZ(" + arz.toFixed(2) + "deg)"; }
+      }
       try { this.liveCut(now); } catch (e) { /* the route as it was */ }
       if (!this.trailAt || now - this.trailAt > 1000) {
         this.trailAt = now;
@@ -9684,16 +9747,16 @@
       var d = this.dest;
       if (this.destMarker) { this.destMarker.remove(); this.destMarker = null; }
       (this.viaMarkers || []).forEach((m) => m.remove()); this.viaMarkers = [];
-      if (!d || !this.map || !window.maplibregl) return;
+      if (!d || !this.map || !this.gl()) return;
       var L = this.look || {}, md = L.md || this.config.marker_dest || "epingle", ms = L.ms || this.config.marker_stop || "epingle";
       var after = this.routePal("after").route;
       var dm = this.placeMarker(md, "dest", null, "#f2f4f7");
       this.destLabel = dm.label; this.destName = d.name || "arrivée";
-      this.destMarker = new window.maplibregl.Marker(dm.opts).setLngLat([d.lon, d.lat]).addTo(this.map);
-      if (dm.labelHolder) this.viaMarkers.push(new window.maplibregl.Marker({ element: dm.labelHolder, anchor: "bottom", offset: [0, -24] }).setLngLat([d.lon, d.lat]).addTo(this.map));
+      this.destMarker = new this.gl().Marker(dm.opts).setLngLat([d.lon, d.lat]).addTo(this.map);
+      if (dm.labelHolder) this.viaMarkers.push(new this.gl().Marker({ element: dm.labelHolder, anchor: "bottom", offset: [0, -24] }).setLngLat([d.lon, d.lat]).addTo(this.map));
       (d.via || []).forEach((v, i) => {
         var vm = this.placeMarker(ms, "stop", i + 1, after);
-        this.viaMarkers.push(new window.maplibregl.Marker(vm.opts).setLngLat([v.lon, v.lat]).addTo(this.map));
+        this.viaMarkers.push(new this.gl().Marker(vm.opts).setLngLat([v.lon, v.lat]).addTo(this.map));
       });
       this.markerLabels(true);
     },
@@ -9897,7 +9960,7 @@
     },
     drawAlts() {
       var map = this.map;
-      if (!map || !window.maplibregl || !map.getSource("route")) { (this.altMarkers || []).forEach((m) => m.remove()); this.altMarkers = []; return; }
+      if (!map || !this.gl() || !map.getSource("route")) { (this.altMarkers || []).forEach((m) => m.remove()); this.altMarkers = []; return; }
       if (!map.getSource("alts")) {
         map.addSource("alts", { type: "geojson", data: this.altsData() });
         map.addLayer({ id: "alts", type: "line", source: "alts", layout: { "line-cap": "round", "line-join": "round" },
@@ -9934,7 +9997,7 @@
         el.className = "alttag" + (dmin <= -1 || why.saving >= 1 || why.noZfe ? " win" : "");
         parts.forEach((q) => { var sp = document.createElement("span"); var ic = document.createElement("ha-icon"); ic.setAttribute("icon", q[0]); sp.appendChild(ic); if (q[1]) sp.appendChild(document.createTextNode(q[1])); el.appendChild(sp); });
         var band = why.band;
-        var mk = new window.maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(R0.coords[band ? (band[0] + band[1]) >> 1 : Math.floor(R0.coords.length / 2)]).addTo(map);
+        var mk = new this.gl().Marker({ element: el, anchor: "center" }).setLngLat(R0.coords[band ? (band[0] + band[1]) >> 1 : Math.floor(R0.coords.length / 2)]).addTo(map);
         mk._igorAlt = a;
         mk._igorBand = band;
         this.altMarkers.push(mk);
@@ -9963,7 +10026,7 @@
     // blue line.
     placeAlts(force) {
       var map = this.map;
-      if (!map || !window.maplibregl || !this.altMarkers || !this.altMarkers.length) return;
+      if (!map || !this.gl() || !this.altMarkers || !this.altMarkers.length) return;
       var now = performance.now();
       if (!force && this._altPlaced && now - this._altPlaced < 1000) return;
       this._altPlaced = now;
@@ -10027,7 +10090,8 @@
     // grey route, the tap picks it.
     mapPick(e) {
       var map = this.map;
-      if (!map || !e || !e.point || !window.maplibregl) return;
+      if (!map || !e || !e.point || !this.gl()) return;
+      this.pickAt = Date.now();
       // debug_pois: what the base map's tiles say under the finger (to find
       // which property marks TomTom's stations), shown 15 s in the message band.
       if (this.config.debug_pois) {
@@ -10069,6 +10133,7 @@
         return false;
       });
       var osmPlace = this.placeAt(e.point);
+      if (osmPlace && !osmPlace.ll && e.lngLat) osmPlace.ll = [e.lngLat.lng, e.lngLat.lat];
       if (!fuel && osmPlace) { this.placeVignette(osmPlace); return; }
       var trail = !fuel && this.trailAt(e.point);
       if (trail) { this.trailVignette(trail, e.lngLat ? [e.lngLat.lng, e.lngLat.lat] : null); return; }
@@ -10162,7 +10227,7 @@
         el.appendChild(via);
       }
       el.addEventListener("click", (ev) => ev.stopPropagation());
-      var mk = new window.maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -12] }).setLngLat(e.lngLat).addTo(map);
+      var mk = new this.gl().Marker({ element: el, anchor: "bottom", offset: [0, -12] }).setLngLat(e.lngLat).addTo(map);
       this._pick = mk;
       // Never past the screen's edge: slid sideways when the point is near it.
       requestAnimationFrame(() => {
@@ -10801,7 +10866,11 @@
         if (this.mbThemeAt && tm - this.mbThemeAt < 60000) return;
         this.mbThemeAt = tm;
         var pr = this.mapboxPreset();
-        try { this.$("card").classList.toggle("day", pr === "day" || pr === "dawn"); } catch (e) { /* no card */ }
+        try {
+          var cl = this.$("card").classList;
+          cl.toggle("day", pr === "day" || pr === "dawn"); cl.add("mbx");
+          ["dawn", "day", "dusk", "night"].forEach((x) => cl.toggle("lp-" + x, x === pr));
+        } catch (e) { /* no card */ }
         if (pr !== this.mbPreset) { this.mbPreset = pr; try { this.map.setConfigProperty("basemap", "lightPreset", pr); } catch (e) { /* a style without it */ } }
         return;
       }
@@ -10825,7 +10894,51 @@
       this.ttStyle = want; this.themeBusy = true; this.tintSdkKey = null; this.tintKept = null; this.buildKept = null; this.tintMode = null;
       Promise.resolve().then(() => this.tt.setStyle(want)).catch(() => {}).then(() => { this.themeBusy = false; });
     },
-    wantMapbox() { var L = this.look || {}; return L.fb === "mapbox" || (L.fb == null && this.config.basemap === "mapbox"); },
+    // Mapbox is the map of every GPS screen; TomTom's map, then Igor's own,
+    // only stand in when Mapbox has no token or refuses (`mapbox: false` to opt out).
+    // On Mapbox, the traffic of the whole map (« Trafic sur toute la carte »):
+    // TomTom's flow (relayed by Home Assistant with its key), only where it
+    // slows down; TomTom silent or refusing: Mapbox's own traffic instead.
+    mbxTraffic(map, show) {
+      var ids = ["igor-ttflow", "igor-mbxflow"];
+      try {
+        if (!show) { ids.forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); }); return; }
+        var useMbx = !!this.ttFlowDown;
+        if (!useMbx && !map.getLayer("igor-ttflow")) {
+          if (map.getLayer("igor-mbxflow")) map.removeLayer("igor-mbxflow");
+          if (!map.getSource("igor-ttflow")) map.addSource("igor-ttflow", { type: "vector", tiles: [window.location.origin + "/api/nives/tomtom/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.pbf"], minzoom: 6, maxzoom: 18 });
+          map.addLayer({ id: "igor-ttflow", type: "line", source: "igor-ttflow", "source-layer": "Traffic flow", slot: "middle",
+            filter: ["any", ["==", ["get", "road_closure"], true], ["<", ["coalesce", ["get", "traffic_level"], 1], 0.85]],
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1.5, 16, 5], "line-offset": ["interpolate", ["linear"], ["zoom"], 10, 1, 16, 3],
+              "line-color": ["case", ["==", ["get", "road_closure"], true], "#8e1b1b", ["<", ["get", "traffic_level"], 0.35], "#e5323b", ["<", ["get", "traffic_level"], 0.6], "#f08c1a", "#f4c542"] } });
+        }
+        if (useMbx && !map.getLayer("igor-mbxflow")) {
+          if (map.getLayer("igor-ttflow")) map.removeLayer("igor-ttflow");
+          if (!map.getSource("igor-mbxflow")) map.addSource("igor-mbxflow", { type: "vector", url: "mapbox://mapbox.mapbox-traffic-v1" });
+          map.addLayer({ id: "igor-mbxflow", type: "line", source: "igor-mbxflow", "source-layer": "traffic", slot: "middle", filter: ["in", ["get", "congestion"], ["literal", ["moderate", "heavy", "severe"]]],
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1.5, 16, 5], "line-offset": ["interpolate", ["linear"], ["zoom"], 10, 1, 16, 3],
+              "line-color": ["match", ["get", "congestion"], "moderate", "#f4c542", "heavy", "#f08c1a", "#e5323b"] } });
+        }
+      } catch (e) { /* the route's own jams still show */ }
+    },
+    // The look on Mapbox: Mapbox's own (its places, street names, font), or
+    // « Igor Signature » (Igor's pins, Rubik, no street names). `map_look`
+    // in the card, or « Style de la carte » in the settings.
+    mbIgor() { var L = this.look || {}, v = L.mb != null ? L.mb : this.config.map_look; return v === "igor"; },
+    mbLookApply() {
+      var map = this.map;
+      if (!this.mapboxCfg || !map || !map.setConfigProperty) return;
+      var ig = this.mbIgor(), poi = !ig && this.placesOn(), key = ig + "|" + poi;
+      if (key === this.mbLookKept) return;
+      this.mbLookKept = key;
+      [["showPointOfInterestLabels", poi], ["showRoadLabels", !ig], ["showTransitLabels", !ig]].forEach((x) => { try { map.setConfigProperty("basemap", x[0], x[1]); } catch (e) { /* a style without it */ } });
+      // Rubik is one of Mapbox Standard's own fonts; back to its default otherwise.
+      if (ig || this.mbFont) { try { map.setConfigProperty("basemap", "font", ig ? "Rubik" : "DIN Pro"); this.mbFont = ig; } catch (e) { /* older style */ } }
+    },
+    gl() { return this.mapboxCfg && window.mapboxgl ? window.mapboxgl : window.maplibregl; },
+    wantMapbox() { return this.config.mapbox !== false; },
     // Mapbox's light: dawn, day, dusk or night, from the sun (Home Assistant's
     // sun.sun), or held by « Jour et nuit ».
     mapboxPreset() {
@@ -10845,11 +10958,30 @@
       var map = new mb.Map({
         container: this.$("map"), accessToken: cfg.token, style: cfg.style, center: p, zoom: this.config.zoom, pitch: this.config.pitch,
         bearing: this.headingUp ? this.heading : 0, attributionControl: false, logoPosition: "top-left", antialias: this.antialiasOn(), maxPitch: 80,
-        config: { basemap: { lightPreset: (this.mbPreset = this.mapboxPreset()), show3dObjects: true, show3dTrees: true, show3dLandmarks: true, show3dBuildings: true, showPlaceLabels: true, showRoadLabels: false,
-          showPointOfInterestLabels: false, showTransitLabels: false, showPedestrianRoads: true } },
+        config: { basemap: { lightPreset: (this.mbPreset = this.mapboxPreset()), show3dObjects: true, show3dTrees: true, show3dLandmarks: true, show3dBuildings: true, showPlaceLabels: true, showRoadLabels: !this.mbIgor(),
+          showPointOfInterestLabels: !this.mbIgor() && this.placesOn(), showTransitLabels: !this.mbIgor(), showPedestrianRoads: true } },
         transformRequest: (url) => this.mapRequest(url) || { url: url }
       });
       map.addControl(new mb.AttributionControl({ compact: true }), "top-right");
+      // Mapbox's mark, in its own compact form (the « m » alone, as Mapbox
+      // shows it on small maps): its terms want it on the map, never hidden.
+      var compact = () => { try { var lg = this.$("map").querySelector(".mapboxgl-ctrl-logo"); if (lg) lg.classList.add("mapboxgl-ctrl-logo--compact"); } catch (e) { /* */ } };
+      map.on("load", compact); map.on("styledata", compact);
+      map.on("style.load", () => { this.mbLookKept = null; this.mbFont = false; this.mbLookApply(); });
+      // A touch on one of Mapbox's own places: kept for the map's touch (the
+      // vignette); if that touch never comes (Mapbox kept it), the vignette opens here.
+      try {
+        if (map.addInteraction) map.addInteraction("igor-poi", { type: "click", target: { featuresetId: "poi", importId: "basemap" }, handler: (e) => {
+          if (this.mbIgor()) return false;
+          var hit = this.mbxHit = { f: e.feature, ll: e.lngLat ? [e.lngLat.lng, e.lngLat.lat] : null, at: Date.now() };
+          setTimeout(() => {
+            if (this.mbxHit !== hit || (this.pickAt && this.pickAt >= hit.at - 80)) return;
+            var pl = e.point && this.placeAt(e.point);
+            if (pl) { if (!pl.ll) pl.ll = hit.ll; this.placeVignette(pl); }
+          }, 250);
+          return false;
+        } });
+      } catch (e) { /* older Mapbox: the map's touch alone */ }
       var add0 = map.addLayer.bind(map);
       map.addLayer = (layer, before) => {
         if (layer && !layer.slot && !before) layer = Object.assign({}, layer, { slot: /^(route|trail|man|alt|incidents|igor-trails|igor-gpx|igor-pick)/.test(layer.id || "") ? "middle" : "top" });
@@ -10876,8 +11008,9 @@
       try { if (this.marker) this.marker.remove(); if (this.map) this.map.remove(); } catch (e) { /* gone */ }
       this.map = null; this.tt = null; this.ttKit = null; this.ttStyle = null; this.tintSdkKey = null; this.spareTheme = null; this.loading = false;
       this.ttStyling = null; this.fontSet = false; this.mwKept = null; this.mbPreset = null;
-      if (this.mlRef && !this.wantMapbox()) { window.maplibregl = this.mlRef; this.mapboxCfg = null; var mlc = this.root && this.root.querySelector("link[data-ml-css]"); if (mlc) mlc.setAttribute("href", GPS_MAPLIBRE + ".css"); }
-      try { this.$("card").classList.toggle("spare", !!this.spareOn); } catch (e) { /* no card */ }
+      if (this.mapboxCfg && !this.wantMapbox()) { this.mapboxCfg = null; var mlc = this.root && this.root.querySelector("link[data-ml-css]"); if (mlc) mlc.setAttribute("href", GPS_MAPLIBRE + ".css"); }
+      this.mbThemeAt = 0; this.mbLookKept = null;
+      try { this.$("card").classList.toggle("spare", !!this.spareOn); this.$("card").classList.remove("mbx"); } catch (e) { /* no card */ }
       if (p) this.init(p);
     },
     // The woods' trees (TomTom's SDK): thousands of 3D shapes, heavy on a
@@ -11037,7 +11170,7 @@
     // but the choice again: the panel of the routes, the best ways computed
     // anew from where the car is.
     overview() {
-      if (!this.dest || !this.map || !window.maplibregl) return;
+      if (!this.dest || !this.map || !this.gl()) return;
       var from = this.pos || (this.route && this.route.coords && this.route.coords[0]);
       this.chooseRoute(this.dest, from);
     },
@@ -11433,6 +11566,15 @@
           visibility: this.placesOn() ? "visible" : "none"
         };
         map.addLayer({ id: "igor-lieux", type: "symbol", source: "igor-osm", "source-layer": "poi", minzoom: 15, filter: this.placesFilter(), layout: layout, paint: this.placesPaint() });
+        // On Mapbox: Mapbox's own places (well placed), in the same pins —
+        // the fuel apart (the Ministry's stations, with their prices).
+        if (this.mapboxCfg && !map.getLayer("igor-mbx-poi")) {
+          if (!map.getSource("igor-mbx")) map.addSource("igor-mbx", { type: "vector", url: "mapbox://mapbox.mapbox-streets-v8" });
+          map.addLayer({ id: "igor-mbx-poi", type: "symbol", source: "igor-mbx", "source-layer": "poi_label", minzoom: 15,
+            filter: ["!", ["in", ["get", "maki"], ["literal", ["fuel", "bus", "rail-light", "entrance"]]]],
+            layout: { "icon-image": gpsMbxExprs(), "icon-size": layout["icon-size"], "icon-anchor": "bottom", "icon-padding": 2,
+              "symbol-sort-key": ["coalesce", ["get", "filterrank"], 5], visibility: this.placesOn() && this.mbIgor() ? "visible" : "none" } });
+        }
         // The same drawing, from Igor's own library on Home Assistant.
         if (!map.getSource("igor-db")) map.addSource("igor-db", { type: "geojson", data: this.dbData || { type: "FeatureCollection", features: [] } });
         map.addLayer({ id: "igor-lieux-db", type: "symbol", source: "igor-db", minzoom: 15, filter: this.placesFilter(), layout: Object.assign({}, layout, { visibility: "none" }), paint: this.placesPaint() });
@@ -11457,6 +11599,7 @@
     dbTick() {
       var map = this.map;
       this.dbStatus();
+      if (this.mapboxCfg) return;  // on Mapbox, Mapbox's own places are drawn (the library still gives the sheets)
       if (!map || !map.getLayer || !map.getLayer("igor-lieux-db")) return;
       // Only close up (zoom 15 and in): farther, the pins would smother the map.
       var z = map.getZoom(), tz = z >= 14.5 ? 14 : 0;
@@ -11530,9 +11673,11 @@
     placesApply() {
       var map = this.map;
       if (!map || !map.getLayer || !map.getLayer("igor-lieux")) return;
-      var on = this.placesOn(), db = !!this.dbMode && !!map.getLayer("igor-lieux-db");
-      map.setLayoutProperty("igor-lieux", "visibility", on && !db ? "visible" : "none");
-      if (map.getLayer("igor-lieux-db")) map.setLayoutProperty("igor-lieux-db", "visibility", on && db ? "visible" : "none");
+      var on = this.placesOn(), db = !!this.dbMode && !!map.getLayer("igor-lieux-db"), mbx = !!this.mapboxCfg && !!map.getLayer("igor-mbx-poi");
+      map.setLayoutProperty("igor-lieux", "visibility", on && !db && !mbx ? "visible" : "none");
+      if (map.getLayer("igor-lieux-db")) map.setLayoutProperty("igor-lieux-db", "visibility", on && db && !mbx ? "visible" : "none");
+      if (mbx) map.setLayoutProperty("igor-mbx-poi", "visibility", on && this.mbIgor() ? "visible" : "none");
+      this.mbLookApply();
       var sig = this.placesFamilies().join(",");
       if (sig !== this.placesSig) { this.placesSig = sig; ["igor-lieux", "igor-lieux-db"].forEach((id) => { if (map.getLayer(id)) map.setFilter(id, this.placesFilter()); }); }
       var P = this.placesPaint();
@@ -11558,10 +11703,27 @@
     },
     placeAt(point) {
       var map = this.map;
-      if (!map || !map.getLayer("igor-lieux") || !point) return null;
+      if (!map || !point) return null;
+      // Mapbox's own places (style « Mapbox »): its « poi » set, read as Igor's kinds.
+      if (this.mapboxCfg && !this.mbIgor()) {
+        var mf = null, box = [[point.x - 14, point.y - 14], [point.x + 14, point.y + 14]];
+        try { mf = (map.queryRenderedFeatures(box, { target: { featuresetId: "poi", importId: "basemap" } }) || [])[0]; } catch (e) { mf = null; }
+        if (!mf && this.mbxHit && Date.now() - this.mbxHit.at < 600) mf = this.mbxHit.f;
+        if (mf) {
+          var mp = mf.properties || {}, g = mf.geometry || {};
+          var kind = MBX_MAKI[mp.maki] || MBX_CLASS[mp.class] || MBX_CLASS[mp.group] || "";
+          return { props: { name: mp.name || mp.name_fr || "", subclass: kind, class: MBX_CLASS[mp.class] || MBX_CLASS[mp.group] || kind, mbx: 1 },
+            ll: g.type === "Point" ? g.coordinates : (this.mbxHit && this.mbxHit.ll) || null };
+        }
+      }
+      if (!map.getLayer("igor-lieux")) return null;
       try {
-        var f = (map.queryRenderedFeatures([[point.x - 14, point.y - 14], [point.x + 14, point.y + 14]], { layers: ["igor-lieux", "igor-lieux-db"].filter((id) => map.getLayer(id)) }) || [])[0];
-        return f ? { props: f.properties || {}, ll: f.geometry && f.geometry.coordinates } : null;
+        var f = (map.queryRenderedFeatures([[point.x - 14, point.y - 14], [point.x + 14, point.y + 14]], { layers: ["igor-mbx-poi", "igor-lieux", "igor-lieux-db"].filter((id) => map.getLayer(id)) }) || [])[0];
+        if (!f) return null;
+        var pp = f.properties || {};
+        // A Mapbox place: its Maki name read as the card's own kind.
+        if (f.layer && f.layer.id === "igor-mbx-poi") pp = { name: pp.name || pp.name_fr || "", subclass: MBX_MAKI[pp.maki] || MBX_CLASS[pp.class] || "", class: MBX_CLASS[pp.class] || "", mbx: 1, category: pp.category_en || "" };
+        return { props: pp, ll: f.geometry && f.geometry.coordinates };
       } catch (e) { return null; }
     },
     // A place's sheet: what the tile says, then OpenStreetMap's own tags
@@ -11583,6 +11745,20 @@
         } catch (e) { /* Overpass, then */ }
       }
       if (!poi.name) return poi;
+      // A place without an id of Igor's library (Mapbox's, OpenFreeMap's):
+      // the library's place of the same name within 120 m gives the sheet.
+      if (this._hass && this._hass.callApi) {
+        try {
+          var nr = await this._hass.callApi("GET", "nives/places/near?p=" + ll[1].toFixed(6) + "," + ll[0].toFixed(6) + "&r=120&n=40");
+          var norm = (x) => String(x || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+          var hit = ((nr && nr.places) || []).find((q) => norm(q.name) && (norm(q.name) === norm(poi.name) || norm(q.name).indexOf(norm(poi.name)) >= 0 || norm(poi.name).indexOf(norm(q.name)) >= 0));
+          if (hit) return Object.assign(poi, {
+            housenumber: hit["addr:housenumber"], street: hit["addr:street"], city: hit["addr:city"], brand: hit.brand,
+            opening_hours: hit.opening_hours, phone: hit.phone || hit["contact:phone"], website: hit.website || hit["contact:website"],
+            wikipedia: hit.wikipedia, wikidata: hit.wikidata
+          });
+        } catch (e) { /* Overpass, then */ }
+      }
       var esc = String(poi.name).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
       var q = '[out:json][timeout:10];nwr(around:80,' + ll[1] + ',' + ll[0] + ')["name"="' + esc + '"];out tags center 1;';
       try {
@@ -11602,7 +11778,7 @@
     // (the cyan bar), at once on a touch elsewhere.
     placeVignette(osm) {
       var map = this.map;
-      if (!map || !window.maplibregl || !osm || !osm.ll) return;
+      if (!map || !this.gl() || !osm || !osm.ll) return;
       this.closePick();
       var p = osm.props || {}, sub = p.subclass || p.class || "", of = GPS_PLACE_OF[p.subclass] || GPS_PLACE_OF[p.class] || ["services", "map-marker"];
       var fam = GPS_PLACE_FAM[of[0]] || { color: "#8a9099", name: "" }, name = String(p["name:fr"] || p.name || GPS_PLACE_FR[sub] || fam.name || "Lieu").slice(0, 60);
@@ -12516,7 +12692,7 @@
     // a station the ministry was never told of stands bare.
     refreshFuelTags(shown) {
       var map = this.map;
-      if (!map || !window.maplibregl) return;
+      if (!map || !this.gl()) return;
       this.fuelTags = this.fuelTags || {};
       // The layers' word is law: when the fuel layer is off, no tag hangs —
       // every one already standing is taken down.
@@ -12564,7 +12740,7 @@
         var m = this.fuelTags[q.id];
         if (!m) {
           var el = document.createElement("div"); el.className = "ftag" + (tt ? " slim" : "");
-          m = new window.maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, tt ? -24 : -44] }).setLngLat(at).addTo(map);
+          m = new this.gl().Marker({ element: el, anchor: "bottom", offset: [0, tt ? -24 : -44] }).setLngLat(at).addTo(map);
           this.fuelTags[q.id] = m;
         } else if (tt) m.setLngLat(at);
         var el = m.getElement();
@@ -15725,6 +15901,7 @@
     ["ts", "Sol & nature", "Arbres des bois", "ceux du SDK de TomTom · très lourd, déconseillé sur téléphone", "sw"],
     ["te", "Sol & nature", "Relief", "collines, vallées et leur ombrage · coupé pendant le guidage (sinon les bâtiments cachent la route)", "sw"],
     ["wd", "Sol & nature", "Vent", "feuilles et eau", "seg", [[0, "calme"], [0.5, "léger"], [1, "fort"]]],
+    ["mb", "Lumière", "Style de la carte", "Mapbox : ses lieux, ses noms de rues, sa police · Igor Signature : les épingles d'Igor, la police Rubik, sans noms de rues · la vignette d'Igor au toucher d'un lieu, dans les deux", "seg", [["mapbox", "Mapbox"], ["igor", "Igor Signature"]]],
     ["dn", "Lumière", "Jour et nuit", "", "seg", [["auto", "selon le soleil"], ["day", "toujours jour"], ["night", "toujours nuit"]]],
     ["tn", "Lumière", "Couleurs de la carte la nuit", "toute la carte (sol, eau, parcs, routes, noms) : indigo d'Igor, bleu nuit, TomTom ou celles du style", "seg", [["indigo", "indigo"], ["bleu", "bleu nuit"], ["tomtom", "TomTom"], ["gris", "du style"]]],
     ["tj", "Lumière", "Couleurs de la carte le jour", "vives : verts francs, eau turquoise, bâtiments gris-bleu · ou celles de TomTom", "seg", [["vive", "vives"], ["tomtom", "TomTom"]]],
@@ -15734,7 +15911,6 @@
     ["zp", "Caméra", "Inclinaison selon le zoom", "en 3D de près, à plat en dézoomant, comme la carte d'un jeu", "sw"],
     ["az", "Caméra", "Zoom selon la vitesse", "dézoome sur route rapide", "sw"],
     ["cy", "Caméra", "Voiture à l'écran", "plus bas : plus de route devant", "seg", [["haut", "plus haut"], ["milieu", "au milieu"], ["bas", "plus bas"]]],
-    ["fb", "Lumière", "Fond de carte", "TomTom (3D, trafic), Mapbox (bâtiments et monuments 3D, lumière selon l'heure ; clé Mapbox dans les options d'Igor) ou la carte d'Igor (OpenStreetMap sur Home Assistant)", "seg", [["auto", "TomTom"], ["mapbox", "Mapbox"], ["secours", "Igor"]]],
     ["fl", "Performance", "Mode fluide", "allège tout seul quand ça rame", "sw"],
     ["px", "Performance", "Netteté", "", "seg", [["eco", "économe"], ["normale", "normale"], ["max", "maximale"]]],
     ["aa", "Performance", "Lissage des bords", "coûteux sur téléphone ; inutile sur un écran très fin · au prochain affichage de la carte", "seg", [["auto", "auto"], ["oui", "oui"], ["non", "non"]]],
@@ -15742,7 +15918,7 @@
     ["cpt", "Performance", "Compteur d'images", "affiche les images par seconde en coin de carte", "sw"]
   ];
   // Not in the presets (left to the dashboard until changed here).
-  var MAP3D_FREE = { dn: "auto", ne: 3, pi: 60, zm: 17, az: 1, cy: "milieu", tn: "indigo", tj: "vive", zp: 1, fb: "auto" };
+  var MAP3D_FREE = { mb: "mapbox", dn: "auto", ne: 3, pi: 60, zm: 17, az: 1, cy: "milieu", tn: "indigo", tj: "vive", zp: 1 };
   function map3dParse(str) {
     var out = { p: "epure", o: {} };
     String(str || "").split(";").forEach((kv) => {
@@ -17028,7 +17204,12 @@
       } catch (e) { $("msg").textContent = "Mapbox indisponible : " + ((e && e.message) || e); }
       finally { this.starting = false; }
     }
-    disconnectedCallback() { clearInterval(this.tick); }
+    disconnectedCallback() {
+      clearInterval(this.tick);
+      clearTimeout(this.dropT);
+      this.dropT = setTimeout(() => { if (this.isConnected || !this.map) return; try { this.map.remove(); } catch (e) { /* */ } this.map = null; }, 20000);
+    }
+    connectedCallback() { clearTimeout(this.dropT); if (this._hass && this.root && !this.map && !this.starting) this.start(); }
     styleUrl() { var st = MBX_STYLES.find((x) => x[0] === this.s.style) || MBX_STYLES[0]; return st[0] === "mine" ? (this.cfg.style || MBX_STYLES[0][2]) : st[2]; }
     preset() {
       if (this.s.preset !== "auto") return this.s.preset;
