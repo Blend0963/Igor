@@ -1,3 +1,13 @@
+## 0.62.34 — Mapbox tel quel (carte de test)
+
+- **Nouvelle carte `custom:igor-mapbox-card`** (« Igor · Mapbox ») : Mapbox Standard exactement comme Mapbox la fait — ses couleurs, sa police, ses bâtiments, façades, monuments et **arbres en 3D**, ses noms de rues, commerces et transports — en plein écran, rien d'Igor par-dessus. Son panneau (⚙) :
+  - **Lumière selon l'heure** : Auto (suit le soleil : aube et crépuscule à moins de 6° de l'horizon, nuit sous −6°, jour au-dessus), ou tenue sur Aube, Jour, Crépuscule, Nuit ;
+  - **Thème** : Standard, Estompé, Monochrome ; **Carte** : Standard ou Standard Satellite (ou votre style des options d'Igor) ;
+  - **Affichage** : objets 3D, bâtiments, façades, monuments, arbres, noms des villes, des rues, commerces, transports, chemins piétons ;
+  - **Trafic en direct Mapbox** et **relief 3D** (Mapbox Terrain).
+- Sa **recherche** (Mapbox Geocoding) et ses **itinéraires avec trafic** (Mapbox Directions, driving-traffic), son point GPS avec la direction, sa boussole. Les choix sont gardés sur l'écran.
+- Igor Explorer sur fond Mapbox : arbres, monuments et bâtiments 3D demandés explicitement.
+
 ## 0.62.33 — Mapbox comme fond de carte
 
 - **Mapbox Standard sur Igor Explorer** : bâtiments et monuments en 3D, lumière selon l'heure (aube, jour, crépuscule, nuit, suivant le soleil de Home Assistant, ou tenue par « Jour et nuit »), ses propres noms de lieux. Ses noms de rues et ses commerces sont masqués : ce sont ceux d'Igor (la bibliothèque des lieux, le toucher sur une rue). Guidage, lieux, vignettes, sentiers, GPX, dock et Igor par-dessus ; les tracés d'Igor se rangent dans la 3D (couche « middle »), les épingles au-dessus.

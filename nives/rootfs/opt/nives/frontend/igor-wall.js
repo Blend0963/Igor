@@ -5570,7 +5570,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.33";
+  var GPS_CARD_VERSION = "0.62.34";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -10845,7 +10845,7 @@
       var map = new mb.Map({
         container: this.$("map"), accessToken: cfg.token, style: cfg.style, center: p, zoom: this.config.zoom, pitch: this.config.pitch,
         bearing: this.headingUp ? this.heading : 0, attributionControl: false, logoPosition: "top-left", antialias: this.antialiasOn(), maxPitch: 80,
-        config: { basemap: { lightPreset: (this.mbPreset = this.mapboxPreset()), show3dObjects: true, showPlaceLabels: true, showRoadLabels: false,
+        config: { basemap: { lightPreset: (this.mbPreset = this.mapboxPreset()), show3dObjects: true, show3dTrees: true, show3dLandmarks: true, show3dBuildings: true, showPlaceLabels: true, showRoadLabels: false,
           showPointOfInterestLabels: false, showTransitLabels: false, showPedestrianRoads: true } },
         transformRequest: (url) => this.mapRequest(url) || { url: url }
       });
@@ -16940,6 +16940,192 @@
     }
   }
 
+  // ----- igor-mapbox-card: Mapbox, all of it (a test bench) -----
+  //   type: custom:igor-mapbox-card
+  //   entity: device_tracker.myphone      # where the map opens (else the phone's own GPS)
+  //   zoom: 16
+  //   pitch: 60
+  // Mapbox Standard as Mapbox makes it — its colours, its 3D buildings and
+  // landmarks, its trees, its fonts, its street names, shops and transit —
+  // and around it what Mapbox offers a web page: the light by the hour
+  // (dawn, day, dusk, night, following the sun or held), its themes
+  // (default, faded, monochrome), Standard or Standard Satellite, its live
+  // traffic, its 3D terrain, its search (Geocoding v6), its routes with
+  // traffic (Directions, driving-traffic) and its GPS dot. Nothing of Igor's
+  // own drawing. The token: Igor's options (/api/nives/mapbox).
+  var MBX_PRESETS = [["auto", "Auto (soleil)"], ["dawn", "Aube"], ["day", "Jour"], ["dusk", "Crépuscule"], ["night", "Nuit"]];
+  var MBX_THEMES = [["default", "Standard"], ["faded", "Estompé"], ["monochrome", "Monochrome"]];
+  var MBX_STYLES = [["standard", "Standard", "mapbox://styles/mapbox/standard"], ["satellite", "Satellite", "mapbox://styles/mapbox/standard-satellite"], ["mine", "Mon style", ""]];
+  var MBX_TOGGLES = [["show3dObjects", "Tous les objets 3D", true], ["show3dBuildings", "Bâtiments 3D", true], ["show3dFacades", "Façades détaillées", true],
+    ["show3dLandmarks", "Monuments 3D", true], ["show3dTrees", "Arbres 3D", true], ["showPlaceLabels", "Noms des villes et quartiers", true], ["showRoadLabels", "Noms des rues", true],
+    ["showPointOfInterestLabels", "Commerces et lieux", true], ["showTransitLabels", "Transports en commun", true], ["showPedestrianRoads", "Chemins piétons", true]];
+  class IgorMapboxCard extends HTMLElement {
+    setConfig(config) { this.config = Object.assign({ zoom: 16, pitch: 60 }, config || {}); }
+    getCardSize() { return 8; }
+    set hass(h) { this._hass = h; if (!this.root) this.build(); if (!this.map && !this.starting) this.start(); }
+    load() {
+      var d = { preset: "auto", theme: "default", style: "standard", traffic: false, terrain: false };
+      MBX_TOGGLES.forEach(function (t) { d[t[0]] = t[2]; });
+      try { return Object.assign(d, JSON.parse(localStorage.getItem("igor-mapbox") || "{}")); } catch (e) { return d; }
+    }
+    save() { try { localStorage.setItem("igor-mapbox", JSON.stringify(this.s)); } catch (e) { /* this time only */ } }
+    build() {
+      try { gpsFontDeclare(); } catch (e) { /* */ }
+      this.s = this.load();
+      this.root = this.attachShadow({ mode: "open" });
+      this.root.innerHTML = '<link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v' + GPS_MAPBOX_VER + '/mapbox-gl.css"><style>' +
+        ":host { display: block; height: 100%; } ha-card { position: fixed; inset: 0; z-index: 2147481000; background: #0b0d18; border-radius: 0; overflow: hidden; font-family: 'Igor Rubik', Rubik, Roboto, sans-serif; --gx: 16px; }" +
+        "#map { position: absolute; inset: 0; }" +
+        ".msg { position: absolute; inset: 0; display: grid; place-items: center; color: #aab; padding: 30px; text-align: center; font-size: 15px; } .msg[hidden] { display: none; }" +
+        ".bar { position: absolute; z-index: 3; top: calc(14px + env(safe-area-inset-top, 0px)); left: var(--gx); right: var(--gx); display: flex; gap: 8px; }" +
+        ".bar form { flex: 1; display: flex; height: 48px; background: rgba(255,255,255,.95); border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,.25); overflow: hidden; } .bar input { flex: 1; border: 0; padding: 0 14px; font: inherit; font-size: 16px; background: none; color: #1f2833; outline: none; min-width: 0; }" +
+        ".bar button, .fab { width: 48px; height: 48px; border-radius: 12px; border: 0; background: rgba(255,255,255,.95); color: #1f2833; display: grid; place-items: center; box-shadow: 0 6px 18px rgba(0,0,0,.25); cursor: pointer; --mdc-icon-size: 22px; flex: none; }" +
+        ".list { position: absolute; z-index: 4; top: calc(70px + env(safe-area-inset-top, 0px)); left: var(--gx); right: var(--gx); background: rgba(255,255,255,.97); border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,.25); overflow: hidden; } .list[hidden] { display: none; }" +
+        ".list div { padding: 12px 14px; border-top: 1px solid #e3e7ef; cursor: pointer; color: #1f2833; font-size: 14px; } .list div:first-child { border-top: 0; } .list small { display: block; color: #6b7385; font-size: 12px; margin-top: 2px; }" +
+        ".route { position: absolute; z-index: 3; left: var(--gx); right: var(--gx); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: rgba(255,255,255,.97); border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,.25); padding: 12px 14px; display: flex; align-items: center; gap: 12px; color: #1f2833; } .route[hidden] { display: none; }" +
+        ".route b { font-size: 22px; } .route span { color: #6b7385; font-size: 13px; flex: 1; } .route button { border: 0; background: #e8ecf3; border-radius: 8px; padding: 9px 12px; font: inherit; cursor: pointer; }" +
+        ".side { position: absolute; z-index: 3; right: var(--gx); bottom: calc(110px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 8px; }" +
+        ".panel { position: absolute; z-index: 5; left: 0; right: 0; bottom: 0; max-height: 78%; overflow-y: auto; background: rgba(255,255,255,.98); border-radius: 16px 16px 0 0; box-shadow: 0 -6px 24px rgba(0,0,0,.25); padding: 14px var(--gx) calc(18px + env(safe-area-inset-bottom, 0px)); color: #1f2833; } .panel[hidden] { display: none; }" +
+        ".panel h3 { margin: 14px 0 8px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: #6b7385; font-weight: 500; } .panel .top { display: flex; align-items: center; } .panel .top b { flex: 1; font-size: 17px; }" +
+        ".seg { display: flex; flex-wrap: wrap; gap: 6px; } .seg button { border: 1px solid #d6dbe6; background: #f4f6fa; color: #1f2833; border-radius: 8px; padding: 9px 12px; font: inherit; font-size: 14px; cursor: pointer; } .seg button.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }" +
+        ".tg { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid #eef1f6; font-size: 15px; } .tg button { min-width: 64px; border: 1px solid #d6dbe6; background: #f4f6fa; border-radius: 8px; padding: 7px 10px; font: inherit; cursor: pointer; } .tg button.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }" +
+        ".note { font-size: 12.5px; color: #6b7385; margin-top: 6px; }" +
+        ".mapboxgl-ctrl-top-left, .mapboxgl-ctrl-top-right { top: calc(70px + env(safe-area-inset-top, 0px)); }" +
+        "</style><ha-card><div id='map'></div><div class='msg' id='msg'>Chargement de Mapbox…</div>" +
+        "<div class='bar'><form id='f'><input id='q' type='text' enterkeyhint='search' placeholder='Rechercher (Mapbox)' autocomplete='off'></form><button id='set' title='Réglages Mapbox'><ha-icon icon='mdi:tune-variant'></ha-icon></button></div>" +
+        "<div class='list' id='list' hidden></div><div class='side'><button class='fab' id='me' title='Ma position'><ha-icon icon='mdi:crosshairs-gps'></ha-icon></button></div>" +
+        "<div class='route' id='route' hidden><b id='rt'></b><span id='rs'></span><button id='rx'>Effacer</button></div>" +
+        "<div class='panel' id='panel' hidden></div></ha-card>";
+      var $ = (id) => this.root.getElementById(id);
+      this.$ = $;
+      $("set").addEventListener("click", () => { var p = $("panel"); p.hidden = !p.hidden; if (!p.hidden) this.drawPanel(); });
+      $("f").addEventListener("submit", (ev) => { ev.preventDefault(); this.search($("q").value); });
+      $("me").addEventListener("click", () => { var c = this.here(); if (c && this.map) this.map.easeTo({ center: c, zoom: Math.max(this.map.getZoom(), 16), duration: 700 }); });
+      $("rx").addEventListener("click", () => this.clearRoute());
+    }
+    here() {
+      if (this.gps) return this.gps;
+      var st = this.config.entity && this._hass && this._hass.states[this.config.entity], a = (st && st.attributes) || {};
+      return typeof a.latitude === "number" ? [a.longitude, a.latitude] : null;
+    }
+    async start() {
+      this.starting = true;
+      var $ = this.$;
+      try {
+        this.cfg = await this._hass.callApi("GET", "nives/mapbox");
+        if (!this.cfg || !this.cfg.ok) { $("msg").textContent = "Pas de clé Mapbox : Paramètres → Appareils et services → Igor → Configurer → Clé Mapbox."; return; }
+        var mb = await gpsMapbox();
+        var c = this.here() || [2.3522, 48.8566];
+        var map = this.map = new mb.Map({ container: $("map"), accessToken: this.cfg.token, style: this.styleUrl(), center: c, zoom: this.config.zoom, pitch: this.config.pitch, maxPitch: 85, antialias: true, config: { basemap: this.basemapConfig() } });
+        map.addControl(new mb.NavigationControl({ visualizePitch: true }), "top-right");
+        var geo = new mb.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true, showUserHeading: true });
+        map.addControl(geo, "top-right");
+        geo.on("geolocate", (e) => { this.gps = [e.coords.longitude, e.coords.latitude]; });
+        map.on("style.load", () => { $("msg").hidden = true; this.applyExtras(); if (this.routeGeo) this.drawRoute(this.routeGeo); });
+        map.on("error", (e) => { var er = e && e.error; if (er && (er.status === 401 || er.status === 403)) { $("msg").hidden = false; $("msg").textContent = "Clé Mapbox refusée (" + er.status + ") : vérifiez le jeton et ses restrictions d'adresse."; } });
+        this.tick = setInterval(() => this.lightTick(), 60000);
+        this.lightTick();
+      } catch (e) { $("msg").textContent = "Mapbox indisponible : " + ((e && e.message) || e); }
+      finally { this.starting = false; }
+    }
+    disconnectedCallback() { clearInterval(this.tick); }
+    styleUrl() { var st = MBX_STYLES.find((x) => x[0] === this.s.style) || MBX_STYLES[0]; return st[0] === "mine" ? (this.cfg.style || MBX_STYLES[0][2]) : st[2]; }
+    preset() {
+      if (this.s.preset !== "auto") return this.s.preset;
+      var sun = this._hass && this._hass.states["sun.sun"], a = (sun && sun.attributes) || {}, el = Number(a.elevation);
+      if (!isFinite(el)) { var hh = new Date().getHours(); return hh < 6 || hh >= 22 ? "night" : hh < 9 ? "dawn" : hh >= 19 ? "dusk" : "day"; }
+      var rising = a.rising === true || (a.rising == null && new Date().getHours() < 12);
+      return el < -6 ? "night" : el < 6 ? (rising ? "dawn" : "dusk") : "day";
+    }
+    basemapConfig() {
+      var c = { lightPreset: this.preset(), theme: this.s.theme };
+      MBX_TOGGLES.forEach((t) => { c[t[0]] = !!this.s[t[0]]; });
+      return c;
+    }
+    lightTick() {
+      if (!this.map) return;
+      var p = this.preset();
+      if (p !== this.shownPreset) { this.shownPreset = p; this.setCfg("lightPreset", p); }
+    }
+    setCfg(k, v) { try { this.map.setConfigProperty("basemap", k, v); } catch (e) { /* a style without it */ } }
+    // Mapbox's own extras: live traffic (Mapbox Traffic v1) and the 3D terrain (Mapbox Terrain DEM).
+    applyExtras() {
+      var map = this.map;
+      try {
+        if (this.s.traffic && !map.getLayer("mbx-traffic")) {
+          if (!map.getSource("mbx-traffic")) map.addSource("mbx-traffic", { type: "vector", url: "mapbox://mapbox.mapbox-traffic-v1" });
+          map.addLayer({ id: "mbx-traffic", type: "line", source: "mbx-traffic", "source-layer": "traffic", slot: "middle", layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-width": ["interpolate", ["linear"], ["zoom"], 10, 1.5, 16, 4], "line-offset": ["interpolate", ["linear"], ["zoom"], 10, 1, 16, 3],
+              "line-color": ["match", ["get", "congestion"], "low", "#2ecc71", "moderate", "#f39c12", "heavy", "#e74c3c", "severe", "#8e1b1b", "#9aa3b5"] } });
+        } else if (!this.s.traffic && map.getLayer("mbx-traffic")) map.removeLayer("mbx-traffic");
+        if (this.s.terrain) {
+          if (!map.getSource("mbx-dem")) map.addSource("mbx-dem", { type: "raster-dem", url: "mapbox://mapbox.mapbox-terrain-dem-v1", tileSize: 512, maxzoom: 14 });
+          map.setTerrain({ source: "mbx-dem", exaggeration: 1.3 });
+        } else map.setTerrain(null);
+      } catch (e) { /* as it is */ }
+    }
+    drawPanel() {
+      var p = this.$("panel"), s = this.s;
+      p.innerHTML = "";
+      var top = document.createElement("div"); top.className = "top"; top.innerHTML = "<b>Mapbox · réglages</b>";
+      var x = document.createElement("button"); x.className = "fab"; x.style.boxShadow = "none"; x.innerHTML = "<ha-icon icon='mdi:close'></ha-icon>"; x.addEventListener("click", () => { p.hidden = true; }); top.appendChild(x); p.appendChild(top);
+      var seg = (title, opts, key, on) => {
+        var h = document.createElement("h3"); h.textContent = title; p.appendChild(h);
+        var g = document.createElement("div"); g.className = "seg"; p.appendChild(g);
+        opts.forEach((o) => { var b = document.createElement("button"); b.textContent = o[1]; if (s[key] === o[0]) b.className = "on"; b.addEventListener("click", () => { s[key] = o[0]; this.save(); on(o[0]); this.drawPanel(); }); g.appendChild(b); });
+      };
+      seg("Lumière (selon l'heure)", MBX_PRESETS, "preset", () => { this.shownPreset = null; this.lightTick(); });
+      var n = document.createElement("div"); n.className = "note"; n.textContent = "Auto : aube et crépuscule quand le soleil est à moins de 6° de l'horizon, nuit en dessous de −6°, jour au-dessus. Maintenant : " + ({ dawn: "aube", day: "jour", dusk: "crépuscule", night: "nuit" }[this.preset()]) + "."; p.appendChild(n);
+      seg("Thème", MBX_THEMES, "theme", (v) => this.setCfg("theme", v));
+      seg("Carte", MBX_STYLES.filter((x) => x[0] !== "mine" || (this.cfg && this.cfg.style && this.cfg.style.indexOf("mapbox/standard") < 0)), "style", () => { this.map.setStyle(this.styleUrl(), { config: { basemap: this.basemapConfig() } }); this.shownPreset = this.preset(); });
+      var h = document.createElement("h3"); h.textContent = "Affichage"; p.appendChild(h);
+      var tg = (label, key, on) => { var r = document.createElement("div"); r.className = "tg"; r.appendChild(document.createTextNode(label)); var b = document.createElement("button"); b.textContent = s[key] ? "oui" : "non"; if (s[key]) b.className = "on"; b.addEventListener("click", () => { s[key] = !s[key]; this.save(); on(s[key]); this.drawPanel(); }); r.appendChild(b); p.appendChild(r); };
+      MBX_TOGGLES.forEach((t) => tg(t[1], t[0], (v) => this.setCfg(t[0], v)));
+      tg("Trafic en direct (Mapbox)", "traffic", () => this.applyExtras());
+      tg("Relief 3D", "terrain", () => this.applyExtras());
+    }
+    // Mapbox's search (Geocoding v6), near where the map looks.
+    async search(q) {
+      q = String(q || "").trim(); var list = this.$("list");
+      if (!q || !this.map) { list.hidden = true; return; }
+      var c = this.map.getCenter();
+      try {
+        var r = await (await fetch("https://api.mapbox.com/search/geocode/v6/forward?language=fr&limit=6&proximity=" + c.lng.toFixed(5) + "," + c.lat.toFixed(5) + "&q=" + encodeURIComponent(q) + "&access_token=" + encodeURIComponent(this.cfg.token))).json();
+        list.innerHTML = ""; list.hidden = false;
+        (r.features || []).forEach((f) => {
+          var d = document.createElement("div"), pr = f.properties || {};
+          d.innerHTML = "<b></b><small></small>"; d.firstChild.textContent = pr.name || ""; d.lastChild.textContent = pr.place_formatted || pr.full_address || "";
+          d.addEventListener("click", () => { list.hidden = true; var co = f.geometry.coordinates; this.map.flyTo({ center: co, zoom: 16.5, pitch: 60, duration: 1500 }); this.dest = co; this.route(co, pr.name); });
+          list.appendChild(d);
+        });
+        if (!list.children.length) { list.innerHTML = "<div>Rien trouvé.</div>"; }
+      } catch (e) { list.hidden = false; list.innerHTML = "<div>Recherche Mapbox indisponible.</div>"; }
+    }
+    // Mapbox's route with live traffic (Directions, driving-traffic), from where the phone is.
+    async route(to, name) {
+      var from = this.here();
+      if (!from) return;
+      try {
+        var r = await (await fetch("https://api.mapbox.com/directions/v5/mapbox/driving-traffic/" + from.join(",") + ";" + to.join(",") + "?geometries=geojson&overview=full&language=fr&access_token=" + encodeURIComponent(this.cfg.token))).json();
+        var R = r.routes && r.routes[0];
+        if (!R) return;
+        this.routeGeo = R.geometry; this.drawRoute(R.geometry);
+        var m = Math.round(R.duration / 60);
+        this.$("rt").textContent = m >= 60 ? Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0") : m + " min";
+        this.$("rs").textContent = (R.distance / 1000).toFixed(1).replace(".", ",") + " km · " + (name || "destination") + " · trafic Mapbox";
+        this.$("route").hidden = false;
+      } catch (e) { /* no route */ }
+    }
+    drawRoute(geo) {
+      var map = this.map, data = { type: "Feature", geometry: geo, properties: {} };
+      if (map.getSource("mbx-route")) { map.getSource("mbx-route").setData(data); return; }
+      map.addSource("mbx-route", { type: "geojson", data: data });
+      map.addLayer({ id: "mbx-route-case", type: "line", source: "mbx-route", slot: "middle", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#0b4fb3", "line-width": 11 } });
+      map.addLayer({ id: "mbx-route", type: "line", source: "mbx-route", slot: "middle", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#3d8bfd", "line-width": 7 } });
+    }
+    clearRoute() { this.routeGeo = null; this.$("route").hidden = true; try { ["mbx-route", "mbx-route-case"].forEach((id) => this.map.getLayer(id) && this.map.removeLayer(id)); this.map.removeSource("mbx-route"); } catch (e) { /* */ } }
+  }
+
   function define(name, cls, label, description) {
     if (!customElements.get(name)) customElements.define(name, cls);
     window.customCards = window.customCards || [];
@@ -16989,6 +17175,7 @@
   define("igor-mini-card", IgorMiniCard, "Igor · capteur", "Un capteur et ses 24 heures sur une ligne.");
   define("igor-car-card", IgorCarCard, "Igor · voiture", "La voiture qui roule : vitesse, régime, température, batterie, trajet.");
   define("igor-security-card", IgorSecurityCard, "Igor · sécurité", "L'alarme (armer, désarmer avec le code), la caméra active ou privée, ses positions enregistrées.");
+  define("igor-mapbox-card", IgorMapboxCard, "Igor · Mapbox", "Mapbox tel quel : ses couleurs, ses bâtiments 3D, sa lumière selon l'heure, son trafic, sa recherche et ses itinéraires.");
   define("igor-gps-card", IgorGpsCard, "Igor Explorer", "La carte d'Igor : guidage, radars, lieux d'OpenStreetMap, carte à explorer.");
   define("igor-carmedia-card", IgorCarMediaCard, "Igor · musique de la voiture", "Le titre en cours sur l'autoradio et trois gros boutons.");
 
