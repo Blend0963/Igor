@@ -1,3 +1,59 @@
+## 0.62.28 — Carte de secours : bâtiments en 3D
+
+- Les bâtiments de la carte de secours se dressent en relief dès le zoom 14 (la hauteur d'OpenStreetMap, sinon ses étages × 3 m, sinon environ trois étages), dans les couleurs d'Igor, éclairés en lavande la nuit ; les réglages « Bâtiments en 3D » et « Opacité » s'y appliquent.
+- Correctif : les teintes faites pour la carte TomTom ne s'appliquent plus à la carte de secours (ses bâtiments gardaient la couleur du jour la nuit).
+
+## 0.62.27 — La carte de secours d'Igor (France, hors TomTom)
+
+- **Une carte de secours sur Home Assistant** : la France métropolitaine et la Corse en tuiles vectorielles OpenStreetMap (le fond de Protomaps, zooms 0 à 14), extraites par Home Assistant de la carte publique quotidienne de Protomaps (seulement les tuiles de la France, lues par plages : la planète n'est jamais téléchargée), en arrière-plan, morceau par morceau (un carré de zoom 8 et tout ce qu'il contient), reprise après un redémarrage, renouvelée tous les 90 jours. Les tuiles identiques (mer, champs) ne sont gardées qu'une fois ; les polices des noms aussi sont gardées. Fichier : `/share/igor/carte.sqlite` (sinon `/config/nives_offline/`), quelques Go.
+- **Bascule automatique** : quand TomTom ne répond plus (style refusé, erreurs répétées : clé, quota, panne), la carte repart toute seule sur la carte de secours, aux couleurs d'Igor (indigo la nuit, vives le jour, suivant le soleil), avec le guidage, les lieux de la bibliothèque, les vignettes ; un message le dit. Au prochain chargement de la page, TomTom est réessayé.
+- Réglages → Carte 3D → Performance → **Carte de secours** : « si besoin » (défaut) ou « toujours ».
+- Correctif : après un changement de style (jour/nuit), les lieux de la bibliothèque reviennent tout de suite.
+
+## 0.62.26 — Igor sur la carte : demander, guider, préparer
+
+- **Demander à Igor** : le micro de la barre « Où allez-vous ? » (la reconnaissance vocale du téléphone ; sinon la question écrite, bouton « Igor » du panneau de recherche). « Trouve-moi un resto ouvert », « un beau point de vue pas loin », « qu'est-ce que c'est, là, à droite ? »… Igor reçoit l'heure, le mode de déplacement, la vitesse, la rue, le trajet en cours et les lieux de sa bibliothèque autour (et le long de la route), chacun avec sa distance, son côté (devant, à droite…) et ses horaires ; il répond en quelques phrases, à voix haute, et désigne les lieux : entourés de cyan sur la carte, listés sous sa réponse (un toucher : leur vignette ; « Y aller »).
+- **Le guide du trajet** : au départ d'un trajet de 45 min ou plus en voiture, Igor dit en deux phrases ce qui vaut le coup sur la route ; au-delà de 2 h, où faire une pause ; et vers 1 h 50 de conduite, il propose une pause précise dans les 25 km à venir (`igor_guide: false` pour s'en passer).
+- **La rando préparée** : dans Rando, le bouton Igor d'un tracé GPX : difficulté, heure limite de départ pour rentrer avant la nuit (coucher du soleil de Home Assistant), points d'eau et toilettes, ce qu'il ne faut pas manquer, d'après la bibliothèque des lieux le long du tracé.
+- Serveur : `/api/nives/places/near` (les lieux de la bibliothèque autour de points, les plus proches d'abord, avec leur fiche).
+
+## 0.62.25 — Les lieux d'Igor seuls, partout, toujours tous
+
+- **Plus aucun lieu de TomTom** : sur Igor Explorer comme sur l'écran déporté de la voiture, seuls les lieux de la bibliothèque d'Igor (OpenStreetMap), dans les épingles d'Igor. Les stations-service passent aussi en épingle (leurs prix restent au-dessus).
+- **Toujours l'intégralité** : plus de choix « masqués » ni de familles à cocher (l'onglet Lieux des réglages disparaît). Les lieux apparaissent dès qu'ils sont à l'écran et s'en vont avec lui ; de près, absolument tous ; un peu plus loin, tous sauf les arrêts de bus, les épingles qui ne tiennent pas côte à côte laissant la place aux plus importantes.
+- **Écran déporté** : un toucher sur un lieu ouvre la même vignette qu'Igor Explorer (horaires, adresse, téléphone, Y aller, Étape, Appeler, Wikipédia, Igor) ; « Y aller » donne la destination à l'autoradio, qui guide.
+- Le bouton Lieux du dock indique où en est la bibliothèque.
+
+## 0.62.24 — La bibliothèque des lieux d'Igor (toute la France)
+
+- **Une base de lieux à Igor, sur Home Assistant** : tous les points d'intérêt d'OpenStreetMap de France métropolitaine et de Corse (restaurants, points de vue, monuments, commerces, santé, parkings, gares, arrêts de bus, toilettes, eau potable, hébergements…), avec leurs horaires, téléphone, site et lien Wikipédia. Elle se remplit seule en arrière-plan, carré de 0,25° par carré (environ 2 400), une demande à Overpass à la fois, avec pause ; un carré refusé (Overpass occupé) est réessayé plus tard ou coupé en quatre ; chaque carré est relu tous les 30 jours. Compter une à deux journées pour la première construction, puis environ 1 Go.
+- Fichier : `/share/igor/lieux.sqlite` (le dossier partagé, que les sauvegardes partielles peuvent laisser de côté), sinon `/config/nives_offline/lieux.sqlite`.
+- **La carte lit ses lieux chez vous** (`/api/nives/places`, réservé aux comptes connectés) : là où la base couvre l'écran, plus aucune dépendance à OpenFreeMap ni à Overpass ; les fiches viennent aussi de la base. Le téléphone garde une copie de chaque zone vue (une semaine, et sans limite quand le réseau manque). Pendant la construction, OpenFreeMap reste le relais des zones pas encore lues.
+- Le bouton Lieux indique l'avancement de la bibliothèque.
+- Seuls les lieux sont gardés : la carte TomTom ne peut pas être stockée (licence et quota).
+
+## 0.62.23 — Igor Explorer : dock, épingles, vignettes, randonnée
+
+- **Dock** (`controls: dock`, le tableau de bord du téléphone) : « Où allez-vous ? » en haut, boutons carrés étiquetés en bas (Stations, Voix, Itinéraire, Lieux, Rando, Réglages), boussole et recentrage à droite, le tout aux couleurs de la carte (indigo la nuit, clair le jour). L'autoradio garde son rail.
+- **Lieux en épingles** de la couleur de leur famille, la pointe sur l'endroit exact ; les points de vue passent en premier.
+- **Vignette Igor** au toucher d'un lieu : pictogramme, nom, type, distance et temps estimé, horaires, adresse, téléphone, site (OpenStreetMap), et les actions Y aller, Étape, Appeler, **Wikipédia** (le résumé dans la vignette, puis l'article) et **Igor** (l'avis de l'IA sur le lieu, l'heure et les horaires pris en compte). Elle se ferme seule après 15 s sans toucher.
+- **Randonnée** (bouton Rando) : les **sentiers balisés** (GR, GRP, PR, chemins locaux de Waymarked Trails, aux couleurs de leur réseau et avec leur balisage) et l'**import de tracés GPX** (gardés sur le téléphone, en orange, avec distance et dénivelé ; voir le tracé, aller au départ, supprimer).
+- Le bouton « Lieux » masque ou affiche les lieux d'un toucher.
+
+## 0.62.22 — Igor Explorer : à pied, à vélo, en transports en commun
+
+- La carte s'appelle désormais **Igor Explorer** (nom de la carte dans Home Assistant et du tableau de bord du téléphone ; `custom:igor-gps-card` reste le même, rien à changer dans les tableaux de bord).
+- **Tous les modes de déplacement** : en haut du panneau de destination, Voiture, Transports, À pied, Vélo (gardé sur chaque écran). À pied et à vélo : TomTom (sinon HERE, sinon les serveurs d'OpenStreetMap). En transports en commun : HERE Public Transit (clé HERE des options d'Igor), départ maintenant, jusqu'à trois trajets proposés avec leurs lignes et l'heure du premier départ, puis « Prenez le bus 73 direction … à …, descendez à … ». Hors voiture : ni radars, ni limitations, ni péages, ni vitesse OBD, rien envoyé à l'autoradio, la flèche n'est plus collée aux routes.
+- **Compteur d'images** (Réglages → Carte 3D → Performance) : affiche aussi le retard du téléphone, le temps de réponse de Home Assistant et le nombre de mises à jour qu'il envoie par seconde, pour trouver d'où vient une lenteur.
+
+## 0.62.21 — Carte à explorer : lieux, inclinaison selon le zoom, couleurs du jour
+
+- **Lieux d'OpenStreetMap, dessinés par Igor** : restaurants, points de vue, monuments, parkings, pharmacies, gares, plages… sur toute la carte, à partir des tuiles d'OpenFreeMap (gratuites, sans clé, servies par un CDN et gardées par le navigateur : aucune requête à Overpass pour les afficher). Une seule famille d'icônes (disque de couleur, pictogramme blanc) : les lieux de TomTom sont masqués pour ne pas mélanger deux dessins. Les icônes ne se chevauchent jamais (les plus importants d'abord), les noms apparaissent en zoomant. Un toucher : « Nouvel itinéraire », « Ajouter une étape », « Fiche » (horaires, téléphone, site, Wikipédia, demandés à OpenStreetMap pour ce seul lieu). Radars et stations (avec leurs prix) restent ceux d'Igor.
+- Réglages → Carte 3D → nouvel onglet **Lieux** : Igor, TomTom ou aucun, et neuf familles à afficher ou masquer.
+- **Inclinaison selon le zoom** (téléphone et autoradio) : en 3D de près, de plus en plus à plat en dézoomant, et la 3D revient en rezoomant, comme la carte d'un jeu. Pendant un pincement la caméra suit sans couper le geste. Réglage « Inclinaison selon le zoom » (Caméra).
+- **Couleurs du jour plus vives** sur la carte TomTom : verts francs, eau turquoise, quartiers et bâtiments gris-bleu, rues blanches, grands axes crème. Réglage « Couleurs de la carte le jour » (Lumière) : vives ou TomTom.
+- **Nuit indigo** par défaut : sol indigo profond, eau un ton plus clair, parcs vert sombre, routes gris lavande, bâtiments indigo, noms clairs, à tous les zooms. Réglage « Couleurs de la carte la nuit » (Lumière) : indigo, bleu nuit, TomTom ou celles du style.
+
 ## 0.62.20 — Ombres d'Igor retirées
 
 - Retrait de la lumière, du dégradé et des ombres portées ajoutés par Igor en 0.62.18 : les bâtiments 3D de TomTom ont déjà les leurs, et les deux se superposaient.

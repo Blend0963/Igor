@@ -531,6 +531,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     _async_register_car(hass)
     _async_register_tasker(hass)
     _async_register_offline_maps(hass)
+    _async_register_places(hass)
+    _async_register_spare_map(hass)
     # No automatic offline-map download any more (0.39.10): France is a 4.5 GB
     # extract, the image lacks osmium, and the online maps cover the car. The
     # service nives.car_map_update stays, for whoever asks for it by hand.
@@ -549,6 +551,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
         await _async_push_lock(hass, entry)
 
     entry.async_create_background_task(hass, _push_lock(), "nives_lock_push")
+    # Igor's library of places (all of France), filled in the background.
+    entry.async_create_background_task(hass, _async_places_loop(hass), "igor_places")
+    # Igor's spare map (France, OpenStreetMap), for when TomTom does not answer.
+    entry.async_create_background_task(hass, _async_spare_loop(hass), "igor_spare_map")
     entry.async_on_unload(async_track_time_interval(hass, _push_lock, LOCK_PUSH_INTERVAL))
     return True
 
@@ -1274,6 +1280,8 @@ ROUTE_SCHEMA = vol.Schema(
         vol.Optional("orbis", default=True): cv.boolean,
         # le prix des péages de chaque itinéraire (HERE, si une clé HERE est donnée)
         vol.Optional("tolls", default=True): cv.boolean,
+        # voiture, à pied, à vélo (TomTom, sinon HERE) ou en transports en commun (HERE)
+        vol.Optional("mode", default="car"): vol.In(["car", "pedestrian", "bicycle", "transit"]),
     }
 )
 
@@ -1344,26 +1352,48 @@ def _async_register_route(hass: HomeAssistant) -> None:
 
         await asyncio.gather(*(one(r) for r in routes[:3]))
 
-    async def _here_route(a, b, via, avoid_types) -> dict | None:
+    async def _here_route(a, b, via, avoid_types, mode: str = "car") -> dict | None:
         """The whole route from HERE, when TomTom gives none."""
         from . import here
 
         hk = _here_key(hass)
         if not hk:
             return None
-        status, body = await _here_get(hass, "route", here.ROUTES_URL, here.route_params(hk, tuple(a), tuple(b), [tuple(v) for v in via], avoid_types, full=True))
-        return here.parse_route(body) if status == 200 and body else None
+        status, body = await _here_get(hass, "route", here.ROUTES_URL, here.route_params(hk, tuple(a), tuple(b), [tuple(v) for v in via], avoid_types, full=True, mode=mode))
+        route = here.parse_route(body) if status == 200 and body else None
+        if route:
+            route["mode"] = mode
+        return route
+
+    async def _transit(a, b, alternatives: int) -> dict:
+        """Public transport, leaving now (HERE Public Transit, the HERE key)."""
+        from . import here
+
+        hk = _here_key(hass)
+        if not hk:
+            return {"enabled": False, "ok": False, "error": "transports en commun : clé HERE absente (options d'Igor)"}
+        status, body = await _here_get(hass, "transit", here.TRANSIT_URL, here.transit_params(hk, tuple(a), tuple(b), alternatives))
+        if status in (401, 403):
+            return {"enabled": True, "ok": False, "error": "clé HERE refusée"}
+        routes = here.parse_transit(body) if status == 200 and body else []
+        if not routes:
+            return {"enabled": True, "ok": False, "error": "pas de transports en commun pour ce trajet"}
+        return {"enabled": True, "ok": True, "route": routes[0], "routes": routes, "source": "here"}
 
     async def _route(call: ServiceCall) -> ServiceResponse:
+        a, b, mode = call.data["from"], call.data["to"], call.data["mode"]
+        if mode == "transit":
+            return await _transit(a, b, call.data["alternatives"])
         out = await _route_tomtom(call)
-        a, b = call.data["from"], call.data["to"]
         if out.get("ok"):
-            if call.data["tolls"]:
+            for r in out["routes"]:
+                r["mode"] = mode
+            if call.data["tolls"] and mode == "car":
                 await _tolls(out["routes"], a, b, call.data["avoid_types"])
                 out["route"] = out["routes"][0]
             return out
         # TomTom without a key, refusing or silent: HERE's route (no traffic stretches).
-        backup = await _here_route(a, b, call.data["via"], call.data["avoid_types"])
+        backup = await _here_route(a, b, call.data["via"], call.data["avoid_types"], mode)
         if backup:
             return {"enabled": True, "ok": True, "route": backup, "routes": [backup], "source": "here"}
         return out
@@ -1382,7 +1412,7 @@ def _async_register_route(hass: HomeAssistant) -> None:
             async with session.request(
                 "POST" if body else "GET",
                 route_url(tuple(a), tuple(b), via),
-                params=route_params(key, call.data.get("heading"), call.data["avoid_types"], call.data["alternatives"], call.data["route_type"]),
+                params=route_params(key, call.data.get("heading"), call.data["avoid_types"], call.data["alternatives"], call.data["route_type"], call.data["mode"]),
                 json=body or None,
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as r:
@@ -1397,7 +1427,7 @@ def _async_register_route(hass: HomeAssistant) -> None:
         if not routes:
             return {"enabled": True, "ok": False, "error": "pas d'itinéraire"}
         # The line drawn from TomTom Orbis (the map shown), the rest classic.
-        if call.data["orbis"]:
+        if call.data["orbis"] and call.data["mode"] == "car":
             better = await _orbis_line(session, key, a, b, via, routes[0], call.data["avoid_types"], call.data["avoid"])
             if better:
                 routes[0] = better
@@ -2082,6 +2112,322 @@ def _async_register_car(hass: HomeAssistant) -> None:
 
 
 OFFLINE_DIR_NAME = "nives_offline"
+
+
+def _places_db(hass: HomeAssistant):
+    """Igor's library of places (places.py), opened once per Core run."""
+    store = hass.data.setdefault(DOMAIN, {})
+    if "places_db" not in store:
+        from .places import PlacesDB, storage_path
+
+        store["places_db"] = PlacesDB(storage_path(Path(hass.config.path())))
+    return store["places_db"]
+
+
+async def _async_places_loop(hass: HomeAssistant) -> None:
+    """Every square of France asked of Overpass once, one at a time, then
+    again after a month; a busy Overpass only delays it. A square too full
+    for one answer is cut in four (down to MIN_CELL)."""
+    from . import places as P
+
+    await asyncio.sleep(60)  # Home Assistant first, then the places
+    db = await hass.async_add_executor_job(_places_db, hass)
+    await hass.async_add_executor_job(db.seed, P.cells())
+    session = async_get_clientsession(hass)
+    mirror, pause = 0, 5.0
+    while True:
+        cell = await hass.async_add_executor_job(db.next_cell, P.now())
+        if cell is None:
+            await asyncio.sleep(3600)
+            continue
+        url = P.OVERPASS[mirror % len(P.OVERPASS)]
+        err = ""
+        try:
+            async with session.post(url, data={"data": P.query(cell)}, headers={"User-Agent": "Igor-HomeAssistant (places library)"},
+                                    timeout=aiohttp.ClientTimeout(total=300)) as r:
+                if r.status == 200:
+                    body = await r.read()
+                    data = await hass.async_add_executor_job(json.loads, body)
+                    remark = str(data.get("remark") or "")
+                    if "runtime error" in remark or "Query timed out" in remark or "out of memory" in remark:
+                        err = remark[:120]
+                    else:
+                        rows = await hass.async_add_executor_job(P.parse, data.get("elements") or [])
+                        await hass.async_add_executor_job(db.store, cell, rows, P.now())
+                        pause = 5.0
+                else:
+                    err = f"Overpass {r.status}"
+                    if r.status == 429:
+                        pause = 60.0
+        except (aiohttp.ClientError, TimeoutError, ValueError) as e:
+            err = f"Overpass injoignable ({type(e).__name__})"
+        if err:
+            mirror += 1
+            too_big = "timed out" in err or "memory" in err or "runtime" in err or "TimeoutError" in err or "504" in err
+            if too_big and cell[2] - cell[0] > P.MIN_CELL + 1e-9:
+                await hass.async_add_executor_job(db.replace_cell, cell, P.split(cell))
+            else:
+                await hass.async_add_executor_job(db.failed, cell, err, P.now())
+            pause = min(300.0, max(pause * 2, 20.0))
+        await asyncio.sleep(pause)
+
+
+def _spare_map(hass: HomeAssistant):
+    """Igor's spare map (fallback.py), opened once per Core run."""
+    store = hass.data.setdefault(DOMAIN, {})
+    if "spare_map" not in store:
+        from .fallback import SpareMap
+        from .places import storage_path
+
+        store["spare_map"] = SpareMap(storage_path(Path(hass.config.path())).with_name("carte.sqlite"))
+    return store["spare_map"]
+
+
+async def _async_spare_loop(hass: HomeAssistant) -> None:
+    """France's tiles out of Protomaps' latest planet build, piece by piece
+    (one request at a time, resumed after a restart), then again every 90
+    days; the fonts of the names once."""
+    from urllib.parse import quote
+
+    from . import fallback as F
+    from .places import now
+
+    await asyncio.sleep(180)
+    spare = await hass.async_add_executor_job(_spare_map, hass)
+    session = async_get_clientsession(hass)
+    ua = {"User-Agent": "Igor-HomeAssistant (spare map)"}
+
+    async def get_range(url: str, a: int, b: int) -> bytes:
+        async with session.get(url, headers={**ua, "Range": f"bytes={a}-{b - 1}"}, timeout=aiohttp.ClientTimeout(total=600)) as r:
+            if r.status not in (200, 206):
+                raise ValueError(f"Protomaps {r.status}")
+            data = await r.read()
+            return data[a:b] if r.status == 200 else data
+
+    while True:
+        try:
+            # The build: the newest of Protomaps' list, kept 90 days.
+            build, built_at = await hass.async_add_executor_job(spare.meta, "build"), await hass.async_add_executor_job(spare.meta, "build_at")
+            if not build or now() - float(built_at or 0) > F.REFRESH_DAYS * 86400:
+                async with session.get(F.BUILDS_URL, headers=ua, timeout=aiohttp.ClientTimeout(total=60)) as r:
+                    builds = await r.json(content_type=None) if r.status == 200 else []
+                keys = sorted(str(b.get("key") or "") for b in builds if isinstance(b, dict) and str(b.get("key") or "").endswith(".pmtiles"))
+                if keys and keys[-1] != build:
+                    build = keys[-1]
+                    await hass.async_add_executor_job(spare.meta, "build", build)
+                    await hass.async_add_executor_job(spare.meta, "build_at", str(now()))
+                elif keys:
+                    await hass.async_add_executor_job(spare.meta, "build_at", str(now()))
+            if not build:
+                await asyncio.sleep(3600)
+                continue
+            await hass.async_add_executor_job(spare.seed, F.pieces(), build)
+            url = F.BUILD_URL.format(key=build)
+            head = await get_range(url, 0, 16384)
+            h = F.read_header(head)
+            await hass.async_add_executor_job(spare.meta, "compression", str(h["tile_compression"]))
+            root = F.read_directory(head[h["root_offset"]:h["root_offset"] + h["root_length"]], h["internal_compression"])
+            leaves: dict[tuple[int, int], list] = {}
+            # The names' fonts (Latin ranges), once.
+            for font in F.FONTS:
+                for rg in F.FONT_RANGES:
+                    name = f"{font}/{rg}"
+                    if await hass.async_add_executor_job(spare.font, name):
+                        continue
+                    async with session.get(F.FONTS_URL.format(font=quote(font), range=rg), headers=ua, timeout=aiohttp.ClientTimeout(total=60)) as r:
+                        if r.status == 200:
+                            await hass.async_add_executor_job(spare.font, name, await r.read())
+            while True:
+                piece = await hass.async_add_executor_job(spare.next_piece, now())
+                if piece is None:
+                    break
+                try:
+                    ranges = F.piece_ranges(piece)
+                    found, todo = [], [root]
+                    while todo:
+                        d = todo.pop()
+                        found += F.tiles_for(d, ranges)
+                        for off, ln in F.leaves_for(d, ranges):
+                            if (off, ln) not in leaves:
+                                raw = await get_range(url, h["leaf_offset"] + off, h["leaf_offset"] + off + ln)
+                                leaves[(off, ln)] = await hass.async_add_executor_job(F.read_directory, raw, h["internal_compression"])
+                                if len(leaves) > 400:
+                                    leaves.pop(next(iter(leaves)))
+                            todo.append(leaves[(off, ln)])
+                    # Span by span (16 MB at most): stored as they come, the memory stays low.
+                    found.sort(key=lambda e: e[1])
+                    for a, b in F.byte_spans(found):
+                        chunk = await get_range(url, h["data_offset"] + a, h["data_offset"] + b)
+                        part = [e for e in found if a <= e[1] and e[1] + e[2] <= b]
+                        data = {(e[1], e[2]): chunk[e[1] - a:e[1] - a + e[2]] for e in part}
+                        await hass.async_add_executor_job(spare.store, piece, build, part, data, False)
+                        del chunk, data
+                    await hass.async_add_executor_job(spare.store, piece, build, [], {}, True)
+                except (aiohttp.ClientError, TimeoutError, ValueError, OSError) as e:
+                    await hass.async_add_executor_job(spare.failed, piece, f"{type(e).__name__}: {e}", now())
+                    await asyncio.sleep(60)
+                await asyncio.sleep(2)
+        except (aiohttp.ClientError, TimeoutError, ValueError, OSError) as e:
+            _LOGGER.debug("spare map: %s", e)
+            await asyncio.sleep(900)
+            continue
+        await asyncio.sleep(6 * 3600)
+
+
+@callback
+def _async_register_spare_map(hass: HomeAssistant) -> None:
+    """/api/nives/spare/{z}/{x}/{y}.mvt, its style (?t=nuit|jour&o=origin),
+    its fonts, its status."""
+    store = hass.data.setdefault(DOMAIN, {})
+    if store.get("spare_views"):
+        return
+    store["spare_views"] = True
+    import re as _re
+
+    from . import fallback as F
+
+    class SpareTileView(HomeAssistantView):
+        url = "/api/nives/spare/{z}/{x}/{y}.mvt"
+        name = "api:nives:spare_tile"
+        requires_auth = True
+
+        async def get(self, request: web.Request, z: str, x: str, y: str) -> web.Response:
+            try:
+                zi, xi, yi = int(z), int(x), int(y)
+            except ValueError:
+                return web.Response(status=400)
+            if not 0 <= zi <= F.MAX_ZOOM:
+                return web.Response(status=204)
+            spare = await hass.async_add_executor_job(_spare_map, hass)
+            data = await hass.async_add_executor_job(spare.tile, zi, xi, yi)
+            if not data:
+                return web.Response(status=204)
+            headers = {"Cache-Control": "max-age=604800"}
+            if data[:2] == b"\x1f\x8b":
+                headers["Content-Encoding"] = "gzip"
+            return web.Response(body=data, content_type="application/x-protobuf", headers=headers)
+
+    class SpareStyleView(HomeAssistantView):
+        url = "/api/nives/spare/style.json"
+        name = "api:nives:spare_style"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            origin = request.query.get("o", "")
+            if not _re.match(r"^https?://[A-Za-z0-9.\-]+(:\d+)?$", origin):
+                origin = str(request.url.origin())
+            base = origin + "/api/nives/spare"
+            try:
+                op = float(request.query.get("bo", "0.9"))
+            except ValueError:
+                op = 0.9
+            return self.json(F.style(base + "/{z}/{x}/{y}.mvt", base + "/fonts/{fontstack}/{range}.pbf", request.query.get("t", "nuit"),
+                                     request.query.get("b3", "1") != "0", op))
+
+    class SpareFontView(HomeAssistantView):
+        url = "/api/nives/spare/fonts/{font}/{rng}.pbf"
+        name = "api:nives:spare_font"
+        requires_auth = True
+
+        async def get(self, request: web.Request, font: str, rng: str) -> web.Response:
+            spare = await hass.async_add_executor_job(_spare_map, hass)
+            first = font.split(",")[0].strip()
+            data = await hass.async_add_executor_job(spare.font, f"{first}/{rng}")
+            # A range not kept: no glyph, but no error either.
+            return web.Response(body=data or b"", content_type="application/x-protobuf", headers={"Cache-Control": "max-age=604800"})
+
+    class SpareStatusView(HomeAssistantView):
+        url = "/api/nives/spare/status"
+        name = "api:nives:spare_status"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            spare = await hass.async_add_executor_job(_spare_map, hass)
+            return self.json({"ok": True, **(await hass.async_add_executor_job(spare.status))})
+
+    for v in (SpareTileView(), SpareStyleView(), SpareFontView(), SpareStatusView()):
+        hass.http.register_view(v)
+
+
+@callback
+def _async_register_places(hass: HomeAssistant) -> None:
+    """/api/nives/places?t=z/x/y (the places of a map tile: z14 all of
+    them, z12 the ones seen from far), /api/nives/places/info?id=n123 (one
+    place's sheet), /api/nives/places/status (how far the library is)."""
+    store = hass.data.setdefault(DOMAIN, {})
+    if store.get("places_views"):
+        return
+    store["places_views"] = True
+    from .places import tile_bbox
+
+    class PlacesView(HomeAssistantView):
+        url = "/api/nives/places"
+        name = "api:nives:places"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            try:
+                z, x, y = (int(v) for v in request.query.get("t", "").split("/"))
+            except ValueError:
+                return self.json({"ok": False, "error": "t=z/x/y"}, status_code=400)
+            if not 10 <= z <= 16:
+                return self.json({"ok": False, "error": "zoom 10 à 16"}, status_code=400)
+            b = tile_bbox(z, x, y)
+            db = await hass.async_add_executor_job(_places_db, hass)
+            # Every place close up; a little farther, all but the bus stops
+            # (the pins that cannot all fit give way to the important ones).
+            max_rank, limit = (5, 6000) if z >= 14 else (4, 3000) if z >= 13 else (3, 1500)
+
+            def _read():
+                return db.places(b, max_rank, limit), db.complete(b)
+
+            rows, complete = await hass.async_add_executor_job(_read)
+            return self.json({"ok": True, "complete": complete, "f": rows})
+
+    class PlaceInfoView(HomeAssistantView):
+        url = "/api/nives/places/info"
+        name = "api:nives:places_info"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            db = await hass.async_add_executor_job(_places_db, hass)
+            info = await hass.async_add_executor_job(db.info, request.query.get("id", "")[:24])
+            return self.json({"ok": bool(info), "place": info})
+
+    class PlacesStatusView(HomeAssistantView):
+        url = "/api/nives/places/status"
+        name = "api:nives:places_status"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            db = await hass.async_add_executor_job(_places_db, hass)
+            return self.json({"ok": True, **(await hass.async_add_executor_job(db.status))})
+
+    class PlacesNearView(HomeAssistantView):
+        """?p=lat,lon;lat,lon…&r=metres&s=sub,sub (the places Igor chooses from)."""
+        url = "/api/nives/places/near"
+        name = "api:nives:places_near"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            try:
+                pts = [tuple(float(v) for v in x.split(",")) for x in request.query.get("p", "").split(";") if x]
+                pts = [(a, b) for a, b in pts if -90 <= a <= 90 and -180 <= b <= 180]
+                radius = max(100.0, min(30000.0, float(request.query.get("r", "3000"))))
+                limit = max(1, min(200, int(request.query.get("n", "80"))))
+            except ValueError:
+                return self.json({"ok": False, "error": "p=lat,lon;…"}, status_code=400)
+            subs = [x for x in request.query.get("s", "").split(",") if x][:150]
+            if not pts:
+                return self.json({"ok": False, "error": "aucun point"}, status_code=400)
+            db = await hass.async_add_executor_job(_places_db, hass)
+            rows = await hass.async_add_executor_job(db.near, pts, radius, subs or None, limit)
+            return self.json({"ok": True, "places": rows})
+
+    hass.http.register_view(PlacesNearView())
+    hass.http.register_view(PlacesView())
+    hass.http.register_view(PlaceInfoView())
+    hass.http.register_view(PlacesStatusView())
 
 
 def _offline_maps(hass: HomeAssistant):
