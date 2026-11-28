@@ -1,3 +1,7 @@
+## 0.62.18 — Ombres sur les bâtiments de la carte
+
+- **Bâtiments du fond de carte** (sans la 3D d'Igor) : lumière rasante du sud-ouest qui éclaire chaque face selon son orientation, murs plus sombres vers le sol, et ombres portées au sol — l'empreinte de chaque bâtiment, sombre, décalée à l'opposé de la lumière, plus loin pour un bâtiment haut (trois hauteurs). Le réglage « Ombres portées » en règle la force (0 : aucune).
+
 ## 0.62.17 — Seuls les bâtiments TomTom
 
 - **Retirés** : les bâtiments Cesium (et le champ « Jeton Cesium ion » des options, et `/api/nives/cesium/endpoint`), les monuments détaillés (Tour Eiffel construite par Igor, modèles glTF `landmarks:`), les monuments 3D TomTom et les monuments éclairés. Restent les bâtiments de TomTom et leurs réglages, et la couleur des bâtiments du fond de carte avec « Couleurs de la carte la nuit ».
