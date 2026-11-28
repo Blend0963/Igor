@@ -1,3 +1,10 @@
+## 0.62.25 — Les lieux d'Igor seuls, partout, toujours tous
+
+- **Plus aucun lieu de TomTom** : sur Igor Explorer comme sur l'écran déporté de la voiture, seuls les lieux de la bibliothèque d'Igor (OpenStreetMap), dans les épingles d'Igor. Les stations-service passent aussi en épingle (leurs prix restent au-dessus).
+- **Toujours l'intégralité** : plus de choix « masqués » ni de familles à cocher (l'onglet Lieux des réglages disparaît). Les lieux apparaissent dès qu'ils sont à l'écran et s'en vont avec lui ; de près, absolument tous ; un peu plus loin, tous sauf les arrêts de bus, les épingles qui ne tiennent pas côte à côte laissant la place aux plus importantes.
+- **Écran déporté** : un toucher sur un lieu ouvre la même vignette qu'Igor Explorer (horaires, adresse, téléphone, Y aller, Étape, Appeler, Wikipédia, Igor) ; « Y aller » donne la destination à l'autoradio, qui guide.
+- Le bouton Lieux du dock indique où en est la bibliothèque.
+
 ## 0.62.24 — La bibliothèque des lieux d'Igor (toute la France)
 
 - **Une base de lieux à Igor, sur Home Assistant** : tous les points d'intérêt d'OpenStreetMap de France métropolitaine et de Corse (restaurants, points de vue, monuments, commerces, santé, parkings, gares, arrêts de bus, toilettes, eau potable, hébergements…), avec leurs horaires, téléphone, site et lien Wikipédia. Elle se remplit seule en arrière-plan, carré de 0,25° par carré (environ 2 400), une demande à Overpass à la fois, avec pause ; un carré refusé (Overpass occupé) est réessayé plus tard ou coupé en quatre ; chaque carré est relu tous les 30 jours. Compter une à deux journées pour la première construction, puis environ 1 Go.

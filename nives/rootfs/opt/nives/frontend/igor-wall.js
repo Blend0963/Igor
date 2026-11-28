@@ -5568,7 +5568,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.24";
+  var GPS_CARD_VERSION = "0.62.25";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7318,7 +7318,7 @@
         $("layers").setAttribute("data-l", "Réglages"); $("layers").firstElementChild.setAttribute("icon", "mdi:cog");
         $("overview").setAttribute("data-l", "Itinéraire");
         $("dbar").addEventListener("click", () => $("dest").click());
-        $("places").classList.toggle("on", !this.placesHidden);
+        $("places").classList.add("on");
       }
       // Walking: the marked trails (a layer), and the GPX tracks kept on this screen.
       try { this.trailsOn = localStorage.getItem("igor-trails") === "1"; } catch (e) { this.trailsOn = false; }
@@ -7346,12 +7346,12 @@
         rd.readAsText(f);
       });
       this.hikeRedraw = drawHike;
+      // Every place is always shown: the button says how far Igor's library is.
       $("places").addEventListener("click", () => {
-        this.placesHidden = !this.placesHidden;
-        $("places").classList.toggle("on", !this.placesHidden);
-        try { this.placesApply(); } catch (e) { /* at the next look */ }
-        var st = this.dbStat, lib = st && st.cells_total ? " · bibliothèque d'Igor : " + Math.round(st.progress * 100) + " % de la France, " + Number(st.places).toLocaleString("fr-FR") + " lieux" : "";
-        this.toast((this.placesHidden ? "Lieux masqués" : "Lieux affichés") + lib, 4000);
+        var st = this.dbStat;
+        this.dbStatAt = 0; this.dbStatus();
+        this.toast(st && st.cells_total ? "Bibliothèque d'Igor : " + Math.round(st.progress * 100) + " % de la France · " + Number(st.places).toLocaleString("fr-FR") + " lieux" + (st.progress < 1 ? " (construction en cours ; ailleurs, les lieux d'OpenFreeMap en attendant)" : "")
+          : "Bibliothèque d'Igor : pas encore joignable (mise à jour du module et redémarrage de Home Assistant)", 6000);
       });
       // The guidance column (igor-guide-card) asks: the destination panel,
       // a favourite, the end of the guidance.
@@ -7765,7 +7765,7 @@
         ((map.getStyle() && map.getStyle().layers) || []).forEach((l) => {
           if (l.type !== "symbol" || /^igor|^route|^gps/.test(l.id)) return;
           var name = l.id + " " + (l["source-layer"] || "");
-          if (/poi|point.of.interest/i.test(name)) { map.setLayoutProperty(l.id, "visibility", L.poi === "tous" ? "visible" : "none"); return; }
+          if (/poi|point.of.interest/i.test(name)) { map.setLayoutProperty(l.id, "visibility", "none"); return; }
           if (!/road|street|transport/i.test(name) || !l.layout || l.layout["text-field"] == null) return;
           if (!(l.id in sz)) sz[l.id] = l.layout["text-size"] != null ? l.layout["text-size"] : 16;
           map.setLayoutProperty(l.id, "text-size", ns === 1 ? sz[l.id] : scale(sz[l.id], ns));
@@ -11078,22 +11078,20 @@
       Object.keys(GPS_POI).forEach((k) => { if (k === "camera" ? L.cameras && L.cameras !== "off" : L[k]) out.push(k); });
       // The base map draws its own places (TomTom 3D): Igor adds only what it
       // has better — the cameras, and the stations with their prices.
-      if (this.basePois() || this.placesOn()) out = out.filter((k) => k === "camera" || k === "fuel");
+      // The places are the library's alone: Overpass only for the radars and the stations (their prices).
+      out = out.filter((k) => k === "camera" || k === "fuel");
       return out;
     },
-    basePois() { return this.config.basemap === "tomtom-3d" && this.config.base_pois !== false && !this.placesOn(); },
-    // The map's places: « igor » (OpenStreetMap's, Igor's icons; default),
-    // « tous » (TomTom's own), « aucun ». The head unit's settings decide.
-    placesMode() {
-      var L = this.look, v = L && L.poi != null ? L.poi : this.config.places;
-      return v === "aucun" || v === "tous" || v === "igor" ? v : "igor";
-    },
-    placesOn() { return this.config.places !== false && !this.placesHidden && this.placesMode() === "igor"; },
+    basePois() { return false; },
+    // The map's places: Igor's own (its library of OpenStreetMap's places,
+    // in Igor's pins), or none. TomTom's own places are never drawn any more
+    // (an old « tous » reads as Igor's): one drawing on every screen, the
+    // phone's, the car's second screen and the dashboards alike.
+    // Always every place, on every screen (the owner's choice).
+    placesMode() { return "igor"; },
+    placesOn() { return true; },
     // The families the settings keep (« Lieux » tab: every one by default).
-    placesFamilies() {
-      var L = this.look || {};
-      return Object.keys(GPS_PLACE_FAM).filter((f) => { var k = GPS_PLACE_FAM[f].key; return L[k] == null || !!Number(L[k]); });
-    },
+    placesFamilies() { return Object.keys(GPS_PLACE_FAM); },
     placesLayer(map, font) {
       if (!map || map.getLayer("igor-lieux")) return;
       if (!map._iglMissing) {
@@ -11440,6 +11438,8 @@
       if (!map || map.getSource("pois")) return;
       var icons = this.icons || (this.icons = gpsPoiIcons());
       Object.keys(icons).forEach((k) => { if (!map.hasImage("igor-" + k)) map.addImage("igor-" + k, icons[k], { pixelRatio: 4 }); });
+      // The stations in the places' own pins (the radars keep their tile).
+      try { if (map.hasImage("igor-fuel")) map.removeImage("igor-fuel"); map.addImage("igor-fuel", gpsPlaceIcon("voiture", "gas-station"), { pixelRatio: 4 }); } catch (e) { /* the old pump */ }
       // A font the base map has (its labels'), for the cameras' limits.
       var font = null;
       (map.getStyle().layers || []).some((l) => { var f = l.layout && l.layout["text-font"]; if (Array.isArray(f) && typeof f[0] === "string") { font = f; return true; } return false; });
@@ -11457,7 +11457,8 @@
       // A checked place is drawn wherever the eye rests: no zoom law hides
       // it (a law weighed on the square would keep the zoom of its birth),
       // no row of piled places — every icon owns its place, always.
-      var layout = { "icon-image": ["concat", "igor-", ["get", "kind"]], "icon-size": ["interpolate", ["linear"], ["zoom"], 12, ["match", ["get", "kind"], "camera", 1.6, 1.1], 16, ["match", ["get", "kind"], "camera", 2.5, 1.7]], "icon-allow-overlap": true,
+      var layout = { "icon-image": ["concat", "igor-", ["get", "kind"]], "icon-size": ["interpolate", ["linear"], ["zoom"], 12, ["match", ["get", "kind"], "camera", 1.6, "fuel", 0.85, 1.1], 16, ["match", ["get", "kind"], "camera", 2.5, "fuel", 1.15, 1.7]], "icon-allow-overlap": true,
+        "icon-anchor": ["match", ["get", "kind"], "fuel", "bottom", "center"],
         "symbol-sort-key": ["match", ["get", "kind"], "camera", 0, 1] };
       // The names are the tap's business now (the popup says who is who);
       // only the cameras keep theirs - the limit under the radar.
@@ -15033,16 +15034,6 @@
     ["zp", "Caméra", "Inclinaison selon le zoom", "en 3D de près, à plat en dézoomant, comme la carte d'un jeu", "sw"],
     ["az", "Caméra", "Zoom selon la vitesse", "dézoome sur route rapide", "sw"],
     ["cy", "Caméra", "Voiture à l'écran", "plus bas : plus de route devant", "seg", [["haut", "plus haut"], ["milieu", "au milieu"], ["bas", "plus bas"]]],
-    ["poi", "Lieux", "Points d'intérêt", "Igor : tout OpenStreetMap, avec les icônes d'Igor", "seg", [["igor", "Igor"], ["tous", "TomTom"], ["aucun", "aucun"]]],
-    ["qm", "Lieux", "Manger et boire", "restaurants, cafés, bars, boulangeries", "sw"],
-    ["qc", "Lieux", "Commerces", "supermarchés, boutiques", "sw"],
-    ["qs", "Lieux", "Santé", "pharmacies, hôpitaux, médecins", "sw"],
-    ["qv", "Lieux", "Voiture", "parkings, garages, lavages, bornes", "sw"],
-    ["qt", "Lieux", "Transports", "gares, bus, aéroports, ferries", "sw"],
-    ["qx", "Lieux", "Tourisme et culture", "points de vue, monuments, musées, châteaux", "sw"],
-    ["qn", "Lieux", "Nature et loisirs", "parcs, plages, campings, pique-nique", "sw"],
-    ["qh", "Lieux", "Hébergement", "hôtels, gîtes", "sw"],
-    ["qa", "Lieux", "Services publics", "banques, poste, mairie, toilettes, eau", "sw"],
     ["fl", "Performance", "Mode fluide", "allège tout seul quand ça rame", "sw"],
     ["px", "Performance", "Netteté", "", "seg", [["eco", "économe"], ["normale", "normale"], ["max", "maximale"]]],
     ["aa", "Performance", "Lissage des bords", "coûteux sur téléphone ; inutile sur un écran très fin · au prochain affichage de la carte", "seg", [["auto", "auto"], ["oui", "oui"], ["non", "non"]]],
@@ -15050,7 +15041,7 @@
     ["cpt", "Performance", "Compteur d'images", "affiche les images par seconde en coin de carte", "sw"]
   ];
   // Not in the presets (left to the dashboard until changed here).
-  var MAP3D_FREE = { dn: "auto", ne: 3, pi: 60, zm: 17, az: 1, cy: "milieu", tn: "indigo", tj: "vive", zp: 1, qm: 1, qc: 1, qs: 1, qv: 1, qt: 1, qx: 1, qn: 1, qh: 1, qa: 1 };
+  var MAP3D_FREE = { dn: "auto", ne: 3, pi: 60, zm: 17, az: 1, cy: "milieu", tn: "indigo", tj: "vive", zp: 1 };
   function map3dParse(str) {
     var out = { p: "epure", o: {} };
     String(str || "").split(";").forEach((kv) => {

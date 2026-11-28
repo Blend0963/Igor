@@ -2194,7 +2194,9 @@ def _async_register_places(hass: HomeAssistant) -> None:
                 return self.json({"ok": False, "error": "zoom 10 à 16"}, status_code=400)
             b = tile_bbox(z, x, y)
             db = await hass.async_add_executor_job(_places_db, hass)
-            max_rank, limit = (5, 5000) if z >= 14 else (3, 800) if z >= 13 else (2, 500)
+            # Every place close up; a little farther, all but the bus stops
+            # (the pins that cannot all fit give way to the important ones).
+            max_rank, limit = (5, 6000) if z >= 14 else (4, 3000) if z >= 13 else (3, 1500)
 
             def _read():
                 return db.places(b, max_rank, limit), db.complete(b)
