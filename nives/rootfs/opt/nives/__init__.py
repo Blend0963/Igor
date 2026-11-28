@@ -28,6 +28,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.loader import async_get_integration
 
 from .const import (
+    API_CHAT_ENDPOINT,
     API_HEALTH_ENDPOINT,
     API_MEMORY_ENDPOINT,
     CONF_API_TOKEN,
@@ -533,6 +534,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: IgorConfigEntry) -> bool
     _async_register_offline_maps(hass)
     _async_register_places(hass)
     _async_register_spare_map(hass)
+    _async_register_map_ask(hass)
+    _async_register_trails(hass)
     # No automatic offline-map download any more (0.39.10): France is a 4.5 GB
     # extract, the image lacks osmium, and the online maps cover the car. The
     # service nives.car_map_update stays, for whoever asks for it by hand.
@@ -2272,6 +2275,138 @@ async def _async_spare_loop(hass: HomeAssistant) -> None:
             await asyncio.sleep(900)
             continue
         await asyncio.sleep(6 * 3600)
+
+
+@callback
+def _async_register_trails(hass: HomeAssistant) -> None:
+    """/api/nives/trails?t=10/x/y (the marked trails of a zoom-10 square, as
+    GeoJSON: kept on Home Assistant, else asked of Overpass now, one square
+    at a time), /api/nives/trails/info?id=r123 (a trail's sheet)."""
+    store = hass.data.setdefault(DOMAIN, {})
+    if store.get("trails_views"):
+        return
+    store["trails_views"] = True
+    from . import trails as T
+    from .places import OVERPASS, now, storage_path
+
+    state: dict[str, Any] = {"db": None, "busy": asyncio.Lock(), "mirror": 0}
+
+    def _db():
+        if state["db"] is None:
+            state["db"] = T.TrailsDB(storage_path(Path(hass.config.path())).with_name("sentiers.sqlite"))
+        return state["db"]
+
+    async def _fetch(key: str, b) -> dict | None:
+        async with state["busy"]:
+            db = await hass.async_add_executor_job(_db)
+            got = await hass.async_add_executor_job(db.get, key, now())
+            if got is not None:
+                return got
+            for _ in range(len(OVERPASS)):
+                url = OVERPASS[state["mirror"] % len(OVERPASS)]
+                try:
+                    async with async_get_clientsession(hass).post(url, data={"data": T.query(b)}, headers={"User-Agent": "Igor-HomeAssistant (trails)"},
+                                                                  timeout=aiohttp.ClientTimeout(total=200)) as r:
+                        if r.status == 200:
+                            data = await hass.async_add_executor_job(json.loads, await r.read())
+                            if "runtime error" not in str(data.get("remark") or ""):
+                                feats = await hass.async_add_executor_job(T.parse, data.get("elements") or [])
+                                return await hass.async_add_executor_job(db.put, key, feats, now())
+                except (aiohttp.ClientError, TimeoutError, ValueError):
+                    pass
+                state["mirror"] += 1
+            return None
+
+    class TrailsView(HomeAssistantView):
+        url = "/api/nives/trails"
+        name = "api:nives:trails"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            try:
+                z, x, y = (int(v) for v in request.query.get("t", "").split("/"))
+            except ValueError:
+                return self.json({"ok": False, "error": "t=10/x/y"}, status_code=400)
+            if z != 10:
+                return self.json({"ok": False, "error": "zoom 10 seulement"}, status_code=400)
+            key = f"{z}/{x}/{y}"
+            db = await hass.async_add_executor_job(_db)
+            got = await hass.async_add_executor_job(db.get, key, now())
+            if got is None:
+                got = await _fetch(key, T.tile_bbox(z, x, y))
+            if got is None:
+                old = await hass.async_add_executor_job(db.stale, key)
+                return self.json({"ok": old is not None, "pending": True, "geojson": old})
+            return self.json({"ok": True, "geojson": got})
+
+    class TrailInfoView(HomeAssistantView):
+        url = "/api/nives/trails/info"
+        name = "api:nives:trails_info"
+        requires_auth = True
+
+        async def get(self, request: web.Request) -> web.Response:
+            db = await hass.async_add_executor_job(_db)
+            info = await hass.async_add_executor_job(db.info, request.query.get("id", "")[:24])
+            return self.json({"ok": bool(info), "trail": info})
+
+    hass.http.register_view(TrailsView())
+    hass.http.register_view(TrailInfoView())
+
+
+@callback
+def _async_register_map_ask(hass: HomeAssistant) -> None:
+    """POST /api/nives/ask {"text": …}: the map's questions to Igor, always on
+    the online model (Mistral…), never on the house's local one — a
+    « situation » rides with each, which keeps the server off the local
+    model, and no conversation is kept (a one-shot, like an AI Task). The
+    house's lock applies as for Assist."""
+    store = hass.data.setdefault(DOMAIN, {})
+    if store.get("map_ask_view"):
+        return
+    store["map_ask_view"] = True
+
+    class MapAskView(HomeAssistantView):
+        url = "/api/nives/ask"
+        name = "api:nives:ask"
+        requires_auth = True
+
+        async def post(self, request: web.Request) -> web.Response:
+            from .const import CONF_KEY_ENTITY
+            from .security import is_locked, settings, user_allowed
+
+            try:
+                body = await request.json()
+            except ValueError:
+                return self.json({"ok": False, "error": "JSON attendu"}, status_code=400)
+            text = str((body or {}).get("text") or "").strip()[:12000]
+            if not text:
+                return self.json({"ok": False, "error": "question vide"}, status_code=400)
+            user = request.get("hass_user")
+            sec = settings(hass)
+            if is_locked(hass, sec.get(CONF_KEY_ENTITY)) and not await user_allowed(hass, user.id if user else None, sec.get("allowed_users") or []):
+                return self.json({"ok": False, "error": "Igor est verrouillé"}, status_code=403)
+            entry = next((e for e in hass.config_entries.async_entries(DOMAIN) if getattr(e, "runtime_data", None) is not None), None)
+            if entry is None:
+                return self.json({"ok": False, "error": "Igor n'est pas prêt"}, status_code=503)
+            data = entry.runtime_data
+            payload = {
+                "message": text,
+                "userId": data.user_id,
+                "situation": "The person is looking at Igor's map (Igor Explorer) on a phone. Answer exactly in the format asked, in French.",
+            }
+            headers = {"Authorization": f"Bearer {data.api_token}"} if data.api_token else {}
+            try:
+                async with async_get_clientsession(hass).post(f"{data.api_url}{API_CHAT_ENDPOINT}", json=payload, headers=headers,
+                                                              timeout=aiohttp.ClientTimeout(total=90)) as r:
+                    if r.status != 200:
+                        return self.json({"ok": False, "error": f"Igor a répondu {r.status}"}, status_code=502)
+                    answer = await r.json(content_type=None)
+            except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+                return self.json({"ok": False, "error": f"Igor injoignable ({type(err).__name__})"}, status_code=502)
+            said = (answer or {}).get("response")
+            return self.json({"ok": bool(said), "text": said or ""})
+
+    hass.http.register_view(MapAskView())
 
 
 @callback

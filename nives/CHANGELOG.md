@@ -1,3 +1,11 @@
+## 0.62.29 — Igor Explorer : retouches
+
+- **Bouton des réglages de la carte** : la fenêtre s'ouvre à chaque fois. Elle était accrochée à la page, et la carte en plein écran (le vrai plein écran du téléphone) ne montre qu'elle-même : la fenêtre s'ouvrait invisible, n'apparaissait qu'après un retour arrière, et un second appui la refermait (« une fois sur deux »). Elle s'ouvre maintenant dans la carte.
+- **Vignette d'un lieu** : une croix pour la fermer.
+- **La bulle d'un point de la carte** (« Nouvel itinéraire », « Ajouter une étape ») et la fiche d'un lieu prennent les couleurs de la carte (indigo la nuit, clair le jour).
+- **Sentiers balisés en tracés vectoriels** (plus d'images) : les relations de randonnée d'OpenStreetMap, gardées par Home Assistant par carré de 40 × 26 km (60 jours, `sentiers.sqlite` à côté de la bibliothèque des lieux), dessinées par la carte : GR rouge sur blanc, GRP rouge sur jaune, PR jaune (ou la couleur que le sentier déclare), leur numéro le long du tracé. **Un toucher sur un sentier : sa fiche** — nom et réseau, longueur, de… à…, dénivelé, balisage en clair (« Rouge (barre) sur blanc »), qui l'entretient, son site ; Rejoindre (l'itinéraire jusqu'à son point le plus proche), Voir (le sentier en entier, surligné), Garder (dans Rando, comme un GPX), Wikipédia, Igor (la rando préparée).
+- **Igor sur la carte passe toujours par le modèle en ligne** (Mistral…), jamais par le modèle local de la maison : nouvelle adresse `/api/nives/ask` (une question sans conversation gardée, le verrou de la maison respecté).
+
 ## 0.62.28 — Carte de secours : bâtiments en 3D
 
 - Les bâtiments de la carte de secours se dressent en relief dès le zoom 14 (la hauteur d'OpenStreetMap, sinon ses étages × 3 m, sinon environ trois étages), dans les couleurs d'Igor, éclairés en lavande la nuit ; les réglages « Bâtiments en 3D » et « Opacité » s'y appliquent.

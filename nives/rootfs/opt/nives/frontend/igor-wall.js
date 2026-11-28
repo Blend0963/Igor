@@ -5503,7 +5503,6 @@
   //                                         # (Stations, Voix, Itinéraire, Lieux, Rando, Réglages), compass and recentring on the right
   //   igor_guide: false                     # no trip guide from Igor (the words at the start of a 45 min+ trip, the pause near 2 h)
   //   agent: conversation.igor              # Igor's conversation agent (found by its name otherwise)
-  //   trails_tiles: https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png  # the marked trails (« Rando » → Sentiers balisés)
   //   controls: rail                        # the head unit's dashboard (with igor-guide-card beside): big written
   //                                         # buttons on the right, no turn banner / arrival bar / layers / fullscreen
   //   local_gps: true                       # on the head unit itself: the arrow follows the screen's own GPS
@@ -5570,7 +5569,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.28";
+  var GPS_CARD_VERSION = "0.62.29";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -6282,12 +6281,31 @@
     var nameEl = all("name")[0], name = (nameEl && nameEl.textContent.trim()) || String(file || "Tracé").replace(/\.gpx$/i, "");
     return { name: name.slice(0, 60), lines: lines, wpts: wpts, km: Math.round(km * 100) / 100, up: up };
   }
+  // OpenStreetMap's waymark (osmc:symbol « red:white:red_bar ») in words.
+  function gpsWaymark(sym) {
+    var C = { red: "rouge", white: "blanc", yellow: "jaune", blue: "bleu", green: "vert", orange: "orange", purple: "violet", black: "noir", brown: "marron" };
+    var p = String(sym || "").split(":"), fg = (p[2] || "").split("_"), out = [];
+    if (C[fg[0]]) out.push(C[fg[0]] + (fg[1] === "bar" ? " (barre)" : fg[1] ? " (" + fg[1] + ")" : ""));
+    if (C[(p[1] || "").split("_")[0]]) out.push("sur " + C[(p[1] || "").split("_")[0]]);
+    if (p[4] || p[3]) out.push("« " + (p[3] && !C[p[3]] ? p[3] : p[4] || "") + " »");
+    var s = out.join(" ").replace(/«\s*»/, "").trim();
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : String(sym);
+  }
   // A pictogram as inline SVG (the vignette's header).
   function gpsPlaceSvg(icon, size, color) {
     return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24"><path fill="' + (color || "#fff") + '" d="' + (GPS_PLACE_SVG[icon] || GPS_PLACE_SVG["map-marker"]) + '"/></svg>';
   }
-  // Igor's own agent (an LLM): `agent`, else the conversation entity named Igor.
+  // Igor on the map: always the online model (Mistral…), never the house's
+  // local one — /api/nives/ask carries a « situation », which keeps Igor's
+  // server off the local model. An older Igor without it: Assist's agent.
   function gpsAskIgor(hass, text, agent) {
+    if (hass.callApi) return hass.callApi("POST", "nives/ask", { text: text }).then(function (r) {
+      if (r && r.ok && r.text) return r.text;
+      throw new Error((r && r.error) || "vide");
+    }, function (e) { if (e && (e.status_code === 404 || e.status === 404)) return gpsAskAgent(hass, text, agent); throw e; });
+    return gpsAskAgent(hass, text, agent);
+  }
+  function gpsAskAgent(hass, text, agent) {
     var hs = hass.states, a = agent || Object.keys(hs).find(function (id) { return id.indexOf("conversation.") === 0 && /igor|nives/i.test(id + " " + ((hs[id].attributes || {}).friendly_name || "")); });
     return hass.callWS(Object.assign({ type: "conversation/process", text: text, language: "fr" }, a ? { agent_id: a } : {})).then(function (r) {
       var said = r && r.response && r.response.speech && r.response.speech.plain && r.response.speech.plain.speech;
@@ -7146,6 +7164,7 @@
         ".pv-h { display: flex; gap: 11px; align-items: center; padding: 11px 12px; } .pv-h > i { width: 44px; height: 44px; flex: none; border-radius: 6px; background: var(--pc); display: grid; place-items: center; }" +
         ".pv-n { flex: 1; min-width: 0; } .pv-n b { display: block; font-size: 15px; line-height: 1.25; } .pv-n small, .pv-d small { display: block; font-size: 11.5px; color: var(--dim); margin-top: 2px; }" +
         ".pv-d { text-align: right; flex: none; } .pv-d b { font-family: " + MONO + "; font-size: 16px; }" +
+        ".pv-c { flex: none; align-self: flex-start; width: 34px; height: 34px; margin: -2px -4px 0 2px; border-radius: 6px; border: 1px solid var(--bd); background: var(--ui2); color: var(--tx); display: grid; place-items: center; cursor: pointer; --mdc-icon-size: 18px; }" +
         ".pv-kv { padding: 0 12px; } .pv-kv > div { display: flex; align-items: center; gap: 9px; padding: 6px 0; border-top: 1px solid var(--bd); font-size: 12.5px; --mdc-icon-size: 16px; } .pv-kv ha-icon { color: var(--dim); flex: none; } .pv-kv span { color: var(--dim); width: 70px; flex: none; } .pv-kv b { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
         ".pv-wait { color: var(--dim); font-size: 12px; padding: 6px 0; border-top: 1px solid var(--bd); }" +
         ".pv-x { margin: 8px 12px 0; padding: 9px 11px; border-radius: 6px; background: var(--ui2); font-size: 12.5px; line-height: 1.45; max-height: 170px; overflow-y: auto; } .pv-x[hidden] { display: none; } .pv-x p { margin: 4px 0; } .pv-x a { color: var(--acc); } .pv-src { font-size: 10.5px; letter-spacing: .06em; color: var(--dim); text-transform: uppercase; }" +
@@ -7197,11 +7216,14 @@
         ".alttag.win { color: #5cc28f; border-color: #5cc28f; } .alttag.lose { color: #f08c1a; border-color: #f08c1a; }" +
         ".eur { color: #e0a33a; font-weight: 700; margin-right: 6px; }" +
         ".lez { color: #e5323b; border: 1px solid #e5323b; border-radius: 3px; font-size: 11px; font-weight: 700; padding: 0 3px; margin-right: 6px; }" +
-        ".mappick { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: var(--igor-radius, 3px); background: rgba(7,8,10,0.96); border: 1px solid #22262c; font-family: " + MONO + "; }" +
-        ".mappick .mp-head { display: flex; align-items: center; gap: 4px; }" +
-        ".mappick button { font: inherit; font-size: 14px; padding: 10px 12px; border-radius: var(--igor-radius, 3px); border: 1px solid #22262c; background: #12171c; color: #e9e4da; cursor: pointer; display: flex; align-items: center; gap: 10px; --mdc-icon-size: 20px; white-space: nowrap; } .mappick button ha-icon { color: #59d0e0; flex: none; }" +
-        ".mappick .mp-name { color: #878c95; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; min-width: 0; padding: 2px 0 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
-        ".mappick .mp-x { flex: none; margin-left: auto; width: 30px; height: 30px; min-height: 0; padding: 0; justify-content: center; border: none; background: transparent; color: #878c95; --mdc-icon-size: 18px; } .mappick .mp-x ha-icon { color: #878c95; }" +
+        // The map's own colours (indigo by night, light by day), as the vignettes.
+        ".mappick { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 8px; background: var(--ui); border: 1px solid var(--bd); box-shadow: var(--sh); color: var(--tx); font-family: 'DejaVu Sans', Roboto, sans-serif; min-width: 220px; }" +
+        ".mappick .mp-head { display: flex; align-items: center; gap: 6px; }" +
+        ".mappick button { font: inherit; font-size: 14px; padding: 11px 12px; border-radius: 6px; border: 1px solid var(--bd); background: var(--ui2); color: var(--tx); cursor: pointer; display: flex; align-items: center; gap: 10px; --mdc-icon-size: 20px; white-space: nowrap; } .mappick button ha-icon { color: var(--acc); flex: none; }" +
+        ".mappick > button:first-of-type { background: var(--acc); border-color: var(--acc); color: var(--accTx); } .mappick > button:first-of-type ha-icon { color: var(--accTx); }" +
+        ".mappick .mp-name { color: var(--tx); font-size: 14px; font-weight: 600; flex: 1; min-width: 0; padding: 2px 0 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }" +
+        ".mappick .mp-x { flex: none; margin-left: auto; width: 34px; height: 34px; min-height: 0; padding: 0; justify-content: center; border: 1px solid var(--bd); background: var(--ui2); color: var(--tx); --mdc-icon-size: 18px; } .mappick .mp-x ha-icon { color: var(--tx); }" +
+        ".poisheet .ps-table th { color: var(--dim); text-align: left; padding-right: 10px; font-weight: 400; } .poisheet .ps-table td { color: var(--tx); }" +
         ".poisheet { max-width: 320px; }\n" +
         ".poisheet .ps-body { padding: 10px 12px; display: grid; gap: 8px; max-height: 46vh; overflow-y: auto; }\n" +
         ".ps-table { border-collapse: collapse; width: 100%; font-size: 13px; }\n" +
@@ -7239,7 +7261,7 @@
         '<div class="panel fpanel" id="fpanel" hidden><div class="ph"><span>stations-service</span><button id="fclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="list" id="flist"></div></div>' +
         '<div class="lpanel" id="lpanel" hidden></div>' +
         '<div class="panel hpanel" id="hpanel" hidden><div class="ph"><span>randonnée</span><button id="hclose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
-        '<button type="button" class="hrow" id="htrails"><ha-icon icon="mdi:map-marker-path"></ha-icon><div><b>Sentiers balisés</b><small>GR, GRP, PR et chemins locaux, aux couleurs de leur balisage (Waymarked Trails)</small></div><span class="hsw">non</span></button>' +
+        '<button type="button" class="hrow" id="htrails"><ha-icon icon="mdi:map-marker-path"></ha-icon><div><b>Sentiers balisés</b><small>GR, GRP, PR et chemins locaux d\'OpenStreetMap, en tracés aux couleurs de leur balisage ; un toucher : leur fiche</small></div><span class="hsw">non</span></button>' +
         '<label class="hrow hfile"><ha-icon icon="mdi:file-upload-outline"></ha-icon><div><b>Importer un tracé GPX</b><small>gardé sur ce téléphone · affiché en orange</small></div><input type="file" id="hgpx" accept=".gpx,application/gpx+xml,application/xml,text/xml" hidden></label>' +
         '<div class="list" id="hlist"></div></div>' +
         '<div class="pprice" id="pprice" hidden><div class="pp-card"><div class="pph"><span id="ppName"></span><button id="ppClose" class="ic" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="pp-addr" id="ppAddr"></div><div class="pp-list" id="ppList"></div></div></div>' +
@@ -9885,6 +9907,8 @@
       });
       var osmPlace = this.placeAt(e.point);
       if (!fuel && osmPlace) { this.placeVignette(osmPlace); return; }
+      var trail = !fuel && this.trailAt(e.point);
+      if (trail) { this.trailVignette(trail, e.lngLat ? [e.lngLat.lng, e.lngLat.lat] : null); return; }
       if (!name && osmPlace) {
         var op = osmPlace.props, osub = op.subclass || op.class || "", oof = GPS_PLACE_OF[op.subclass] || GPS_PLACE_OF[op.class];
         name = String(op["name:fr"] || op.name || GPS_PLACE_FR[osub] || (oof && GPS_PLACE_FAM[oof[0]].name) || "").trim().slice(0, 40);
@@ -11105,7 +11129,7 @@
       // The look shared with the head unit (`settings:`): its window, not the old list of places.
       if (this.config.settings && this._hass) {
         if (this.m3win && this.m3win.isConnected) { this.m3win.close(); this.m3win = null; return; }
-        this.m3win = openMap3dWindow(this._hass, this.config.settings);
+        this.m3win = openMap3dWindow(this._hass, this.config.settings, this.root);
         return;
       }
       var p = this.$("lpanel");
@@ -11329,7 +11353,8 @@
       el.className = "pvig";
       el.style.setProperty("--pc", fam.color);
       el.innerHTML = '<div class="pv-h"><i>' + gpsPlaceSvg(of[1], 26) + '</i><div class="pv-n"><b>' + esc(name) + '</b><small>' + esc(kind) + '</small></div>' +
-        (dist != null ? '<div class="pv-d"><b>' + gpsMetres(dist) + '</b><small>≈ ' + Math.max(1, Math.round(dist / 1000 / kmh * 60 * 1.3)) + ' min</small></div>' : "") + '</div>' +
+        (dist != null ? '<div class="pv-d"><b>' + gpsMetres(dist) + '</b><small>≈ ' + Math.max(1, Math.round(dist / 1000 / kmh * 60 * 1.3)) + ' min</small></div>' : "") +
+        '<button type="button" class="pv-c" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
         '<div class="pv-kv"><div class="pv-wait">Recherche des informations…</div></div><div class="pv-x" hidden></div>' +
         '<div class="pv-a"></div><div class="pv-t"><i></i></div>';
       var acts = el.querySelector(".pv-a"), kv = el.querySelector(".pv-kv"), extra = el.querySelector(".pv-x"), timer = null;
@@ -11378,6 +11403,7 @@
         catch (err) { extra.innerHTML = '<div class="pv-wait">Igor n\'a pas répondu.</div>'; }
         place();
       });
+      el.querySelector(".pv-c").addEventListener("click", (ev) => { ev.stopPropagation(); this.closePick(); });
       el.addEventListener("click", (ev) => { ev.stopPropagation(); hold(); });
       el.addEventListener("pointerdown", (ev) => ev.stopPropagation());
       // Over the pin; below it when the pin is high on the screen (the bars
@@ -11427,10 +11453,27 @@
       if (!map || !map.getStyle) return;
       try {
         var firstSym = ((map.getStyle().layers || []).find((l) => l.type === "symbol") || {}).id;
-        if (this.trailsOn && !map.getLayer("igor-trails")) {
-          if (!map.getSource("igor-trails")) map.addSource("igor-trails", { type: "raster", tileSize: 256, maxzoom: 18, tiles: [this.config.trails_tiles || "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png"], attribution: "© waymarkedtrails.org, OpenStreetMap" });
-          map.addLayer({ id: "igor-trails", type: "raster", source: "igor-trails", paint: { "raster-opacity": 0.95, "raster-fade-duration": 0 } }, firstSym);
-        } else if (!this.trailsOn && map.getLayer("igor-trails")) map.removeLayer("igor-trails");
+        // The marked trails, as vector lines (Igor's server keeps them, from
+        // OpenStreetMap): red on white for the GR, red on yellow for the GRP,
+        // yellow for the PR — or the colour the trail itself declares.
+        if (!map.getSource("igor-trails")) {
+          map.addSource("igor-trails", { type: "geojson", data: this.trailsData || { type: "FeatureCollection", features: [] }, attribution: "© OpenStreetMap" });
+          var net = ["get", "net"];
+          var col = ["to-color", ["get", "colour"], ["match", net, ["iwn", "nwn", "rwn"], "#e5323b", "lwn", "#f2c14e", "#c06cd8"]];
+          var cas = ["match", net, ["iwn", "nwn"], "#ffffff", "rwn", "#f2c14e", "rgba(7,8,10,0.45)"];
+          var wd = (a, b) => ["interpolate", ["linear"], ["zoom"], 10, a, 16, b];
+          map.addLayer({ id: "igor-trails-sel", type: "line", source: "igor-trails", filter: ["==", ["get", "id"], ""], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#59d0e0", "line-width": wd(9, 16), "line-opacity": 0.45, "line-blur": 2 } }, firstSym);
+          map.addLayer({ id: "igor-trails-case", type: "line", source: "igor-trails", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": cas, "line-width": wd(3, 7.5) } }, firstSym);
+          map.addLayer({ id: "igor-trails", type: "line", source: "igor-trails", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": col, "line-width": wd(1.6, 4.5) } }, firstSym);
+          var tfont = null;
+          (map.getStyle().layers || []).some((l) => { var f = l.layout && l.layout["text-font"]; if (Array.isArray(f) && typeof f[0] === "string") { tfont = f; return true; } return false; });
+          if (tfont) map.addLayer({ id: "igor-trails-ref", type: "symbol", source: "igor-trails", minzoom: 12,
+            layout: { "symbol-placement": "line", "text-field": ["case", ["!=", ["get", "ref"], ""], ["get", "ref"], ["get", "name"]], "text-font": tfont, "text-size": 12, "symbol-spacing": 400 },
+            paint: { "text-color": col, "text-halo-color": "#ffffff", "text-halo-width": 2 } });
+          if (!map._iglTrails) { map._iglTrails = true; map.on("moveend", () => this.trailsTick()); }
+        }
+        ["igor-trails-sel", "igor-trails-case", "igor-trails", "igor-trails-ref"].forEach((id) => { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", this.trailsOn ? "visible" : "none"); });
+        if (this.trailsOn) { this.trailsSig = null; this.trailsTick(); }
         var data = { type: "FeatureCollection", features: [] };
         (this.gpxList() || []).forEach((t) => {
           data.features.push({ type: "Feature", geometry: { type: "MultiLineString", coordinates: t.lines }, properties: { name: t.name } });
@@ -11444,6 +11487,131 @@
           map.addLayer({ id: "igor-gpx-pt", type: "circle", source: "igor-gpx", filter: ["==", ["geometry-type"], "Point"], paint: { "circle-radius": 5, "circle-color": "#ff8a1f", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
         }
       } catch (e) { if (this.config.debug) this.message("randonnée : " + (e && e.message)); }
+    },
+    // The zoom-10 squares on screen, each asked of Igor's server once (kept
+    // there 60 days; still being fetched: asked again 30 s later).
+    trailsTick() {
+      var map = this.map;
+      if (!this.trailsOn || !map || !map.getSource || !map.getSource("igor-trails") || !this._hass || !this._hass.callApi) return;
+      if (map.getZoom() < 9.5) return;
+      var bb = map.getBounds(), n = 1024, tx = (lon) => Math.floor((lon + 180) / 360 * n), ty = (lat) => { var r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); };
+      var keys = [];
+      for (var x = tx(bb.getWest()); x <= tx(bb.getEast()); x++) for (var y = ty(bb.getNorth()); y <= ty(bb.getSouth()); y++) if (keys.length < 9) keys.push("10/" + x + "/" + y);
+      var mem = this.trailTiles || (this.trailTiles = {}), sig = keys.join(","), now = Date.now();
+      var need = keys.filter((k) => !mem[k] || (mem[k].pending && now - mem[k].at > 30000));
+      if (sig === this.trailsSig && !need.length) return;
+      this.trailsSig = sig;
+      var draw = () => {
+        var feats = [];
+        keys.forEach((k) => { var g = mem[k] && mem[k].gj; if (g && g.features) feats = feats.concat(g.features); });
+        this.trailsData = { type: "FeatureCollection", features: feats };
+        var src = this.map && this.map.getSource("igor-trails"); if (src) src.setData(this.trailsData);
+      };
+      draw();
+      if (!need.length) return;
+      if (!this.trailsToldAt || now - this.trailsToldAt > 60000) { this.trailsToldAt = now; this.toast("Sentiers balisés : chargement des environs…", 3000); }
+      need.forEach((k) => {
+        mem[k] = Object.assign(mem[k] || {}, { at: now, pending: true });
+        this._hass.callApi("GET", "nives/trails?t=" + k).then((r) => {
+          mem[k] = { at: Date.now(), pending: !!(r && r.pending), gj: (r && r.geojson) || (mem[k] && mem[k].gj) || null };
+          if (r && r.pending) setTimeout(() => { this.trailsSig = null; this.trailsTick(); }, 31000);
+          draw();
+        }).catch(() => { mem[k] = { at: Date.now(), pending: true, gj: null }; });
+      });
+    },
+    trailAt(point) {
+      var map = this.map;
+      if (!this.trailsOn || !map || !map.getLayer("igor-trails") || !point) return null;
+      try {
+        var f = (map.queryRenderedFeatures([[point.x - 12, point.y - 12], [point.x + 12, point.y + 12]], { layers: ["igor-trails", "igor-trails-case"] }) || [])[0];
+        return f ? (f.properties || null) : null;
+      } catch (e) { return null; }
+    },
+    // A trail touched: its sheet in a vignette — its name and network, its
+    // length, from where to where, its waymark, who keeps it; and: join it
+    // (the route to its nearest point), see it whole, keep it as a hike
+    // (Rando), Wikipédia, Igor's preparation.
+    trailVignette(tp, ll) {
+      var map = this.map;
+      if (!map || !tp || !tp.id) return;
+      this.closePick();
+      var esc = (x) => String(x == null ? "" : x).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+      var color = { iwn: "#e5323b", nwn: "#e5323b", rwn: "#e5323b", lwn: "#d9a441" }[tp.net] || "#c06cd8";
+      var lines = [];
+      (this.trailsData && this.trailsData.features || []).forEach((f) => { if (f.properties && f.properties.id === tp.id) lines = lines.concat(f.geometry.coordinates); });
+      var here = this.pos || (this.fix && this.fix.point), near = null, nd = 1e12;
+      lines.forEach((ln) => ln.forEach((q) => { var d = here ? gpsDist(here, q) : 0; if (d < nd) { nd = d; near = q; } }));
+      try { map.setFilter("igor-trails-sel", ["==", ["get", "id"], tp.id]); } catch (e) { /* no glow */ }
+      var title = [tp.ref, tp.name].filter(Boolean).join(" · ") || "Sentier balisé";
+      var el = document.createElement("div");
+      el.className = "pvig"; el.style.setProperty("--pc", color);
+      el.innerHTML = '<div class="pv-h"><i><ha-icon icon="mdi:hiking" style="color:#fff;--mdc-icon-size:26px"></ha-icon></i><div class="pv-n"><b>' + esc(title) + '</b><small>' +
+        esc({ iwn: "itinéraire international", nwn: "GR · grande randonnée", rwn: "GRP · grande randonnée de pays", lwn: "PR · promenade et randonnée" }[tp.net] || "sentier balisé") + '</small></div>' +
+        (here && near ? '<div class="pv-d"><b>' + gpsMetres(nd) + '</b><small>le plus proche</small></div>' : "") +
+        '<button type="button" class="pv-c" title="Fermer"><ha-icon icon="mdi:close"></ha-icon></button></div>' +
+        '<div class="pv-kv"><div class="pv-wait">Fiche du sentier…</div></div><div class="pv-x" hidden></div><div class="pv-a"></div><div class="pv-t"><i></i></div>';
+      var kv = el.querySelector(".pv-kv"), extra = el.querySelector(".pv-x"), acts = el.querySelector(".pv-a"), bar = el.querySelector(".pv-t i"), timer = null, info = null;
+      var arm = (ms) => { clearTimeout(timer); bar.style.transition = "none"; bar.style.width = "100%"; void bar.offsetWidth; bar.style.transition = "width " + ms + "ms linear"; bar.style.width = "0%"; timer = setTimeout(() => { if (this._pick === mk) this.closePick(); }, ms); };
+      var hold = () => { clearTimeout(timer); bar.style.transition = "none"; bar.style.width = "0%"; };
+      var act = (icon, label, fn, on) => { var b = document.createElement("button"); b.type = "button"; if (on) b.className = "on"; b.innerHTML = '<ha-icon icon="' + icon + '"></ha-icon><span>' + label + "</span>"; b.addEventListener("click", (ev) => { ev.stopPropagation(); fn(b); }); acts.appendChild(b); return b; };
+      var km = () => { var d = info && parseFloat(String(info.distance || "").replace(",", ".")); return isFinite(d) && d > 0 ? d : null; };
+      if (near) act("mdi:directions", "Rejoindre", () => { this.closePick(); this.chooseNext = true; this.setDestination({ lat: near[1], lon: near[0], name: title.slice(0, 40) }, true); }, true);
+      act("mdi:eye-outline", "Voir", () => {
+        var b = null; lines.forEach((ln) => ln.forEach((q) => { b = b ? [Math.min(b[0], q[0]), Math.min(b[1], q[1]), Math.max(b[2], q[0]), Math.max(b[3], q[1])] : [q[0], q[1], q[0], q[1]]; }));
+        if (b) { this.closePick(); this.follow = false; this.grabbed = true; map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 70, duration: 800 }); try { map.setFilter("igor-trails-sel", ["==", ["get", "id"], tp.id]); } catch (e) { /* */ } }
+      });
+      act("mdi:content-save-outline", "Garder", () => {
+        if (!lines.length) return;
+        var t = { name: title.slice(0, 60), lines: lines, wpts: [], km: km() || Math.round(lines.reduce((a, ln) => a + ln.slice(1).reduce((s0, q, i) => s0 + gpsDist(ln[i], q), 0), 0) / 10) / 100, up: info && parseFloat(info.ascent) || 0 };
+        this.gpxSave(this.gpxList().filter((x) => x.name !== t.name).concat([t]).slice(-8)); this.hikeLayers(this.map);
+        this.toast("Gardé dans Rando : « " + t.name + " »", 4000);
+      });
+      act("mdi:wikipedia", "Wikipédia", async () => {
+        hold(); extra.hidden = false; extra.innerHTML = '<div class="pv-wait">Wikipédia…</div>';
+        var lang = "fr", page = null, m;
+        if (info && info.wikipedia && (m = String(info.wikipedia).match(/^([a-z-]+):(.+)$/i))) { lang = m[1]; page = m[2]; }
+        try {
+          if (!page) { var sr = await (await fetch("https://fr.wikipedia.org/w/api.php?action=query&list=search&srlimit=1&format=json&origin=*&srsearch=" + encodeURIComponent(title))).json(); page = sr && sr.query && sr.query.search && sr.query.search[0] && sr.query.search[0].title; }
+          if (!page) throw new Error("rien");
+          var wj = await (await fetch("https://" + lang + ".wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(String(page).replace(/ /g, "_")))).json();
+          var url = (wj.content_urls && wj.content_urls.mobile && wj.content_urls.mobile.page) || ("https://" + lang + ".wikipedia.org/wiki/" + encodeURIComponent(page));
+          extra.innerHTML = '<b class="pv-src">Wikipédia · ' + esc(wj.title || page) + "</b><p>" + esc(wj.extract || "Pas de résumé.") + '</p><a target="_blank" rel="noopener" href="' + esc(url) + '">Lire l\'article</a>';
+        } catch (err) { extra.innerHTML = '<div class="pv-wait">Rien sur Wikipédia pour ce sentier.</div>'; }
+        place();
+      });
+      act("mdi:robot-happy-outline", "Igor", () => { this.closePick(); this.hikeIgor({ name: title, lines: lines, km: km() || (info && info.km_seen) || 0, up: info && parseFloat(info.ascent) || 0 }); });
+      el.querySelector(".pv-c").addEventListener("click", (ev) => { ev.stopPropagation(); this.closePick(); });
+      el.addEventListener("click", (ev) => { ev.stopPropagation(); hold(); });
+      el.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+      var cont = map.getContainer(), card = this.$("card"), at = ll || near;
+      el.style.position = "absolute"; el.style.zIndex = "3"; card.appendChild(el);
+      var mk = { getElement: () => el, remove: () => { el.remove(); try { map.setFilter("igor-trails-sel", ["==", ["get", "id"], ""]); } catch (e) { /* */ } } };
+      this._pick = mk;
+      var place = () => {
+        if (this._pick !== mk || !at) return;
+        var W = cont.clientWidth, H = cont.clientHeight, w = el.offsetWidth || 340, h = el.offsetHeight || 200, sp = map.project(at);
+        var x = Math.max(10, Math.min(W - 10 - w, sp.x - w / 2)), up = sp.y - 24 - 130, down = H - 130 - (sp.y + 14);
+        var y = h <= up || up >= down ? sp.y - 24 - h : sp.y + 14;
+        el.style.left = Math.round(x) + "px"; el.style.top = Math.round(Math.max(130, Math.min(H - 130 - h, y))) + "px";
+      };
+      place(); map.on("move", place);
+      el.addEventListener("igor-gone", () => map.off("move", place));
+      arm(20000);
+      this._hass.callApi("GET", "nives/trails/info?id=" + encodeURIComponent(tp.id)).then((r) => {
+        if (this._pick !== mk) return;
+        info = (r && r.trail) || {};
+        var rows = [], k0 = km();
+        rows.push(["mdi:map-marker-distance", "Longueur", k0 ? k0 + " km" : info.km_seen ? "au moins " + String(info.km_seen).replace(".", ",") + " km" : "?"]);
+        if (info.from || info.to) rows.push(["mdi:arrow-right", "Itinéraire", [info.from, info.to].filter(Boolean).join(" → ") + (info.roundtrip === "yes" ? " (boucle)" : "")]);
+        if (info.ascent || info.descent) rows.push(["mdi:elevation-rise", "Dénivelé", [info.ascent ? "+" + info.ascent + " m" : "", info.descent ? "−" + info.descent + " m" : ""].filter(Boolean).join(" / ")]);
+        if (info["osmc:symbol"]) rows.push(["mdi:sign-direction", "Balisage", gpsWaymark(info["osmc:symbol"])]);
+        if (info.operator) rows.push(["mdi:account-group", "Entretien", info.operator]);
+        if (info.website) rows.push(["mdi:web", "Site", String(info.website).replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")]);
+        kv.innerHTML = rows.map((r0) => '<div><ha-icon icon="' + r0[0] + '"></ha-icon><span>' + r0[1] + "</span><b>" + esc(r0[2]) + "</b></div>").join("") +
+          (info.description ? '<div class="pv-wait" style="white-space:normal">' + esc(info.description) + "</div>" : "");
+        if (info.website) { var wb = [...kv.querySelectorAll("b")].pop(); if (wb) { wb.style.cursor = "pointer"; wb.addEventListener("click", () => window.open(/^https?:/.test(info.website) ? info.website : "https://" + info.website, "_blank")); } }
+        place();
+      }).catch(() => { kv.innerHTML = '<div class="pv-wait">Fiche indisponible pour l\'instant.</div>'; });
     },
     gpxList() {
       if (this.gpxCache) return this.gpxCache;
@@ -15239,11 +15407,15 @@
   // The « Carte 3D » window, over the whole screen, from any card (the phone's
   // map: its « Couches » button): the same window and the same settings as
   // Réglages → Carte 3D on the head unit — one look for both screens.
-  function openMap3dWindow(hass, id) {
+  // `host`: where the window lives. Inside the map's own card: a card in
+  // full screen (requestFullscreen) shows nothing but itself, and a window
+  // hung on the page's body stayed invisible behind it — opened « once in
+  // two », only after a back gesture had left the full screen.
+  function openMap3dWindow(hass, id, host) {
     var w = document.createElement("igor-settings-card");
     w.setConfig({ map3d: id, window_only: true });
     w.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;z-index:2147482000";
-    document.body.appendChild(w);
+    (host || document.fullscreenElement || document.body).appendChild(w);
     w.hass = hass;
     w.openMap3d();
     return w;
