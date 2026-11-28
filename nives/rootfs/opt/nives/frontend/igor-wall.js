@@ -5557,7 +5557,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.19";
+  var GPS_CARD_VERSION = "0.62.20";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -7176,40 +7176,12 @@
     // The map's own buildings (those left when Igor's 3D is off) in the
     // colour of the « Couleurs de la carte la nuit » chosen, else the style's.
     baseBuildings(map) {
-      var keep = this.buildKept || (this.buildKept = {}), L = this.look || {}, mine = /^(route|trail|man|alts|routejam|igor|incidents|pois|maneuvers|rd|traffic)/i;
-      var ext = (map.getStyle().layers || []).filter((l) => l.type === "fill-extrusion" && !mine.test(l.id));
-      ext.forEach((l) => {
+      var keep = this.buildKept || (this.buildKept = {});
+      (map.getStyle().layers || []).forEach((l) => {
+        if (l["source-layer"] !== "buildings" || l.type !== "fill-extrusion") return;
         if (!(l.id in keep)) keep[l.id] = map.getPaintProperty(l.id, "fill-extrusion-color");
         var c = this.tintBuild || keep[l.id];
-        try { if (c != null) map.setPaintProperty(l.id, "fill-extrusion-color", c); map.setPaintProperty(l.id, "fill-extrusion-vertical-gradient", true); } catch (e) { /* as it was */ }
-      });
-      this.buildingShadows(map, ext, L);
-    }
-    // Light and shadows on the map's own buildings (no 3D module needed):
-    // a low light from the south-west — each face lit by its own angle —, the
-    // walls darker towards the ground, and shadows on the ground: each
-    // footprint drawn dark and soft, pushed away from the light, farther for
-    // a taller building (three heights). « Ombres portées » sets how dark.
-    buildingShadows(map, ext, L) {
-      var k = Math.max(0, Math.min(1, (L.sh != null ? Number(L.sh) : 50) / 100)), night = this.ttStyle === "streetDarkDriving";
-      try { map.setLight({ anchor: "map", position: [1.4, 215, 35], color: night ? "#cfe0ff" : "#ffffff", intensity: 0.35 + 0.35 * k }); } catch (e) { /* as it was */ }
-      var src = ext[0], before = src && src.id;
-      var bands = [[0, 12, 1], [12, 30, 2.2], [30, 1000, 4]];
-      bands.forEach((bd, i) => {
-        var id = "igor-bshadow-" + i;
-        if (!src || k <= 0) { if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none"); return; }
-        var h = ["coalesce", ["get", "height"], ["get", "render_height"], 8];
-        var filt = ["all", [">=", h, bd[0]], ["<", h, bd[1]]];
-        if (src.filter) filt.push(src.filter);
-        // Pixels at each zoom for « one unit » of shadow (≈ 6 m), pushed to the north-east.
-        var px = ["interpolate", ["exponential", 2], ["zoom"], 14, ["literal", [1.2 * bd[2], -1.2 * bd[2]]], 18, ["literal", [19 * bd[2], -19 * bd[2]]]];
-        if (!map.getLayer(id)) {
-          var lay = { id: id, type: "fill", source: src.source, filter: filt, minzoom: 14,
-            paint: { "fill-color": "#000000", "fill-opacity": 0.3 * k, "fill-translate": px, "fill-translate-anchor": "map", "fill-antialias": false } };
-          if (src["source-layer"]) lay["source-layer"] = src["source-layer"];
-          try { map.addLayer(lay, before); } catch (e) { return; }
-        }
-        try { map.setLayoutProperty(id, "visibility", "visible"); map.setPaintProperty(id, "fill-opacity", (0.46 - i * 0.07) * k); } catch (e) { /* as it was */ }
+        try { if (c != null) map.setPaintProperty(l.id, "fill-extrusion-color", c); if (this.tintBuild) map.setPaintProperty(l.id, "fill-extrusion-vertical-gradient", true); } catch (e) { /* as it was */ }
       });
     }
     tintLook(map, L) {
