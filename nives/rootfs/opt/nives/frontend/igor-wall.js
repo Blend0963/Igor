@@ -5570,7 +5570,7 @@
   // The card's own release, shown when something fails: the screen that
   // kept an old script (the kiosk browsers do) then says so itself, and the
   // word "old" stops being a guess.
-  var GPS_CARD_VERSION = "0.62.35";
+  var GPS_CARD_VERSION = "0.62.36";
   var GPS_ROUTE_W = ["interpolate", ["linear"], ["zoom"], 10, 2.5, 13, 4.5, 16, 7, 18, 10];
   var GPS_CASE_W = ["interpolate", ["linear"], ["zoom"], 10, 6.5, 13, 8.5, 16, 11, 18, 14];
   var GPS_ALT_W = ["interpolate", ["linear"], ["zoom"], 10, 2, 13, 3.5, 16, 5, 18, 7];
@@ -8275,7 +8275,8 @@
         }).catch(() => {});
       }
       if (!this.loading) this.init(p);
-      else if (this.map && this.styleNow !== this.styleUrl()) {
+      // Never on Mapbox: its style is its own (TomTom's style there left a blank map).
+      else if (this.map && !this.mapboxCfg && this.styleNow !== this.styleUrl()) {
         this.styleNow = this.styleUrl();
         this.map.setStyle(this.styleNow, { diff: false });
       }
@@ -10267,7 +10268,7 @@
           if (!r.updating) {
             clearInterval(this._offlineTimer); this._offlineTimer = null;
             this.toast(r.step === "error" ? (STEP_FR.error) : "Carte hors ligne · à jour", 5000);
-            if (this.map && this.styleNow !== this.styleUrl()) { this.styleNow = this.styleUrl(); this.map.setStyle(this.styleNow, { diff: false }); }
+            if (this.map && !this.mapboxCfg && this.styleNow !== this.styleUrl()) { this.styleNow = this.styleUrl(); this.map.setStyle(this.styleNow, { diff: false }); }
             return;
           }
           var pct = Math.max(0, Math.min(100, r.progress || 0));

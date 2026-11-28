@@ -1,3 +1,7 @@
+## 0.62.36 — Fond Mapbox vide sur Igor Explorer
+
+- **Correctif : le fond de carte Mapbox restait vide** sur Igor Explorer et l'écran déporté (seuls le logo, la flèche et les boutons s'affichaient), alors que la carte de test Mapbox marchait. À la première nouvelle position, la carte remettait le style de TomTom à la place de celui de Mapbox, qui ne peut pas s'y charger. Sur Mapbox, le style n'est plus jamais remplacé.
+
 ## 0.62.35 — Mapbox partout (ses lieux, l'interface selon sa lumière), et la carte qui ne se chargeait plus
 
 - **Correctif : le fond de carte ne se chargeait plus** après être passé d'une carte à l'autre (Igor Explorer, la carte de test Mapbox), jusqu'à fermer l'application. Deux causes : Igor Explorer remplaçait, pour toute la page, le moteur de carte (MapLibre) par celui de Mapbox, et les cartes quittées restaient vivantes en arrière-plan — un téléphone n'a que quelques « contextes 3D », ils s'épuisaient. Désormais chaque carte garde son propre moteur, et une carte quittée depuis 20 s libère sa 3D ; au retour sur la page, elle se redessine où elle était.
