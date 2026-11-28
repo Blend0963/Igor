@@ -483,7 +483,7 @@ STYLE_PATHS = (
     "style/1/style/22.2.1-*?map=2/basic_street-dark",
 )
 # Only these corners of api.tomtom.com go through the relay (maps, not every API).
-RELAY_PREFIXES = ("maps/", "map/", "style/")
+RELAY_PREFIXES = ("maps/", "map/", "style/", "traffic/map/4/tile/flow/")
 
 _KEY_RE = re.compile(r"([?&])key=[^&\"'\s]*(&)?")
 

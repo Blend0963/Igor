@@ -1,3 +1,12 @@
+## 0.62.35 — Mapbox partout, et la carte qui ne se chargeait plus
+
+- **Correctif : le fond de carte ne se chargeait plus** après être passé d'une carte à l'autre (Igor Explorer, la carte de test Mapbox), jusqu'à fermer l'application. Deux causes : Igor Explorer remplaçait, pour toute la page, le moteur de carte (MapLibre) par celui de Mapbox, et les cartes quittées restaient vivantes en arrière-plan — un téléphone n'a que quelques « contextes 3D », ils s'épuisaient. Désormais chaque carte garde son propre moteur, et une carte quittée depuis 20 s libère sa 3D ; au retour sur la page, elle se redessine où elle était.
+- **Mapbox est le fond de carte de tous les GPS** (Igor Explorer et l'écran déporté). Le choix « Fond de carte » disparaît : la carte TomTom puis la carte d'Igor ne servent plus que de secours automatiques (sans clé Mapbox, ou clé refusée).
+- **Les lieux de Mapbox, dessinés par Igor** : ses commerces et services (bien placés), avec les épingles et la vignette d'Igor (Y aller, Wikipédia, Igor) ; les informations viennent d'abord de la bibliothèque des lieux d'Igor (même nom à moins de 120 m), sinon d'OpenStreetMap. Les stations-service restent celles du Ministère, avec leurs prix.
+- **Itinéraires** : TomTom, puis HERE, puis **Mapbox Directions** en dernier secours (voiture avec trafic, à pied, à vélo ; péages, autoroutes et ferries évités comme demandé).
+- **Trafic** : celui de TomTom par-dessus Mapbox (bouchons et routes fermées) ; si TomTom ne répond plus, le trafic de Mapbox prend le relais. Péages et radars inchangés.
+- Le logo Mapbox est réduit à son symbole (les conditions de Mapbox interdisent de le retirer).
+
 ## 0.62.34 — Mapbox tel quel (carte de test)
 
 - **Nouvelle carte `custom:igor-mapbox-card`** (« Igor · Mapbox ») : Mapbox Standard exactement comme Mapbox la fait — ses couleurs, sa police, ses bâtiments, façades, monuments et **arbres en 3D**, ses noms de rues, commerces et transports — en plein écran, rien d'Igor par-dessus. Son panneau (⚙) :

@@ -1369,6 +1369,29 @@ def _async_register_route(hass: HomeAssistant) -> None:
             route["mode"] = mode
         return route
 
+    async def _mapbox_route(a, b, via, avoid_types, mode: str = "car") -> dict | None:
+        """Mapbox's route (with its own live traffic), the last backup."""
+        from . import mapbox as MB
+        from .const import CONF_MAPBOX_TOKEN
+
+        token = ""
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            token = token or str({**entry.data, **entry.options}.get(CONF_MAPBOX_TOKEN) or "").strip()
+        if not token:
+            return None
+        pts = [tuple(a), *[tuple(v) for v in via], tuple(b)]
+        try:
+            async with async_get_clientsession(hass).get(MB.directions_url(pts, mode), params=MB.directions_params(token, mode, avoid_types),
+                                                         timeout=aiohttp.ClientTimeout(total=15)) as r:
+                if r.status != 200:
+                    return None
+                route = MB.parse_route(await r.json(content_type=None))
+        except (aiohttp.ClientError, TimeoutError, ValueError):
+            return None
+        if route:
+            route["mode"] = mode
+        return route
+
     async def _transit(a, b, alternatives: int) -> dict:
         """Public transport, leaving now (HERE Public Transit, the HERE key)."""
         from . import here
@@ -1400,6 +1423,10 @@ def _async_register_route(hass: HomeAssistant) -> None:
         backup = await _here_route(a, b, call.data["via"], call.data["avoid_types"], mode)
         if backup:
             return {"enabled": True, "ok": True, "route": backup, "routes": [backup], "source": "here"}
+        # HERE silent too: Mapbox (its own live traffic).
+        backup = await _mapbox_route(a, b, call.data["via"], call.data["avoid_types"], mode)
+        if backup:
+            return {"enabled": True, "ok": True, "route": backup, "routes": [backup], "source": "mapbox"}
         return out
 
     async def _route_tomtom(call: ServiceCall) -> dict:
